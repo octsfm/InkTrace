@@ -29,7 +29,7 @@ class AppConfig:
         """从环境变量加载配置"""
         return cls(
             host=os.environ.get("INKTRACE_HOST", "127.0.0.1"),
-            port=int(os.environ.get("INKTRACE_PORT", "8000")),
+            port=int(os.environ.get("INKTRACE_PORT", "9527")),
             debug=os.environ.get("INKTRACE_DEBUG", "true").lower() == "true",
             db_path=os.environ.get("INKTRACE_DB_PATH", "data/inktrace.db"),
             deepseek_api_key=os.environ.get("DEEPSEEK_API_KEY", ""),

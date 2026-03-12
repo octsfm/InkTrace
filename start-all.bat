@@ -1,23 +1,49 @@
 @echo off
-chcp 65001 >nul
 echo ========================================
-echo   InkTrace Novel AI 一键启动脚本
-echo   作者：孔利群
+echo   InkTrace Novel AI - Start All
 echo ========================================
 echo.
 
-echo [1/2] 启动后端服务...
-start "InkTrace Backend" cmd /c "python main.py"
-timeout /t 3 >nul
+set INKTRACE_PORT=9527
+set INKTRACE_HOST=127.0.0.1
 
-echo [2/2] 启动前端服务...
-start "InkTrace Frontend" cmd /c "cd frontend && npm run dev"
+echo [1/4] Checking Python...
+python --version >nul 2>&1
+if errorlevel 1 (
+    echo [Error] Python not found
+    pause
+    exit /b 1
+)
+echo       Python OK
+
+echo.
+echo [2/4] Checking Node.js...
+node --version >nul 2>&1
+if errorlevel 1 (
+    echo [Error] Node.js not found
+    pause
+    exit /b 1
+)
+echo       Node.js OK
+
+echo.
+echo [3/4] Starting backend service...
+echo       Backend: http://%INKTRACE_HOST%:%INKTRACE_PORT%
+start "InkTrace Backend" /min cmd /c "set INKTRACE_PORT=9527 && python main.py"
+
+echo.
+echo [4/4] Starting frontend...
+echo       Frontend: http://localhost:3000
+cd frontend
+start "InkTrace Frontend" /min cmd /c "npm run dev"
+cd ..
 
 echo.
 echo ========================================
-echo   服务已启动
-echo   后端API: http://127.0.0.1:9527
-echo   前端界面: http://localhost:3000
+echo   Services started!
+echo   Backend:  http://127.0.0.1:9527
+echo   Frontend: http://localhost:3000
 echo ========================================
 echo.
+echo Use stop.bat to stop all services.
 pause

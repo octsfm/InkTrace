@@ -6,9 +6,9 @@
         <span class="logo-text">InkTrace Novel AI</span>
       </div>
       <div class="header-right">
-        <el-button type="primary" @click="$router.push('/import')">
+        <el-button type="primary" @click="$router.push('/projects')">
           <el-icon><Plus /></el-icon>
-          导入小说
+          新建项目
         </el-button>
       </div>
     </el-header>
@@ -20,6 +20,10 @@
           router
           class="sidebar-menu"
         >
+          <el-menu-item index="/projects">
+            <el-icon><Folder /></el-icon>
+            <span>项目管理</span>
+          </el-menu-item>
           <el-menu-item index="/novels">
             <el-icon><Notebook /></el-icon>
             <span>小说列表</span>
@@ -31,7 +35,7 @@
         </el-menu>
         
         <div class="sidebar-footer">
-          <el-tag type="info" size="small">v1.0.0</el-tag>
+          <el-tag type="info" size="small">v2.0.0</el-tag>
           <span class="author">作者：孔利群</span>
         </div>
       </el-aside>

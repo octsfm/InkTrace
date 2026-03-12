@@ -1,117 +1,135 @@
 """
-项目管理服务模块
+项目管理服务
 
 作者：孔利群
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional, List
 import uuid
 
+from domain.entities.project import Project, ProjectConfig
 from domain.entities.novel import Novel
-from domain.types import NovelId
+from domain.repositories.project_repository import IProjectRepository
 from domain.repositories.novel_repository import INovelRepository
-from application.dto.request_dto import CreateNovelRequest
-from application.dto.response_dto import NovelResponse
+from domain.types import ProjectId, NovelId, ProjectStatus, GenreType
 
 
 class ProjectService:
-    """
-    项目管理服务
+    """项目管理服务"""
     
-    负责小说项目的创建、查询、删除。
-    """
-
-    def __init__(self, novel_repo: INovelRepository):
-        """
-        初始化服务
-        
-        Args:
-            novel_repo: 小说仓储
-        """
+    def __init__(
+        self,
+        project_repo: IProjectRepository,
+        novel_repo: INovelRepository
+    ):
+        self.project_repo = project_repo
         self.novel_repo = novel_repo
-
-    def create_novel(self, request: CreateNovelRequest) -> NovelResponse:
-        """
-        创建小说项目
-        
-        Args:
-            request: 创建请求
-            
-        Returns:
-            小说响应
-        """
-        now = datetime.now()
+    
+    def create_project(
+        self,
+        name: str,
+        genre: GenreType = GenreType.XUANHUAN,
+        target_words: int = 8000000
+    ) -> Project:
+        """创建新项目"""
         novel_id = NovelId(str(uuid.uuid4()))
-        
         novel = Novel(
             id=novel_id,
-            title=request.title,
-            author=request.author,
-            genre=request.genre,
-            target_word_count=request.target_word_count,
-            current_word_count=0,
-            created_at=now,
-            updated_at=now
+            title=name,
+            author="",
+            genre=genre.value
         )
-        
         self.novel_repo.save(novel)
         
-        return self._to_response(novel)
-
-    def get_novel(self, novel_id: str) -> Optional[NovelResponse]:
-        """
-        获取小说
-        
-        Args:
-            novel_id: 小说ID
-            
-        Returns:
-            小说响应，不存在则返回None
-        """
-        novel = self.novel_repo.find_by_id(NovelId(novel_id))
-        
-        if novel:
-            return self._to_response(novel)
-        return None
-
-    def list_novels(self) -> List[NovelResponse]:
-        """
-        列出所有小说
-        
-        Returns:
-            小说响应列表
-        """
-        novels = self.novel_repo.find_all()
-        return [self._to_response(novel) for novel in novels]
-
-    def delete_novel(self, novel_id: str) -> None:
-        """
-        删除小说
-        
-        Args:
-            novel_id: 小说ID
-        """
-        self.novel_repo.delete(NovelId(novel_id))
-
-    def _to_response(self, novel: Novel) -> NovelResponse:
-        """
-        将实体转换为响应
-        
-        Args:
-            novel: 小说实体
-            
-        Returns:
-            小说响应
-        """
-        return NovelResponse(
-            id=novel.id.value,
-            title=novel.title,
-            author=novel.author,
-            genre=novel.genre,
-            target_word_count=novel.target_word_count,
-            current_word_count=novel.current_word_count,
-            chapter_count=novel.chapter_count,
-            created_at=novel.created_at.isoformat(),
-            updated_at=novel.updated_at.isoformat()
+        config = ProjectConfig(
+            genre=genre,
+            target_words=target_words
         )
+        
+        project = Project(
+            id=ProjectId(str(uuid.uuid4())),
+            name=name,
+            novel_id=novel_id,
+            config=config
+        )
+        
+        self.project_repo.save(project)
+        return project
+    
+    def get_project(self, project_id: ProjectId) -> Optional[Project]:
+        """获取项目"""
+        return self.project_repo.find_by_id(project_id)
+    
+    def get_project_by_novel(self, novel_id: NovelId) -> Optional[Project]:
+        """根据小说ID获取项目"""
+        return self.project_repo.find_by_novel_id(novel_id)
+    
+    def list_projects(self, status: Optional[ProjectStatus] = None) -> List[Project]:
+        """获取项目列表"""
+        return self.project_repo.find_all(status)
+    
+    def list_active_projects(self) -> List[Project]:
+        """获取活跃项目列表"""
+        return self.project_repo.find_all(ProjectStatus.ACTIVE)
+    
+    def update_project_config(
+        self,
+        project_id: ProjectId,
+        config: ProjectConfig
+    ) -> Project:
+        """更新项目配置"""
+        project = self.project_repo.find_by_id(project_id)
+        if not project:
+            raise ValueError(f"项目不存在: {project_id}")
+        
+        project.update_config(config)
+        self.project_repo.save(project)
+        return project
+    
+    def update_project_name(
+        self,
+        project_id: ProjectId,
+        name: str
+    ) -> Project:
+        """更新项目名称"""
+        project = self.project_repo.find_by_id(project_id)
+        if not project:
+            raise ValueError(f"项目不存在: {project_id}")
+        
+        project.update_name(name)
+        self.project_repo.save(project)
+        return project
+    
+    def archive_project(self, project_id: ProjectId) -> Project:
+        """归档项目"""
+        project = self.project_repo.find_by_id(project_id)
+        if not project:
+            raise ValueError(f"项目不存在: {project_id}")
+        
+        project.archive()
+        self.project_repo.save(project)
+        return project
+    
+    def activate_project(self, project_id: ProjectId) -> Project:
+        """激活项目"""
+        project = self.project_repo.find_by_id(project_id)
+        if not project:
+            raise ValueError(f"项目不存在: {project_id}")
+        
+        project.activate()
+        self.project_repo.save(project)
+        return project
+    
+    def delete_project(self, project_id: ProjectId) -> None:
+        """删除项目"""
+        project = self.project_repo.find_by_id(project_id)
+        if not project:
+            raise ValueError(f"项目不存在: {project_id}")
+        
+        self.project_repo.delete(project_id)
+        self.novel_repo.delete(project.novel_id)
+    
+    def get_project_count(self, status: Optional[ProjectStatus] = None) -> int:
+        """获取项目数量"""
+        return self.project_repo.count(status)

@@ -102,3 +102,161 @@ class CharacterRole(Enum):
     PROTAGONIST = "protagonist"
     ANTAGONIST = "antagonist"
     SUPPORTING = "supporting"
+
+
+@dataclass(frozen=True)
+class ProjectId:
+    """项目ID值对象"""
+    value: str
+
+    def __str__(self) -> str:
+        return self.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ProjectId):
+            return False
+        return self.value == other.value
+
+
+@dataclass(frozen=True)
+class TemplateId:
+    """模板ID值对象"""
+    value: str
+
+    def __str__(self) -> str:
+        return self.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TemplateId):
+            return False
+        return self.value == other.value
+
+
+@dataclass(frozen=True)
+class TechniqueId:
+    """功法ID值对象"""
+    value: str
+
+    def __str__(self) -> str:
+        return self.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TechniqueId):
+            return False
+        return self.value == other.value
+
+
+@dataclass(frozen=True)
+class FactionId:
+    """势力ID值对象"""
+    value: str
+
+    def __str__(self) -> str:
+        return self.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FactionId):
+            return False
+        return self.value == other.value
+
+
+@dataclass(frozen=True)
+class LocationId:
+    """地点ID值对象"""
+    value: str
+
+    def __str__(self) -> str:
+        return self.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, LocationId):
+            return False
+        return self.value == other.value
+
+
+@dataclass(frozen=True)
+class ItemId:
+    """物品ID值对象"""
+    value: str
+
+    def __str__(self) -> str:
+        return self.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ItemId):
+            return False
+        return self.value == other.value
+
+
+@dataclass(frozen=True)
+class WorldviewId:
+    """世界观ID值对象"""
+    value: str
+
+    def __str__(self) -> str:
+        return self.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, WorldviewId):
+            return False
+        return self.value == other.value
+
+
+class ProjectStatus(Enum):
+    """项目状态枚举"""
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class GenreType(Enum):
+    """题材类型枚举"""
+    XUANHUAN = "xuanhuan"
+    XIANXIA = "xianxia"
+    DUSHI = "dushi"
+    LISHI = "lishi"
+    KEHUAN = "kehuan"
+    WUXIA = "wuxia"
+    QIHUAN = "qihuan"
+    OTHER = "other"
+
+
+class RelationType(Enum):
+    """人物关系类型枚举"""
+    FAMILY = "family"
+    FRIEND = "friend"
+    ENEMY = "enemy"
+    LOVER = "lover"
+    MASTER_DISCIPLE = "master_disciple"
+    ALLY = "ally"
+    RIVAL = "rival"
+    OTHER = "other"
+
+
+class ItemType(Enum):
+    """物品类型枚举"""
+    ARTIFACT = "artifact"
+    PILL = "pill"
+    MATERIAL = "material"
+    SCRIPTURE = "scripture"
+    OTHER = "other"

@@ -8,20 +8,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from presentation.api.routers import novel, content, writing, export
+from presentation.api.routers import project, template, character, worldview
 
 
 def create_app() -> FastAPI:
-    """
-    创建FastAPI应用
-    
-    Returns:
-        FastAPI应用实例
-    """
+    """创建FastAPI应用"""
     app = FastAPI(
         title="InkTrace Novel AI",
         description="AI小说自动编写助手API",
-        version="1.0.0",
-        author="孔利群"
+        version="2.0.0"
     )
     
     app.add_middleware(
@@ -32,14 +27,21 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
-    app.include_router(novel.router, prefix="/api/novels", tags=["小说管理"])
-    app.include_router(content.router, prefix="/api/content", tags=["内容管理"])
-    app.include_router(writing.router, prefix="/api/writing", tags=["续写服务"])
-    app.include_router(export.router, prefix="/api/export", tags=["导出服务"])
+    # 一期路由
+    app.include_router(novel.router)
+    app.include_router(content.router)
+    app.include_router(writing.router)
+    app.include_router(export.router)
+    
+    # 二期路由
+    app.include_router(project.router)
+    app.include_router(template.router)
+    app.include_router(character.router)
+    app.include_router(worldview.router)
     
     @app.get("/")
     async def root():
-        return {"message": "InkTrace Novel AI", "version": "1.0.0"}
+        return {"message": "InkTrace Novel AI", "version": "2.0.0"}
     
     @app.get("/health")
     async def health():

@@ -4,8 +4,14 @@ const routes = [
   {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
-    redirect: '/novels',
+    redirect: '/projects',
     children: [
+      {
+        path: 'projects',
+        name: 'ProjectList',
+        component: () => import('@/views/project/ProjectList.vue'),
+        meta: { title: '项目管理' }
+      },
       {
         path: 'novels',
         name: 'NovelList',
@@ -23,6 +29,18 @@ const routes = [
         name: 'NovelWrite',
         component: () => import('@/views/novel/NovelWrite.vue'),
         meta: { title: '续写小说' }
+      },
+      {
+        path: 'novel/:id/characters',
+        name: 'CharacterManage',
+        component: () => import('@/views/character/CharacterManage.vue'),
+        meta: { title: '人物管理' }
+      },
+      {
+        path: 'novel/:id/worldview',
+        name: 'WorldviewManage',
+        component: () => import('@/views/worldview/WorldviewManage.vue'),
+        meta: { title: '世界观管理' }
       },
       {
         path: 'import',
