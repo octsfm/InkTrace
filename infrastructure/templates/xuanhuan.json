@@ -1,0 +1,73 @@
+{
+  "id": "tpl_xuanhuan_001",
+  "name": "玄幻小说模板",
+  "genre": "xuanhuan",
+  "description": "适用于玄幻题材小说，包含完整的修炼体系、势力架构和世界观设定",
+  "worldview_framework": {
+    "power_system": {
+      "name": "修炼境界",
+      "levels": ["炼气期", "筑基期", "金丹期", "元婴期", "化神期", "炼虚期", "合体期", "大乘期", "渡劫期", "仙人"]
+    },
+    "currency_system": {
+      "primary": "灵石",
+      "secondary": "仙石",
+      "exchange_rate": "100灵石 = 1仙石"
+    },
+    "world_regions": ["东域", "西域", "南域", "北域", "中州", "仙界"]
+  },
+  "character_templates": [
+    {
+      "role": "protagonist",
+      "name_pattern": "姓+名，如：林轩、叶凡、萧炎",
+      "traits": ["坚韧不拔", "重情重义", "天赋异禀", "机缘深厚"],
+      "background_template": "出身{出身地}，{家族背景}，因{机缘}获得{金手指}，踏上修炼之路",
+      "abilities": ["主修功法", "特殊体质", "神秘传承"]
+    },
+    {
+      "role": "supporting",
+      "name_pattern": "多样化命名",
+      "traits": ["忠诚", "智慧", "幽默"],
+      "background_template": "{身份}，与主角{关系}，在{事件}中相识",
+      "abilities": ["辅助技能", "特殊能力"]
+    },
+    {
+      "role": "antagonist",
+      "name_pattern": "霸气或阴狠的名字",
+      "traits": ["野心勃勃", "心狠手辣", "实力强大"],
+      "background_template": "{势力}的核心人物，因{原因}与主角结仇",
+      "abilities": ["强大功法", "势力资源"]
+    }
+  ],
+  "plot_templates": [
+    {
+      "name": "开局觉醒",
+      "description": "主角获得金手指，开始修炼之路",
+      "stages": ["天赋测试", "遭受打击", "机缘巧合", "获得金手指", "初露锋芒"],
+      "key_events": ["觉醒仪式", "神秘传承", "首次战斗"]
+    },
+    {
+      "name": "宗门试炼",
+      "description": "主角加入宗门，通过试炼成长",
+      "stages": ["入门考核", "外门历练", "内门竞争", "核心弟子", "宗门大比"],
+      "key_events": ["试炼秘境", "同门竞争", "宗门危机"]
+    },
+    {
+      "name": "势力争霸",
+      "description": "主角参与势力间的争斗",
+      "stages": ["势力冲突", "利益纠葛", "明争暗斗", "正面交锋", "势力重组"],
+      "key_events": ["资源争夺", "盟友结交", "强敌来袭"]
+    }
+  ],
+  "style_reference": {
+    "vocabulary": ["灵气", "法力", "神识", "道心", "天劫", "造化"],
+    "sentence_patterns": [
+      "只见{人物}手中{动作}，一道{光芒}闪过，{效果}",
+      "这{宝物}乃是{来历}，拥有{功效}",
+      "此时{人物}已经{状态}，{后续发展}"
+    ],
+    "descriptions": ["气势磅礴", "玄妙莫测", "惊天动地", "风云变色"]
+  },
+  "is_builtin": true,
+  "created_at": "2026-01-01T00:00:00",
+  "updated_at": "2026-01-01T00:00:00"
+}

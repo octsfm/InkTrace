@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from application.services.project_service import ProjectService
-from application.dto.request_dto import CreateNovelRequest
+from domain.types import GenreType
 
 
 class TestProjectService(unittest.TestCase):
@@ -16,46 +16,102 @@ class TestProjectService(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
-        self.mock_repo = MagicMock()
-        self.service = ProjectService(self.mock_repo)
+        self.mock_project_repo = MagicMock()
+        self.mock_novel_repo = MagicMock()
+        self.service = ProjectService(self.mock_project_repo, self.mock_novel_repo)
 
-    def test_create_novel(self):
-        """测试创建小说"""
-        self.mock_repo.save = MagicMock()
+    def test_create_project(self):
+        """测试创建项目"""
+        self.mock_novel_repo.save = MagicMock()
+        self.mock_project_repo.save = MagicMock()
         
-        request = CreateNovelRequest(
-            title="修仙从逃出生天开始",
-            author="孔利群",
-            genre="现代修真",
-            target_word_count=800000
+        project = self.service.create_project(
+            name="测试项目",
+            genre=GenreType.XUANHUAN,
+            target_words=8000000
         )
         
-        response = self.service.create_novel(request)
-        
-        self.assertIsNotNone(response.id)
-        self.assertEqual(response.title, "修仙从逃出生天开始")
-        self.assertEqual(response.author, "孔利群")
+        self.assertIsNotNone(project)
+        self.assertEqual(project.name, "测试项目")
+        self.assertEqual(project.config.genre, GenreType.XUANHUAN)
+        self.mock_novel_repo.save.assert_called_once()
+        self.mock_project_repo.save.assert_called_once()
 
-    def test_get_novel(self):
-        """测试获取小说"""
-        self.mock_repo.find_by_id = MagicMock(return_value=None)
+    def test_get_project(self):
+        """测试获取项目"""
+        from domain.entities.project import Project, ProjectConfig
+        from domain.types import ProjectId, NovelId
         
-        found = self.service.get_novel("non-existent-id")
+        mock_project = Project(
+            id=ProjectId("proj_001"),
+            name="测试项目",
+            novel_id=NovelId("novel_001"),
+            config=ProjectConfig()
+        )
+        self.mock_project_repo.find_by_id = MagicMock(return_value=mock_project)
+        
+        found = self.service.get_project(ProjectId("proj_001"))
+        self.assertIsNotNone(found)
+        self.assertEqual(found.name, "测试项目")
+
+    def test_get_project_not_found(self):
+        """测试获取不存在的项目"""
+        self.mock_project_repo.find_by_id = MagicMock(return_value=None)
+        
+        from domain.types import ProjectId
+        found = self.service.get_project(ProjectId("non-existent-id"))
         self.assertIsNone(found)
 
-    def test_list_novels(self):
-        """测试列出小说"""
-        self.mock_repo.find_all = MagicMock(return_value=[])
+    def test_list_projects(self):
+        """测试列出项目"""
+        self.mock_project_repo.find_all = MagicMock(return_value=[])
         
-        novels = self.service.list_novels()
-        self.assertEqual(len(novels), 0)
+        projects = self.service.list_projects()
+        self.assertEqual(len(projects), 0)
 
-    def test_delete_novel(self):
-        """测试删除小说"""
-        self.mock_repo.delete = MagicMock()
+    def test_list_active_projects(self):
+        """测试列出活跃项目"""
+        from domain.types import ProjectStatus
+        self.mock_project_repo.find_all = MagicMock(return_value=[])
         
-        self.service.delete_novel("test-id")
-        self.mock_repo.delete.assert_called_once()
+        projects = self.service.list_active_projects()
+        self.mock_project_repo.find_all.assert_called_with(ProjectStatus.ACTIVE)
+
+    def test_delete_project(self):
+        """测试删除项目"""
+        from domain.entities.project import Project, ProjectConfig
+        from domain.types import ProjectId, NovelId
+        
+        mock_project = Project(
+            id=ProjectId("proj_001"),
+            name="测试项目",
+            novel_id=NovelId("novel_001"),
+            config=ProjectConfig()
+        )
+        self.mock_project_repo.find_by_id = MagicMock(return_value=mock_project)
+        self.mock_project_repo.delete = MagicMock()
+        self.mock_novel_repo.delete = MagicMock()
+        
+        self.service.delete_project(ProjectId("proj_001"))
+        self.mock_project_repo.delete.assert_called_once()
+        self.mock_novel_repo.delete.assert_called_once()
+
+    def test_archive_project(self):
+        """测试归档项目"""
+        from domain.entities.project import Project, ProjectConfig
+        from domain.types import ProjectId, NovelId, ProjectStatus
+        
+        mock_project = Project(
+            id=ProjectId("proj_001"),
+            name="测试项目",
+            novel_id=NovelId("novel_001"),
+            config=ProjectConfig()
+        )
+        self.mock_project_repo.find_by_id = MagicMock(return_value=mock_project)
+        self.mock_project_repo.save = MagicMock()
+        
+        archived = self.service.archive_project(ProjectId("proj_001"))
+        self.assertEqual(archived.status, ProjectStatus.ARCHIVED)
 
 
 if __name__ == '__main__':

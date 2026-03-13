@@ -11,16 +11,17 @@ from application.services.project_service import ProjectService
 from application.dto.request_dto import CreateNovelRequest
 from application.dto.response_dto import NovelResponse
 from presentation.api.dependencies import get_project_service
+from domain.types import NovelId
 
 
-router = APIRouter()
+router = APIRouter(prefix="/novels", tags=["小说管理"])
 
 
 @router.post("/", response_model=NovelResponse)
 async def create_novel(
     request: CreateNovelRequest,
     service: ProjectService = Depends(get_project_service)
-):
+) -> NovelResponse:
     """
     创建小说项目
     
@@ -31,13 +32,29 @@ async def create_novel(
     Returns:
         小说响应
     """
-    return service.create_novel(request)
+    project = service.create_project(
+        name=request.title,
+        genre=request.genre,
+        target_words=request.target_word_count
+    )
+    
+    return NovelResponse(
+        id=str(project.novel_id),
+        title=project.name,
+        author="",
+        genre=project.config.genre.value,
+        target_word_count=project.config.target_words,
+        current_word_count=0,
+        chapter_count=0,
+        created_at=project.created_at.isoformat(),
+        updated_at=project.updated_at.isoformat()
+    )
 
 
 @router.get("/", response_model=List[NovelResponse])
 async def list_novels(
     service: ProjectService = Depends(get_project_service)
-):
+) -> List[NovelResponse]:
     """
     列出所有小说
     
@@ -47,14 +64,29 @@ async def list_novels(
     Returns:
         小说列表
     """
-    return service.list_novels()
+    projects = service.list_projects()
+    
+    return [
+        NovelResponse(
+            id=str(project.novel_id),
+            title=project.name,
+            author="",
+            genre=project.config.genre.value,
+            target_word_count=project.config.target_words,
+            current_word_count=0,
+            chapter_count=0,
+            created_at=project.created_at.isoformat(),
+            updated_at=project.updated_at.isoformat()
+        )
+        for project in projects
+    ]
 
 
 @router.get("/{novel_id}", response_model=NovelResponse)
 async def get_novel(
     novel_id: str,
     service: ProjectService = Depends(get_project_service)
-):
+) -> NovelResponse:
     """
     获取小说详情
     
@@ -65,17 +97,28 @@ async def get_novel(
     Returns:
         小说响应
     """
-    novel = service.get_novel(novel_id)
-    if not novel:
+    project = service.get_project_by_novel(NovelId(novel_id))
+    if not project:
         raise HTTPException(status_code=404, detail="小说不存在")
-    return novel
+    
+    return NovelResponse(
+        id=str(project.novel_id),
+        title=project.name,
+        author="",
+        genre=project.config.genre.value,
+        target_word_count=project.config.target_words,
+        current_word_count=0,
+        chapter_count=0,
+        created_at=project.created_at.isoformat(),
+        updated_at=project.updated_at.isoformat()
+    )
 
 
 @router.delete("/{novel_id}")
 async def delete_novel(
     novel_id: str,
     service: ProjectService = Depends(get_project_service)
-):
+) -> dict:
     """
     删除小说
     
@@ -83,5 +126,9 @@ async def delete_novel(
         novel_id: 小说ID
         service: 项目服务
     """
-    service.delete_novel(novel_id)
+    project = service.get_project_by_novel(NovelId(novel_id))
+    if not project:
+        raise HTTPException(status_code=404, detail="小说不存在")
+    
+    service.delete_project(project.id)
     return {"message": "删除成功"}

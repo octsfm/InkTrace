@@ -1,0 +1,73 @@
+{
+  "id": "tpl_lishi_001",
+  "name": "历史小说模板",
+  "genre": "lishi",
+  "description": "适用于历史题材小说，历史背景下的故事",
+  "worldview_framework": {
+    "power_system": {
+      "name": "官职品级",
+      "levels": ["九品", "八品", "七品", "六品", "五品", "四品", "三品", "二品", "一品", "宰相"]
+    },
+    "currency_system": {
+      "primary": "铜钱",
+      "secondary": "银子",
+      "tertiary": "黄金"
+    },
+    "world_regions": ["京城", "州府", "县城", "乡镇"]
+  },
+  "character_templates": [
+    {
+      "role": "protagonist",
+      "name_pattern": "符合时代的名字",
+      "traits": ["智谋过人", "心怀天下", "坚韧不拔"],
+      "background_template": "{朝代}年间，{出身}，因{原因}踏上{道路}",
+      "abilities": ["文韬武略", "特殊技能"]
+    },
+    {
+      "role": "supporting",
+      "name_pattern": "符合时代的名字",
+      "traits": ["忠义", "智慧", "勇武"],
+      "background_template": "{身份}，与主角{关系}",
+      "abilities": ["专业技能"]
+    },
+    {
+      "role": "antagonist",
+      "name_pattern": "符合时代的名字",
+      "traits": ["奸诈", "野心", "权谋"],
+      "background_template": "{势力}的{身份}，因{原因}与主角对立",
+      "abilities": ["权势", "武力"]
+    }
+  ],
+  "plot_templates": [
+    {
+      "name": "科举入仕",
+      "description": "通过科举进入仕途",
+      "stages": ["寒窗苦读", "乡试中举", "会试殿试", "初入官场", "步步高升"],
+      "key_events": ["科举考试", "金榜题名", "初任官职"]
+    },
+    {
+      "name": "朝堂争斗",
+      "description": "朝廷中的权力斗争",
+      "stages": ["初入朝堂", "结党营私", "明争暗斗", "生死抉择", "权倾朝野"],
+      "key_events": ["朝堂辩论", "政治联盟", "关键决策"]
+    },
+    {
+      "name": "征战沙场",
+      "description": "战场上的故事",
+      "stages": ["投军入伍", "初战告捷", "领兵作战", "大战在即", "功成名就"],
+      "key_events": ["首次出征", "关键战役", "凯旋归来"]
+    }
+  ],
+  "style_reference": {
+    "vocabulary": ["陛下", "臣", "圣旨", "奏折", "朝堂", "边疆"],
+    "sentence_patterns": [
+      "{人物}跪奏道：'{对话}'",
+      "圣上{动作}，{结果}",
+      "此时{时间}，{场景}"
+    ],
+    "descriptions": ["古风古韵", "波澜壮阔", "权谋诡计", "家国情怀"]
+  },
+  "is_builtin": true,
+  "created_at": "2026-01-01T00:00:00",
+  "updated_at": "2026-01-01T00:00:00"
+}

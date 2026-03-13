@@ -9,7 +9,7 @@ import json
 from typing import Optional, List
 from datetime import datetime
 
-from domain.types import CharacterId, NovelId, CharacterRole
+from domain.types import CharacterId, NovelId, CharacterRole, ChapterId
 from domain.entities.character import Character, CharacterRelationship
 from domain.repositories.character_repository import ICharacterRepository
 

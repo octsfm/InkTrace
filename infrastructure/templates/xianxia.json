@@ -1,0 +1,73 @@
+{
+  "id": "tpl_xianxia_001",
+  "name": "仙侠小说模板",
+  "genre": "xianxia",
+  "description": "适用于仙侠题材小说，强调修仙问道、因果轮回",
+  "worldview_framework": {
+    "power_system": {
+      "name": "修仙境界",
+      "levels": ["凡人", "练气", "筑基", "结丹", "元婴", "化神", "返虚", "合道", "渡劫", "真仙"]
+    },
+    "currency_system": {
+      "primary": "灵石",
+      "secondary": "仙玉",
+      "tertiary": "功德点"
+    },
+    "world_regions": ["凡间", "修仙界", "仙界", "魔界", "妖界"]
+  },
+  "character_templates": [
+    {
+      "role": "protagonist",
+      "name_pattern": "清雅脱俗的名字，如：陆云、苏铭、韩立",
+      "traits": ["道心坚定", "谨慎多疑", "机缘深厚"],
+      "background_template": "本是{出身}，因{机缘}踏入仙途，誓要{目标}",
+      "abilities": ["本命法宝", "传承功法", "特殊体质"]
+    },
+    {
+      "role": "supporting",
+      "name_pattern": "符合身份的名字",
+      "traits": ["各具特色"],
+      "background_template": "{身份}的{角色定位}，与主角{关系}",
+      "abilities": ["对应境界的功法"]
+    },
+    {
+      "role": "antagonist",
+      "name_pattern": "威严或阴沉的名字",
+      "traits": ["执念深重", "不择手段"],
+      "background_template": "{势力}的{身份}，因{因果}与主角对立",
+      "abilities": ["高深功法", "强大法宝"]
+    }
+  ],
+  "plot_templates": [
+    {
+      "name": "求仙之路",
+      "description": "凡人踏上修仙之路",
+      "stages": ["凡尘历练", "仙缘降临", "拜入仙门", "刻苦修炼", "初窥门径"],
+      "key_events": ["遇仙缘", "入门考核", "首次突破"]
+    },
+    {
+      "name": "秘境探险",
+      "description": "探索上古秘境获取机缘",
+      "stages": ["秘境开启", "各方云集", "险象环生", "机缘争夺", "生死考验"],
+      "key_events": ["进入秘境", "发现宝物", "遭遇强敌"]
+    },
+    {
+      "name": "渡劫飞升",
+      "description": "渡过天劫飞升上界",
+      "stages": ["准备渡劫", "心魔考验", "雷劫降临", "生死一线", "成功飞升"],
+      "key_events": ["天劫降临", "心魔幻境", "飞升仙界"]
+    }
+  ],
+  "style_reference": {
+    "vocabulary": ["道友", "仙缘", "因果", "劫数", "造化", "机缘"],
+    "sentence_patterns": [
+      "此乃{宝物}，{来历}，{功效}",
+      "{人物}掐指一算，{结果}",
+      "修仙之路，{感悟}"
+    ],
+    "descriptions": ["仙气飘飘", "玄妙无比", "道法自然", "因果循环"]
+  },
+  "is_builtin": true,
+  "created_at": "2026-01-01T00:00:00",
+  "updated_at": "2026-01-01T00:00:00"
+}

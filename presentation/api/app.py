@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from presentation.api.routers import novel, content, writing, export
 from presentation.api.routers import project, template, character, worldview
+from presentation.api.routers import vector, rag
 
 
 def create_app() -> FastAPI:
@@ -16,7 +17,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="InkTrace Novel AI",
         description="AI小说自动编写助手API",
-        version="2.0.0"
+        version="3.0.0"
     )
     
     app.add_middleware(
@@ -39,9 +40,13 @@ def create_app() -> FastAPI:
     app.include_router(character.router)
     app.include_router(worldview.router)
     
+    # 三期路由
+    app.include_router(vector.router)
+    app.include_router(rag.router)
+    
     @app.get("/")
     async def root():
-        return {"message": "InkTrace Novel AI", "version": "2.0.0"}
+        return {"message": "InkTrace Novel AI", "version": "3.0.0"}
     
     @app.get("/health")
     async def health():

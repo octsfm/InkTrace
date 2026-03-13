@@ -1,0 +1,72 @@
+{
+  "id": "tpl_dushi_001",
+  "name": "都市小说模板",
+  "genre": "dushi",
+  "description": "适用于都市题材小说，现代背景下的故事",
+  "worldview_framework": {
+    "power_system": {
+      "name": "社会地位",
+      "levels": ["普通人", "小有成就", "中产阶级", "上层社会", "顶级豪门"]
+    },
+    "currency_system": {
+      "primary": "人民币",
+      "secondary": "美元"
+    },
+    "world_regions": ["一线城市", "二线城市", "县城", "农村"]
+  },
+  "character_templates": [
+    {
+      "role": "protagonist",
+      "name_pattern": "现代常见名字，如：林峰、陈阳、苏晨",
+      "traits": ["勤奋上进", "聪明机智", "重情重义"],
+      "background_template": "{职业/身份}，因{变故}开始{目标}",
+      "abilities": ["专业技能", "特殊能力（可选）"]
+    },
+    {
+      "role": "supporting",
+      "name_pattern": "现代名字",
+      "traits": ["性格鲜明"],
+      "background_template": "主角的{关系}，{身份}",
+      "abilities": ["辅助技能"]
+    },
+    {
+      "role": "antagonist",
+      "name_pattern": "常见名字",
+      "traits": ["阴险狡诈", "仗势欺人"],
+      "background_template": "{身份}，因{原因}与主角对立",
+      "abilities": ["势力资源", "财富"]
+    }
+  ],
+  "plot_templates": [
+    {
+      "name": "逆袭人生",
+      "description": "从低谷走向成功",
+      "stages": ["人生低谷", "机遇降临", "努力奋斗", "初见成效", "走向巅峰"],
+      "key_events": ["重大打击", "关键机遇", "首次成功"]
+    },
+    {
+      "name": "商战风云",
+      "description": "商业竞争的故事",
+      "stages": ["创业起步", "市场竞争", "危机四伏", "力挽狂澜", "商业帝国"],
+      "key_events": ["创业契机", "商业危机", "关键决策"]
+    },
+    {
+      "name": "都市情缘",
+      "description": "都市爱情故事",
+      "stages": ["初遇相识", "误会冲突", "感情升温", "波折考验", "修成正果"],
+      "key_events": ["初次相遇", "感情转折", "最终告白"]
+    }
+  ],
+  "style_reference": {
+    "vocabulary": ["公司", "项目", "投资", "合同", "谈判", "市场"],
+    "sentence_patterns": [
+      "{人物}{动作}，{结果}",
+      "这{事物}，{描述}",
+      "此时{时间}，{场景}"
+    ],
+    "descriptions": ["现代都市", "职场风云", "快节奏", "现实主义"]
+  },
+  "is_builtin": true,
+  "created_at": "2026-01-01T00:00:00",
+  "updated_at": "2026-01-01T00:00:00"
+}

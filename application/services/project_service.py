@@ -34,11 +34,15 @@ class ProjectService:
     ) -> Project:
         """创建新项目"""
         novel_id = NovelId(str(uuid.uuid4()))
+        now = datetime.now()
         novel = Novel(
             id=novel_id,
             title=name,
             author="",
-            genre=genre.value
+            genre=genre.value,
+            target_word_count=target_words,
+            created_at=now,
+            updated_at=now
         )
         self.novel_repo.save(novel)
         
@@ -60,6 +64,10 @@ class ProjectService:
     def get_project(self, project_id: ProjectId) -> Optional[Project]:
         """获取项目"""
         return self.project_repo.find_by_id(project_id)
+    
+    def get_project_by_novel(self, novel_id: NovelId) -> Optional[Project]:
+        """根据小说ID获取项目"""
+        return self.project_repo.find_by_novel_id(novel_id)
     
     def get_project_by_novel(self, novel_id: NovelId) -> Optional[Project]:
         """根据小说ID获取项目"""

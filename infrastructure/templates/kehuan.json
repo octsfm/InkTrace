@@ -1,0 +1,72 @@
+{
+  "id": "tpl_kehuan_001",
+  "name": "科幻小说模板",
+  "genre": "kehuan",
+  "description": "适用于科幻题材小说，未来世界或宇宙背景",
+  "worldview_framework": {
+    "power_system": {
+      "name": "文明等级",
+      "levels": ["0级文明", "1级文明", "2级文明", "3级文明", "4级文明", "5级文明"]
+    },
+    "currency_system": {
+      "primary": "信用点",
+      "secondary": "能量币"
+    },
+    "world_regions": ["地球", "太阳系", "银河系", "河外星系", "宇宙边缘"]
+  },
+  "character_templates": [
+    {
+      "role": "protagonist",
+      "name_pattern": "现代或未来风格名字",
+      "traits": ["求知欲强", "勇敢无畏", "智慧超群"],
+      "background_template": "{时代}年，{身份}，因{事件}开始{冒险}",
+      "abilities": ["科技技能", "基因强化", "AI辅助"]
+    },
+    {
+      "role": "supporting",
+      "name_pattern": "多样化名字",
+      "traits": ["各具特色"],
+      "background_template": "{种族/身份}，与主角{关系}",
+      "abilities": ["专业技能", "特殊装备"]
+    },
+    {
+      "role": "antagonist",
+      "name_pattern": "威严或冷酷的名字",
+      "traits": ["野心勃勃", "冷酷无情"],
+      "background_template": "{势力}的{身份}，因{原因}与主角对立",
+      "abilities": ["高科技武器", "强大势力"]
+    }
+  ],
+  "plot_templates": [
+    {
+      "name": "星际探索",
+      "description": "探索宇宙的冒险故事",
+      "stages": ["起航出发", "星途漫漫", "未知星球", "外星接触", "宇宙奥秘"],
+      "key_events": ["飞船启航", "发现新星系", "首次接触"]
+    },
+    {
+      "name": "科技革命",
+      "description": "科技改变世界的故事",
+      "stages": ["科技突破", "社会变革", "利益冲突", "危机降临", "新纪元"],
+      "key_events": ["重大发现", "技术应用", "社会动荡"]
+    },
+    {
+      "name": "文明冲突",
+      "description": "不同文明间的冲突",
+      "stages": ["首次接触", "误解冲突", "战争爆发", "寻求和平", "文明融合"],
+      "key_events": ["外星入侵", "反击作战", "和平谈判"]
+    }
+  ],
+  "style_reference": {
+    "vocabulary": ["量子", "光年", "虫洞", "跃迁", "基因", "AI"],
+    "sentence_patterns": [
+      "{飞船/设备}启动{系统}，{效果}",
+      "距离{目标}还有{数值}光年",
+      "检测到{信号/物体}，{反应}"
+    ],
+    "descriptions": ["科技感", "未来感", "宇宙浩瀚", "理性思考"]
+  },
+  "is_builtin": true,
+  "created_at": "2026-01-01T00:00:00",
+  "updated_at": "2026-01-01T00:00:00"
+}

@@ -1,0 +1,74 @@
+{
+  "name": "inktrace-desktop",
+  "version": "1.0.0",
+  "description": "AI小说自动编写助手 - 桌面版",
+  "main": "desktop/main.js",
+  "author": "孔利群",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "pack": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.inktrace.desktop",
+    "productName": "InkTrace",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "desktop/**/*",
+      "frontend/dist/**/*",
+      "data/**/*",
+      "infrastructure/templates/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "desktop/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "desktop/assets/icon.ico",
+      "uninstallerIcon": "desktop/assets/icon.ico",
+      "installerHeaderIcon": "desktop/assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "InkTrace"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "desktop/assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "desktop/assets"
+    }
+  },
+  "dependencies": {
+    "docx": "^9.6.1"
+  }
+}
