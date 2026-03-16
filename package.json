@@ -25,7 +25,6 @@
     },
     "files": [
       "desktop/**/*",
-      "frontend/dist/**/*",
       "data/**/*",
       "infrastructure/templates/**/*"
     ],
@@ -33,6 +32,13 @@
       {
         "from": "backend",
         "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "frontend/dist",
+        "to": "frontend",
         "filter": [
           "**/*"
         ]

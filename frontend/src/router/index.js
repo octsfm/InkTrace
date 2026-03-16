@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
 
 const routes = [
   {
@@ -47,13 +47,21 @@ const routes = [
         name: 'NovelImport',
         component: () => import('@/views/novel/NovelImport.vue'),
         meta: { title: '导入小说' }
+      },
+      {
+        path: 'config',
+        name: 'LLMConfig',
+        component: () => import('@/views/config/LLMConfig.vue'),
+        meta: { title: '大模型配置' }
       }
     ]
   }
 ]
 
+const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:'
+
 const router = createRouter({
-  history: createWebHistory(),
+  history: isFileProtocol ? createWebHashHistory() : createWebHistory(),
   routes
 })
 

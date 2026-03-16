@@ -32,6 +32,10 @@
             <el-icon><Upload /></el-icon>
             <span>导入小说</span>
           </el-menu-item>
+          <el-menu-item index="/config">
+            <el-icon><Setting /></el-icon>
+            <span>大模型配置</span>
+          </el-menu-item>
         </el-menu>
         
         <div class="sidebar-footer">
@@ -52,6 +56,7 @@
 </template>
 
 <script setup>
+import { Edit, Plus, Folder, Notebook, Upload, Setting } from '@element-plus/icons-vue'
 </script>
 
 <style scoped>

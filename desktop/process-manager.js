@@ -17,7 +17,7 @@ class ProcessManager {
         this.statusListeners = [];
     }
 
-    async start(backendPath, port) {
+    async start(backendPath, port, isDev = true) {
         if (this.process) {
             await this.stop();
         }
@@ -26,8 +26,9 @@ class ProcessManager {
         this.status = 'starting';
         this._notifyStatusChange();
 
+        console.log(`Starting backend: ${backendPath}, isDev: ${isDev}`);
+
         return new Promise((resolve, reject) => {
-            const pythonPath = this._getPythonPath();
             const backendDir = path.dirname(backendPath);
             
             const env = {
@@ -36,7 +37,18 @@ class ProcessManager {
                 PORT: String(port)
             };
 
-            this.process = spawn(pythonPath, [backendPath], {
+            let command, args;
+            if (isDev) {
+                command = this._getPythonPath();
+                args = [backendPath];
+            } else {
+                command = backendPath;
+                args = [];
+            }
+
+            console.log(`Command: ${command}, Args: ${args.join(' ')}`);
+
+            this.process = spawn(command, args, {
                 cwd: backendDir,
                 env: env,
                 stdio: ['ignore', 'pipe', 'pipe']
