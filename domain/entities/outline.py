@@ -4,6 +4,9 @@ Outline聚合根模块
 作者：孔利群
 """
 
+# 文件路径：domain/entities/outline.py
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
@@ -18,6 +21,8 @@ class PlotNode:
     
     表示剧情的一个节点，包含标题、描述、类型和状态。
     """
+# 文件：模块：outline
+
     id: str
     title: str
     description: str
@@ -36,6 +41,8 @@ class PlotNode:
     @property
     def is_completed(self) -> bool:
         """检查是否已完成"""
+# 文件：模块：outline
+
         return self.status == PlotStatus.COMPLETED
 
 
@@ -46,6 +53,8 @@ class VolumeOutline:
     
     表示小说的一个分卷，包含卷号、标题、摘要和剧情节点。
     """
+# 文件：模块：outline
+
     number: int
     title: str
     summary: str
@@ -60,6 +69,8 @@ class Outline:
     
     表示小说的大纲，包含核心设定、故事背景、世界观和剧情节点。
     """
+# 文件：模块：outline
+
     id: OutlineId
     novel_id: NovelId
     premise: str
@@ -79,6 +90,8 @@ class Outline:
             new_premise: 新的核心设定
             updated_at: 更新时间
         """
+# 文件：模块：outline
+
         self.premise = new_premise
         self.updated_at = updated_at
 
@@ -94,6 +107,8 @@ class Outline:
             new_background: 新的故事背景
             updated_at: 更新时间
         """
+# 文件：模块：outline
+
         self.story_background = new_background
         self.updated_at = updated_at
 
@@ -109,6 +124,8 @@ class Outline:
             new_setting: 新的世界观设定
             updated_at: 更新时间
         """
+# 文件：模块：outline
+
         self.world_setting = new_setting
         self.updated_at = updated_at
 
@@ -120,6 +137,8 @@ class Outline:
             volume: 分卷大纲
             updated_at: 更新时间
         """
+# 文件：模块：outline
+
         existing = self.get_volume(volume.number)
         if existing:
             self.volumes.remove(existing)
@@ -137,6 +156,8 @@ class Outline:
         Returns:
             分卷大纲，不存在则返回None
         """
+# 文件：模块：outline
+
         for volume in self.volumes:
             if volume.number == number:
                 return volume
@@ -150,6 +171,8 @@ class Outline:
             plot: 剧情节点
             updated_at: 更新时间
         """
+# 文件：模块：outline
+
         existing = self.get_plot_by_id(plot.id)
         if existing:
             if existing in self.main_plots:
@@ -167,6 +190,8 @@ class Outline:
             plot: 剧情节点
             updated_at: 更新时间
         """
+# 文件：模块：outline
+
         existing = self.get_plot_by_id(plot.id)
         if existing:
             if existing in self.main_plots:
@@ -190,6 +215,8 @@ class Outline:
             new_status: 新状态
             updated_at: 更新时间
         """
+# 文件：模块：outline
+
         plot = self.get_plot_by_id(plot_id)
         if plot:
             new_plot = PlotNode(
@@ -221,6 +248,8 @@ class Outline:
         Returns:
             剧情节点，不存在则返回None
         """
+# 文件：模块：outline
+
         for plot in self.main_plots + self.sub_plots:
             if plot.id == plot_id:
                 return plot

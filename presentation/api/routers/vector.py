@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：presentation/api/routers/vector.py
+
+
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -57,6 +60,8 @@ def get_index_status(
     service: VectorIndexService = Depends(get_vector_index_service)
 ):
     """获取索引状态"""
+# 文件：模块：vector
+
     status = service.get_index_status(NovelId(novel_id))
     return IndexStatusResponse(**status)
 

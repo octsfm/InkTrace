@@ -4,6 +4,9 @@ Chapter实体模块
 作者：孔利群
 """
 
+# 文件路径：domain/entities/chapter.py
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List
@@ -19,6 +22,8 @@ class Chapter:
     
     表示小说中的一个章节，包含章节基本信息、内容和状态。
     """
+# 文件：模块：chapter
+
     id: ChapterId
     novel_id: NovelId
     number: int
@@ -38,6 +43,8 @@ class Chapter:
     @property
     def is_published(self) -> bool:
         """检查章节是否已发布"""
+# 文件：模块：chapter
+
         return self.status == ChapterStatus.PUBLISHED
 
     def update_content(self, new_content: str, updated_at: datetime) -> None:
@@ -48,6 +55,8 @@ class Chapter:
             new_content: 新内容
             updated_at: 更新时间
         """
+# 文件：模块：chapter
+
         self.content = new_content
         self.updated_at = updated_at
 
@@ -59,6 +68,8 @@ class Chapter:
             new_title: 新标题
             updated_at: 更新时间
         """
+# 文件：模块：chapter
+
         self.title = new_title
         self.updated_at = updated_at
 
@@ -72,6 +83,8 @@ class Chapter:
         Raises:
             InvalidOperationError: 章节已发布
         """
+# 文件：模块：chapter
+
         if self.status == ChapterStatus.PUBLISHED:
             raise InvalidOperationError("章节已发布，无法重复发布")
         self.status = ChapterStatus.PUBLISHED
@@ -87,6 +100,8 @@ class Chapter:
         Raises:
             InvalidOperationError: 章节未发布
         """
+# 文件：模块：chapter
+
         if self.status == ChapterStatus.DRAFT:
             raise InvalidOperationError("章节未发布，无法取消发布")
         self.status = ChapterStatus.DRAFT

@@ -1,8 +1,12 @@
+# 文件：模块：dependencies
 """
 API依赖注入模块
 
 作者：孔利群
 """
+
+# 文件路径：presentation/api/dependencies.py
+
 
 from functools import lru_cache
 import os

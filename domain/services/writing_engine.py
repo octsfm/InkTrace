@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/services/writing_engine.py
+
+
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
@@ -26,6 +29,8 @@ class WritingContext:
 
 class WritingEngine:
     """
+# 文件：模块：writing_engine
+
     写作引擎领域服务
     
     负责章节生成、剧情规划、文风应用。
@@ -33,6 +38,8 @@ class WritingEngine:
 
     def __init__(self, llm_client, style_profile: StyleProfile):
         """
+# 文件：模块：writing_engine
+
         初始化写作引擎
         
         Args:
@@ -48,6 +55,8 @@ class WritingEngine:
         config: WritingConfig
     ) -> str:
         """
+# 文件：模块：writing_engine
+
         生成章节内容
         
         Args:
@@ -77,6 +86,8 @@ class WritingEngine:
         direction: str
     ) -> List[PlotNode]:
         """
+# 文件：模块：writing_engine
+
         规划剧情走向
         
         Args:
@@ -107,6 +118,8 @@ class WritingEngine:
         style_profile: StyleProfile
     ) -> str:
         """
+# 文件：模块：writing_engine
+
         应用文风特征
         
         Args:
@@ -129,6 +142,8 @@ class WritingEngine:
         config: WritingConfig
     ) -> str:
         """
+# 文件：模块：writing_engine
+
         构建生成提示词
         
         Args:

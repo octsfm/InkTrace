@@ -4,6 +4,9 @@ SQLite仓储单元测试
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_repositories.py
+
+
 import unittest
 import os
 import tempfile
@@ -25,6 +28,8 @@ class TestSQLiteNovelRepository(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_repositories
+
         self.temp_dir = tempfile.mkdtemp()
         self.db_path = os.path.join(self.temp_dir, "test.db")
         self.repo = SQLiteNovelRepository(self.db_path)
@@ -37,6 +42,8 @@ class TestSQLiteNovelRepository(unittest.TestCase):
 
     def test_save_and_find_novel(self):
         """测试保存和查找小说"""
+# 文件：模块：test_repositories
+
         novel = Novel(
             id=NovelId("novel-001"),
             title="测试小说",
@@ -83,6 +90,8 @@ class TestSQLiteNovelRepository(unittest.TestCase):
 
     def test_delete_novel(self):
         """测试删除小说"""
+# 文件：模块：test_repositories
+
         novel = Novel(
             id=NovelId("novel-001"),
             title="测试小说",
@@ -105,6 +114,8 @@ class TestSQLiteChapterRepository(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_repositories
+
         self.temp_dir = tempfile.mkdtemp()
         self.db_path = os.path.join(self.temp_dir, "test.db")
         self.repo = SQLiteChapterRepository(self.db_path)
@@ -118,6 +129,8 @@ class TestSQLiteChapterRepository(unittest.TestCase):
 
     def test_save_and_find_chapter(self):
         """测试保存和查找章节"""
+# 文件：模块：test_repositories
+
         chapter = Chapter(
             id=ChapterId("chapter-001"),
             novel_id=self.novel_id,
@@ -156,6 +169,8 @@ class TestSQLiteChapterRepository(unittest.TestCase):
 
     def test_find_latest(self):
         """测试查找最新章节"""
+# 文件：模块：test_repositories
+
         for i in range(1, 6):
             chapter = Chapter(
                 id=ChapterId(f"chapter-{i:03d}"),
@@ -179,6 +194,8 @@ class TestSQLiteCharacterRepository(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_repositories
+
         self.temp_dir = tempfile.mkdtemp()
         self.db_path = os.path.join(self.temp_dir, "test.db")
         self.repo = SQLiteCharacterRepository(self.db_path)
@@ -192,6 +209,8 @@ class TestSQLiteCharacterRepository(unittest.TestCase):
 
     def test_save_and_find_character(self):
         """测试保存和查找人物"""
+# 文件：模块：test_repositories
+
         character = Character(
             id=CharacterId("char-001"),
             novel_id=self.novel_id,
@@ -242,6 +261,8 @@ class TestSQLiteOutlineRepository(unittest.TestCase):
 
     def tearDown(self):
         """测试后清理"""
+# 文件：模块：test_repositories
+
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
@@ -265,6 +286,8 @@ class TestSQLiteOutlineRepository(unittest.TestCase):
 
     def test_find_by_novel(self):
         """测试查找小说的大纲"""
+# 文件：模块：test_repositories
+
         outline = Outline(
             id=OutlineId("outline-001"),
             novel_id=self.novel_id,

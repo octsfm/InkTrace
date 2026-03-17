@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/repositories/worldview_repository.py
+
+
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -21,6 +24,8 @@ class IWorldviewRepository(ABC):
     @abstractmethod
     def find_by_id(self, worldview_id: WorldviewId) -> Optional[Worldview]:
         """根据ID查找世界观"""
+# 文件：模块：worldview_repository
+
         pass
     
     @abstractmethod
@@ -31,6 +36,8 @@ class IWorldviewRepository(ABC):
     @abstractmethod
     def save(self, worldview: Worldview) -> None:
         """保存世界观"""
+# 文件：模块：worldview_repository
+
         pass
     
     @abstractmethod
@@ -42,6 +49,8 @@ class IWorldviewRepository(ABC):
     @abstractmethod
     def find_technique_by_id(self, technique_id: TechniqueId) -> Optional[Technique]:
         """根据ID查找功法"""
+# 文件：模块：worldview_repository
+
         pass
     
     @abstractmethod
@@ -52,6 +61,8 @@ class IWorldviewRepository(ABC):
     @abstractmethod
     def save_technique(self, technique: Technique) -> None:
         """保存功法"""
+# 文件：模块：worldview_repository
+
         pass
     
     @abstractmethod
@@ -63,6 +74,8 @@ class IWorldviewRepository(ABC):
     @abstractmethod
     def find_faction_by_id(self, faction_id: FactionId) -> Optional[Faction]:
         """根据ID查找势力"""
+# 文件：模块：worldview_repository
+
         pass
     
     @abstractmethod
@@ -73,6 +86,8 @@ class IWorldviewRepository(ABC):
     @abstractmethod
     def save_faction(self, faction: Faction) -> None:
         """保存势力"""
+# 文件：模块：worldview_repository
+
         pass
     
     @abstractmethod
@@ -84,6 +99,8 @@ class IWorldviewRepository(ABC):
     @abstractmethod
     def find_location_by_id(self, location_id: LocationId) -> Optional[Location]:
         """根据ID查找地点"""
+# 文件：模块：worldview_repository
+
         pass
     
     @abstractmethod
@@ -94,6 +111,8 @@ class IWorldviewRepository(ABC):
     @abstractmethod
     def save_location(self, location: Location) -> None:
         """保存地点"""
+# 文件：模块：worldview_repository
+
         pass
     
     @abstractmethod
@@ -105,6 +124,8 @@ class IWorldviewRepository(ABC):
     @abstractmethod
     def find_item_by_id(self, item_id: ItemId) -> Optional[Item]:
         """根据ID查找物品"""
+# 文件：模块：worldview_repository
+
         pass
     
     @abstractmethod
@@ -115,6 +136,8 @@ class IWorldviewRepository(ABC):
     @abstractmethod
     def save_item(self, item: Item) -> None:
         """保存物品"""
+# 文件：模块：worldview_repository
+
         pass
     
     @abstractmethod

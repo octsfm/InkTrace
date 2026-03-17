@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_vector_index_service.py
+
+
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from application.services.vector_index_service import VectorIndexService
@@ -18,6 +21,8 @@ class TestVectorIndexService:
     @pytest.fixture
     def mock_vector_repo(self):
         """模拟向量仓储"""
+# 文件：模块：test_vector_index_service
+
         return Mock()
 
     @pytest.fixture
@@ -30,6 +35,8 @@ class TestVectorIndexService:
     @pytest.fixture
     def mock_character_repo(self):
         """模拟人物仓储"""
+# 文件：模块：test_vector_index_service
+
         repo = Mock()
         repo.find_by_novel.return_value = []
         return repo
@@ -46,6 +53,8 @@ class TestVectorIndexService:
     @pytest.fixture
     def service(self, mock_vector_repo, mock_chapter_repo, mock_character_repo, mock_worldview_repo):
         """创建服务实例"""
+# 文件：模块：test_vector_index_service
+
         return VectorIndexService(
             vector_repo=mock_vector_repo,
             chapter_repo=mock_chapter_repo,
@@ -62,6 +71,8 @@ class TestVectorIndexService:
 
     def test_create_service_with_custom_config(self, mock_vector_repo, mock_chapter_repo, mock_character_repo, mock_worldview_repo):
         """测试使用自定义配置创建服务"""
+# 文件：模块：test_vector_index_service
+
         config = VectorStoreConfig(chunk_size=1000, chunk_overlap=100)
         service = VectorIndexService(
             vector_repo=mock_vector_repo,
@@ -85,6 +96,8 @@ class TestVectorIndexService:
 
     def test_index_chapters(self, mock_vector_repo, mock_character_repo, mock_worldview_repo):
         """测试索引章节"""
+# 文件：模块：test_vector_index_service
+
         mock_chapter = Mock()
         mock_chapter.id = ChapterId("chapter-001")
         mock_chapter.content = "这是一段测试内容，用于测试章节索引功能。这段内容需要足够长才能测试分块功能。"
@@ -135,6 +148,8 @@ class TestVectorIndexService:
 
     def test_index_worldview(self, service, mock_worldview_repo, mock_vector_repo):
         """测试索引世界观"""
+# 文件：模块：test_vector_index_service
+
         mock_technique = Mock()
         mock_technique.id = "tech-001"
         mock_technique.name = "九阳神功"
@@ -172,6 +187,8 @@ class TestVectorIndexService:
 
     def test_chunk_content_long(self, service):
         """测试长内容分块"""
+# 文件：模块：test_vector_index_service
+
         content = "a" * 1000
         chunks = service._chunk_content(content)
         assert len(chunks) > 1
@@ -183,6 +200,8 @@ class TestVectorIndexService:
 
     def test_chunk_content_none(self, service):
         """测试None内容分块"""
+# 文件：模块：test_vector_index_service
+
         chunks = service._chunk_content(None)
         assert chunks == []
 
@@ -206,6 +225,8 @@ class TestVectorIndexService:
 
     def test_build_character_content_minimal(self, service):
         """测试构建最小人物内容"""
+# 文件：模块：test_vector_index_service
+
         character = Mock()
         character.name = "王五"
         character.background = None
@@ -229,6 +250,8 @@ class TestVectorIndexService:
 
     def test_get_index_status(self, service, mock_vector_repo):
         """测试获取索引状态"""
+# 文件：模块：test_vector_index_service
+
         mock_vector_repo.count.return_value = 50
 
         novel_id = NovelId("test-novel-001")

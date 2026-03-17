@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：application/services/writing_service.py
+
+
 from datetime import datetime
 from typing import List, Optional
 import uuid
@@ -54,6 +57,8 @@ class WritingService:
         Returns:
             剧情节点列表
         """
+# 文件：模块：writing_service
+
         novel = self.novel_repo.find_by_id(NovelId(request.novel_id))
         if not novel:
             raise ValueError(f"小说不存在: {request.novel_id}")
@@ -93,6 +98,8 @@ class WritingService:
         Returns:
             生成响应
         """
+# 文件：模块：writing_service
+
         novel = self.novel_repo.find_by_id(NovelId(request.novel_id))
         if not novel:
             raise ValueError(f"小说不存在: {request.novel_id}")

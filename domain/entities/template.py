@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/entities/template.py
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -43,6 +46,8 @@ class CharacterTemplate:
 @dataclass
 class PlotTemplate:
     """剧情模板值对象"""
+# 文件：模块：template
+
     name: str
     description: str
     stages: List[str] = field(default_factory=list)

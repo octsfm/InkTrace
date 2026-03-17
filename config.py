@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：config.py
+
+
 import os
 from dataclasses import dataclass
 
@@ -27,6 +30,8 @@ class AppConfig:
     @classmethod
     def from_env(cls) -> "AppConfig":
         """从环境变量加载配置"""
+# 文件：模块：config
+
         return cls(
             host=os.environ.get("INKTRACE_HOST", "127.0.0.1"),
             port=int(os.environ.get("INKTRACE_PORT", "9527")),

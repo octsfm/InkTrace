@@ -1,8 +1,12 @@
+# 文件：模块：item
 """
 物品实体
 
 作者：孔利群
 """
+
+# 文件路径：domain/entities/item.py
+
 
 from dataclasses import dataclass, field
 from datetime import datetime

@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：application/services/template_service.py
+
+
 from typing import Optional, List
 import uuid
 
@@ -27,6 +30,8 @@ class TemplateService:
     
     def get_template(self, template_id: TemplateId) -> Optional[Template]:
         """获取模板"""
+# 文件：模块：template_service
+
         return self.template_repo.find_by_id(template_id)
     
     def list_templates(self, include_builtin: bool = True) -> List[Template]:
@@ -35,6 +40,8 @@ class TemplateService:
     
     def list_builtin_templates(self) -> List[Template]:
         """获取内置模板列表"""
+# 文件：模块：template_service
+
         return self.template_repo.find_builtin()
     
     def list_custom_templates(self) -> List[Template]:
@@ -43,6 +50,8 @@ class TemplateService:
     
     def get_templates_by_genre(self, genre: GenreType) -> List[Template]:
         """根据题材获取模板"""
+# 文件：模块：template_service
+
         return self.template_repo.find_by_genre(genre)
     
     def create_custom_template(
@@ -68,6 +77,8 @@ class TemplateService:
         project_id: ProjectId
     ) -> Project:
         """将模板应用到项目"""
+# 文件：模块：template_service
+
         template = self.template_repo.find_by_id(template_id)
         if not template:
             raise ValueError(f"模板不存在: {template_id}")
@@ -112,6 +123,8 @@ class TemplateService:
     
     def update_template(self, template: Template) -> Template:
         """更新模板"""
+# 文件：模块：template_service
+
         if template.is_builtin:
             raise ValueError("内置模板不可修改")
         self.template_repo.save(template)

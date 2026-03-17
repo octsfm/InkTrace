@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：presentation/api/routers/character.py
+
+
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -109,6 +112,8 @@ def list_characters(
     service: CharacterService = Depends(get_character_service)
 ):
     """获取人物列表"""
+# 文件：模块：character
+
     if keyword:
         characters = service.search_characters(NovelId(novel_id), keyword)
     elif role:
@@ -144,6 +149,8 @@ def update_character(
     service: CharacterService = Depends(get_character_service)
 ):
     """更新人物"""
+# 文件：模块：character
+
     character = service.update_character(
         CharacterId(character_id),
         name=request.name,
@@ -176,6 +183,8 @@ def add_relation(
     service: CharacterService = Depends(get_character_service)
 ):
     """添加人物关系"""
+# 文件：模块：character
+
     try:
         relation_type = RelationType(request.relation_type)
     except ValueError:
@@ -211,6 +220,8 @@ def remove_relation(
     service: CharacterService = Depends(get_character_service)
 ):
     """移除人物关系"""
+# 文件：模块：character
+
     service.remove_character_relation(
         CharacterId(character_id),
         CharacterId(target_id)
@@ -237,6 +248,8 @@ def get_state_history(
     service: CharacterService = Depends(get_character_service)
 ):
     """获取人物状态历史"""
+# 文件：模块：character
+
     return service.get_character_state_history(CharacterId(character_id))
 
 

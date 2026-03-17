@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/services/style_analyzer.py
+
+
 import re
 from typing import List, Dict
 from collections import Counter
@@ -29,6 +32,8 @@ class StyleAnalyzer:
         Returns:
             文风特征值对象
         """
+# 文件：模块：style_analyzer
+
         if not chapters:
             return StyleProfile(
                 vocabulary_stats={},
@@ -70,6 +75,8 @@ class StyleAnalyzer:
         Returns:
             词汇统计字典
         """
+# 文件：模块：style_analyzer
+
         words = re.findall(r'[\u4e00-\u9fa5]+', text)
         
         if not words:
@@ -101,6 +108,8 @@ class StyleAnalyzer:
         Returns:
             句式模板列表
         """
+# 文件：模块：style_analyzer
+
         sentences = re.split(r'[。！？\n]+', text)
         sentences = [s.strip() for s in sentences if len(s.strip()) > 5]
         
@@ -126,6 +135,8 @@ class StyleAnalyzer:
         Returns:
             修辞统计字典
         """
+# 文件：模块：style_analyzer
+
         rhetoric_stats = {}
         
         metaphor_patterns = [
@@ -175,6 +186,8 @@ class StyleAnalyzer:
         Returns:
             对话风格描述
         """
+# 文件：模块：style_analyzer
+
         dialogues = re.findall(r'"([^"]+)"', text)
         
         if not dialogues:
@@ -211,6 +224,8 @@ class StyleAnalyzer:
         Returns:
             叙述视角描述
         """
+# 文件：模块：style_analyzer
+
         first_person = len(re.findall(r'[我咱]', text))
         third_person = len(re.findall(r'[他她它]', text))
         
@@ -231,6 +246,8 @@ class StyleAnalyzer:
         Returns:
             节奏描述
         """
+# 文件：模块：style_analyzer
+
         sentences = re.split(r'[。！？]', text)
         sentences = [s.strip() for s in sentences if s.strip()]
         
@@ -260,6 +277,8 @@ class StyleAnalyzer:
         Returns:
             示例句子列表
         """
+# 文件：模块：style_analyzer
+
         sentences = re.split(r'[。！？]', text)
         sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
         

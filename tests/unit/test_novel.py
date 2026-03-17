@@ -4,6 +4,9 @@ Novel聚合根单元测试
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_novel.py
+
+
 import unittest
 from datetime import datetime
 
@@ -22,6 +25,8 @@ class TestNovel(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_novel
+
         self.novel_id = NovelId("novel-001")
         self.now = datetime.now()
 
@@ -45,6 +50,8 @@ class TestNovel(unittest.TestCase):
 
     def test_add_chapter(self):
         """测试添加章节"""
+# 文件：模块：test_novel
+
         novel = Novel(
             id=self.novel_id,
             title="测试小说",
@@ -96,6 +103,8 @@ class TestNovel(unittest.TestCase):
 
     def test_get_chapter_by_number(self):
         """测试根据章节号获取章节"""
+# 文件：模块：test_novel
+
         novel = Novel(
             id=self.novel_id,
             title="测试小说",
@@ -152,6 +161,8 @@ class TestNovel(unittest.TestCase):
 
     def test_add_character(self):
         """测试添加人物"""
+# 文件：模块：test_novel
+
         novel = Novel(
             id=self.novel_id,
             title="测试小说",
@@ -202,6 +213,8 @@ class TestNovel(unittest.TestCase):
 
     def test_get_protagonist(self):
         """测试获取主角"""
+# 文件：模块：test_novel
+
         novel = Novel(
             id=self.novel_id,
             title="测试小说",
@@ -264,6 +277,8 @@ class TestNovel(unittest.TestCase):
 
     def test_chapter_count(self):
         """测试章节计数"""
+# 文件：模块：test_novel
+
         novel = Novel(
             id=self.novel_id,
             title="测试小说",

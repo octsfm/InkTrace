@@ -81,7 +81,7 @@
       <el-steps :active="currentStep" finish-status="success">
         <el-step title="创建项目" />
         <el-step title="解析文件" />
-        <el-step title="导入章节" />
+        <el-step title="整理结构" />
         <el-step title="完成" />
       </el-steps>
     </el-card>
@@ -148,13 +148,22 @@ const handleImport = async () => {
     novelCreated.value = true
     
     currentStep.value = 2
+    ElMessage.info('正在整理故事结构...')
     await contentApi.import({
       novel_id: novel.id,
       file_path: form.file_path
     })
     
     currentStep.value = 3
-    ElMessage.success('导入成功！')
+    ElMessage.success('导入完成')
+    sessionStorage.setItem(
+      'inktrace_continue_hint',
+      JSON.stringify({
+        novelId: novel.id,
+        message: '已完成分析，是否继续创作下一章？',
+        defaultGoal: '第2章：承接上一章推进主线'
+      })
+    )
     
     setTimeout(() => {
       router.push(`/novel/${novel.id}`)
@@ -162,8 +171,9 @@ const handleImport = async () => {
     
   } catch (error) {
     console.error('导入失败:', error)
-    importing.value = false
     currentStep.value = 0
+  } finally {
+    importing.value = false
   }
 }
 </script>

@@ -4,6 +4,9 @@ LLM配置单元测试 - TDD版本
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_llm_config_tdd.py
+
+
 import unittest
 import tempfile
 import os
@@ -14,6 +17,8 @@ class TestLLMConfigEntityTDD(unittest.TestCase):
     
     def test_llm_config_creation(self):
         """测试配置实体创建"""
+# 文件：模块：test_llm_config_tdd
+
         # 先写测试，再实现
         # 测试目标：创建LLMConfig实体
         self.fail("先写测试：测试配置实体创建")
@@ -35,6 +40,8 @@ class TestEncryptedAPIKeyTDD(unittest.TestCase):
     
     def test_encryption_decryption(self):
         """测试加密解密"""
+# 文件：模块：test_llm_config_tdd
+
         # 先写测试，再实现
         self.fail("先写测试：测试加密解密")
 

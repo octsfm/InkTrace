@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：infrastructure/persistence/sqlite_foreshadow_repo.py
+
+
 import sqlite3
 from datetime import datetime
 from typing import Optional, List
@@ -23,6 +26,8 @@ class SQLiteForeshadowRepository(IForeshadowRepository):
     def _init_table(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
+# 文件：模块：sqlite_foreshadow_repo
+
                 CREATE TABLE IF NOT EXISTS foreshadows (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -80,6 +85,8 @@ class SQLiteForeshadowRepository(IForeshadowRepository):
     def save(self, foreshadow: Foreshadow) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
+# 文件：模块：sqlite_foreshadow_repo
+
                 INSERT OR REPLACE INTO foreshadows 
                 (id, novel_id, chapter_id, content, foreshadow_type, status, resolved_chapter_id, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

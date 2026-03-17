@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：application/services/config_service.py
+
+
 import hashlib
 import os
 from typing import Optional, Tuple
@@ -18,6 +21,8 @@ class ConfigService:
     
     def __init__(self, config_repository: ILLMConfigRepository, encryption_key: bytes):
         """初始化配置服务"""
+# 文件：模块：config_service
+
         self.config_repository = config_repository
         self.encryption_key = encryption_key
         self.aes_encryption = ConfigEncryptionService()
@@ -43,6 +48,8 @@ class ConfigService:
     
     def get_config(self) -> Optional[LLMConfig]:
         """获取配置"""
+# 文件：模块：config_service
+
         config = self.config_repository.get()
         if config is None:
             return None
@@ -71,6 +78,8 @@ class ConfigService:
     
     def config_exists(self) -> bool:
         """检查配置是否存在"""
+# 文件：模块：config_service
+
         return self.config_repository.exists()
     
     def delete_config(self) -> bool:
@@ -79,6 +88,8 @@ class ConfigService:
     
     def validate_config(self, deepseek_api_key: str, kimi_api_key: str) -> bool:
         """验证配置有效性"""
+# 文件：模块：config_service
+
         # 至少需要一个有效的API密钥
         has_valid_key = bool(deepseek_api_key.strip()) or bool(kimi_api_key.strip())
         
@@ -108,6 +119,8 @@ class ConfigService:
     
     def test_connection(self, deepseek_api_key: str, kimi_api_key: str) -> dict:
         """测试API连接"""
+# 文件：模块：config_service
+
         results = {
             'deepseek': {'success': False, 'message': ''},
             'kimi': {'success': False, 'message': ''}

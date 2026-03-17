@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：application/services/export_service.py
+
+
 import os
 from typing import List
 
@@ -43,6 +46,8 @@ class ExportService:
         Returns:
             导出响应
         """
+# 文件：模块：export_service
+
         novel = self.novel_repo.find_by_id(NovelId(request.novel_id))
         if not novel:
             raise ValueError(f"小说不存在: {request.novel_id}")

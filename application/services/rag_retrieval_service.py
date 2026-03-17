@@ -4,6 +4,9 @@ RAG检索服务
 作者：孔利群
 """
 
+# 文件路径：application/services/rag_retrieval_service.py
+
+
 from typing import List, Optional
 import uuid
 
@@ -34,6 +37,8 @@ class RAGRetrievalService:
         n_results: int = 5
     ) -> List[SearchResult]:
         """搜索相关内容"""
+# 文件：模块：rag_retrieval_service
+
         return self.vector_repo.search(
             query=query,
             novel_id=novel_id,
@@ -61,6 +66,8 @@ class RAGRetrievalService:
         n_results: int = 3
     ) -> List[SearchResult]:
         """搜索相关人物"""
+# 文件：模块：rag_retrieval_service
+
         return self.vector_repo.search(
             query=query,
             novel_id=novel_id,
@@ -91,6 +98,8 @@ class RAGRetrievalService:
         max_worldview: int = 2
     ) -> dict:
         """获取续写上下文"""
+# 文件：模块：rag_retrieval_service
+
         context = {
             "chapters": [],
             "characters": [],

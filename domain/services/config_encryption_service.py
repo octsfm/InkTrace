@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/services/config_encryption_service.py
+
+
 import base64
 import hashlib
 import os
@@ -19,6 +22,8 @@ class ConfigEncryptionService:
     
     def __init__(self, salt: Optional[bytes] = None):
         """初始化加密服务"""
+# 文件：模块：config_encryption_service
+
         self.salt = salt or b"inktrace_config_salt"
     
     def derive_key(self, password: str) -> bytes:
@@ -33,6 +38,8 @@ class ConfigEncryptionService:
     
     def encrypt(self, plaintext: str, key: bytes) -> str:
         """加密文本"""
+# 文件：模块：config_encryption_service
+
         if not plaintext:
             return ""
             
@@ -79,6 +86,8 @@ class ConfigEncryptionService:
     
     def generate_encryption_key(self) -> bytes:
         """生成随机加密密钥"""
+# 文件：模块：config_encryption_service
+
         return os.urandom(32)
     
     def hash_key(self, key: bytes) -> str:
@@ -87,6 +96,8 @@ class ConfigEncryptionService:
     
     def validate_key(self, key: bytes) -> bool:
         """验证加密密钥有效性"""
+# 文件：模块：config_encryption_service
+
         return len(key) == 32
     
     def test_encryption(self, key: bytes) -> bool:

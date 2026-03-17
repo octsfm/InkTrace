@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_embedding.py
+
+
 import unittest
 
 from domain.value_objects.embedding import EmbeddingMetadata, SearchResult, VectorStoreConfig
@@ -14,6 +17,8 @@ class TestEmbeddingMetadata(unittest.TestCase):
     
     def test_create_embedding_metadata(self):
         """测试创建嵌入元数据"""
+# 文件：模块：test_embedding
+
         metadata = EmbeddingMetadata(
             source_type="chapter",
             source_id="chapter_001",
@@ -38,6 +43,8 @@ class TestEmbeddingMetadata(unittest.TestCase):
     
     def test_metadata_from_dict(self):
         """测试从字典创建元数据"""
+# 文件：模块：test_embedding
+
         data = {
             "source_type": "worldview",
             "source_id": "wv_001",
@@ -55,6 +62,8 @@ class TestSearchResult(unittest.TestCase):
     
     def test_create_search_result(self):
         """测试创建搜索结果"""
+# 文件：模块：test_embedding
+
         result = SearchResult(
             id="emb_001",
             content="匹配的内容",
@@ -99,6 +108,8 @@ class TestVectorStoreConfig(unittest.TestCase):
     
     def test_create_custom_config(self):
         """测试创建自定义配置"""
+# 文件：模块：test_embedding
+
         config = VectorStoreConfig(
             collection_name="custom_collection",
             embedding_model="bge-large",

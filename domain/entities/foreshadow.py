@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/entities/foreshadow.py
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List
@@ -21,6 +24,8 @@ class ForeshadowStatus(Enum):
 @dataclass
 class Foreshadow:
     """伏笔实体"""
+# 文件：模块：foreshadow
+
     id: ForeshadowId
     novel_id: NovelId
     chapter_id: ChapterId

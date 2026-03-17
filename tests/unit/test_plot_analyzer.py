@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_plot_analyzer.py
+
+
 import unittest
 from datetime import datetime
 
@@ -18,6 +21,8 @@ class TestPlotAnalyzer(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_plot_analyzer
+
         self.analyzer = PlotAnalyzer()
         self.now = datetime.now()
 
@@ -41,6 +46,8 @@ class TestPlotAnalyzer(unittest.TestCase):
         菩提老祖看着他远去的背影。
         "孔凡圣，你跑不掉的！"菩提老祖喊道。
         """
+# 文件：模块：test_plot_analyzer
+
         chapter = self._create_chapter(content)
         characters = self.analyzer.extract_characters([chapter])
         
@@ -65,6 +72,8 @@ class TestPlotAnalyzer(unittest.TestCase):
         孔凡圣感觉到体内有一股神秘的力量在涌动，但他不知道那是什么。
         这股力量仿佛在等待某个时机觉醒。
         """
+# 文件：模块：test_plot_analyzer
+
         chapter = self._create_chapter(content)
         foreshadowings = self.analyzer.extract_foreshadowings([chapter])
         
@@ -80,6 +89,8 @@ class TestPlotAnalyzer(unittest.TestCase):
 
     def test_analyze_with_chapters(self):
         """测试分析有内容的章节"""
+# 文件：模块：test_plot_analyzer
+
         chapters = [
             self._create_chapter("孔凡圣在丛林中奔跑，菩提老祖在后面追赶。", 1),
             self._create_chapter("他跳入河中，成功逃脱。", 2)
@@ -100,6 +111,8 @@ class TestCharacterExtraction(unittest.TestCase):
 
     def test_extract_protagonist(self):
         """测试提取主角"""
+# 文件：模块：test_plot_analyzer
+
         content = "孔凡圣是这本书的主角，他拥有特殊的能力。"
         chapter = Chapter(
             id=ChapterId("chapter-001"),
@@ -119,6 +132,8 @@ class TestCharacterExtraction(unittest.TestCase):
     def test_extract_multiple_characters(self):
         """测试提取多个人物"""
         content = """
+# 文件：模块：test_plot_analyzer
+
         孔凡圣看着菩提老祖。
         "徒儿，你来了。"菩提老祖说道。
         这时，女娲娘娘也出现了。

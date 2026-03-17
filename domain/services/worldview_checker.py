@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/services/worldview_checker.py
+
+
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -42,6 +45,8 @@ class WorldviewChecker:
         worldview: Worldview
     ) -> List[ConsistencyIssue]:
         """检查人物与世界观的 consistency"""
+# 文件：模块：worldview_checker
+
         issues = []
         
         issues.extend(self._check_character_techniques(character, worldview))
@@ -72,6 +77,8 @@ class WorldviewChecker:
     
     def _check_faction_relations(self, worldview: Worldview) -> List[ConsistencyIssue]:
         """检查势力关系一致性"""
+# 文件：模块：worldview_checker
+
         issues = []
         
         faction_ids = {str(f.id) for f in worldview.factions}
@@ -113,6 +120,8 @@ class WorldviewChecker:
         worldview: Worldview
     ) -> List[ConsistencyIssue]:
         """检查人物功法一致性"""
+# 文件：模块：worldview_checker
+
         issues = []
         
         technique_ids = {str(t.id) for t in worldview.techniques}

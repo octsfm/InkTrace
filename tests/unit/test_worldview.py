@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_worldview.py
+
+
 import unittest
 from datetime import datetime
 
@@ -23,6 +26,8 @@ class TestTechniqueLevel(unittest.TestCase):
     
     def test_create_technique_level(self):
         """测试创建功法等级"""
+# 文件：模块：test_worldview
+
         level = TechniqueLevel(name="天阶", rank=5)
         self.assertEqual(level.name, "天阶")
         self.assertEqual(level.rank, 5)
@@ -60,6 +65,8 @@ class TestTechnique(unittest.TestCase):
     
     def test_technique_to_dict(self):
         """测试功法转字典"""
+# 文件：模块：test_worldview
+
         technique = Technique(
             id=self.technique_id,
             novel_id=self.novel_id,
@@ -80,6 +87,8 @@ class TestFaction(unittest.TestCase):
     
     def test_create_faction(self):
         """测试创建势力"""
+# 文件：模块：test_worldview
+
         faction = Faction(
             id=self.faction_id,
             novel_id=self.novel_id,
@@ -129,6 +138,8 @@ class TestLocation(unittest.TestCase):
     
     def test_location_hierarchy(self):
         """测试地点层级"""
+# 文件：模块：test_worldview
+
         parent = Location(
             id=self.location_id,
             novel_id=self.novel_id,
@@ -152,6 +163,8 @@ class TestItem(unittest.TestCase):
     
     def test_create_item(self):
         """测试创建物品"""
+# 文件：模块：test_worldview
+
         item = Item(
             id=self.item_id,
             novel_id=self.novel_id,
@@ -171,6 +184,8 @@ class TestPowerSystem(unittest.TestCase):
     
     def test_create_power_system(self):
         """测试创建力量体系"""
+# 文件：模块：test_worldview
+
         power = PowerSystem(
             name="修炼境界",
             levels=["练气", "筑基", "金丹", "元婴"],
@@ -207,6 +222,8 @@ class TestWorldview(unittest.TestCase):
     
     def test_add_technique(self):
         """测试添加功法"""
+# 文件：模块：test_worldview
+
         technique = Technique(
             id=TechniqueId("tech_001"),
             novel_id=self.novel_id,
@@ -228,6 +245,8 @@ class TestWorldview(unittest.TestCase):
     
     def test_set_power_system(self):
         """测试设置力量体系"""
+# 文件：模块：test_worldview
+
         power = PowerSystem(
             name="修炼境界",
             levels=["练气", "筑基", "金丹"]
@@ -250,6 +269,8 @@ class TestWorldviewChecker(unittest.TestCase):
     
     def test_check_technique_level_consistency(self):
         """测试功法等级一致性检查"""
+# 文件：模块：test_worldview
+
         self.worldview.power_system = PowerSystem(
             name="修炼境界",
             levels=["练气", "筑基", "金丹"]
@@ -287,6 +308,8 @@ class TestWorldviewChecker(unittest.TestCase):
     
     def test_check_no_issues(self):
         """测试无一致性问题时"""
+# 文件：模块：test_worldview
+
         self.worldview.power_system = PowerSystem(
             name="修炼境界",
             levels=["练气", "筑基", "金丹"]

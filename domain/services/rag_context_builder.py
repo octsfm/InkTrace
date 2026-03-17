@@ -4,6 +4,9 @@ RAG上下文组装器
 作者：孔利群
 """
 
+# 文件路径：domain/services/rag_context_builder.py
+
+
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -23,6 +26,8 @@ class RAGContext:
     
     def to_prompt(self) -> str:
         """将上下文转换为Prompt格式"""
+# 文件：模块：rag_context_builder
+
         sections = []
         
         if self.related_chapters:
@@ -92,6 +97,8 @@ class RAGContextBuilder:
     
     def _trim_context(self, context: RAGContext) -> RAGContext:
         """裁剪上下文以适应Token限制"""
+# 文件：模块：rag_context_builder
+
         while context.total_tokens > self.max_context_tokens:
             if context.foreshadows:
                 context.foreshadows = context.foreshadows[:-1]

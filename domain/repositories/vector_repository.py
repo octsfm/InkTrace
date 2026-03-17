@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/repositories/vector_repository.py
+
+
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
@@ -22,6 +25,8 @@ class IVectorRepository(ABC):
         ids: Optional[List[str]] = None
     ) -> List[str]:
         """添加向量"""
+# 文件：模块：vector_repository
+
         pass
     
     @abstractmethod
@@ -43,6 +48,8 @@ class IVectorRepository(ABC):
         n_results: int = 5
     ) -> List[SearchResult]:
         """相似内容搜索"""
+# 文件：模块：vector_repository
+
         pass
     
     @abstractmethod
@@ -53,6 +60,8 @@ class IVectorRepository(ABC):
     @abstractmethod
     def delete(self, vector_id: str) -> bool:
         """删除向量"""
+# 文件：模块：vector_repository
+
         pass
     
     @abstractmethod
@@ -63,6 +72,8 @@ class IVectorRepository(ABC):
     @abstractmethod
     def delete_by_novel(self, novel_id: NovelId) -> int:
         """删除小说的所有向量"""
+# 文件：模块：vector_repository
+
         pass
     
     @abstractmethod
@@ -78,4 +89,6 @@ class IVectorRepository(ABC):
         metadata: EmbeddingMetadata
     ) -> bool:
         """更新向量"""
+# 文件：模块：vector_repository
+
         pass

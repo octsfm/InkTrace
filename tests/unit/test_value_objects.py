@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_value_objects.py
+
+
 import unittest
 
 from domain.value_objects.style_profile import StyleProfile
@@ -17,6 +20,8 @@ class TestStyleProfile(unittest.TestCase):
 
     def test_create_style_profile(self):
         """测试创建文风特征"""
+# 文件：模块：test_value_objects
+
         profile = StyleProfile(
             vocabulary_stats={"常用词": 100, "生僻词": 10},
             sentence_patterns=["主谓宾", "倒装句"],
@@ -66,6 +71,8 @@ class TestCharacterState(unittest.TestCase):
 
     def test_character_state_immutable(self):
         """测试人物状态不可变"""
+# 文件：模块：test_value_objects
+
         state = CharacterState(
             character_id=CharacterId("char-001"),
             location="",
@@ -85,6 +92,8 @@ class TestWritingConfig(unittest.TestCase):
 
     def test_create_writing_config(self):
         """测试创建写作配置"""
+# 文件：模块：test_value_objects
+
         config = WritingConfig(
             target_word_count=2100,
             style_intensity=0.8,
@@ -112,6 +121,8 @@ class TestWritingConfig(unittest.TestCase):
 
     def test_default_values(self):
         """测试默认值"""
+# 文件：模块：test_value_objects
+
         config = WritingConfig()
         self.assertEqual(config.target_word_count, 2100)
         self.assertEqual(config.style_intensity, 0.8)

@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：application/services/vector_index_service.py
+
+
 from typing import List, Optional
 import uuid
 
@@ -34,6 +37,8 @@ class VectorIndexService:
     
     def index_novel(self, novel_id: NovelId) -> dict:
         """索引小说内容"""
+# 文件：模块：vector_index_service
+
         stats = {
             "chapters_indexed": 0,
             "characters_indexed": 0,
@@ -75,6 +80,8 @@ class VectorIndexService:
     
     def _index_characters(self, novel_id: NovelId) -> int:
         """索引人物"""
+# 文件：模块：vector_index_service
+
         characters = self.character_repo.find_by_novel(novel_id)
         if not characters:
             return 0
@@ -147,6 +154,8 @@ class VectorIndexService:
     
     def _chunk_content(self, content: str) -> List[str]:
         """内容分块"""
+# 文件：模块：vector_index_service
+
         if not content:
             return []
         
@@ -183,6 +192,8 @@ class VectorIndexService:
     
     def delete_novel_index(self, novel_id: NovelId) -> int:
         """删除小说索引"""
+# 文件：模块：vector_index_service
+
         return self.vector_repo.delete_by_novel(novel_id)
     
     def get_index_status(self, novel_id: NovelId) -> dict:

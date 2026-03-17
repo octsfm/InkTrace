@@ -4,6 +4,9 @@ RAG上下文构建器单元测试
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_rag_context_builder.py
+
+
 import pytest
 from unittest.mock import Mock
 from domain.services.rag_context_builder import RAGContextBuilder, RAGContext
@@ -16,6 +19,8 @@ class TestRAGContext:
     @pytest.fixture
     def sample_metadata(self):
         """创建示例元数据"""
+# 文件：模块：test_rag_context_builder
+
         return EmbeddingMetadata("chapter", "ch1", "novel1")
 
     @pytest.fixture
@@ -25,6 +30,8 @@ class TestRAGContext:
 
     def test_create_rag_context(self):
         """测试创建RAG上下文"""
+# 文件：模块：test_rag_context_builder
+
         context = RAGContext(query="测试查询")
         assert context.query == "测试查询"
         assert context.related_chapters == []
@@ -47,6 +54,8 @@ class TestRAGContext:
 
     def test_to_prompt_with_chapters(self, sample_metadata):
         """测试转换章节为Prompt"""
+# 文件：模块：test_rag_context_builder
+
         result = SearchResult("vec-001", "章节内容测试", 0.9, sample_metadata)
         context = RAGContext(
             query="测试",
@@ -70,6 +79,8 @@ class TestRAGContext:
 
     def test_to_prompt_with_worldview(self):
         """测试转换世界观为Prompt"""
+# 文件：模块：test_rag_context_builder
+
         metadata = EmbeddingMetadata("worldview", "world1", "novel1")
         result = SearchResult("vec-001", "世界观测试", 0.8, metadata)
         context = RAGContext(
@@ -93,6 +104,8 @@ class TestRAGContext:
 
     def test_to_prompt_empty(self):
         """测试空上下文转换"""
+# 文件：模块：test_rag_context_builder
+
         context = RAGContext(query="测试")
         prompt = context.to_prompt()
         assert prompt == ""
@@ -107,6 +120,8 @@ class TestRAGContext:
 
     def test_estimate_tokens_empty(self):
         """测试空文本Token估算"""
+# 文件：模块：test_rag_context_builder
+
         context = RAGContext(query="测试")
         tokens = context.estimate_tokens("")
         assert tokens == 0
@@ -135,6 +150,8 @@ class TestRAGContextBuilder:
     @pytest.fixture
     def sample_results(self):
         """创建示例搜索结果列表"""
+# 文件：模块：test_rag_context_builder
+
         metadata = EmbeddingMetadata("chapter", "ch1", "novel1")
         return [
             SearchResult("vec-001", "内容1", 0.9, metadata),
@@ -148,6 +165,8 @@ class TestRAGContextBuilder:
 
     def test_create_builder_with_custom_limit(self):
         """测试创建自定义限制构建器"""
+# 文件：模块：test_rag_context_builder
+
         builder = RAGContextBuilder(max_context_tokens=4000)
         assert builder.max_context_tokens == 4000
 
@@ -166,6 +185,8 @@ class TestRAGContextBuilder:
 
     def test_build_context_with_foreshadows(self, builder, sample_results):
         """测试构建带伏笔的上下文"""
+# 文件：模块：test_rag_context_builder
+
         context = builder.build(
             query="测试",
             chapter_results=sample_results,
@@ -190,6 +211,8 @@ class TestRAGContextBuilder:
 
     def test_trim_context(self, builder):
         """测试裁剪上下文"""
+# 文件：模块：test_rag_context_builder
+
         metadata = EmbeddingMetadata("chapter", "ch1", "novel1")
         long_content = "测试内容" * 500
         large_results = [
@@ -220,6 +243,8 @@ class TestRAGContextBuilder:
 
     def test_trim_priority_order(self):
         """测试裁剪优先级顺序"""
+# 文件：模块：test_rag_context_builder
+
         builder = RAGContextBuilder(max_context_tokens=100)
         
         metadata = EmbeddingMetadata("chapter", "ch1", "novel1")
@@ -248,6 +273,8 @@ class TestRAGContextBuilderIntegration:
 
     def test_full_build_workflow(self):
         """测试完整构建流程"""
+# 文件：模块：test_rag_context_builder
+
         builder = RAGContextBuilder(max_context_tokens=5000)
         
         chapter_metadata = EmbeddingMetadata("chapter", "ch1", "novel1")

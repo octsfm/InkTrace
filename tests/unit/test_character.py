@@ -4,6 +4,9 @@ Character实体单元测试
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_character.py
+
+
 import unittest
 from datetime import datetime
 
@@ -17,6 +20,8 @@ class TestCharacter(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_character
+
         self.character_id = CharacterId("char-001")
         self.novel_id = NovelId("novel-001")
         self.now = datetime.now()
@@ -40,6 +45,8 @@ class TestCharacter(unittest.TestCase):
 
     def test_add_alias(self):
         """测试添加别名"""
+# 文件：模块：test_character
+
         character = Character(
             id=self.character_id,
             novel_id=self.novel_id,
@@ -71,6 +78,8 @@ class TestCharacter(unittest.TestCase):
 
     def test_add_ability(self):
         """测试添加能力"""
+# 文件：模块：test_character
+
         character = Character(
             id=self.character_id,
             novel_id=self.novel_id,
@@ -107,6 +116,8 @@ class TestCharacter(unittest.TestCase):
 
     def test_get_relationship(self):
         """测试获取人物关系"""
+# 文件：模块：test_character
+
         character = Character(
             id=self.character_id,
             novel_id=self.novel_id,
@@ -146,6 +157,8 @@ class TestCharacter(unittest.TestCase):
 
     def test_increment_appearance(self):
         """测试增加出场次数"""
+# 文件：模块：test_character
+
         character = Character(
             id=self.character_id,
             novel_id=self.novel_id,
@@ -184,6 +197,8 @@ class TestCharacter(unittest.TestCase):
 
     def test_is_protagonist(self):
         """测试是否主角"""
+# 文件：模块：test_character
+
         protagonist = Character(
             id=self.character_id,
             novel_id=self.novel_id,
@@ -213,6 +228,8 @@ class TestCharacterRelationship(unittest.TestCase):
 
     def test_create_relationship(self):
         """测试创建人物关系"""
+# 文件：模块：test_character
+
         target_id = CharacterId("char-002")
         relationship = CharacterRelationship(
             target_id=target_id,

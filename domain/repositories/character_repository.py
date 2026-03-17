@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/repositories/character_repository.py
+
+
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
@@ -17,6 +20,8 @@ class ICharacterRepository(ABC):
     @abstractmethod
     def save(self, character: Character) -> None:
         """
+# 文件：模块：character_repository
+
         保存人物
         
         Args:
@@ -27,6 +32,8 @@ class ICharacterRepository(ABC):
     @abstractmethod
     def find_by_id(self, character_id: CharacterId) -> Optional[Character]:
         """
+# 文件：模块：character_repository
+
         根据ID查找人物
         
         Args:
@@ -40,6 +47,8 @@ class ICharacterRepository(ABC):
     @abstractmethod
     def find_by_novel(self, novel_id: NovelId) -> List[Character]:
         """
+# 文件：模块：character_repository
+
         查找小说的所有人物
         
         Args:
@@ -53,6 +62,8 @@ class ICharacterRepository(ABC):
     @abstractmethod
     def delete(self, character_id: CharacterId) -> None:
         """
+# 文件：模块：character_repository
+
         删除人物
         
         Args:

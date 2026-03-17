@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/repositories/project_repository.py
+
+
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
@@ -17,6 +20,8 @@ class IProjectRepository(ABC):
     @abstractmethod
     def find_by_id(self, project_id: ProjectId) -> Optional[Project]:
         """根据ID查找项目"""
+# 文件：模块：project_repository
+
         pass
     
     @abstractmethod
@@ -27,6 +32,8 @@ class IProjectRepository(ABC):
     @abstractmethod
     def find_all(self, status: Optional[ProjectStatus] = None) -> List[Project]:
         """查找所有项目"""
+# 文件：模块：project_repository
+
         pass
     
     @abstractmethod
@@ -37,6 +44,8 @@ class IProjectRepository(ABC):
     @abstractmethod
     def delete(self, project_id: ProjectId) -> None:
         """删除项目"""
+# 文件：模块：project_repository
+
         pass
     
     @abstractmethod

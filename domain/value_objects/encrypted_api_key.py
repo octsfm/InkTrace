@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/value_objects/encrypted_api_key.py
+
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -16,6 +19,8 @@ class EncryptedAPIKey:
     
     def is_empty(self) -> bool:
         """检查是否为空"""
+# 文件：模块：encrypted_api_key
+
         return not bool(self.ciphertext.strip())
     
     def __str__(self) -> str:
@@ -24,6 +29,8 @@ class EncryptedAPIKey:
     
     def __eq__(self, other) -> bool:
         """相等性比较"""
+# 文件：模块：encrypted_api_key
+
         if not isinstance(other, EncryptedAPIKey):
             return False
         return self.ciphertext == other.ciphertext
@@ -36,6 +43,8 @@ class EncryptedAPIKey:
     @classmethod
     def from_plaintext(cls, plaintext: str, encryption_key: bytes) -> 'EncryptedAPIKey':
         """从明文创建加密密钥"""
+# 文件：模块：encrypted_api_key
+
         from domain.services.config_encryption_service import ConfigEncryptionService
         
         if not plaintext.strip():

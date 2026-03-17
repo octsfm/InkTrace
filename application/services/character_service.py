@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：application/services/character_service.py
+
+
 from typing import Optional, List
 import uuid
 
@@ -28,6 +31,8 @@ class CharacterService:
         appearance: str = ""
     ) -> Character:
         """创建人物"""
+# 文件：模块：character_service
+
         character = Character(
             id=CharacterId(str(uuid.uuid4())),
             novel_id=novel_id,
@@ -46,6 +51,8 @@ class CharacterService:
     
     def list_characters(self, novel_id: NovelId) -> List[Character]:
         """获取小说的所有人物"""
+# 文件：模块：character_service
+
         return self.character_repo.find_by_novel_id(novel_id)
     
     def list_characters_by_role(
@@ -69,6 +76,8 @@ class CharacterService:
         title: Optional[str] = None
     ) -> Character:
         """更新人物信息"""
+# 文件：模块：character_service
+
         character = self.character_repo.find_by_id(character_id)
         if not character:
             raise ValueError(f"人物不存在: {character_id}")
@@ -104,6 +113,8 @@ class CharacterService:
         description: str = ""
     ) -> Character:
         """添加人物关系"""
+# 文件：模块：character_service
+
         character = self.character_repo.find_by_id(character_id)
         if not character:
             raise ValueError(f"人物不存在: {character_id}")
@@ -136,6 +147,8 @@ class CharacterService:
         character_id: CharacterId
     ) -> List[CharacterRelation]:
         """获取人物的所有关系"""
+# 文件：模块：character_service
+
         character = self.character_repo.find_by_id(character_id)
         if not character:
             raise ValueError(f"人物不存在: {character_id}")
@@ -160,6 +173,8 @@ class CharacterService:
         character_id: CharacterId
     ) -> List[str]:
         """获取人物状态历史"""
+# 文件：模块：character_service
+
         character = self.character_repo.find_by_id(character_id)
         if not character:
             raise ValueError(f"人物不存在: {character_id}")
@@ -185,6 +200,8 @@ class CharacterService:
         keyword: str
     ) -> List[Character]:
         """搜索人物"""
+# 文件：模块：character_service
+
         characters = self.character_repo.find_by_novel_id(novel_id)
         keyword_lower = keyword.lower()
         return [

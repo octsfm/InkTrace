@@ -4,6 +4,9 @@ CharacterState值对象模块
 作者：孔利群
 """
 
+# 文件路径：domain/value_objects/character_state.py
+
+
 from dataclasses import dataclass
 from typing import List
 
@@ -17,6 +20,8 @@ class CharacterState:
     
     表示人物在某一时刻的状态快照。
     """
+# 文件：模块：character_state
+
     character_id: CharacterId
     location: str
     cultivation_level: str

@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_writing_engine.py
+
+
 import unittest
 from unittest.mock import MagicMock, AsyncMock
 from datetime import datetime
@@ -22,6 +25,8 @@ class TestWritingEngine(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_writing_engine
+
         self.mock_llm_client = MagicMock()
         self.mock_llm_client.generate = AsyncMock(return_value="生成的章节内容")
         self.mock_llm_client.chat = AsyncMock(return_value="生成的对话内容")
@@ -52,6 +57,8 @@ class TestWritingEngine(unittest.TestCase):
 
     def test_generate_chapter(self):
         """测试生成章节"""
+# 文件：模块：test_writing_engine
+
         context = WritingContext(
             novel_title="修仙从逃出生天开始",
             outline_summary="现代修仙故事",
@@ -95,6 +102,8 @@ class TestWritingEngine(unittest.TestCase):
 
     def test_apply_style(self):
         """测试应用文风"""
+# 文件：模块：test_writing_engine
+
         content = "孔凡圣在丛林中奔跑。他回头看了一眼。 眼中闪过一丝金光。"
         styled_content = self.engine.apply_style(content, self.style_profile)
         
@@ -106,6 +115,8 @@ class TestWritingContext(unittest.TestCase):
 
     def test_context_creation(self):
         """测试上下文创建"""
+# 文件：模块：test_writing_engine
+
         context = WritingContext(
             novel_title="测试小说",
             outline_summary="测试大纲",

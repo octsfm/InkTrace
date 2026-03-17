@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_types.py
+
+
 import unittest
 from datetime import datetime
 
@@ -22,6 +25,8 @@ class TestNovelId(unittest.TestCase):
 
     def test_create_novel_id(self):
         """测试创建小说ID"""
+# 文件：模块：test_types
+
         novel_id = NovelId("novel-001")
         self.assertEqual(novel_id.value, "novel-001")
 
@@ -35,6 +40,8 @@ class TestNovelId(unittest.TestCase):
 
     def test_novel_id_hash(self):
         """测试小说ID哈希"""
+# 文件：模块：test_types
+
         id1 = NovelId("novel-001")
         id2 = NovelId("novel-001")
         self.assertEqual(hash(id1), hash(id2))
@@ -55,6 +62,8 @@ class TestChapterId(unittest.TestCase):
 
     def test_chapter_id_equality(self):
         """测试章节ID相等性"""
+# 文件：模块：test_types
+
         id1 = ChapterId("chapter-001")
         id2 = ChapterId("chapter-001")
         id3 = ChapterId("chapter-002")
@@ -67,6 +76,8 @@ class TestCharacterId(unittest.TestCase):
 
     def test_create_character_id(self):
         """测试创建人物ID"""
+# 文件：模块：test_types
+
         character_id = CharacterId("char-001")
         self.assertEqual(character_id.value, "char-001")
 
@@ -76,6 +87,8 @@ class TestOutlineId(unittest.TestCase):
 
     def test_create_outline_id(self):
         """测试创建大纲ID"""
+# 文件：模块：test_types
+
         outline_id = OutlineId("outline-001")
         self.assertEqual(outline_id.value, "outline-001")
 
@@ -85,6 +98,8 @@ class TestChapterStatus(unittest.TestCase):
 
     def test_draft_status(self):
         """测试草稿状态"""
+# 文件：模块：test_types
+
         self.assertEqual(ChapterStatus.DRAFT.value, "draft")
 
     def test_published_status(self):
@@ -93,6 +108,8 @@ class TestChapterStatus(unittest.TestCase):
 
     def test_all_statuses(self):
         """测试所有状态"""
+# 文件：模块：test_types
+
         statuses = list(ChapterStatus)
         self.assertEqual(len(statuses), 2)
 
@@ -102,6 +119,8 @@ class TestPlotType(unittest.TestCase):
 
     def test_main_plot(self):
         """测试主线剧情"""
+# 文件：模块：test_types
+
         self.assertEqual(PlotType.MAIN.value, "main")
 
     def test_sub_plot(self):
@@ -110,6 +129,8 @@ class TestPlotType(unittest.TestCase):
 
     def test_foreshadowing_plot(self):
         """测试伏笔剧情"""
+# 文件：模块：test_types
+
         self.assertEqual(PlotType.FORESHADOWING.value, "foreshadowing")
 
 
@@ -118,6 +139,8 @@ class TestPlotStatus(unittest.TestCase):
 
     def test_planned_status(self):
         """测试计划状态"""
+# 文件：模块：test_types
+
         self.assertEqual(PlotStatus.PLANNED.value, "planned")
 
     def test_ongoing_status(self):
@@ -126,6 +149,8 @@ class TestPlotStatus(unittest.TestCase):
 
     def test_completed_status(self):
         """测试完成状态"""
+# 文件：模块：test_types
+
         self.assertEqual(PlotStatus.COMPLETED.value, "completed")
 
 
@@ -134,6 +159,8 @@ class TestCharacterRole(unittest.TestCase):
 
     def test_protagonist_role(self):
         """测试主角"""
+# 文件：模块：test_types
+
         self.assertEqual(CharacterRole.PROTAGONIST.value, "protagonist")
 
     def test_antagonist_role(self):
@@ -142,6 +169,8 @@ class TestCharacterRole(unittest.TestCase):
 
     def test_supporting_role(self):
         """测试配角"""
+# 文件：模块：test_types
+
         self.assertEqual(CharacterRole.SUPPORTING.value, "supporting")
 
 
@@ -150,6 +179,8 @@ class TestDomainExceptions(unittest.TestCase):
 
     def test_domain_exception(self):
         """测试基础领域异常"""
+# 文件：模块：test_types
+
         exc = DomainException("测试异常")
         self.assertEqual(str(exc), "测试异常")
 
@@ -161,6 +192,8 @@ class TestDomainExceptions(unittest.TestCase):
 
     def test_invalid_entity_state_error(self):
         """测试无效实体状态异常"""
+# 文件：模块：test_types
+
         exc = InvalidEntityStateError("Chapter", "draft", "published")
         self.assertIn("Chapter", str(exc))
 
@@ -171,6 +204,8 @@ class TestDomainExceptions(unittest.TestCase):
 
     def test_validation_error(self):
         """测试验证异常"""
+# 文件：模块：test_types
+
         exc = ValidationError("标题不能为空")
         self.assertEqual(str(exc), "标题不能为空")
 

@@ -4,6 +4,9 @@ WritingConfig值对象模块
 作者：孔利群
 """
 
+# 文件路径：domain/value_objects/writing_config.py
+
+
 from dataclasses import dataclass
 
 
@@ -14,6 +17,8 @@ class WritingConfig:
     
     表示续写时的配置参数。
     """
+# 文件：模块：writing_config
+
     target_word_count: int = 2100
     style_intensity: float = 0.8
     temperature: float = 0.7

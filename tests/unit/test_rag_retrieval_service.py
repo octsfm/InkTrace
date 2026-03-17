@@ -4,6 +4,9 @@ RAG检索服务单元测试
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_rag_retrieval_service.py
+
+
 import pytest
 from unittest.mock import Mock, MagicMock
 from application.services.rag_retrieval_service import RAGRetrievalService
@@ -17,6 +20,8 @@ class TestRAGRetrievalService:
     @pytest.fixture
     def mock_vector_repo(self):
         """模拟向量仓储"""
+# 文件：模块：test_rag_retrieval_service
+
         return Mock()
 
     @pytest.fixture
@@ -27,6 +32,8 @@ class TestRAGRetrievalService:
     @pytest.fixture
     def mock_character_repo(self):
         """模拟人物仓储"""
+# 文件：模块：test_rag_retrieval_service
+
         return Mock()
 
     @pytest.fixture
@@ -40,6 +47,8 @@ class TestRAGRetrievalService:
 
     def test_create_service(self, service):
         """测试创建服务"""
+# 文件：模块：test_rag_retrieval_service
+
         assert service.vector_repo is not None
         assert service.chapter_repo is not None
         assert service.character_repo is not None
@@ -62,6 +71,8 @@ class TestRAGRetrievalService:
 
     def test_search_relevant_chapters(self, service, mock_vector_repo):
         """测试搜索相关章节"""
+# 文件：模块：test_rag_retrieval_service
+
         metadata = EmbeddingMetadata("chapter", "ch1", "novel1")
         expected_results = [
             SearchResult("vec-001", "章节内容", 0.90, metadata)
@@ -92,6 +103,8 @@ class TestRAGRetrievalService:
 
     def test_search_relevant_worldview(self, service, mock_vector_repo):
         """测试搜索相关世界观"""
+# 文件：模块：test_rag_retrieval_service
+
         metadata = EmbeddingMetadata("worldview", "world1", "novel1")
         expected_results = [
             SearchResult("vec-001", "世界观信息", 0.92, metadata)
@@ -132,6 +145,8 @@ class TestRAGRetrievalService:
 
     def test_get_context_for_writing_empty(self, service, mock_vector_repo):
         """测试获取空续写上下文"""
+# 文件：模块：test_rag_retrieval_service
+
         mock_vector_repo.search.return_value = []
 
         novel_id = NovelId("test-novel-001")
@@ -171,6 +186,8 @@ class TestRAGRetrievalService:
 
     def test_build_rag_prompt_with_long_content(self, service, mock_vector_repo):
         """测试构建RAG Prompt处理长内容"""
+# 文件：模块：test_rag_retrieval_service
+
         chapter_metadata = EmbeddingMetadata("chapter", "ch1", "novel1")
         long_content = "测试内容" * 200
         mock_vector_repo.search.return_value = [
@@ -207,6 +224,8 @@ class TestRAGRetrievalServiceEdgeCases:
 
     def test_search_with_empty_query(self, service):
         """测试空查询"""
+# 文件：模块：test_rag_retrieval_service
+
         service.vector_repo.search.return_value = []
 
         novel_id = NovelId("test-novel-001")
@@ -225,6 +244,8 @@ class TestRAGRetrievalServiceEdgeCases:
 
     def test_get_context_with_custom_limits(self, service):
         """测试自定义限制获取上下文"""
+# 文件：模块：test_rag_retrieval_service
+
         service.vector_repo.search.return_value = []
 
         novel_id = NovelId("test-novel-001")

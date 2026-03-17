@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_consistency_checker.py
+
+
 import unittest
 from datetime import datetime
 
@@ -18,6 +21,8 @@ class TestConsistencyChecker(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_consistency_checker
+
         self.checker = ConsistencyChecker()
         self.now = datetime.now()
 
@@ -36,6 +41,8 @@ class TestConsistencyChecker(unittest.TestCase):
 
     def _create_character(self, name: str, state: str = "") -> Character:
         """创建测试人物"""
+# 文件：模块：test_consistency_checker
+
         return Character(
             id=CharacterId(f"char-{name}"),
             novel_id=NovelId("novel-001"),
@@ -58,6 +65,8 @@ class TestConsistencyChecker(unittest.TestCase):
 
     def test_check_character_state(self):
         """测试检查人物状态"""
+# 文件：模块：test_consistency_checker
+
         character = self._create_character("孔凡圣", "凡人")
         chapter = self._create_chapter("孔凡圣已经突破到筑基期。", 2)
         
@@ -79,6 +88,8 @@ class TestConsistencyChecker(unittest.TestCase):
 
     def test_consistency_report(self):
         """测试连贯性报告"""
+# 文件：模块：test_consistency_checker
+
         report = ConsistencyReport(
             is_valid=True,
             inconsistencies=[],

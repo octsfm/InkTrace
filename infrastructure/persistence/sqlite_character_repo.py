@@ -4,6 +4,9 @@ SQLite人物仓储实现
 作者：孔利群
 """
 
+# 文件路径：infrastructure/persistence/sqlite_character_repo.py
+
+
 import sqlite3
 import json
 from typing import Optional, List
@@ -19,6 +22,8 @@ class SQLiteCharacterRepository(ICharacterRepository):
 
     def __init__(self, db_path: str):
         """
+# 文件：模块：sqlite_character_repo
+
         初始化仓储
         
         Args:
@@ -29,6 +34,8 @@ class SQLiteCharacterRepository(ICharacterRepository):
 
     def _init_db(self):
         """初始化数据库表"""
+# 文件：模块：sqlite_character_repo
+
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS characters (
@@ -54,6 +61,8 @@ class SQLiteCharacterRepository(ICharacterRepository):
         """保存人物"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('''
+# 文件：模块：sqlite_character_repo
+
                 INSERT OR REPLACE INTO characters 
                 (id, novel_id, name, role, background, personality, aliases, abilities, 
                  relationships, current_state, appearance_count, first_appearance, created_at, updated_at)
@@ -77,6 +86,8 @@ class SQLiteCharacterRepository(ICharacterRepository):
 
     def find_by_id(self, character_id: CharacterId) -> Optional[Character]:
         """根据ID查找人物"""
+# 文件：模块：sqlite_character_repo
+
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
@@ -102,6 +113,8 @@ class SQLiteCharacterRepository(ICharacterRepository):
 
     def delete(self, character_id: CharacterId) -> None:
         """删除人物"""
+# 文件：模块：sqlite_character_repo
+
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('DELETE FROM characters WHERE id = ?', (character_id.value,))
 
@@ -139,6 +152,8 @@ class SQLiteCharacterRepository(ICharacterRepository):
 
     def _relationship_to_dict(self, rel: CharacterRelationship) -> dict:
         """将人物关系转换为字典"""
+# 文件：模块：sqlite_character_repo
+
         return {
             'target_id': rel.target_id.value,
             'relation_type': rel.relation_type,

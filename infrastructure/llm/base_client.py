@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：infrastructure/llm/base_client.py
+
+
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 
@@ -33,6 +36,8 @@ class LLMClient(ABC):
         Returns:
             生成的文本
         """
+# 文件：模块：base_client
+
         pass
 
     @abstractmethod
@@ -53,6 +58,8 @@ class LLMClient(ABC):
         Returns:
             生成的回复
         """
+# 文件：模块：base_client
+
         pass
 
     @property
@@ -65,6 +72,8 @@ class LLMClient(ABC):
     @abstractmethod
     def max_context_tokens(self) -> int:
         """最大上下文token数"""
+# 文件：模块：base_client
+
         pass
 
     @abstractmethod

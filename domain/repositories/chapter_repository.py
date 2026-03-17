@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/repositories/chapter_repository.py
+
+
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
@@ -17,6 +20,8 @@ class IChapterRepository(ABC):
     @abstractmethod
     def save(self, chapter: Chapter) -> None:
         """
+# 文件：模块：chapter_repository
+
         保存章节
         
         Args:
@@ -27,6 +32,8 @@ class IChapterRepository(ABC):
     @abstractmethod
     def find_by_id(self, chapter_id: ChapterId) -> Optional[Chapter]:
         """
+# 文件：模块：chapter_repository
+
         根据ID查找章节
         
         Args:
@@ -40,6 +47,8 @@ class IChapterRepository(ABC):
     @abstractmethod
     def find_by_novel(self, novel_id: NovelId) -> List[Chapter]:
         """
+# 文件：模块：chapter_repository
+
         查找小说的所有章节
         
         Args:
@@ -53,6 +62,8 @@ class IChapterRepository(ABC):
     @abstractmethod
     def find_latest(self, novel_id: NovelId, count: int) -> List[Chapter]:
         """
+# 文件：模块：chapter_repository
+
         查找小说的最新N个章节
         
         Args:
@@ -67,6 +78,8 @@ class IChapterRepository(ABC):
     @abstractmethod
     def delete(self, chapter_id: ChapterId) -> None:
         """
+# 文件：模块：chapter_repository
+
         删除章节
         
         Args:

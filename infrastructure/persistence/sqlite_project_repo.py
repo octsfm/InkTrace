@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：infrastructure/persistence/sqlite_project_repo.py
+
+
 import json
 import sqlite3
 from datetime import datetime
@@ -24,6 +27,8 @@ class SQLiteProjectRepository(IProjectRepository):
     def _init_table(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
+# 文件：模块：sqlite_project_repo
+
                 CREATE TABLE IF NOT EXISTS projects (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -76,6 +81,8 @@ class SQLiteProjectRepository(IProjectRepository):
     def save(self, project: Project) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
+# 文件：模块：sqlite_project_repo
+
                 INSERT OR REPLACE INTO projects 
                 (id, name, novel_id, config, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)

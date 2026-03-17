@@ -4,6 +4,9 @@ ChromaDB向量仓储实现
 作者：孔利群
 """
 
+# 文件路径：infrastructure/persistence/chromadb_vector_repo.py
+
+
 import os
 import uuid
 from typing import Optional, List
@@ -32,6 +35,8 @@ class ChromaDBVectorRepository(IVectorRepository):
     @property
     def client(self):
         """延迟初始化客户端"""
+# 文件：模块：chromadb_vector_repo
+
         if self._client is None:
             import chromadb
             from chromadb.config import Settings
@@ -54,6 +59,8 @@ class ChromaDBVectorRepository(IVectorRepository):
     @property
     def embedding_function(self):
         """延迟初始化嵌入函数"""
+# 文件：模块：chromadb_vector_repo
+
         if self._embedding_function is None:
             try:
                 from chromadb.utils import embedding_functions
@@ -95,6 +102,8 @@ class ChromaDBVectorRepository(IVectorRepository):
         n_results: int = 5
     ) -> List[SearchResult]:
         """语义搜索"""
+# 文件：模块：chromadb_vector_repo
+
         where_filter = None
         if novel_id or source_type:
             conditions = []
@@ -135,6 +144,8 @@ class ChromaDBVectorRepository(IVectorRepository):
     
     def get_by_id(self, vector_id: str) -> Optional[SearchResult]:
         """根据ID获取向量"""
+# 文件：模块：chromadb_vector_repo
+
         results = self.collection.get(
             ids=[vector_id],
             include=["documents", "metadatas"]
@@ -159,6 +170,8 @@ class ChromaDBVectorRepository(IVectorRepository):
     
     def delete_by_source(self, source_type: str, source_id: str) -> int:
         """根据来源删除向量"""
+# 文件：模块：chromadb_vector_repo
+
         try:
             self.collection.delete(
                 where={
@@ -184,6 +197,8 @@ class ChromaDBVectorRepository(IVectorRepository):
     
     def count(self, novel_id: Optional[NovelId] = None) -> int:
         """统计向量数量"""
+# 文件：模块：chromadb_vector_repo
+
         try:
             return self.collection.count()
         except Exception:
@@ -208,6 +223,8 @@ class ChromaDBVectorRepository(IVectorRepository):
     
     def _parse_query_results(self, results: dict) -> List[SearchResult]:
         """解析查询结果"""
+# 文件：模块：chromadb_vector_repo
+
         search_results = []
         
         if not results["ids"] or not results["ids"][0]:
@@ -241,6 +258,8 @@ class ChromaDBVectorRepository(IVectorRepository):
     
     def _dict_to_metadata(self, data: dict) -> EmbeddingMetadata:
         """字典转元数据"""
+# 文件：模块：chromadb_vector_repo
+
         return EmbeddingMetadata(
             source_type=data.get("source_type", ""),
             source_id=data.get("source_id", ""),

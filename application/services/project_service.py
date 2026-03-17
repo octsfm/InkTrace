@@ -4,8 +4,11 @@
 作者：孔利群
 """
 
+# 文件路径：application/services/project_service.py
+
+
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import uuid
 
 from domain.entities.project import Project, ProjectConfig
@@ -33,6 +36,8 @@ class ProjectService:
         target_words: int = 8000000
     ) -> Project:
         """创建新项目"""
+# 文件：模块：project_service
+
         novel_id = NovelId(str(uuid.uuid4()))
         now = datetime.now()
         novel = Novel(
@@ -67,14 +72,62 @@ class ProjectService:
     
     def get_project_by_novel(self, novel_id: NovelId) -> Optional[Project]:
         """根据小说ID获取项目"""
+# 文件：模块：project_service
+
         return self.project_repo.find_by_novel_id(novel_id)
     
     def get_project_by_novel(self, novel_id: NovelId) -> Optional[Project]:
         """根据小说ID获取项目"""
         return self.project_repo.find_by_novel_id(novel_id)
+
+    def get_memory_by_novel(self, novel_id: NovelId) -> Dict[str, Any]:
+        project = self.project_repo.find_by_novel_id(novel_id)
+        if not project:
+            raise ValueError(f"项目不存在，novel_id: {novel_id}")
+        memory = project.config.memory or {}
+        if not isinstance(memory, dict):
+            return {}
+        return memory
+
+    def bind_memory_to_novel(self, novel_id: NovelId, memory: Dict[str, Any]) -> Project:
+        project = self.project_repo.find_by_novel_id(novel_id)
+        if not project:
+            raise ValueError(f"项目不存在，novel_id: {novel_id}")
+        project.config.memory = memory if isinstance(memory, dict) else {}
+        project.updated_at = datetime.now()
+        self.project_repo.save(project)
+        return project
+
+    def ensure_project_for_novel(self, novel_id: NovelId) -> Project:
+        project = self.project_repo.find_by_novel_id(novel_id)
+        if project:
+            return project
+        novel = self.novel_repo.find_by_id(novel_id)
+        if not novel:
+            raise ValueError(f"小说不存在，novel_id: {novel_id}")
+        try:
+            genre = GenreType(novel.genre)
+        except ValueError:
+            genre = GenreType.XUANHUAN
+        config = ProjectConfig(
+            genre=genre,
+            target_words=novel.target_word_count
+        )
+        project = Project(
+            id=ProjectId(str(uuid.uuid4())),
+            name=novel.title,
+            novel_id=novel.id,
+            config=config,
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+        self.project_repo.save(project)
+        return project
     
     def list_projects(self, status: Optional[ProjectStatus] = None) -> List[Project]:
         """获取项目列表"""
+# 文件：模块：project_service
+
         return self.project_repo.find_all(status)
     
     def list_active_projects(self) -> List[Project]:
@@ -87,6 +140,8 @@ class ProjectService:
         config: ProjectConfig
     ) -> Project:
         """更新项目配置"""
+# 文件：模块：project_service
+
         project = self.project_repo.find_by_id(project_id)
         if not project:
             raise ValueError(f"项目不存在: {project_id}")
@@ -111,6 +166,8 @@ class ProjectService:
     
     def archive_project(self, project_id: ProjectId) -> Project:
         """归档项目"""
+# 文件：模块：project_service
+
         project = self.project_repo.find_by_id(project_id)
         if not project:
             raise ValueError(f"项目不存在: {project_id}")
@@ -131,6 +188,8 @@ class ProjectService:
     
     def delete_project(self, project_id: ProjectId) -> None:
         """删除项目"""
+# 文件：模块：project_service
+
         project = self.project_repo.find_by_id(project_id)
         if not project:
             raise ValueError(f"项目不存在: {project_id}")

@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：infrastructure/persistence/sqlite_worldview_repo.py
+
+
 import json
 import sqlite3
 from datetime import datetime
@@ -28,6 +31,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
     def _init_tables(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
+# 文件：模块：sqlite_worldview_repo
+
                 CREATE TABLE IF NOT EXISTS worldviews (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -42,6 +47,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             """)
             
             conn.execute("""
+# 文件：模块：sqlite_worldview_repo
+
                 CREATE TABLE IF NOT EXISTS techniques (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -58,6 +65,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             """)
             
             conn.execute("""
+# 文件：模块：sqlite_worldview_repo
+
                 CREATE TABLE IF NOT EXISTS factions (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -75,6 +84,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             """)
             
             conn.execute("""
+# 文件：模块：sqlite_worldview_repo
+
                 CREATE TABLE IF NOT EXISTS locations (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -90,6 +101,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             """)
             
             conn.execute("""
+# 文件：模块：sqlite_worldview_repo
+
                 CREATE TABLE IF NOT EXISTS items (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -133,6 +146,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
     def save(self, worldview: Worldview) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
+# 文件：模块：sqlite_worldview_repo
+
                 INSERT OR REPLACE INTO worldviews 
                 (id, novel_id, name, power_system, currency_system, timeline, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -284,6 +299,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
     
     def _save_technique(self, conn: sqlite3.Connection, technique: Technique) -> None:
         conn.execute("""
+# 文件：模块：sqlite_worldview_repo
+
             INSERT OR REPLACE INTO techniques 
             (id, novel_id, name, level, description, effect, requirement, creator, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -302,6 +319,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
     
     def _save_faction(self, conn: sqlite3.Connection, faction: Faction) -> None:
         conn.execute("""
+# 文件：模块：sqlite_worldview_repo
+
             INSERT OR REPLACE INTO factions 
             (id, novel_id, name, level, description, territory, leader, headquarters, relations, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -321,6 +340,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
     
     def _save_location(self, conn: sqlite3.Connection, location: Location) -> None:
         conn.execute("""
+# 文件：模块：sqlite_worldview_repo
+
             INSERT OR REPLACE INTO locations 
             (id, novel_id, name, description, faction_id, parent_id, importance, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -338,6 +359,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
     
     def _save_item(self, conn: sqlite3.Connection, item: Item) -> None:
         conn.execute("""
+# 文件：模块：sqlite_worldview_repo
+
             INSERT OR REPLACE INTO items 
             (id, novel_id, name, type, description, effect, rarity, owner, origin, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

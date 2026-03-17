@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/entities/technique.py
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List
@@ -40,6 +43,8 @@ class TechniqueLevel:
 @dataclass
 class Technique:
     """功法实体"""
+# 文件：模块：technique
+
     id: TechniqueId
     novel_id: NovelId
     name: str

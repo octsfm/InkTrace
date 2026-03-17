@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_llm_client.py
+
+
 import unittest
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -49,6 +52,8 @@ class TestDeepSeekClient(unittest.TestCase):
 
     def test_max_context_tokens(self):
         """测试最大上下文token数"""
+# 文件：模块：test_llm_client
+
         client = DeepSeekClient(api_key="test-key")
         self.assertEqual(client.max_context_tokens, 64000)
 
@@ -58,6 +63,8 @@ class TestKimiClient(unittest.TestCase):
 
     def test_create_client(self):
         """测试创建客户端"""
+# 文件：模块：test_llm_client
+
         client = KimiClient(
             api_key="test-key",
             base_url="https://api.moonshot.cn/v1",
@@ -73,6 +80,8 @@ class TestKimiClient(unittest.TestCase):
 
     def test_max_context_tokens_128k(self):
         """测试128k模型上下文"""
+# 文件：模块：test_llm_client
+
         client = KimiClient(api_key="test-key", model="moonshot-v1-128k")
         self.assertEqual(client.max_context_tokens, 131072)
 
@@ -82,6 +91,8 @@ class TestLLMFactory(unittest.TestCase):
 
     def test_create_factory(self):
         """测试创建工厂"""
+# 文件：模块：test_llm_client
+
         config = LLMConfig(
             deepseek_api_key="deepseek-key",
             kimi_api_key="kimi-key"
@@ -98,6 +109,8 @@ class TestLLMFactory(unittest.TestCase):
 
     def test_backup_client(self):
         """测试获取备用模型客户端"""
+# 文件：模块：test_llm_client
+
         config = LLMConfig(kimi_api_key="test-key")
         factory = LLMFactory(config)
         client = factory.backup_client
@@ -109,6 +122,8 @@ class TestLLMClientInterface(unittest.TestCase):
 
     def test_interface_methods(self):
         """测试接口方法"""
+# 文件：模块：test_llm_client
+
         client = MockLLMClient()
         self.assertEqual(client.model_name, "mock-model")
         self.assertEqual(client.max_context_tokens, 4096)

@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/value_objects/embedding.py
+
+
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 
@@ -40,6 +43,8 @@ class EmbeddingMetadata:
 @dataclass(frozen=True)
 class SearchResult:
     """搜索结果值对象"""
+# 文件：模块：embedding
+
     id: str
     content: str
     score: float

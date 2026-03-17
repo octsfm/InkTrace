@@ -4,6 +4,9 @@ SQLite章节仓储实现
 作者：孔利群
 """
 
+# 文件路径：infrastructure/persistence/sqlite_chapter_repo.py
+
+
 import sqlite3
 from typing import Optional, List
 from datetime import datetime
@@ -18,6 +21,8 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def __init__(self, db_path: str):
         """
+# 文件：模块：sqlite_chapter_repo
+
         初始化仓储
         
         Args:
@@ -28,6 +33,8 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def _init_db(self):
         """初始化数据库表"""
+# 文件：模块：sqlite_chapter_repo
+
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS chapters (
@@ -49,6 +56,8 @@ class SQLiteChapterRepository(IChapterRepository):
         """保存章节"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('''
+# 文件：模块：sqlite_chapter_repo
+
                 INSERT OR REPLACE INTO chapters 
                 (id, novel_id, number, title, content, word_count, summary, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -67,6 +76,8 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def find_by_id(self, chapter_id: ChapterId) -> Optional[Chapter]:
         """根据ID查找章节"""
+# 文件：模块：sqlite_chapter_repo
+
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
@@ -92,6 +103,8 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def find_latest(self, novel_id: NovelId, count: int) -> List[Chapter]:
         """查找小说的最新N个章节"""
+# 文件：模块：sqlite_chapter_repo
+
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
@@ -108,6 +121,8 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def _row_to_chapter(self, row: sqlite3.Row) -> Chapter:
         """将数据库行转换为章节实体"""
+# 文件：模块：sqlite_chapter_repo
+
         return Chapter(
             id=ChapterId(row['id']),
             novel_id=NovelId(row['novel_id']),

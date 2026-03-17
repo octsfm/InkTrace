@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_character_extended.py
+
+
 import unittest
 from datetime import datetime
 
@@ -16,6 +19,8 @@ class TestCharacterRelation(unittest.TestCase):
     
     def test_create_character_relation(self):
         """测试创建人物关系"""
+# 文件：模块：test_character_extended
+
         target_id = CharacterId("char_002")
         relation = CharacterRelation(
             target_id=target_id,
@@ -39,6 +44,8 @@ class TestCharacterRelation(unittest.TestCase):
     
     def test_relation_from_dict(self):
         """测试从字典创建关系"""
+# 文件：模块：test_character_extended
+
         data = {
             "target_id": "char_004",
             "relation_type": "master_disciple",
@@ -55,6 +62,8 @@ class TestCharacterExtended(unittest.TestCase):
     
     def setUp(self):
         """测试前置"""
+# 文件：模块：test_character_extended
+
         self.character_id = CharacterId("char_001")
         self.novel_id = NovelId("novel_001")
         self.character = Character(
@@ -74,6 +83,8 @@ class TestCharacterExtended(unittest.TestCase):
     
     def test_create_character_with_extended_fields(self):
         """测试创建带扩展字段的人物"""
+# 文件：模块：test_character_extended
+
         character = Character(
             id=self.character_id,
             novel_id=self.novel_id,
@@ -101,6 +112,8 @@ class TestCharacterExtended(unittest.TestCase):
     
     def test_remove_technique(self):
         """测试移除功法"""
+# 文件：模块：test_character_extended
+
         tech_id = TechniqueId("tech_001")
         self.character.add_technique(tech_id)
         self.character.remove_technique(tech_id)
@@ -114,6 +127,8 @@ class TestCharacterExtended(unittest.TestCase):
     
     def test_add_detailed_relation(self):
         """测试添加详细关系"""
+# 文件：模块：test_character_extended
+
         relation = CharacterRelation(
             target_id=CharacterId("char_002"),
             relation_type=RelationType.LOVER,
@@ -137,6 +152,8 @@ class TestCharacterExtended(unittest.TestCase):
     
     def test_remove_detailed_relation(self):
         """测试移除详细关系"""
+# 文件：模块：test_character_extended
+
         target_id = CharacterId("char_002")
         relation = CharacterRelation(
             target_id=target_id,
@@ -158,6 +175,8 @@ class TestCharacterExtended(unittest.TestCase):
     
     def test_character_to_dict(self):
         """测试人物转字典"""
+# 文件：模块：test_character_extended
+
         self.character.appearance = "英俊潇洒"
         self.character.age = 25
         data = self.character.to_dict()

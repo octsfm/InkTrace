@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_style_analyzer.py
+
+
 import unittest
 from datetime import datetime
 
@@ -18,6 +21,8 @@ class TestStyleAnalyzer(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_style_analyzer
+
         self.analyzer = StyleAnalyzer()
         self.now = datetime.now()
 
@@ -36,12 +41,16 @@ class TestStyleAnalyzer(unittest.TestCase):
 
     def test_analyze_empty_chapters(self):
         """测试分析空章节列表"""
+# 文件：模块：test_style_analyzer
+
         profile = self.analyzer.analyze([])
         self.assertIsInstance(profile, StyleProfile)
 
     def test_analyze_single_chapter(self):
         """测试分析单个章节"""
         content = """孔凡圣在丛林中奔跑，身后传来追兵的脚步声。
+# 文件：模块：test_style_analyzer
+
 他回头看了一眼，眼中闪过一丝金光。
 "绝对不能被抓住！"他心中暗想。
 """
@@ -53,6 +62,8 @@ class TestStyleAnalyzer(unittest.TestCase):
 
     def test_analyze_vocabulary(self):
         """测试词汇分析"""
+# 文件：模块：test_style_analyzer
+
         content = "孔凡圣奔跑在丛林中。孔凡圣回头看了一眼。孔凡圣眼中闪过金光。"
         result = self.analyzer.analyze_vocabulary(content)
         
@@ -68,6 +79,8 @@ class TestStyleAnalyzer(unittest.TestCase):
 
     def test_analyze_rhetoric(self):
         """测试修辞分析"""
+# 文件：模块：test_style_analyzer
+
         content = "他的眼神如同星辰般闪耀，仿佛能看穿一切。"
         result = self.analyzer.analyze_rhetoric(content)
         
@@ -76,6 +89,8 @@ class TestStyleAnalyzer(unittest.TestCase):
     def test_extract_dialogue_style(self):
         """测试对话风格提取"""
         content = '''
+# 文件：模块：test_style_analyzer
+
         "绝对不能被抓住！"他心中暗想。
         "快跑！"身后传来喊声。
         孔凡圣咬紧牙关，继续向前奔跑。
@@ -86,6 +101,8 @@ class TestStyleAnalyzer(unittest.TestCase):
 
     def test_analyze_multiple_chapters(self):
         """测试分析多个章节"""
+# 文件：模块：test_style_analyzer
+
         chapters = [
             self._create_chapter("孔凡圣在丛林中奔跑。他回头看了一眼。", 1),
             self._create_chapter("冰冷刺骨的河水包裹着他。他心中涌起庆幸。", 2),
@@ -111,6 +128,8 @@ class TestStyleProfileGeneration(unittest.TestCase):
         身后的追兵越来越近，他能听到恶犬的咆哮声。
         眼前出现了一道微弱的光线，如同希望之光。
         """
+# 文件：模块：test_style_analyzer
+
         profile = self.analyzer.analyze_vocabulary(content)
         
         self.assertIsInstance(profile, dict)

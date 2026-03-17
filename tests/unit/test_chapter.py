@@ -4,6 +4,9 @@ Chapter实体单元测试
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_chapter.py
+
+
 import unittest
 from datetime import datetime
 
@@ -17,6 +20,8 @@ class TestChapter(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_chapter
+
         self.chapter_id = ChapterId("chapter-001")
         self.novel_id = NovelId("novel-001")
         self.now = datetime.now()
@@ -42,6 +47,8 @@ class TestChapter(unittest.TestCase):
 
     def test_word_count(self):
         """测试字数统计"""
+# 文件：模块：test_chapter
+
         chapter = Chapter(
             id=self.chapter_id,
             novel_id=self.novel_id,
@@ -70,6 +77,8 @@ class TestChapter(unittest.TestCase):
 
     def test_update_content(self):
         """测试更新内容"""
+# 文件：模块：test_chapter
+
         chapter = Chapter(
             id=self.chapter_id,
             novel_id=self.novel_id,
@@ -104,6 +113,8 @@ class TestChapter(unittest.TestCase):
 
     def test_publish(self):
         """测试发布章节"""
+# 文件：模块：test_chapter
+
         chapter = Chapter(
             id=self.chapter_id,
             novel_id=self.novel_id,
@@ -136,6 +147,8 @@ class TestChapter(unittest.TestCase):
 
     def test_unpublish(self):
         """测试取消发布"""
+# 文件：模块：test_chapter
+
         chapter = Chapter(
             id=self.chapter_id,
             novel_id=self.novel_id,
@@ -168,6 +181,8 @@ class TestChapter(unittest.TestCase):
 
     def test_is_published(self):
         """测试是否已发布"""
+# 文件：模块：test_chapter
+
         chapter_draft = Chapter(
             id=self.chapter_id,
             novel_id=self.novel_id,

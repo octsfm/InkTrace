@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/services/consistency_checker.py
+
+
 import re
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
@@ -24,6 +27,8 @@ class Inconsistency:
 @dataclass
 class ConsistencyReport:
     """连贯性检查报告"""
+# 文件：模块：consistency_checker
+
     is_valid: bool
     inconsistencies: List[Inconsistency]
     warnings: List[str] = field(default_factory=list)
@@ -55,6 +60,8 @@ class ConsistencyChecker:
         Returns:
             连贯性检查报告
         """
+# 文件：模块：consistency_checker
+
         inconsistencies = []
         warnings = []
         
@@ -94,6 +101,8 @@ class ConsistencyChecker:
         Returns:
             不一致项列表
         """
+# 文件：模块：consistency_checker
+
         inconsistencies = []
         
         cultivation_keywords = {
@@ -145,6 +154,8 @@ class ConsistencyChecker:
         Returns:
             不一致项列表
         """
+# 文件：模块：consistency_checker
+
         inconsistencies = []
         
         if not timeline:
@@ -173,6 +184,8 @@ class ConsistencyChecker:
         Returns:
             不一致项列表
         """
+# 文件：模块：consistency_checker
+
         inconsistencies = []
         
         if not existing_chapters:
@@ -197,6 +210,8 @@ class ConsistencyChecker:
         Returns:
             不一致项列表
         """
+# 文件：模块：consistency_checker
+
         inconsistencies = []
         
         return inconsistencies

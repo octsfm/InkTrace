@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：presentation/api/routers/worldview.py
+
+
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -127,6 +130,8 @@ def update_power_system(
     service: WorldviewService = Depends(get_worldview_service)
 ):
     """更新力量体系"""
+# 文件：模块：worldview
+
     worldview = service.update_power_system(
         NovelId(novel_id),
         request.name,
@@ -161,6 +166,8 @@ def create_technique(
     service: WorldviewService = Depends(get_worldview_service)
 ):
     """创建功法"""
+# 文件：模块：worldview
+
     technique = service.create_technique(
         NovelId(novel_id),
         request.name,
@@ -187,6 +194,8 @@ def delete_technique(
     service: WorldviewService = Depends(get_worldview_service)
 ):
     """删除功法"""
+# 文件：模块：worldview
+
     service.delete_technique(TechniqueId(technique_id))
     return {"message": "功法已删除"}
 
@@ -213,6 +222,8 @@ def create_faction(
 @router.get("/factions", response_model=List[FactionResponse])
 def list_factions(novel_id: str, service: WorldviewService = Depends(get_worldview_service)):
     """获取势力列表"""
+# 文件：模块：worldview
+
     factions = service.list_factions(NovelId(novel_id))
     return [_faction_to_response(f) for f in factions]
 
@@ -236,6 +247,8 @@ def create_location(
     service: WorldviewService = Depends(get_worldview_service)
 ):
     """创建地点"""
+# 文件：模块：worldview
+
     location = service.create_location(
         NovelId(novel_id),
         request.name,
@@ -260,6 +273,8 @@ def delete_location(
     service: WorldviewService = Depends(get_worldview_service)
 ):
     """删除地点"""
+# 文件：模块：worldview
+
     service.delete_location(LocationId(location_id))
     return {"message": "地点已删除"}
 
@@ -291,6 +306,8 @@ def create_item(
 @router.get("/items", response_model=List[ItemResponse])
 def list_items(novel_id: str, service: WorldviewService = Depends(get_worldview_service)):
     """获取物品列表"""
+# 文件：模块：worldview
+
     items = service.list_items(NovelId(novel_id))
     return [_item_to_response(i) for i in items]
 

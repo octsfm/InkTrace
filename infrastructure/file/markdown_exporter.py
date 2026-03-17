@@ -4,6 +4,9 @@ Markdown导出器模块
 作者：孔利群
 """
 
+# 文件路径：infrastructure/file/markdown_exporter.py
+
+
 import os
 from typing import List
 
@@ -26,6 +29,8 @@ class MarkdownExporter:
             chapter: 章节实体
             output_path: 输出文件路径
         """
+# 文件：模块：markdown_exporter
+
         content = self.export_chapter_content(chapter)
         
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -43,6 +48,8 @@ class MarkdownExporter:
         Returns:
             Markdown格式的章节内容
         """
+# 文件：模块：markdown_exporter
+
         lines = [
             f"# 第{chapter.number}章 {chapter.title}",
             "",
@@ -66,6 +73,8 @@ class MarkdownExporter:
             chapters: 章节列表
             output_path: 输出文件路径
         """
+# 文件：模块：markdown_exporter
+
         lines = [
             self.format_metadata(novel),
             "",
@@ -100,6 +109,8 @@ class MarkdownExporter:
         Returns:
             Markdown格式的元数据
         """
+# 文件：模块：markdown_exporter
+
         lines = [
             f"# {novel.title}",
             "",

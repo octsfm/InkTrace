@@ -4,6 +4,9 @@ Novel聚合根模块
 作者：孔利群
 """
 
+# 文件路径：domain/entities/novel.py
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
@@ -21,6 +24,8 @@ class Novel:
     
     表示一部小说，整合章节、人物、大纲等。
     """
+# 文件：模块：novel
+
     id: NovelId
     title: str
     author: str
@@ -40,6 +45,8 @@ class Novel:
 
     def add_chapter(self, chapter: Chapter, updated_at: datetime) -> None:
         """
+# 文件：模块：novel
+
         添加章节
         
         Args:
@@ -56,6 +63,8 @@ class Novel:
 
     def get_chapter(self, chapter_id: ChapterId) -> Optional[Chapter]:
         """
+# 文件：模块：novel
+
         获取指定ID的章节
         
         Args:
@@ -71,6 +80,8 @@ class Novel:
 
     def get_chapter_by_number(self, number: int) -> Optional[Chapter]:
         """
+# 文件：模块：novel
+
         根据章节号获取章节
         
         Args:
@@ -86,6 +97,8 @@ class Novel:
 
     def get_latest_chapters(self, count: int) -> List[Chapter]:
         """
+# 文件：模块：novel
+
         获取最新的N个章节
         
         Args:
@@ -99,6 +112,8 @@ class Novel:
 
     def add_character(self, character: Character, updated_at: datetime) -> None:
         """
+# 文件：模块：novel
+
         添加人物
         
         Args:
@@ -113,6 +128,8 @@ class Novel:
 
     def get_character(self, character_id: CharacterId) -> Optional[Character]:
         """
+# 文件：模块：novel
+
         获取指定ID的人物
         
         Args:
@@ -128,6 +145,8 @@ class Novel:
 
     def get_protagonist(self) -> Optional[Character]:
         """
+# 文件：模块：novel
+
         获取主角
         
         Returns:
@@ -140,6 +159,8 @@ class Novel:
 
     def set_outline(self, outline: Outline, updated_at: datetime) -> None:
         """
+# 文件：模块：novel
+
         设置大纲
         
         Args:
@@ -151,4 +172,6 @@ class Novel:
 
     def _recalculate_word_count(self) -> None:
         """重新计算总字数"""
+# 文件：模块：novel
+
         self.current_word_count = sum(chapter.word_count for chapter in self.chapters)

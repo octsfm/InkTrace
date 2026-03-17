@@ -15,10 +15,26 @@ const api = axios.create({
   }
 })
 
+const ERROR_MESSAGE_MAP = {
+  NOVEL_NOT_FOUND: '未找到对应作品，请先创建或导入。',
+  STRUCTURE_INPUT_INVALID: '故事结构整理失败，请检查内容后重试。',
+  STRUCTURE_INTERNAL_ERROR: '故事结构整理失败，请稍后再试。',
+  MEMORY_REQUIRED: '请先整理故事结构后再继续创作。',
+  CONTINUE_FAILED: '当前章节创作失败，请调整目标后重试。',
+  CONTINUE_INPUT_INVALID: '续写参数有误，请检查后重试。',
+  CONTINUE_INTERNAL_ERROR: '续写失败，请稍后再试。'
+}
+
 api.interceptors.response.use(
   response => response.data,
   error => {
-    const message = error.response?.data?.detail || error.message || '请求失败'
+    const detail = error.response?.data?.detail
+    let message = error.message || '请求失败'
+    if (detail && typeof detail === 'object') {
+      message = detail.user_message || ERROR_MESSAGE_MAP[detail.code] || detail.message || message
+    } else if (detail) {
+      message = detail
+    }
     ElMessage.error(message)
     return Promise.reject(error)
   }
@@ -33,13 +49,16 @@ export const novelApi = {
 
 export const contentApi = {
   import: (data) => api.post('/content/import', data),
+  memory: (novelId) => api.get(`/content/memory/${novelId}`),
+  organize: (novelId) => api.post(`/content/organize/${novelId}`),
   analyzeStyle: (novelId) => api.get(`/content/style/${novelId}`),
   analyzePlot: (novelId) => api.get(`/content/plot/${novelId}`)
 }
 
 export const writingApi = {
   planPlot: (data) => api.post('/writing/plan', data),
-  generate: (data) => api.post('/writing/generate', data)
+  generate: (data) => api.post('/writing/generate', data),
+  continue: (data) => api.post('/writing/continue', data)
 }
 
 export const exportApi = {

@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_vector_repository.py
+
+
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from domain.value_objects.embedding import EmbeddingMetadata, SearchResult, VectorStoreConfig
@@ -15,6 +18,8 @@ class TestEmbeddingMetadata:
 
     def test_create_embedding_metadata(self):
         """测试创建嵌入元数据"""
+# 文件：模块：test_vector_repository
+
         metadata = EmbeddingMetadata(
             source_type="chapter",
             source_id="chapter-001",
@@ -43,6 +48,8 @@ class TestEmbeddingMetadata:
 
     def test_metadata_to_dict(self):
         """测试元数据转字典"""
+# 文件：模块：test_vector_repository
+
         metadata = EmbeddingMetadata(
             source_type="worldview",
             source_id="world-001",
@@ -87,6 +94,8 @@ class TestSearchResult:
 
     def test_search_result_to_dict(self):
         """测试搜索结果转字典"""
+# 文件：模块：test_vector_repository
+
         metadata = EmbeddingMetadata(
             source_type="chapter",
             source_id="chapter-001",
@@ -137,6 +146,8 @@ class TestVectorStoreConfig:
 
     def test_create_custom_config(self):
         """测试创建自定义配置"""
+# 文件：模块：test_vector_repository
+
         config = VectorStoreConfig(
             collection_name="custom_collection",
             embedding_model="custom-model",
@@ -154,6 +165,8 @@ class TestIVectorRepository:
 
     def test_interface_methods(self):
         """测试接口方法定义"""
+# 文件：模块：test_vector_repository
+
         repo = Mock(spec=IVectorRepository)
         
         repo.add_vectors.return_value = ["id1", "id2"]
@@ -174,6 +187,8 @@ class TestMockVectorRepository:
 
     def test_add_vectors(self):
         """测试添加向量"""
+# 文件：模块：test_vector_repository
+
         mock_repo = Mock(spec=IVectorRepository)
         mock_repo.add_vectors.return_value = ["vec-001", "vec-002"]
         
@@ -206,6 +221,8 @@ class TestMockVectorRepository:
 
     def test_delete_vectors(self):
         """测试删除向量"""
+# 文件：模块：test_vector_repository
+
         mock_repo = Mock(spec=IVectorRepository)
         mock_repo.delete.return_value = True
         
@@ -227,6 +244,8 @@ class TestMockVectorRepository:
 
     def test_get_by_id_not_found(self):
         """测试获取不存在的向量"""
+# 文件：模块：test_vector_repository
+
         mock_repo = Mock(spec=IVectorRepository)
         mock_repo.get_by_id.return_value = None
         

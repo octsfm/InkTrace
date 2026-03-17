@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：infrastructure/persistence/sqlite_template_repo.py
+
+
 import json
 import sqlite3
 import os
@@ -27,6 +30,8 @@ class SQLiteTemplateRepository(ITemplateRepository):
     def _init_table(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
+# 文件：模块：sqlite_template_repo
+
                 CREATE TABLE IF NOT EXISTS templates (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -45,6 +50,8 @@ class SQLiteTemplateRepository(ITemplateRepository):
     
     def _load_builtin_templates(self) -> None:
         """加载内置模板"""
+# 文件：模块：sqlite_template_repo
+
         if not os.path.exists(self.templates_dir):
             return
         
@@ -111,6 +118,8 @@ class SQLiteTemplateRepository(ITemplateRepository):
                  plot_templates, style_reference, is_builtin, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
+# 文件：模块：sqlite_template_repo
+
                 str(template.id),
                 template.name,
                 template.genre.value,

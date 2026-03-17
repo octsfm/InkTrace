@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_template.py
+
+
 import unittest
 from datetime import datetime
 
@@ -16,6 +19,8 @@ class TestCharacterTemplate(unittest.TestCase):
     
     def test_create_character_template(self):
         """测试创建人物模板"""
+# 文件：模块：test_template
+
         template = CharacterTemplate(
             role="protagonist",
             name_pattern="姓+名",
@@ -37,6 +42,8 @@ class TestCharacterTemplate(unittest.TestCase):
     
     def test_character_template_from_dict(self):
         """测试从字典创建人物模板"""
+# 文件：模块：test_template
+
         data = {
             "role": "supporting",
             "name_pattern": "普通名字",
@@ -54,6 +61,8 @@ class TestPlotTemplate(unittest.TestCase):
     
     def test_create_plot_template(self):
         """测试创建剧情模板"""
+# 文件：模块：test_template
+
         template = PlotTemplate(
             name="开局觉醒",
             description="主角获得金手指",
@@ -73,6 +82,8 @@ class TestPlotTemplate(unittest.TestCase):
     
     def test_plot_template_from_dict(self):
         """测试从字典创建剧情模板"""
+# 文件：模块：test_template
+
         data = {
             "name": "宗门试炼",
             "description": "宗门历练",
@@ -89,6 +100,8 @@ class TestTemplate(unittest.TestCase):
     
     def setUp(self):
         """测试前置"""
+# 文件：模块：test_template
+
         self.template_id = TemplateId("tpl_001")
         self.template = Template(
             id=self.template_id,
@@ -106,6 +119,8 @@ class TestTemplate(unittest.TestCase):
     
     def test_add_character_template(self):
         """测试添加人物模板"""
+# 文件：模块：test_template
+
         char_template = CharacterTemplate(role="protagonist", name_pattern="测试")
         self.template.add_character_template(char_template)
         self.assertEqual(len(self.template.character_templates), 1)
@@ -118,6 +133,8 @@ class TestTemplate(unittest.TestCase):
     
     def test_update_worldview_framework(self):
         """测试更新世界观框架"""
+# 文件：模块：test_template
+
         framework = {
             "power_system": {"name": "修炼境界", "levels": ["练气", "筑基"]},
             "currency_system": {"primary": "灵石"}
@@ -136,6 +153,8 @@ class TestTemplate(unittest.TestCase):
     
     def test_template_to_dict(self):
         """测试模板转字典"""
+# 文件：模块：test_template
+
         data = self.template.to_dict()
         self.assertEqual(data["id"], "tpl_001")
         self.assertEqual(data["name"], "玄幻模板")

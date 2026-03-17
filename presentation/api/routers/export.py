@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：presentation/api/routers/export.py
+
+
 import os
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
@@ -33,6 +36,8 @@ def _validate_file_path(file_path: str) -> Path:
     Raises:
         HTTPException: 路径不安全时抛出
     """
+# 文件：模块：export
+
     exports_dir = EXPORTS_DIR.resolve()
     
     try:
@@ -67,6 +72,8 @@ async def export_novel(
     Returns:
         导出响应
     """
+# 文件：模块：export
+
     try:
         return service.export_novel(request)
     except ValueError as e:
@@ -84,6 +91,8 @@ async def download_file(file_path: str) -> FileResponse:
     Returns:
         文件响应
     """
+# 文件：模块：export
+
     safe_path = _validate_file_path(file_path)
     
     return FileResponse(

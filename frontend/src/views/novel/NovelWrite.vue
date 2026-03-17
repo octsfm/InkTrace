@@ -13,6 +13,14 @@
     <el-row :gutter="20">
       <el-col :span="16">
         <el-card class="write-card">
+          <el-alert
+            v-if="continueHint"
+            :title="continueHint"
+            type="success"
+            show-icon
+            :closable="false"
+            style="margin-bottom: 16px;"
+          />
           <el-form :model="form" label-width="100px">
             <el-form-item label="剧情方向">
               <el-input 
@@ -44,7 +52,11 @@
             <el-form-item>
               <el-button type="primary" @click="generateChapter" :loading="generating">
                 <el-icon><Edit /></el-icon>
-                开始生成
+                延展剧情
+              </el-button>
+              <el-button type="success" @click="continueNextChapter" :loading="generatingNext">
+                <el-icon><Edit /></el-icon>
+                继续生成
               </el-button>
             </el-form-item>
           </el-form>
@@ -76,7 +88,7 @@
           <el-divider />
           
           <div class="content-actions">
-            <el-button type="primary">保存章节</el-button>
+            <el-button type="primary" disabled>章节已自动保存</el-button>
             <el-button @click="regenerate">重新生成</el-button>
           </div>
         </el-card>
@@ -142,8 +154,10 @@ import { writingApi, novelApi } from '@/api'
 
 const route = useRoute()
 const generating = ref(false)
+const generatingNext = ref(false)
 const generatedContent = ref(null)
 const recentChapters = ref([])
+const continueHint = ref('')
 
 const form = reactive({
   plot_direction: '',
@@ -161,22 +175,45 @@ const generateChapter = async () => {
   
   try {
     generating.value = true
-    ElMessage.info('正在生成章节，请稍候...')
+    ElMessage.info('正在延展剧情...')
     
     generatedContent.value = await writingApi.generate({
       novel_id: route.params.id,
-      plot_direction: form.plot_direction,
-      chapter_count: form.chapter_count,
+      goal: form.plot_direction,
       target_word_count: form.target_word_count,
-      enable_style_mimicry: form.enable_style_mimicry,
-      enable_consistency_check: form.enable_consistency_check
+      options: {
+        enable_style_mimicry: form.enable_style_mimicry,
+        enable_consistency_check: form.enable_consistency_check
+      }
     })
     
-    ElMessage.success('生成完成！')
+    ElMessage.success('创作完成')
   } catch (error) {
     console.error('生成失败:', error)
   } finally {
     generating.value = false
+  }
+}
+
+const continueNextChapter = async () => {
+  if (!form.plot_direction) {
+    ElMessage.warning('请输入本章写作目标')
+    return
+  }
+  try {
+    generatingNext.value = true
+    ElMessage.info('正在延展剧情...')
+    generatedContent.value = await writingApi.continue({
+      novel_id: route.params.id,
+      goal: form.plot_direction,
+      target_word_count: form.target_word_count
+    })
+    ElMessage.success('创作完成')
+    await loadRecentChapters()
+  } catch (error) {
+    console.error('续写失败:', error)
+  } finally {
+    generatingNext.value = false
   }
 }
 
@@ -196,12 +233,38 @@ const loadRecentChapters = async () => {
   try {
     const novel = await novelApi.get(route.params.id)
     recentChapters.value = novel.chapters?.slice(-5).reverse() || []
+    if (!form.plot_direction) {
+      const nextChapterNumber = (novel.chapter_count || 0) + 1
+      form.plot_direction = route.query.default_goal || `第${nextChapterNumber}章：承接上一章推进主线`
+    }
   } catch (error) {
     console.error('加载章节失败:', error)
   }
 }
 
 onMounted(() => {
+  if (route.query.auto_continue === '1') {
+    continueHint.value = '已生成第一章，是否继续创作第二章？'
+  }
+  const raw = sessionStorage.getItem('inktrace_continue_hint')
+  if (raw) {
+    try {
+      const hint = JSON.parse(raw)
+      if (hint?.novelId === route.params.id) {
+        continueHint.value = hint.message || continueHint.value
+        if (hint.firstChapter?.content) {
+          generatedContent.value = {
+            content: hint.firstChapter.content,
+            word_count: hint.firstChapter.word_count || hint.firstChapter.content.length,
+            metadata: { route: 'first_chapter' }
+          }
+        }
+        sessionStorage.removeItem('inktrace_continue_hint')
+      }
+    } catch (error) {
+      sessionStorage.removeItem('inktrace_continue_hint')
+    }
+  }
   loadRecentChapters()
 })
 </script>

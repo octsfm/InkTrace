@@ -4,6 +4,9 @@ RAG检索API路由
 作者：孔利群
 """
 
+# 文件路径：presentation/api/routers/rag.py
+
+
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -70,6 +73,8 @@ def get_context(
     service: RAGRetrievalService = Depends(get_rag_retrieval_service)
 ):
     """获取RAG上下文"""
+# 文件：模块：rag
+
     context = service.get_context_for_writing(
         NovelId(novel_id),
         request.query

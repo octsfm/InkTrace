@@ -4,6 +4,9 @@ Markdown导出器单元测试
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_markdown_exporter.py
+
+
 import unittest
 import os
 import tempfile
@@ -20,6 +23,8 @@ class TestMarkdownExporter(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_markdown_exporter
+
         self.exporter = MarkdownExporter()
         self.temp_dir = tempfile.mkdtemp()
         self.now = datetime.now()
@@ -31,6 +36,8 @@ class TestMarkdownExporter(unittest.TestCase):
 
     def test_export_chapter(self):
         """测试导出章节"""
+# 文件：模块：test_markdown_exporter
+
         chapter = Chapter(
             id=ChapterId("chapter-001"),
             novel_id=NovelId("novel-001"),
@@ -73,6 +80,8 @@ class TestMarkdownExporter(unittest.TestCase):
 
     def test_export_novel(self):
         """测试导出小说"""
+# 文件：模块：test_markdown_exporter
+
         novel = Novel(
             id=NovelId("novel-001"),
             title="修仙从逃出生天开始",

@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/types.py
+
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import NewType
@@ -29,6 +32,8 @@ class NovelId:
 @dataclass(frozen=True)
 class ChapterId:
     """章节ID值对象"""
+# 文件：模块：types
+
     value: str
 
     def __str__(self) -> str:
@@ -63,6 +68,8 @@ class CharacterId:
 @dataclass(frozen=True)
 class OutlineId:
     """大纲ID值对象"""
+# 文件：模块：types
+
     value: str
 
     def __str__(self) -> str:
@@ -85,6 +92,8 @@ class ChapterStatus(Enum):
 
 class PlotType(Enum):
     """剧情类型枚举"""
+# 文件：模块：types
+
     MAIN = "main"
     SUB = "sub"
     FORESHADOWING = "foreshadowing"
@@ -99,6 +108,8 @@ class PlotStatus(Enum):
 
 class CharacterRole(Enum):
     """人物角色枚举"""
+# 文件：模块：types
+
     PROTAGONIST = "protagonist"
     ANTAGONIST = "antagonist"
     SUPPORTING = "supporting"
@@ -124,6 +135,8 @@ class ProjectId:
 @dataclass(frozen=True)
 class TemplateId:
     """模板ID值对象"""
+# 文件：模块：types
+
     value: str
 
     def __str__(self) -> str:
@@ -158,6 +171,8 @@ class TechniqueId:
 @dataclass(frozen=True)
 class FactionId:
     """势力ID值对象"""
+# 文件：模块：types
+
     value: str
 
     def __str__(self) -> str:
@@ -192,6 +207,8 @@ class LocationId:
 @dataclass(frozen=True)
 class ItemId:
     """物品ID值对象"""
+# 文件：模块：types
+
     value: str
 
     def __str__(self) -> str:
@@ -225,6 +242,8 @@ class WorldviewId:
 
 class ProjectStatus(Enum):
     """项目状态枚举"""
+# 文件：模块：types
+
     ACTIVE = "active"
     ARCHIVED = "archived"
 
@@ -243,6 +262,8 @@ class GenreType(Enum):
 
 class RelationType(Enum):
     """人物关系类型枚举"""
+# 文件：模块：types
+
     FAMILY = "family"
     FRIEND = "friend"
     ENEMY = "enemy"

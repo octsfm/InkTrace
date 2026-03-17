@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/repositories/template_repository.py
+
+
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
@@ -17,6 +20,8 @@ class ITemplateRepository(ABC):
     @abstractmethod
     def find_by_id(self, template_id: TemplateId) -> Optional[Template]:
         """根据ID查找模板"""
+# 文件：模块：template_repository
+
         pass
     
     @abstractmethod
@@ -27,6 +32,8 @@ class ITemplateRepository(ABC):
     @abstractmethod
     def find_all(self, include_builtin: bool = True) -> List[Template]:
         """查找所有模板"""
+# 文件：模块：template_repository
+
         pass
     
     @abstractmethod
@@ -37,6 +44,8 @@ class ITemplateRepository(ABC):
     @abstractmethod
     def find_custom(self) -> List[Template]:
         """查找自定义模板"""
+# 文件：模块：template_repository
+
         pass
     
     @abstractmethod
@@ -47,4 +56,6 @@ class ITemplateRepository(ABC):
     @abstractmethod
     def delete(self, template_id: TemplateId) -> None:
         """删除模板"""
+# 文件：模块：template_repository
+
         pass

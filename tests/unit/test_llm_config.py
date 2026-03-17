@@ -4,6 +4,9 @@ LLM配置单元测试模块
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_llm_config.py
+
+
 import unittest
 import tempfile
 import os
@@ -21,6 +24,8 @@ class TestLLMConfig(unittest.TestCase):
     
     def test_llm_config_creation(self):
         """测试配置实体创建"""
+# 文件：模块：test_llm_config
+
         config = LLMConfig(
             deepseek_api_key="test_deepseek_key",
             kimi_api_key="test_kimi_key",
@@ -53,6 +58,8 @@ class TestLLMConfig(unittest.TestCase):
     
     def test_has_valid_config(self):
         """测试是否有有效配置"""
+# 文件：模块：test_llm_config
+
         # 有DeepSeek配置
         config1 = LLMConfig(deepseek_api_key="key1")
         self.assertTrue(config1.has_valid_config())
@@ -71,6 +78,8 @@ class TestEncryptedAPIKey(unittest.TestCase):
     
     def setUp(self):
         """测试前准备"""
+# 文件：模块：test_llm_config
+
         self.encryption_service = ConfigEncryptionService()
         self.encryption_key = b"test_encryption_key_32bytes_1234"
     
@@ -82,6 +91,8 @@ class TestEncryptedAPIKey(unittest.TestCase):
     
     def test_encryption_decryption(self):
         """测试加密解密"""
+# 文件：模块：test_llm_config
+
         plaintext = "test_api_key_1234567890"
         
         # 加密
@@ -113,6 +124,8 @@ class TestConfigEncryptionService(unittest.TestCase):
     
     def test_encryption_decryption(self):
         """测试加密解密"""
+# 文件：模块：test_llm_config
+
         plaintext = "test_secret_api_key"
         
         # 加密
@@ -134,6 +147,8 @@ class TestConfigEncryptionService(unittest.TestCase):
     
     def test_key_validation(self):
         """测试密钥验证"""
+# 文件：模块：test_llm_config
+
         self.assertTrue(self.service.validate_key(self.test_key))
         
         # 无效密钥
@@ -160,6 +175,8 @@ class TestSQLiteLLMConfigRepository(unittest.TestCase):
     
     def tearDown(self):
         """测试后清理"""
+# 文件：模块：test_llm_config
+
         # 关闭数据库连接
         if hasattr(self, 'conn'):
             self.conn.close()
@@ -197,6 +214,8 @@ class TestSQLiteLLMConfigRepository(unittest.TestCase):
     
     def test_config_exists(self):
         """测试配置存在检查"""
+# 文件：模块：test_llm_config
+
         # 初始状态
         self.assertFalse(self.repo.exists())
         
@@ -245,6 +264,8 @@ class TestConfigService(unittest.TestCase):
     
     def tearDown(self):
         """测试后清理"""
+# 文件：模块：test_llm_config
+
         # 关闭数据库连接
         if hasattr(self, 'conn'):
             self.conn.close()
@@ -284,6 +305,8 @@ class TestConfigService(unittest.TestCase):
     
     def test_config_validation(self):
         """测试配置验证"""
+# 文件：模块：test_llm_config
+
         # 有效配置
         self.assertTrue(self.service.validate_config("valid_key_1234567890", ""))
         

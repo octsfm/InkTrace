@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：presentation/api/routers/config.py
+
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -22,6 +25,8 @@ class LLMConfigRequest(BaseModel):
 
 class LLMConfigResponse(BaseModel):
     """LLM配置响应"""
+# 文件：模块：config
+
     deepseek_api_key: str
     kimi_api_key: str
     created_at: str
@@ -37,6 +42,8 @@ class ConfigTestRequest(BaseModel):
 
 class ConfigTestResponse(BaseModel):
     """配置测试响应"""
+# 文件：模块：config
+
     deepseek: dict
     kimi: dict
 
@@ -60,6 +67,8 @@ def get_config_service() -> ConfigService:
 @router.get("/llm", response_model=LLMConfigResponse)
 async def get_llm_config(service: ConfigService = Depends(get_config_service)):
     """获取LLM配置"""
+# 文件：模块：config
+
     try:
         config = service.get_config()
         
@@ -120,6 +129,8 @@ async def test_llm_config(
     service: ConfigService = Depends(get_config_service)
 ):
     """测试LLM配置"""
+# 文件：模块：config
+
     try:
         # 验证配置
         if not service.validate_config(request.deepseek_api_key, request.kimi_api_key):
@@ -153,6 +164,8 @@ async def delete_llm_config(service: ConfigService = Depends(get_config_service)
 @router.get("/llm/exists")
 async def check_config_exists(service: ConfigService = Depends(get_config_service)):
     """检查配置是否存在"""
+# 文件：模块：config
+
     try:
         exists = service.config_exists()
         return {"exists": exists}

@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/services/plot_analyzer.py
+
+
 import re
 from typing import List, Dict, Optional
 from dataclasses import dataclass
@@ -25,6 +28,8 @@ class CharacterInfo:
 @dataclass
 class TimelineEvent:
     """时间线事件"""
+# 文件：模块：plot_analyzer
+
     chapter_number: int
     event_description: str
     characters_involved: List[str]
@@ -40,6 +45,8 @@ class ForeshadowingInfo:
 
 class PlotAnalyzer:
     """
+# 文件：模块：plot_analyzer
+
     剧情分析领域服务
     
     分析小说的剧情结构，提取人物、时间线、伏笔等。
@@ -47,6 +54,8 @@ class PlotAnalyzer:
 
     def analyze(self, chapters: List[Chapter]) -> Dict:
         """
+# 文件：模块：plot_analyzer
+
         分析小说剧情结构
         
         Args:
@@ -67,6 +76,8 @@ class PlotAnalyzer:
 
     def extract_characters(self, chapters: List[Chapter]) -> List[Dict]:
         """
+# 文件：模块：plot_analyzer
+
         提取人物信息
         
         Args:
@@ -109,6 +120,8 @@ class PlotAnalyzer:
 
     def build_timeline(self, chapters: List[Chapter]) -> List[Dict]:
         """
+# 文件：模块：plot_analyzer
+
         构建时间线
         
         Args:
@@ -156,6 +169,8 @@ class PlotAnalyzer:
 
     def extract_foreshadowings(self, chapters: List[Chapter]) -> List[Dict]:
         """
+# 文件：模块：plot_analyzer
+
         提取伏笔
         
         Args:
@@ -188,6 +203,8 @@ class PlotAnalyzer:
 
     def _extract_names_from_text(self, text: str) -> List[str]:
         """
+# 文件：模块：plot_analyzer
+
         从文本中提取人名
         
         Args:

@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_project.py
+
+
 import unittest
 from datetime import datetime
 
@@ -16,6 +19,8 @@ class TestProjectConfig(unittest.TestCase):
     
     def test_create_default_config(self):
         """测试创建默认配置"""
+# 文件：模块：test_project
+
         config = ProjectConfig()
         self.assertEqual(config.genre, GenreType.XUANHUAN)
         self.assertEqual(config.target_words, 8000000)
@@ -40,6 +45,8 @@ class TestProjectConfig(unittest.TestCase):
     
     def test_config_to_dict(self):
         """测试配置转字典"""
+# 文件：模块：test_project
+
         config = ProjectConfig(genre=GenreType.DUSHI, target_words=3000000)
         data = config.to_dict()
         self.assertEqual(data["genre"], "dushi")
@@ -69,6 +76,8 @@ class TestProject(unittest.TestCase):
     
     def test_create_project(self):
         """测试创建项目"""
+# 文件：模块：test_project
+
         self.assertEqual(str(self.project.id), "proj_001")
         self.assertEqual(self.project.name, "测试项目")
         self.assertEqual(str(self.project.novel_id), "novel_001")
@@ -81,6 +90,8 @@ class TestProject(unittest.TestCase):
     
     def test_archive_project(self):
         """测试归档项目"""
+# 文件：模块：test_project
+
         self.project.archive()
         self.assertEqual(self.project.status, ProjectStatus.ARCHIVED)
         self.assertTrue(self.project.is_archived())
@@ -94,6 +105,8 @@ class TestProject(unittest.TestCase):
     
     def test_activate_project(self):
         """测试激活项目"""
+# 文件：模块：test_project
+
         self.project.archive()
         self.project.activate()
         self.assertEqual(self.project.status, ProjectStatus.ACTIVE)
@@ -106,6 +119,8 @@ class TestProject(unittest.TestCase):
     
     def test_update_config(self):
         """测试更新配置"""
+# 文件：模块：test_project
+
         new_config = ProjectConfig(genre=GenreType.LISHI, target_words=4000000)
         self.project.update_config(new_config)
         self.assertEqual(self.project.config.genre, GenreType.LISHI)
@@ -118,6 +133,8 @@ class TestProject(unittest.TestCase):
     
     def test_update_empty_name(self):
         """测试更新空名称"""
+# 文件：模块：test_project
+
         with self.assertRaises(ValueError):
             self.project.update_name("")
         with self.assertRaises(ValueError):
@@ -133,6 +150,8 @@ class TestProject(unittest.TestCase):
     
     def test_project_from_dict(self):
         """测试从字典创建项目"""
+# 文件：模块：test_project
+
         data = {
             "id": "proj_002",
             "name": "字典项目",

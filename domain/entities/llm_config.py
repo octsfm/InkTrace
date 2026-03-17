@@ -4,6 +4,9 @@ LLM配置实体模块
 作者：孔利群
 """
 
+# 文件路径：domain/entities/llm_config.py
+
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -22,6 +25,8 @@ class LLMConfig:
     
     def __post_init__(self):
         """初始化后处理"""
+# 文件：模块：llm_config
+
         if self.created_at is None:
             self.created_at = datetime.now()
         if self.updated_at is None:
@@ -33,6 +38,8 @@ class LLMConfig:
     
     def has_valid_config(self) -> bool:
         """检查是否有有效配置"""
+# 文件：模块：llm_config
+
         return bool(self.deepseek_api_key.strip()) or bool(self.kimi_api_key.strip())
     
     def validate(self) -> bool:

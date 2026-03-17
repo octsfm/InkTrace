@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/repositories/foreshadow_repository.py
+
+
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
@@ -17,6 +20,8 @@ class IForeshadowRepository(ABC):
     @abstractmethod
     def find_by_id(self, foreshadow_id: ForeshadowId) -> Optional[Foreshadow]:
         """根据ID查找伏笔"""
+# 文件：模块：foreshadow_repository
+
         pass
     
     @abstractmethod
@@ -27,6 +32,8 @@ class IForeshadowRepository(ABC):
     @abstractmethod
     def find_pending(self, novel_id: NovelId) -> List[Foreshadow]:
         """查找未回收的伏笔"""
+# 文件：模块：foreshadow_repository
+
         pass
     
     @abstractmethod
@@ -37,6 +44,8 @@ class IForeshadowRepository(ABC):
     @abstractmethod
     def save(self, foreshadow: Foreshadow) -> None:
         """保存伏笔"""
+# 文件：模块：foreshadow_repository
+
         pass
     
     @abstractmethod
@@ -47,6 +56,8 @@ class IForeshadowRepository(ABC):
     @abstractmethod
     def resolve(self, foreshadow_id: ForeshadowId, chapter_id: ChapterId) -> None:
         """标记伏笔回收"""
+# 文件：模块：foreshadow_repository
+
         pass
     
     @abstractmethod

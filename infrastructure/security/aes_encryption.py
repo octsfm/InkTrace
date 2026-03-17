@@ -4,6 +4,9 @@ AES加密组件模块
 作者：孔利群
 """
 
+# 文件路径：infrastructure/security/aes_encryption.py
+
+
 import base64
 import os
 from typing import Optional
@@ -18,6 +21,8 @@ class AESEncryption:
     
     def __init__(self, salt: Optional[bytes] = None):
         """初始化加密组件"""
+# 文件：模块：aes_encryption
+
         self.salt = salt or b"inktrace_aes_salt"
     
     def derive_key(self, password: str) -> bytes:
@@ -32,6 +37,8 @@ class AESEncryption:
     
     def encrypt(self, plaintext: str, key: bytes) -> str:
         """加密文本"""
+# 文件：模块：aes_encryption
+
         if not plaintext:
             return ""
             
@@ -78,6 +85,8 @@ class AESEncryption:
     
     def generate_key(self) -> bytes:
         """生成随机加密密钥"""
+# 文件：模块：aes_encryption
+
         return os.urandom(32)
     
     def validate_key(self, key: bytes) -> bool:
@@ -86,6 +95,8 @@ class AESEncryption:
     
     def test_encryption(self, key: bytes) -> bool:
         """测试加密解密功能"""
+# 文件：模块：aes_encryption
+
         try:
             test_text = "test_encryption_validation"
             encrypted = self.encrypt(test_text, key)

@@ -4,6 +4,9 @@ Outline聚合根单元测试
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_outline.py
+
+
 import unittest
 from datetime import datetime
 
@@ -16,6 +19,8 @@ class TestOutline(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_outline
+
         self.outline_id = OutlineId("outline-001")
         self.novel_id = NovelId("novel-001")
         self.now = datetime.now()
@@ -37,6 +42,8 @@ class TestOutline(unittest.TestCase):
 
     def test_update_premise(self):
         """测试更新核心设定"""
+# 文件：模块：test_outline
+
         outline = Outline(
             id=self.outline_id,
             novel_id=self.novel_id,
@@ -72,6 +79,8 @@ class TestOutline(unittest.TestCase):
 
     def test_get_volume(self):
         """测试获取分卷"""
+# 文件：模块：test_outline
+
         outline = Outline(
             id=self.outline_id,
             novel_id=self.novel_id,
@@ -116,6 +125,8 @@ class TestOutline(unittest.TestCase):
 
     def test_add_sub_plot(self):
         """测试添加支线剧情"""
+# 文件：模块：test_outline
+
         outline = Outline(
             id=self.outline_id,
             novel_id=self.novel_id,
@@ -160,6 +171,8 @@ class TestOutline(unittest.TestCase):
 
     def test_get_plot_by_id(self):
         """测试根据ID获取剧情"""
+# 文件：模块：test_outline
+
         outline = Outline(
             id=self.outline_id,
             novel_id=self.novel_id,
@@ -197,6 +210,8 @@ class TestVolumeOutline(unittest.TestCase):
 
     def test_create_volume(self):
         """测试创建分卷"""
+# 文件：模块：test_outline
+
         volume = VolumeOutline(
             number=1,
             title="蓝星篇",
@@ -213,6 +228,8 @@ class TestPlotNode(unittest.TestCase):
 
     def test_create_plot_node(self):
         """测试创建剧情节点"""
+# 文件：模块：test_outline
+
         plot_node = PlotNode(
             id="plot-001",
             title="主角踏上修仙路",
@@ -245,6 +262,8 @@ class TestPlotNode(unittest.TestCase):
 
     def test_is_completed(self):
         """测试是否完成"""
+# 文件：模块：test_outline
+
         planned = PlotNode(
             id="plot-001",
             title="测试",

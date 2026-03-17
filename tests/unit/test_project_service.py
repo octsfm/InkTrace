@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：tests/unit/test_project_service.py
+
+
 import unittest
 from unittest.mock import MagicMock
 
@@ -16,6 +19,8 @@ class TestProjectService(unittest.TestCase):
 
     def setUp(self):
         """测试前置设置"""
+# 文件：模块：test_project_service
+
         self.mock_project_repo = MagicMock()
         self.mock_novel_repo = MagicMock()
         self.service = ProjectService(self.mock_project_repo, self.mock_novel_repo)
@@ -39,6 +44,8 @@ class TestProjectService(unittest.TestCase):
 
     def test_get_project(self):
         """测试获取项目"""
+# 文件：模块：test_project_service
+
         from domain.entities.project import Project, ProjectConfig
         from domain.types import ProjectId, NovelId
         
@@ -64,6 +71,8 @@ class TestProjectService(unittest.TestCase):
 
     def test_list_projects(self):
         """测试列出项目"""
+# 文件：模块：test_project_service
+
         self.mock_project_repo.find_all = MagicMock(return_value=[])
         
         projects = self.service.list_projects()
@@ -79,6 +88,8 @@ class TestProjectService(unittest.TestCase):
 
     def test_delete_project(self):
         """测试删除项目"""
+# 文件：模块：test_project_service
+
         from domain.entities.project import Project, ProjectConfig
         from domain.types import ProjectId, NovelId
         

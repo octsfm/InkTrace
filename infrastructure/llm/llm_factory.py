@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：infrastructure/llm/llm_factory.py
+
+
 import asyncio
 from typing import Optional
 from dataclasses import dataclass
@@ -27,6 +30,8 @@ class LLMConfig:
 
 class LLMFactory:
     """
+# 文件：模块：llm_factory
+
     大模型客户端工厂
     
     管理主备模型切换。
@@ -34,6 +39,8 @@ class LLMFactory:
 
     def __init__(self, config: LLMConfig):
         """
+# 文件：模块：llm_factory
+
         初始化工厂
         
         Args:
@@ -47,6 +54,8 @@ class LLMFactory:
     @property
     def primary_client(self) -> LLMClient:
         """获取主模型客户端"""
+# 文件：模块：llm_factory
+
         if self._primary_client is None:
             self._primary_client = DeepSeekClient(
                 api_key=self.config.deepseek_api_key,
@@ -68,6 +77,8 @@ class LLMFactory:
 
     async def get_client(self) -> LLMClient:
         """
+# 文件：模块：llm_factory
+
         获取可用客户端
         
         优先使用主模型，失败时切换备用模型。
@@ -85,6 +96,8 @@ class LLMFactory:
 
     async def switch_to_backup(self) -> LLMClient:
         """
+# 文件：模块：llm_factory
+
         切换到备用模型
         
         Returns:
@@ -95,6 +108,8 @@ class LLMFactory:
 
     async def reset_to_primary(self) -> LLMClient:
         """
+# 文件：模块：llm_factory
+
         重置为主模型
         
         Returns:

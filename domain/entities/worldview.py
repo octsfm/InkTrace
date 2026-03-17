@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/entities/worldview.py
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -41,6 +44,8 @@ class PowerSystem:
 @dataclass
 class Worldview:
     """世界观聚合根"""
+# 文件：模块：worldview
+
     id: WorldviewId
     novel_id: NovelId
     name: str = ""

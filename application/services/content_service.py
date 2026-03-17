@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：application/services/content_service.py
+
+
 import os
 from datetime import datetime
 from typing import List, Optional
@@ -56,6 +59,8 @@ class ContentService:
         Returns:
             小说响应
         """
+# 文件：模块：content_service
+
         novel = self.novel_repo.find_by_id(NovelId(request.novel_id))
         if not novel:
             raise ValueError(f"小说不存在: {request.novel_id}")
@@ -95,6 +100,8 @@ class ContentService:
         Returns:
             文风分析响应
         """
+# 文件：模块：content_service
+
         novel = self.novel_repo.find_by_id(NovelId(novel_id))
         if not novel:
             raise ValueError(f"小说不存在: {novel_id}")
@@ -123,6 +130,8 @@ class ContentService:
         Returns:
             剧情分析响应
         """
+# 文件：模块：content_service
+
         novel = self.novel_repo.find_by_id(NovelId(novel_id))
         if not novel:
             raise ValueError(f"小说不存在: {novel_id}")
@@ -136,6 +145,13 @@ class ContentService:
             timeline=analysis['timeline'],
             foreshadowings=analysis['foreshadowings']
         )
+
+    def get_novel_text(self, novel_id: str) -> str:
+        novel = self.novel_repo.find_by_id(NovelId(novel_id))
+        if not novel:
+            raise ValueError(f"小说不存在: {novel_id}")
+        chapters = self.chapter_repo.find_by_novel(novel.id)
+        return "\n\n".join([chapter.content for chapter in chapters if chapter.content])
 
     def _nov_to_response(self, novel: Novel) -> NovelResponse:
         """将小说实体转换为响应"""

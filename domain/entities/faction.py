@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/entities/faction.py
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List
@@ -37,6 +40,8 @@ class FactionRelation:
 @dataclass
 class Faction:
     """势力实体"""
+# 文件：模块：faction
+
     id: FactionId
     novel_id: NovelId
     name: str

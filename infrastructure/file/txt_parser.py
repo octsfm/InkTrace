@@ -4,6 +4,9 @@ TXT文件解析器模块
 作者：孔利群
 """
 
+# 文件路径：infrastructure/file/txt_parser.py
+
+
 import re
 import os
 from typing import List, Dict, Optional, Tuple
@@ -21,6 +24,8 @@ class ChapterData:
 
 class TxtParser:
     """
+# 文件：模块：txt_parser
+
     TXT文件解析器
     
     用于解析小说TXT文件，自动识别章节结构。
@@ -39,6 +44,8 @@ class TxtParser:
 
     def detect_chapter_pattern(self, filepath: str) -> Optional[re.Pattern]:
         """
+# 文件：模块：txt_parser
+
         检测章节标题模式
         
         Args:
@@ -59,6 +66,8 @@ class TxtParser:
 
     def parse_chapters(self, filepath: str) -> List[Dict]:
         """
+# 文件：模块：txt_parser
+
         解析章节
         
         Args:
@@ -98,6 +107,8 @@ class TxtParser:
 
     def parse_novel_file(self, filepath: str) -> Dict:
         """
+# 文件：模块：txt_parser
+
         解析小说文件
         
         Args:
@@ -129,6 +140,8 @@ class TxtParser:
 
     def parse_outline_file(self, filepath: str) -> Dict:
         """
+# 文件：模块：txt_parser
+
         解析大纲文件
         
         Args:
@@ -191,6 +204,8 @@ class TxtParser:
 
     def extract_sections(self, content: str) -> List[Dict]:
         """
+# 文件：模块：txt_parser
+
         提取章节内容
         
         Args:
@@ -227,6 +242,8 @@ class TxtParser:
 
     def count_words(self, text: str) -> int:
         """
+# 文件：模块：txt_parser
+
         统计字数
         
         Args:
@@ -240,6 +257,8 @@ class TxtParser:
 
     def _extract_chapter_number(self, title_line: str) -> int:
         """
+# 文件：模块：txt_parser
+
         提取章节号
         
         Args:
@@ -280,6 +299,8 @@ class TxtParser:
 
     def _extract_chapter_title(self, title_line: str) -> str:
         """
+# 文件：模块：txt_parser
+
         提取章节标题
         
         Args:

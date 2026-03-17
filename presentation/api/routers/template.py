@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：presentation/api/routers/template.py
+
+
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -60,6 +63,8 @@ def list_templates(
 @router.get("/builtin", response_model=List[TemplateResponse])
 def list_builtin_templates(service: TemplateService = Depends(get_template_service)):
     """获取内置模板列表"""
+# 文件：模块：template
+
     templates = service.list_builtin_templates()
     return [_template_to_response(t) for t in templates]
 
@@ -74,6 +79,8 @@ def list_custom_templates(service: TemplateService = Depends(get_template_servic
 @router.get("/{template_id}", response_model=TemplateDetailResponse)
 def get_template(template_id: str, service: TemplateService = Depends(get_template_service)):
     """获取模板详情"""
+# 文件：模块：template
+
     template = service.get_template(TemplateId(template_id))
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
@@ -106,6 +113,8 @@ def apply_template(
     service: TemplateService = Depends(get_template_service)
 ):
     """将模板应用到项目"""
+# 文件：模块：template
+
     try:
         project = service.apply_template_to_project(
             TemplateId(template_id),

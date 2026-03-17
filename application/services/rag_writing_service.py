@@ -4,6 +4,9 @@ RAG续写服务
 作者：孔利群
 """
 
+# 文件路径：application/services/rag_writing_service.py
+
+
 from typing import Optional
 
 from domain.repositories.vector_repository import IVectorRepository
@@ -43,6 +46,8 @@ class RAGWritingService:
         target_words: int = 2100
     ) -> Chapter:
         """使用RAG增强续写章节"""
+# 文件：模块：rag_writing_service
+
         novel = self.novel_repo.find_by_id(novel_id)
         if not novel:
             raise ValueError(f"小说不存在: {novel_id}")
@@ -98,6 +103,8 @@ class RAGWritingService:
         target_words: int
     ) -> str:
         """构建续写Prompt"""
+# 文件：模块：rag_writing_service
+
         parts = []
         
         parts.append(f"你是一位专业的小说作家，请根据以下信息续写小说章节。\n")

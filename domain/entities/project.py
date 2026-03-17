@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：domain/entities/project.py
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -19,6 +22,7 @@ class ProjectConfig:
     chapter_words: int = 2100
     style_intensity: float = 0.8
     check_consistency: bool = True
+    memory: dict = field(default_factory=dict)
     
     def to_dict(self) -> dict:
         return {
@@ -26,7 +30,8 @@ class ProjectConfig:
             "target_words": self.target_words,
             "chapter_words": self.chapter_words,
             "style_intensity": self.style_intensity,
-            "check_consistency": self.check_consistency
+            "check_consistency": self.check_consistency,
+            "memory": self.memory
         }
     
     @classmethod
@@ -36,13 +41,16 @@ class ProjectConfig:
             target_words=data.get("target_words", 8000000),
             chapter_words=data.get("chapter_words", 2100),
             style_intensity=data.get("style_intensity", 0.8),
-            check_consistency=data.get("check_consistency", True)
+            check_consistency=data.get("check_consistency", True),
+            memory=data.get("memory", {}) or {}
         )
 
 
 @dataclass
 class Project:
     """项目实体"""
+# 文件：模块：project
+
     id: ProjectId
     name: str
     novel_id: NovelId

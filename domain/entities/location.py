@@ -1,8 +1,12 @@
+# 文件：模块：location
 """
 地点实体
 
 作者：孔利群
 """
+
+# 文件路径：domain/entities/location.py
+
 
 from dataclasses import dataclass, field
 from datetime import datetime

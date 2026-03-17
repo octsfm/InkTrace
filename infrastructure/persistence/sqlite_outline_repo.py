@@ -4,6 +4,9 @@ SQLite大纲仓储实现
 作者：孔利群
 """
 
+# 文件路径：infrastructure/persistence/sqlite_outline_repo.py
+
+
 import sqlite3
 import json
 from typing import Optional
@@ -19,6 +22,8 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def __init__(self, db_path: str):
         """
+# 文件：模块：sqlite_outline_repo
+
         初始化仓储
         
         Args:
@@ -29,6 +34,8 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def _init_db(self):
         """初始化数据库表"""
+# 文件：模块：sqlite_outline_repo
+
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS outlines (
@@ -50,6 +57,8 @@ class SQLiteOutlineRepository(IOutlineRepository):
         """保存大纲"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('''
+# 文件：模块：sqlite_outline_repo
+
                 INSERT OR REPLACE INTO outlines 
                 (id, novel_id, premise, story_background, world_setting, main_plots, sub_plots, volumes, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -68,6 +77,8 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def find_by_id(self, outline_id: OutlineId) -> Optional[Outline]:
         """根据ID查找大纲"""
+# 文件：模块：sqlite_outline_repo
+
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
@@ -96,6 +107,8 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def delete(self, outline_id: OutlineId) -> None:
         """删除大纲"""
+# 文件：模块：sqlite_outline_repo
+
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('DELETE FROM outlines WHERE id = ?', (outline_id.value,))
 
@@ -131,6 +144,8 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def _plot_node_to_dict(self, node: PlotNode) -> dict:
         """将剧情节点转换为字典"""
+# 文件：模块：sqlite_outline_repo
+
         return {
             'id': node.id,
             'title': node.title,
@@ -159,6 +174,8 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def _volume_to_dict(self, volume: VolumeOutline) -> dict:
         """将分卷转换为字典"""
+# 文件：模块：sqlite_outline_repo
+
         return {
             'number': volume.number,
             'title': volume.title,

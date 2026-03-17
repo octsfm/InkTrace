@@ -23,7 +23,7 @@
         <el-table-column prop="status" label="状态">
           <template #default="{ row }">
             <el-tag :type="row.status === 'active' ? 'success' : 'info'">
-              {{ row.status === 'active' ? '进行中' : '已归档' }}
+              {{ row.status === 'active' ? '创作中' : '已归档' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -42,7 +42,7 @@
       </el-table>
     </el-card>
     
-    <el-dialog v-model="createDialogVisible" title="新建项目" width="500px">
+    <el-dialog v-model="createDialogVisible" title="创建小说" width="620px">
       <el-form :model="createForm" label-width="80px">
         <el-form-item label="项目名称" required>
           <el-input v-model="createForm.name" placeholder="请输入项目名称" />
@@ -63,12 +63,34 @@
           <el-input-number v-model="createForm.target_words" :min="100000" :max="50000000" :step="100000" />
           <span style="margin-left: 10px;">{{ (createForm.target_words / 10000).toFixed(0) }}万字</span>
         </el-form-item>
+        <el-form-item label="风格" required>
+          <el-input v-model="createForm.style" placeholder="如：热血、悬疑、克制、轻松" />
+        </el-form-item>
+        <el-form-item label="主角设定" required>
+          <el-input
+            v-model="createForm.protagonist_setting"
+            type="textarea"
+            :rows="3"
+            placeholder="如：林渊，十七岁，冷静坚韧，背负家族秘密"
+          />
+        </el-form-item>
+        <el-form-item label="世界观">
+          <el-input
+            v-model="createForm.worldview"
+            type="textarea"
+            :rows="3"
+            placeholder="可选，如：灵气复苏后的多势力世界"
+          />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="createProject" :loading="creating">创建</el-button>
+        <el-button type="primary" @click="createProject" :loading="creating">
+          {{ creating ? '正在创作...' : '创建并生成' }}
+        </el-button>
       </template>
     </el-dialog>
+
   </div>
 </template>
 
@@ -76,6 +98,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/api'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const projects = ref([])
@@ -103,8 +126,8 @@ const genreMap = {
 const loadProjects = async () => {
   loading.value = true
   try {
-    const res = await api.get('/api/projects')
-    projects.value = res.data
+    const res = await api.get('/projects')
+    projects.value = res
   } catch (error) {
     console.error('加载项目列表失败:', error)
   } finally {
@@ -116,20 +139,37 @@ const showCreateDialog = () => {
   createForm.value = {
     name: '',
     genre: 'xuanhuan',
-    target_words: 8000000
+    target_words: 8000000,
+    style: '',
+    protagonist_setting: '',
+    worldview: ''
   }
   createDialogVisible.value = true
 }
 
 const createProject = async () => {
-  if (!createForm.value.name) {
+  if (!createForm.value.name || !createForm.value.style || !createForm.value.protagonist_setting) {
+    ElMessage.warning('请填写名称、风格和主角设定')
     return
   }
   creating.value = true
   try {
-    await api.post('/api/projects', createForm.value)
+    const res = await api.post('/projects', createForm.value)
     createDialogVisible.value = false
-    loadProjects()
+    sessionStorage.setItem(
+      'inktrace_continue_hint',
+      JSON.stringify({
+        novelId: res?.project?.novel_id,
+        message: '已生成第一章，是否继续创作第二章？',
+        defaultGoal: '第2章：承接第一章并推进主线',
+        firstChapter: res?.first_chapter || null
+      })
+    )
+    ElMessage.success('创建完成，正在进入创作...')
+    await loadProjects()
+    if (res?.project?.novel_id) {
+      router.push(`/novel/${res.project.novel_id}/write?auto_continue=1&default_goal=${encodeURIComponent('第2章：承接第一章并推进主线')}`)
+    }
   } catch (error) {
     console.error('创建项目失败:', error)
   } finally {
@@ -138,12 +178,13 @@ const createProject = async () => {
 }
 
 const enterProject = (project) => {
+  if (!project) return
   router.push(`/novel/${project.novel_id}`)
 }
 
 const archiveProject = async (project) => {
   try {
-    await api.post(`/api/projects/${project.id}/archive`)
+    await api.post(`/projects/${project.id}/archive`)
     loadProjects()
   } catch (error) {
     console.error('归档失败:', error)
@@ -152,7 +193,7 @@ const archiveProject = async (project) => {
 
 const deleteProject = async (project) => {
   try {
-    await api.delete(`/api/projects/${project.id}`)
+    await api.delete(`/projects/${project.id}`)
     loadProjects()
   } catch (error) {
     console.error('删除失败:', error)
@@ -180,4 +221,5 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
 }
+
 </style>

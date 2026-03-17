@@ -4,6 +4,9 @@ LLM配置仓储接口模块
 作者：孔利群
 """
 
+# 文件路径：domain/repositories/llm_config_repository.py
+
+
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -16,6 +19,8 @@ class ILLMConfigRepository(ABC):
     @abstractmethod
     def save(self, config: LLMConfig) -> LLMConfig:
         """
+# 文件：模块：llm_config_repository
+
         保存配置
         
         Args:
@@ -29,6 +34,8 @@ class ILLMConfigRepository(ABC):
     @abstractmethod
     def get(self) -> Optional[LLMConfig]:
         """
+# 文件：模块：llm_config_repository
+
         获取配置
         
         Returns:
@@ -39,6 +46,8 @@ class ILLMConfigRepository(ABC):
     @abstractmethod
     def delete(self) -> bool:
         """
+# 文件：模块：llm_config_repository
+
         删除配置
         
         Returns:
@@ -49,6 +58,8 @@ class ILLMConfigRepository(ABC):
     @abstractmethod
     def exists(self) -> bool:
         """
+# 文件：模块：llm_config_repository
+
         检查配置是否存在
         
         Returns:

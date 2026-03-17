@@ -4,6 +4,9 @@ Character实体模块
 作者：孔利群
 """
 
+# 文件路径：domain/entities/character.py
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
@@ -19,6 +22,8 @@ class CharacterRelation:
     
     表示两个人物之间的详细关系。
     """
+# 文件：模块：character
+
     target_id: CharacterId
     relation_type: RelationType
     description: str = ""
@@ -49,6 +54,8 @@ class CharacterRelationship:
     
     表示两个人物之间的关系。
     """
+# 文件：模块：character
+
     target_id: CharacterId
     relation_type: str
     description: str = ""
@@ -61,6 +68,8 @@ class Character:
     
     表示小说中的一个人物，包含基本信息、能力、关系和状态。
     """
+# 文件：模块：character
+
     id: CharacterId
     novel_id: NovelId
     name: str
@@ -95,6 +104,8 @@ class Character:
 
     def add_alias(self, alias: str, updated_at: datetime = None) -> None:
         """添加别名"""
+# 文件：模块：character
+
         if alias not in self.aliases:
             self.aliases.append(alias)
             self.updated_at = updated_at or datetime.now()
@@ -111,6 +122,8 @@ class Character:
         updated_at: datetime = None
     ) -> None:
         """添加人物关系"""
+# 文件：模块：character
+
         existing = self.get_relationship(relationship.target_id)
         if existing:
             self.relationships.remove(existing)
@@ -129,6 +142,8 @@ class Character:
 
     def update_state(self, new_state: str, updated_at: datetime = None) -> None:
         """更新人物状态"""
+# 文件：模块：character
+
         if self.current_state:
             self.state_history.append(self.current_state)
         self.current_state = new_state
@@ -147,6 +162,8 @@ class Character:
 
     def add_technique(self, technique_id: TechniqueId, updated_at: datetime = None) -> None:
         """添加功法"""
+# 文件：模块：character
+
         if technique_id not in self.techniques:
             self.techniques.append(technique_id)
             self.updated_at = updated_at or datetime.now()
@@ -159,6 +176,8 @@ class Character:
 
     def set_faction(self, faction_id: FactionId, updated_at: datetime = None) -> None:
         """设置所属势力"""
+# 文件：模块：character
+
         self.faction_id = faction_id
         self.updated_at = updated_at or datetime.now()
 
@@ -172,6 +191,8 @@ class Character:
 
     def get_detailed_relation(self, target_id: CharacterId) -> Optional[CharacterRelation]:
         """获取详细人物关系"""
+# 文件：模块：character
+
         for rel in self.detailed_relations:
             if rel.target_id == target_id:
                 return rel
@@ -186,6 +207,8 @@ class Character:
 
     def to_dict(self) -> dict:
         """转换为字典"""
+# 文件：模块：character
+
         return {
             "id": str(self.id),
             "novel_id": str(self.novel_id),

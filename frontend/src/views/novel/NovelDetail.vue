@@ -11,7 +11,7 @@
       <div class="header-right">
         <el-button type="primary" @click="$router.push(`/novel/${$route.params.id}/write`)">
           <el-icon><Edit /></el-icon>
-          续写小说
+          继续创作
         </el-button>
       </div>
     </div>
@@ -44,23 +44,23 @@
         <el-card class="analysis-card">
           <template #header>
             <div class="card-header">
-              <span>分析工具</span>
+              <span>创作操作</span>
             </div>
           </template>
           
           <el-row :gutter="20">
             <el-col :span="8">
-              <el-card shadow="hover" class="tool-card" @click="analyzeStyle">
+              <el-card shadow="hover" class="tool-card" @click="organizeStory">
                 <el-icon class="tool-icon"><Reading /></el-icon>
-                <div class="tool-name">文风分析</div>
-                <div class="tool-desc">分析词汇、句式、修辞</div>
+                <div class="tool-name">整理故事结构</div>
+                <div class="tool-desc">按当前内容整理人物、设定与主线</div>
               </el-card>
             </el-col>
             <el-col :span="8">
-              <el-card shadow="hover" class="tool-card" @click="analyzePlot">
+              <el-card shadow="hover" class="tool-card" @click="$router.push(`/novel/${$route.params.id}/write`)">
                 <el-icon class="tool-icon"><Connection /></el-icon>
-                <div class="tool-name">剧情分析</div>
-                <div class="tool-desc">人物、时间线、伏笔</div>
+                <div class="tool-name">继续创作</div>
+                <div class="tool-desc">基于既有设定延展下一章</div>
               </el-card>
             </el-col>
             <el-col :span="8">
@@ -71,6 +71,42 @@
               </el-card>
             </el-col>
           </el-row>
+        </el-card>
+
+        <el-card class="memory-card">
+          <template #header>
+            <span>小说结构摘要</span>
+          </template>
+          <div v-if="memoryLoading" class="loading">
+            <el-skeleton :rows="4" animated />
+          </div>
+          <el-collapse v-else v-model="memoryCollapse">
+            <el-collapse-item title="人物（主角与关键配角）" name="characters">
+              <div v-if="memoryCharacters.length === 0" class="empty-text">暂无数据</div>
+              <div v-else class="memory-list">
+                <div v-for="(item, index) in memoryCharacters" :key="item.name || index" class="memory-item">
+                  <strong>{{ index === 0 ? '主角' : '配角' }}：{{ item.name || '未命名' }}</strong>
+                  <span> - {{ item.brief || '暂无描述' }}</span>
+                </div>
+              </div>
+            </el-collapse-item>
+            <el-collapse-item title="世界观（背景设定）" name="world">
+              <div v-if="!worldSettingSummary" class="empty-text">暂无数据</div>
+              <div v-else class="summary-text">{{ worldSettingSummary }}</div>
+            </el-collapse-item>
+            <el-collapse-item title="剧情主线" name="plot">
+              <div v-if="plotOutline.length === 0" class="empty-text">暂无数据</div>
+              <ul v-else class="plot-list">
+                <li v-for="(item, index) in plotOutline" :key="index">{{ item }}</li>
+              </ul>
+            </el-collapse-item>
+            <el-collapse-item title="写作风格" name="style">
+              <div v-if="styleTags.length === 0" class="empty-text">暂无数据</div>
+              <div v-else class="style-tags">
+                <el-tag v-for="(tag, index) in styleTags" :key="index" type="success">{{ tag }}</el-tag>
+              </div>
+            </el-collapse-item>
+          </el-collapse>
         </el-card>
       </el-col>
       
@@ -146,7 +182,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { novelApi, contentApi, exportApi } from '@/api'
@@ -159,6 +195,46 @@ const styleDialogVisible = ref(false)
 const plotDialogVisible = ref(false)
 const styleResult = ref(null)
 const plotResult = ref(null)
+const memoryData = ref({})
+const memoryLoading = ref(false)
+const memoryCollapse = ref(['characters', 'world', 'plot', 'style'])
+
+const memoryCharacters = computed(() => {
+  const source = memoryData.value?.characters || []
+  return source.slice(0, 5).map((item) => {
+    const traits = (item?.traits || []).slice(0, 3).join('、')
+    return {
+      name: item?.name || '',
+      brief: traits || '暂无性格标签'
+    }
+  })
+})
+
+const worldSettingSummary = computed(() => {
+  const source = memoryData.value?.world_settings || []
+  const text = source.map((item) => String(item)).join('；')
+  return text ? text.slice(0, 200) : ''
+})
+
+const plotOutline = computed(() => {
+  const explicitOutline = memoryData.value?.plot_outline || []
+  if (explicitOutline.length > 0) {
+    return explicitOutline.map((item) => String(item)).slice(0, 8)
+  }
+  const threads = memoryData.value?.plot_threads || []
+  return threads.map((item) => {
+    if (typeof item === 'string') return item
+    const title = item?.title || ''
+    const points = item?.points || []
+    const tail = points.length ? points[points.length - 1] : ''
+    return tail ? `${title}：${tail}` : title
+  }).filter(Boolean).slice(0, 8)
+})
+
+const styleTags = computed(() => {
+  const style = memoryData.value?.writing_style || memoryData.value?.style_profile || {}
+  return [style.tone, style.pacing, style.narrative_style].filter((item) => !!item)
+})
 
 const loadNovel = async () => {
   try {
@@ -168,6 +244,19 @@ const loadNovel = async () => {
     console.error('加载小说失败:', error)
   } finally {
     loading.value = false
+  }
+}
+
+const loadMemory = async () => {
+  memoryLoading.value = true
+  try {
+    const res = await contentApi.memory(route.params.id)
+    memoryData.value = res?.memory || {}
+  } catch (error) {
+    memoryData.value = {}
+    console.error('加载memory失败:', error)
+  } finally {
+    memoryLoading.value = false
   }
 }
 
@@ -217,8 +306,20 @@ const exportNovel = async () => {
   }
 }
 
+const organizeStory = async () => {
+  try {
+    ElMessage.info('正在整理故事结构...')
+    await contentApi.organize(route.params.id)
+    await loadMemory()
+    ElMessage.success('故事结构已更新')
+  } catch (error) {
+    console.error('整理失败:', error)
+  }
+}
+
 onMounted(() => {
   loadNovel()
+  loadMemory()
 })
 </script>
 
@@ -235,6 +336,7 @@ onMounted(() => {
 
 .info-card,
 .analysis-card,
+.memory-card,
 .chapters-card {
   margin-bottom: 20px;
 }
@@ -295,5 +397,35 @@ onMounted(() => {
 
 .loading {
   padding: 20px;
+}
+
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memory-item {
+  line-height: 1.6;
+}
+
+.summary-text {
+  line-height: 1.8;
+}
+
+.plot-list {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.8;
+}
+
+.style-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.empty-text {
+  color: #909399;
 }
 </style>

@@ -4,6 +4,9 @@
 作者：孔利群
 """
 
+# 文件路径：application/services/worldview_service.py
+
+
 from typing import Optional, List
 import uuid
 
@@ -32,6 +35,8 @@ class WorldviewService:
     
     def get_or_create_worldview(self, novel_id: NovelId) -> Worldview:
         """获取或创建世界观"""
+# 文件：模块：worldview_service
+
         worldview = self.worldview_repo.find_by_novel_id(novel_id)
         if not worldview:
             worldview = Worldview(
@@ -47,6 +52,8 @@ class WorldviewService:
     
     def get_worldview_by_novel(self, novel_id: NovelId) -> Optional[Worldview]:
         """根据小说ID获取世界观"""
+# 文件：模块：worldview_service
+
         return self.worldview_repo.find_by_novel_id(novel_id)
     
     def update_power_system(
@@ -73,6 +80,8 @@ class WorldviewService:
         requirement: str = ""
     ) -> Technique:
         """创建功法"""
+# 文件：模块：worldview_service
+
         technique = Technique(
             id=TechniqueId(str(uuid.uuid4())),
             novel_id=novel_id,
@@ -91,6 +100,8 @@ class WorldviewService:
     
     def list_techniques(self, novel_id: NovelId) -> List[Technique]:
         """获取功法列表"""
+# 文件：模块：worldview_service
+
         return self.worldview_repo.find_techniques_by_novel(novel_id)
     
     def delete_technique(self, technique_id: TechniqueId) -> None:
@@ -108,6 +119,8 @@ class WorldviewService:
         leader: str = ""
     ) -> Faction:
         """创建势力"""
+# 文件：模块：worldview_service
+
         faction = Faction(
             id=FactionId(str(uuid.uuid4())),
             novel_id=novel_id,
@@ -126,6 +139,8 @@ class WorldviewService:
     
     def list_factions(self, novel_id: NovelId) -> List[Faction]:
         """获取势力列表"""
+# 文件：模块：worldview_service
+
         return self.worldview_repo.find_factions_by_novel(novel_id)
     
     def delete_faction(self, faction_id: FactionId) -> None:
@@ -142,6 +157,8 @@ class WorldviewService:
         parent_id: Optional[LocationId] = None
     ) -> Location:
         """创建地点"""
+# 文件：模块：worldview_service
+
         location = Location(
             id=LocationId(str(uuid.uuid4())),
             novel_id=novel_id,
@@ -159,6 +176,8 @@ class WorldviewService:
     
     def list_locations(self, novel_id: NovelId) -> List[Location]:
         """获取地点列表"""
+# 文件：模块：worldview_service
+
         return self.worldview_repo.find_locations_by_novel(novel_id)
     
     def delete_location(self, location_id: LocationId) -> None:
@@ -176,6 +195,8 @@ class WorldviewService:
         rarity: str = ""
     ) -> Item:
         """创建物品"""
+# 文件：模块：worldview_service
+
         item = Item(
             id=ItemId(str(uuid.uuid4())),
             novel_id=novel_id,
@@ -194,6 +215,8 @@ class WorldviewService:
     
     def list_items(self, novel_id: NovelId) -> List[Item]:
         """获取物品列表"""
+# 文件：模块：worldview_service
+
         return self.worldview_repo.find_items_by_novel(novel_id)
     
     def delete_item(self, item_id: ItemId) -> None:
@@ -203,6 +226,8 @@ class WorldviewService:
     # 一致性检查
     def check_consistency(self, novel_id: NovelId) -> List[ConsistencyIssue]:
         """检查世界观一致性"""
+# 文件：模块：worldview_service
+
         worldview = self.worldview_repo.find_by_novel_id(novel_id)
         if not worldview:
             return []
