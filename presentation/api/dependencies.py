@@ -1,4 +1,3 @@
-# 文件：模块：dependencies
 """
 API依赖注入模块
 
@@ -10,6 +9,7 @@ API依赖注入模块
 
 from functools import lru_cache
 import os
+import logging
 
 from domain.repositories.novel_repository import INovelRepository
 from domain.repositories.chapter_repository import IChapterRepository
@@ -19,6 +19,7 @@ from domain.repositories.project_repository import IProjectRepository
 from domain.repositories.template_repository import ITemplateRepository
 from domain.repositories.worldview_repository import IWorldviewRepository
 from domain.repositories.vector_repository import IVectorRepository
+from domain.repositories.llm_config_repository import ILLMConfigRepository
 from infrastructure.persistence.sqlite_novel_repo import SQLiteNovelRepository
 from infrastructure.persistence.sqlite_chapter_repo import SQLiteChapterRepository
 from infrastructure.persistence.sqlite_character_repo import SQLiteCharacterRepository
@@ -27,6 +28,7 @@ from infrastructure.persistence.sqlite_project_repo import SQLiteProjectReposito
 from infrastructure.persistence.sqlite_template_repo import SQLiteTemplateRepository
 from infrastructure.persistence.sqlite_worldview_repo import SQLiteWorldviewRepository
 from infrastructure.persistence.chromadb_vector_repo import ChromaDBVectorRepository
+from infrastructure.persistence.sqlite_llm_config_repo import SQLiteLLMConfigRepository
 from infrastructure.file.txt_parser import TxtParser
 from infrastructure.llm.llm_factory import LLMFactory, LLMConfig
 from domain.services.worldview_checker import WorldviewChecker
@@ -40,11 +42,14 @@ from application.services.character_service import CharacterService
 from application.services.worldview_service import WorldviewService
 from application.services.vector_index_service import VectorIndexService
 from application.services.rag_retrieval_service import RAGRetrievalService
+from application.services.config_service import ConfigService
 
 
 DB_PATH = os.environ.get("INKTRACE_DB_PATH", "data/inktrace.db")
 TEMPLATES_DIR = os.environ.get("INKTRACE_TEMPLATES_DIR", "infrastructure/templates")
 CHROMA_DIR = os.environ.get("INKTRACE_CHROMA_DIR", "data/chroma")
+
+ENCRYPTION_KEY = b"inktrace_default_encryption_key_32bytes!"[:32]
 
 
 @lru_cache()
@@ -96,15 +101,58 @@ def get_vector_repo() -> IVectorRepository:
 
 
 @lru_cache()
+def get_llm_config_repo() -> ILLMConfigRepository:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    return SQLiteLLMConfigRepository(DB_PATH)
+
+
+@lru_cache()
 def get_txt_parser() -> TxtParser:
     return TxtParser()
 
 
 @lru_cache()
+def get_config_service() -> ConfigService:
+    return ConfigService(get_llm_config_repo(), ENCRYPTION_KEY)
+
+
+def _get_api_keys() -> tuple:
+    """
+    获取API密钥
+    
+    优先从数据库读取，环境变量作为fallback
+    
+    Returns:
+        (deepseek_api_key, kimi_api_key)
+    """
+    logger = logging.getLogger(__name__)
+    config_service = get_config_service()
+    
+    try:
+        decrypted = config_service.get_decrypted_config()
+        if decrypted:
+            deepseek_key, kimi_key = decrypted
+            logger.info(f"[API Keys] 从数据库获取成功, DeepSeek前4位: {deepseek_key[:4] if deepseek_key else 'N/A'}, Kimi前4位: {kimi_key[:4] if kimi_key else 'N/A'}")
+            return deepseek_key, kimi_key
+    except Exception as e:
+        logger.warning(f"[API Keys] 从数据库获取失败: {e}")
+    
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    kimi_key = os.environ.get("KIMI_API_KEY", "")
+    logger.info(f"[API Keys] 从环境变量获取, DeepSeek前4位: {deepseek_key[:4] if deepseek_key else 'N/A'}, Kimi前4位: {kimi_key[:4] if kimi_key else 'N/A'}")
+    
+    return deepseek_key, kimi_key
+
+
 def get_llm_factory() -> LLMFactory:
+    logger = logging.getLogger(__name__)
+    deepseek_key, kimi_key = _get_api_keys()
+    
+    logger.info(f"[LLM Factory] 创建LLMFactory, DeepSeek Key长度: {len(deepseek_key)}, Kimi Key长度: {len(kimi_key)}")
+    
     config = LLMConfig(
-        deepseek_api_key=os.environ.get("DEEPSEEK_API_KEY", ""),
-        kimi_api_key=os.environ.get("KIMI_API_KEY", "")
+        deepseek_api_key=deepseek_key,
+        kimi_api_key=kimi_key
     )
     return LLMFactory(config)
 

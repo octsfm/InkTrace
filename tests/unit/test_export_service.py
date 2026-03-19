@@ -1,0 +1,157 @@
+"""
+导出服务单元测试
+
+作者：孔利群
+"""
+
+import pytest
+import os
+import tempfile
+from unittest.mock import Mock, MagicMock, patch
+from datetime import datetime
+
+from application.services.export_service import ExportService
+from application.dto.request_dto import ExportNovelRequest
+from domain.entities.novel import Novel
+from domain.entities.chapter import Chapter
+from domain.types import NovelId, ChapterId, ChapterStatus
+
+
+class TestExportService:
+    """导出服务测试"""
+    
+    def setup_method(self):
+        """测试前准备"""
+        self.mock_novel_repo = Mock()
+        self.mock_chapter_repo = Mock()
+        self.service = ExportService(self.mock_novel_repo, self.mock_chapter_repo)
+    
+    def create_test_novel(self):
+        """创建测试用小说"""
+        return Novel(
+            id=NovelId("novel_001"),
+            title="测试小说",
+            author="测试作者",
+            genre="玄幻",
+            target_word_count=100000,
+            current_word_count=5000,
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+    
+    def create_test_chapters(self, novel_id):
+        """创建测试用章节"""
+        chapters = []
+        for i in range(1, 4):
+            chapter = Chapter(
+                id=ChapterId(f"chapter_{i:03d}"),
+                novel_id=novel_id,
+                number=i,
+                title=f"第{i}章 测试章节",
+                content=f"这是第{i}章的内容。" * 100,
+                status=ChapterStatus.PUBLISHED,
+                created_at=datetime.now(),
+                updated_at=datetime.now()
+            )
+            chapters.append(chapter)
+        return chapters
+    
+    def test_export_novel_markdown(self):
+        """测试导出小说为Markdown"""
+        novel = self.create_test_novel()
+        chapters = self.create_test_chapters(novel.id)
+        
+        self.mock_novel_repo.find_by_id.return_value = novel
+        self.mock_chapter_repo.find_by_novel.return_value = chapters
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "test_export.md")
+            request = ExportNovelRequest(
+                novel_id="novel_001",
+                output_path=output_path,
+                format="markdown"
+            )
+            
+            result = self.service.export_novel(request)
+            
+            assert result.file_path == output_path
+            assert result.format == "markdown"
+            assert result.chapter_count == 3
+            self.mock_novel_repo.find_by_id.assert_called_once()
+            self.mock_chapter_repo.find_by_novel.assert_called_once()
+    
+    def test_export_novel_not_found(self):
+        """测试导出不存在的小说"""
+        self.mock_novel_repo.find_by_id.return_value = None
+        
+        request = ExportNovelRequest(
+            novel_id="novel_999",
+            output_path="/tmp/test.md",
+            format="markdown"
+        )
+        
+        with pytest.raises(ValueError, match="小说不存在"):
+            self.service.export_novel(request)
+    
+    def test_export_novel_unsupported_format(self):
+        """测试导出不支持的格式"""
+        novel = self.create_test_novel()
+        chapters = self.create_test_chapters(novel.id)
+        
+        self.mock_novel_repo.find_by_id.return_value = novel
+        self.mock_chapter_repo.find_by_novel.return_value = chapters
+        
+        request = ExportNovelRequest(
+            novel_id="novel_001",
+            output_path="/tmp/test.pdf",
+            format="pdf"  # 不支持的格式
+        )
+        
+        with pytest.raises(ValueError, match="不支持的导出格式"):
+            self.service.export_novel(request)
+    
+    def test_export_novel_empty_chapters(self):
+        """测试导出没有章节的小说"""
+        novel = self.create_test_novel()
+        
+        self.mock_novel_repo.find_by_id.return_value = novel
+        self.mock_chapter_repo.find_by_novel.return_value = []
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "test_empty.md")
+            request = ExportNovelRequest(
+                novel_id="novel_001",
+                output_path=output_path,
+                format="markdown"
+            )
+            
+            result = self.service.export_novel(request)
+            
+            assert result.chapter_count == 0
+    
+    def test_export_novel_creates_directory(self):
+        """测试导出时创建目录"""
+        novel = self.create_test_novel()
+        chapters = self.create_test_chapters(novel.id)
+        
+        self.mock_novel_repo.find_by_id.return_value = novel
+        self.mock_chapter_repo.find_by_novel.return_value = chapters
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 创建一个不存在的子目录路径
+            output_dir = os.path.join(tmpdir, "subdir1", "subdir2")
+            output_path = os.path.join(output_dir, "test_export.md")
+            
+            request = ExportNovelRequest(
+                novel_id="novel_001",
+                output_path=output_path,
+                format="markdown"
+            )
+            
+            result = self.service.export_novel(request)
+            
+            assert os.path.exists(output_dir)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -31,6 +31,22 @@ class TxtParser:
     用于解析小说TXT文件，自动识别章节结构。
     """
 
+    READ_ENCODINGS = ["utf-8", "utf-8-sig", "gb18030", "gbk"]
+
+    def _read_text(self, filepath: str) -> str:
+        last_error = None
+        for encoding in self.READ_ENCODINGS:
+            try:
+                with open(filepath, 'r', encoding=encoding) as f:
+                    return f.read()
+            except UnicodeDecodeError as e:
+                last_error = e
+                continue
+        if last_error is not None:
+            raise last_error
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return f.read()
+
     CHAPTER_PATTERNS = [
         r'第[一二三四五六七八九十百千万零\d]+章\s+[^\n]+',
         r'第[一二三四五六七八九十百千万零\d]+节\s+[^\n]+',
@@ -54,8 +70,7 @@ class TxtParser:
         Returns:
             匹配的正则表达式模式，未检测到则返回None
         """
-        with open(filepath, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content = self._read_text(filepath)
         
         for pattern_str in self.CHAPTER_PATTERNS:
             matches = re.findall(pattern_str, content, re.MULTILINE)
@@ -76,8 +91,7 @@ class TxtParser:
         Returns:
             章节列表，每个元素包含number, title, content, word_count
         """
-        with open(filepath, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content = self._read_text(filepath)
         
         pattern = self.detect_chapter_pattern(filepath)
         if not pattern:
@@ -117,8 +131,7 @@ class TxtParser:
         Returns:
             包含intro和chapters的字典
         """
-        with open(filepath, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content = self._read_text(filepath)
         
         pattern = self.detect_chapter_pattern(filepath)
         
@@ -150,8 +163,7 @@ class TxtParser:
         Returns:
             大纲数据字典
         """
-        with open(filepath, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content = self._read_text(filepath)
         
         result = {
             'genre': '',

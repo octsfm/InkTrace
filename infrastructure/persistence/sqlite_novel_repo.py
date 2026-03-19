@@ -22,8 +22,6 @@ class SQLiteNovelRepository(INovelRepository):
 
     def __init__(self, db_path: str):
         """
-# 文件：模块：sqlite_novel_repo
-
         初始化仓储
         
         Args:
@@ -34,8 +32,6 @@ class SQLiteNovelRepository(INovelRepository):
 
     def _init_db(self):
         """初始化数据库表"""
-# 文件：模块：sqlite_novel_repo
-
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS novels (
@@ -55,8 +51,6 @@ class SQLiteNovelRepository(INovelRepository):
         """保存小说"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('''
-# 文件：模块：sqlite_novel_repo
-
                 INSERT OR REPLACE INTO novels 
                 (id, title, author, genre, target_word_count, current_word_count, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -73,8 +67,6 @@ class SQLiteNovelRepository(INovelRepository):
 
     def find_by_id(self, novel_id: NovelId) -> Optional[Novel]:
         """根据ID查找小说"""
-# 文件：模块：sqlite_novel_repo
-
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
@@ -119,7 +111,5 @@ class SQLiteNovelRepository(INovelRepository):
 
     def delete(self, novel_id: NovelId) -> None:
         """删除小说"""
-# 文件：模块：sqlite_novel_repo
-
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('DELETE FROM novels WHERE id = ?', (novel_id.value,))

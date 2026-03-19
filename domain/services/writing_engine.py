@@ -29,8 +29,6 @@ class WritingContext:
 
 class WritingEngine:
     """
-# 文件：模块：writing_engine
-
     写作引擎领域服务
     
     负责章节生成、剧情规划、文风应用。
@@ -38,8 +36,6 @@ class WritingEngine:
 
     def __init__(self, llm_client, style_profile: StyleProfile):
         """
-# 文件：模块：writing_engine
-
         初始化写作引擎
         
         Args:
@@ -55,8 +51,6 @@ class WritingEngine:
         config: WritingConfig
     ) -> str:
         """
-# 文件：模块：writing_engine
-
         生成章节内容
         
         Args:
@@ -68,14 +62,20 @@ class WritingEngine:
         """
         prompt = self._build_generation_prompt(context, config)
         
+        print(">>> ENGINE: before LLM call")
+        
         if hasattr(self.llm_client, 'generate'):
             import asyncio
             content = asyncio.run(self.llm_client.generate(prompt))
         else:
             content = self.llm_client.generate(prompt)
         
+        print(">>> ENGINE: LLM raw result:", content)
+        
         if config.enable_style_mimicry:
             content = self.apply_style(content, self.style_profile)
+        
+        print(">>> ENGINE: return content:", content)
         
         return content
 
@@ -86,8 +86,6 @@ class WritingEngine:
         direction: str
     ) -> List[PlotNode]:
         """
-# 文件：模块：writing_engine
-
         规划剧情走向
         
         Args:
@@ -118,8 +116,6 @@ class WritingEngine:
         style_profile: StyleProfile
     ) -> str:
         """
-# 文件：模块：writing_engine
-
         应用文风特征
         
         Args:
@@ -142,8 +138,6 @@ class WritingEngine:
         config: WritingConfig
     ) -> str:
         """
-# 文件：模块：writing_engine
-
         构建生成提示词
         
         Args:

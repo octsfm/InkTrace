@@ -48,8 +48,6 @@ class DeepSeekClient(LLMClient):
             timeout: 请求超时时间（秒）
             max_retries: 最大重试次数
         """
-# 文件：模块：deepseek_client
-
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
         self._model = model
@@ -71,8 +69,6 @@ class DeepSeekClient(LLMClient):
     @property
     def max_context_tokens(self) -> int:
         """最大上下文token数"""
-# 文件：模块：deepseek_client
-
         return 64000
 
     async def generate(
@@ -101,8 +97,6 @@ class DeepSeekClient(LLMClient):
             NetworkError: 网络错误
             LLMClientError: 其他LLM客户端错误
         """
-# 文件：模块：deepseek_client
-
         # Token控制：截断过长的输入
         prompt = self._truncate_input(prompt, max_chars=50000)
         
@@ -138,7 +132,11 @@ class DeepSeekClient(LLMClient):
             NetworkError: 网络错误
             LLMClientError: 其他LLM客户端错误
         """
-# 文件：模块：deepseek_client
+        if not self.api_key:
+            raise ValueError("API key is missing")
+
+        self.logger.info(f"[DeepSeek] 调用大模型, model={self._model}, max_tokens={max_tokens}, temperature={temperature}")
+        self.logger.info(f"[DeepSeek] API Key前4位: {self.api_key[:4] if len(self.api_key) >= 4 else 'N/A'}")
 
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -156,6 +154,7 @@ class DeepSeekClient(LLMClient):
         last_error = None
         for attempt in range(self.max_retries):
             try:
+                print(">>> CALLING DeepSeek LLM API")
                 # 使用复用的HTTP客户端
                 response = await self._client.post(url, json=payload, headers=headers)
                 
@@ -173,6 +172,7 @@ class DeepSeekClient(LLMClient):
                 
                 response.raise_for_status()
                 result = response.json()
+                print(">>> CALLING DeepSeek LLM API END")
                 return result["choices"][0]["message"]["content"]
                 
             except APIKeyError:
@@ -203,8 +203,6 @@ class DeepSeekClient(LLMClient):
         Returns:
             截断后的文本
         """
-# 文件：模块：deepseek_client
-
         if len(text) > max_chars:
             self.logger.warning(f"输入文本过长({len(text)}字符)，截断至{max_chars}字符")
             return text[:max_chars]
@@ -221,8 +219,6 @@ class DeepSeekClient(LLMClient):
 
     async def close(self):
         """关闭HTTP客户端，释放资源"""
-# 文件：模块：deepseek_client
-
         await self._client.aclose()
         self.logger.info("DeepSeek客户端已关闭")
 
@@ -232,6 +228,4 @@ class DeepSeekClient(LLMClient):
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器出口"""
-# 文件：模块：deepseek_client
-
         await self.close()

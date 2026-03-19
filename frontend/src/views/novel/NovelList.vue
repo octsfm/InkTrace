@@ -28,8 +28,8 @@
       >
         <div class="novel-info">
           <h3 class="novel-title">{{ novel.title }}</h3>
-          <p class="novel-author">作者：{{ novel.author }}</p>
-          <el-tag size="small" type="info">{{ novel.genre }}</el-tag>
+          <p class="novel-author">作者：{{ novel.author || '未知' }}</p>
+          <el-tag size="small" type="info">{{ formatGenre(novel.genre) }}</el-tag>
         </div>
         
         <div class="novel-stats">
@@ -77,6 +77,16 @@ import { novelApi } from '@/api'
 
 const novels = ref([])
 const loading = ref(true)
+const genreMap = {
+  xuanhuan: '玄幻',
+  xianxia: '仙侠',
+  dushi: '都市',
+  lishi: '历史',
+  kehuan: '科幻',
+  wuxia: '武侠',
+  qihuan: '奇幻',
+  other: '其他'
+}
 
 const loadNovels = async () => {
   try {
@@ -99,6 +109,8 @@ const getProgress = (novel) => {
   if (!novel.target_word_count) return 0
   return Math.min(100, Math.round((novel.current_word_count / novel.target_word_count) * 100))
 }
+
+const formatGenre = (genre) => genreMap[genre] || genre || '未知'
 
 const handleDelete = async (novel) => {
   try {

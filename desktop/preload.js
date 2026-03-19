@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     showItemInFolder: (path) => ipcRenderer.invoke('show-item-in-folder', path),
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
     getAppPath: () => ipcRenderer.invoke('get-app-path'),
+    selectFile: (options) => ipcRenderer.invoke('select-file', options),
+    selectFolder: (options) => ipcRenderer.invoke('select-folder', options),
     
     onBackendStatusChanged: (callback) => {
         ipcRenderer.on('backend-status-changed', (event, status) => callback(status));

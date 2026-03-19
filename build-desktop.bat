@@ -20,7 +20,7 @@ call npm install
 echo.
 echo [3/4] Building backend with PyInstaller...
 pip install pyinstaller
-pyinstaller --onefile --name inktrace-backend --distpath backend --workpath build --specpath build main.py
+pyinstaller inktrace-backend.spec --distpath backend --workpath build
 
 echo.
 echo [4/4] Building Electron app...

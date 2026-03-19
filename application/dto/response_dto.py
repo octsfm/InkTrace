@@ -25,10 +25,13 @@ class NovelResponse(BaseResponse):
     title: str
     author: str = ""
     genre: str
+    word_count: int = 0
     target_word_count: int
     current_word_count: int = 0
     chapter_count: int = 0
-    status: str = "draft"
+    chapters: Optional[List[Dict[str, Any]]] = None
+    memory: Optional[Dict[str, Any]] = None
+    status: str
     created_at: str
     updated_at: str
 
@@ -122,78 +125,3 @@ class PagedResponse(BaseResponse):
     page: int
     page_size: int
     total_pages: int
-
-
-class NovelResponse(BaseResponse):
-    """小说响应"""
-    id: str
-    title: str
-    author: str = ""
-    genre: str
-    word_count: int = 0
-    target_word_count: int
-    current_word_count: int = 0
-    chapter_count: int = 0
-    chapters: Optional[List[Dict[str, Any]]] = None
-    memory: Optional[Dict[str, Any]] = None
-    status: str
-    created_at: str
-    updated_at: str
-
-
-class ChapterResponse(BaseResponse):
-    """章节响应"""
-    id: str
-    novel_id: str
-    number: int
-    title: str
-    content: str
-    word_count: int
-    status: str
-    created_at: str
-    updated_at: str
-
-
-class CharacterResponse(BaseResponse):
-    """人物响应"""
-    id: str
-    novel_id: str
-    name: str
-    role: str
-    background: str
-    personality: str
-    current_state: str
-    appearance_count: int
-
-
-class StyleAnalysisResponse(BaseResponse):
-    """文风分析响应"""
-    vocabulary_stats: Dict[str, Any]
-    sentence_patterns: List[str]
-    rhetoric_stats: Dict[str, int]
-    dialogue_style: str
-    narrative_voice: str
-    pacing: str
-    sample_sentences: List[str]
-
-
-class PlotAnalysisResponse(BaseResponse):
-    """剧情分析响应"""
-    characters: List[Dict[str, Any]]
-    timeline: List[Dict[str, Any]]
-    foreshadowings: List[Dict[str, Any]]
-
-
-class ConsistencyCheckResponse(BaseResponse):
-    """连贯性检查响应"""
-    is_valid: bool
-    inconsistencies: List[Dict[str, str]]
-    warnings: List[str]
-
-
-class GenerateChapterResponse(BaseResponse):
-    """生成章节响应"""
-    chapter_id: str
-    content: str
-    word_count: int
-    metadata: Optional[Dict[str, Any]] = None

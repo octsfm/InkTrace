@@ -4,7 +4,7 @@
  * 作者：孔利群
  */
 
-const { shell, app, BrowserWindow } = require('electron');
+const { shell, app, BrowserWindow, dialog } = require('electron');
 
 function setupIpcHandlers(ipcMain, processManager) {
     ipcMain.handle('get-backend-status', () => {
@@ -36,6 +36,25 @@ function setupIpcHandlers(ipcMain, processManager) {
 
     ipcMain.handle('get-app-path', () => {
         return app.getAppPath();
+    });
+
+    ipcMain.handle('select-file', async (event, options) => {
+        const result = await dialog.showOpenDialog({
+            title: options.title || '选择文件',
+            defaultPath: options.defaultPath || '',
+            filters: options.filters || [{ name: '文本文件', extensions: ['txt'] }],
+            properties: ['openFile']
+        });
+        return result;
+    });
+
+    ipcMain.handle('select-folder', async (event, options) => {
+        const result = await dialog.showOpenDialog({
+            title: options.title || '选择文件夹',
+            defaultPath: options.defaultPath || '',
+            properties: ['openDirectory']
+        });
+        return result;
     });
 
     processManager.onStatusChange((status) => {

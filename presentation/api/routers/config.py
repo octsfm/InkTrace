@@ -9,6 +9,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+import os
 
 from application.services.config_service import ConfigService
 from domain.entities.llm_config import LLMConfig
@@ -59,7 +60,11 @@ def get_config_service() -> ConfigService:
     encryption_key = b"inktrace_default_encryption_key_32bytes!"[:32]
     
     # 创建仓储实例
-    config_repository = SQLiteLLMConfigRepository("data/inktrace.db")
+    db_path = os.environ.get("INKTRACE_DB_PATH", "data/inktrace.db")
+    db_dir = os.path.dirname(db_path)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+    config_repository = SQLiteLLMConfigRepository(db_path)
     
     return ConfigService(config_repository, encryption_key)
 
@@ -95,6 +100,8 @@ async def get_llm_config(service: ConfigService = Depends(get_config_service)):
             updated_at=config.updated_at.isoformat(),
             has_config=True
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取配置失败: {str(e)}")
 
@@ -119,6 +126,8 @@ async def update_llm_config(
             "created_at": config.created_at.isoformat(),
             "updated_at": config.updated_at.isoformat()
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存配置失败: {str(e)}")
 
@@ -143,6 +152,8 @@ async def test_llm_config(
             deepseek=results['deepseek'],
             kimi=results['kimi']
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"测试配置失败: {str(e)}")
 

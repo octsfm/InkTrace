@@ -20,8 +20,6 @@ class SQLiteLLMConfigRepository(ILLMConfigRepository):
     
     def __init__(self, db_path: str):
         """初始化仓储"""
-# 文件：模块：sqlite_llm_config_repo
-
         self.db_path = db_path
         self._ensure_table()
     
@@ -33,8 +31,6 @@ class SQLiteLLMConfigRepository(ILLMConfigRepository):
     
     def _ensure_table(self):
         """确保表存在"""
-# 文件：模块：sqlite_llm_config_repo
-
         with self._get_connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS llm_config (
@@ -55,8 +51,6 @@ class SQLiteLLMConfigRepository(ILLMConfigRepository):
             if config.id is None:
                 # 插入新配置
                 cursor = conn.execute("""
-# 文件：模块：sqlite_llm_config_repo
-
                     INSERT INTO llm_config 
                     (deepseek_api_key, kimi_api_key, encryption_key_hash, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?)
@@ -71,8 +65,6 @@ class SQLiteLLMConfigRepository(ILLMConfigRepository):
             else:
                 # 更新现有配置
                 conn.execute("""
-# 文件：模块：sqlite_llm_config_repo
-
                     UPDATE llm_config 
                     SET deepseek_api_key = ?, kimi_api_key = ?, encryption_key_hash = ?, 
                         updated_at = ?
@@ -91,8 +83,6 @@ class SQLiteLLMConfigRepository(ILLMConfigRepository):
     
     def get(self) -> Optional[LLMConfig]:
         """获取配置"""
-# 文件：模块：sqlite_llm_config_repo
-
         with self._get_connection() as conn:
             cursor = conn.execute("SELECT * FROM llm_config ORDER BY id DESC LIMIT 1")
             row = cursor.fetchone()
@@ -118,8 +108,6 @@ class SQLiteLLMConfigRepository(ILLMConfigRepository):
     
     def exists(self) -> bool:
         """检查配置是否存在"""
-# 文件：模块：sqlite_llm_config_repo
-
         with self._get_connection() as conn:
             cursor = conn.execute("SELECT COUNT(*) as count FROM llm_config")
             row = cursor.fetchone()

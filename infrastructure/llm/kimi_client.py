@@ -48,8 +48,6 @@ class KimiClient(LLMClient):
             timeout: 请求超时时间（秒）
             max_retries: 最大重试次数
         """
-# 文件：模块：kimi_client
-
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
         self._model = model
@@ -71,8 +69,6 @@ class KimiClient(LLMClient):
     @property
     def max_context_tokens(self) -> int:
         """最大上下文token数"""
-# 文件：模块：kimi_client
-
         if "128k" in self._model:
             return 131072
         elif "32k" in self._model:
@@ -107,8 +103,6 @@ class KimiClient(LLMClient):
             NetworkError: 网络错误
             LLMClientError: 其他LLM客户端错误
         """
-# 文件：模块：kimi_client
-
         # Token控制：截断过长的输入
         prompt = self._truncate_input(prompt, max_chars=50000)
         
@@ -144,7 +138,11 @@ class KimiClient(LLMClient):
             NetworkError: 网络错误
             LLMClientError: 其他LLM客户端错误
         """
-# 文件：模块：kimi_client
+        if not self.api_key:
+            raise ValueError("API key is missing")
+
+        self.logger.info(f"[Kimi] 调用大模型, model={self._model}, max_tokens={max_tokens}, temperature={temperature}")
+        self.logger.info(f"[Kimi] API Key前4位: {self.api_key[:4] if len(self.api_key) >= 4 else 'N/A'}")
 
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -162,6 +160,7 @@ class KimiClient(LLMClient):
         last_error = None
         for attempt in range(self.max_retries):
             try:
+                print(">>> CALLING LLM API")
                 # 使用复用的HTTP客户端
                 response = await self._client.post(url, json=payload, headers=headers)
                 
@@ -209,8 +208,6 @@ class KimiClient(LLMClient):
         Returns:
             截断后的文本
         """
-# 文件：模块：kimi_client
-
         if len(text) > max_chars:
             self.logger.warning(f"输入文本过长({len(text)}字符)，截断至{max_chars}字符")
             return text[:max_chars]
@@ -227,8 +224,6 @@ class KimiClient(LLMClient):
 
     async def close(self):
         """关闭HTTP客户端，释放资源"""
-# 文件：模块：kimi_client
-
         await self._client.aclose()
         self.logger.info("Kimi客户端已关闭")
 
@@ -238,6 +233,4 @@ class KimiClient(LLMClient):
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器出口"""
-# 文件：模块：kimi_client
-
         await self.close()

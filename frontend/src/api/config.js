@@ -8,9 +8,18 @@ import axios from 'axios'
 
 const isDev = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV
 const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:'
+const queryPort = (() => {
+    try {
+        const params = new URLSearchParams(window.location.search || '')
+        return params.get('backend_port')
+    } catch (error) {
+        return null
+    }
+})()
+const electronPort = queryPort || '9527'
 
 const API_BASE_URL = isDev || isFileProtocol
-    ? 'http://127.0.0.1:9527'
+    ? `http://127.0.0.1:${electronPort}`
     : window.location.origin
 
 /**
@@ -47,18 +56,52 @@ class ConfigAPI {
                 console.error('[ConfigAPI] 响应错误:', error)
                 
                 if (error.response) {
-                    // 服务器返回错误
-                    const message = error.response.data?.detail || error.response.statusText
+                    const detail = error.response.data?.detail
+                    const message = this._resolveErrorMessage(detail, error.response.statusText)
                     throw new Error(`服务器错误 (${error.response.status}): ${message}`)
                 } else if (error.request) {
-                    // 网络错误
                     throw new Error('网络连接失败，请检查服务器是否运行')
                 } else {
-                    // 其他错误
                     throw new Error(`请求配置错误: ${error.message}`)
                 }
             }
         )
+    }
+
+    _formatValidationErrors(detail) {
+        if (!Array.isArray(detail)) {
+            return ''
+        }
+        const lines = detail
+            .map((item) => {
+                if (!item || typeof item !== 'object') {
+                    return ''
+                }
+                const loc = Array.isArray(item.loc) ? item.loc.filter(Boolean).join('.') : ''
+                const msg = item.msg || item.message || ''
+                if (!loc && !msg) {
+                    return ''
+                }
+                return loc ? `${loc}: ${msg}` : msg
+            })
+            .filter(Boolean)
+        if (!lines.length) {
+            return ''
+        }
+        return `参数校验失败：${lines.join('；')}`
+    }
+
+    _resolveErrorMessage(detail, fallback = '请求失败') {
+        if (Array.isArray(detail)) {
+            const formatted = this._formatValidationErrors(detail)
+            if (formatted) {
+                return formatted
+            }
+        }
+        if (detail && typeof detail === 'object') {
+            return detail.user_message || detail.message || JSON.stringify(detail)
+        }
+        return detail || fallback
     }
     
     /**
@@ -132,7 +175,6 @@ class ConfigAPI {
             return response.exists
         } catch (error) {
             console.error('检查配置失败:', error)
-            // 如果检查失败，默认返回false
             return false
         }
     }
@@ -142,7 +184,7 @@ class ConfigAPI {
      */
     validateAPIKeyFormat(apiKey) {
         if (!apiKey) {
-            return true // 空密钥是允许的
+            return true
         }
         
         // 基本格式验证

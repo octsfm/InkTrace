@@ -94,6 +94,15 @@ class TestCreateNovelRequest:
         assert request.user_id == "user123"
         assert request.session_id == "session456"
 
+    def test_large_target_word_count_is_allowed(self):
+        request = CreateNovelRequest(
+            title="长篇测试",
+            author="测试作者",
+            genre="玄幻",
+            target_word_count=8000000
+        )
+        assert request.target_word_count == 8000000
+
 
 class TestGenerateChapterRequest:
     """生成章节请求测试"""

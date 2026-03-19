@@ -3,17 +3,16 @@
 <cite>
 **本文引用的文件**
 - [presentation/api/routers/content.py](file://presentation/api/routers/content.py)
+- [application/dto/request_dto.py](file://application/dto/request_dto.py)
+- [application/dto/response_dto.py](file://application/dto/response_dto.py)
 - [application/services/content_service.py](file://application/services/content_service.py)
 - [domain/services/style_analyzer.py](file://domain/services/style_analyzer.py)
 - [domain/services/plot_analyzer.py](file://domain/services/plot_analyzer.py)
-- [application/dto/request_dto.py](file://application/dto/request_dto.py)
-- [application/dto/response_dto.py](file://application/dto/response_dto.py)
 - [domain/value_objects/style_profile.py](file://domain/value_objects/style_profile.py)
-- [application/agent_mvp/tools.py](file://application/agent_mvp/tools.py)
+- [infrastructure/file/txt_parser.py](file://infrastructure/file/txt_parser.py)
 - [presentation/api/app.py](file://presentation/api/app.py)
-- [frontend/src/api/index.js](file://frontend/src/api/index.js)
-- [tests/unit/test_style_analyzer.py](file://tests/unit/test_style_analyzer.py)
-- [tests/unit/test_plot_analyzer.py](file://tests/unit/test_plot_analyzer.py)
+- [application/agent_mvp/tools.py](file://application/agent_mvp/tools.py)
+- [application/agent_mvp/models.py](file://application/agent_mvp/models.py)
 </cite>
 
 ## 目录
@@ -24,369 +23,410 @@
 5. [详细组件分析](#详细组件分析)
 6. [依赖分析](#依赖分析)
 7. [性能考虑](#性能考虑)
-8. [故障排查指南](#故障排查指南)
+8. [故障排除指南](#故障排除指南)
 9. [结论](#结论)
 10. [附录](#附录)
 
 ## 简介
-本文件为内容分析API的完整接口文档，覆盖文风分析、剧情分析、风格分析、故事结构整理与记忆绑定、以及状态查询等能力。文档详细说明请求与响应规范、数据结构字段含义、分析算法与配置选项，并提供使用场景、示例与性能优化建议。
+本文件为内容分析API的完整接口文档，覆盖小说导入与分析相关能力，包括：
+- 小说文件导入（TXT解析、章节拆分、入库）
+- 文风分析（词汇统计、句式分析、修辞统计、对话风格、叙述视角、节奏）
+- 剧情分析（人物、时间线、伏笔）
+- 结构整理与记忆绑定（基于LLM的增量/收敛分析）
+- 错误处理与异常情况说明
+
+接口均通过HTTP暴露，遵循REST风格，响应采用统一的DTO结构。
 
 ## 项目结构
-内容分析API位于表现层路由与应用层服务之间，结合领域层分析器与Agent分析工具，形成“路由 → 服务 → 分析器/工具”的清晰分层。
+内容分析API位于presentation层的路由模块，业务逻辑由application层服务实现，分析算法封装在domain层的服务与值对象中，基础设施层负责TXT解析。
 
 ```mermaid
 graph TB
-Client["客户端"] --> Router["内容路由<br/>presentation/api/routers/content.py"]
-Router --> Service["内容服务<br/>application/services/content_service.py"]
-Service --> Style["文风分析器<br/>domain/services/style_analyzer.py"]
-Service --> Plot["剧情分析器<br/>domain/services/plot_analyzer.py"]
-Service --> Memory["记忆绑定与结构整理<br/>application/agent_mvp/tools.py"]
-Router --> DTOReq["请求DTO<br/>application/dto/request_dto.py"]
-Router --> DTOResp["响应DTO<br/>application/dto/response_dto.py"]
+subgraph "表现层(Presentation)"
+A["FastAPI 应用<br/>presentation/api/app.py"]
+B["内容路由<br/>presentation/api/routers/content.py"]
+end
+subgraph "应用层(Application)"
+C["内容服务<br/>application/services/content_service.py"]
+D["请求DTO<br/>application/dto/request_dto.py"]
+E["响应DTO<br/>application/dto/response_dto.py"]
+end
+subgraph "领域层(Domain)"
+F["文风分析器<br/>domain/services/style_analyzer.py"]
+G["剧情分析器<br/>domain/services/plot_analyzer.py"]
+H["文风特征值对象<br/>domain/value_objects/style_profile.py"]
+end
+subgraph "基础设施层(Infrastructure)"
+I["TXT解析器<br/>infrastructure/file/txt_parser.py"]
+end
+subgraph "智能体与分析"
+J["分析工具(AnalysisTool)<br/>application/agent_mvp/tools.py"]
+K["任务上下文(TaskContext)<br/>application/agent_mvp/models.py"]
+end
+A --> B
+B --> C
+C --> F
+C --> G
+C --> I
+F --> H
+B --> J
+J --> K
+C --> D
+C --> E
 ```
 
-图表来源
-- [presentation/api/routers/content.py:1-196](file://presentation/api/routers/content.py#L1-L196)
-- [application/services/content_service.py:1-169](file://application/services/content_service.py#L1-L169)
-- [domain/services/style_analyzer.py:1-286](file://domain/services/style_analyzer.py#L1-L286)
-- [domain/services/plot_analyzer.py:1-225](file://domain/services/plot_analyzer.py#L1-L225)
-- [application/agent_mvp/tools.py:1-446](file://application/agent_mvp/tools.py#L1-L446)
-- [application/dto/request_dto.py:1-97](file://application/dto/request_dto.py#L1-L97)
-- [application/dto/response_dto.py:1-200](file://application/dto/response_dto.py#L1-L200)
-
-章节来源
-- [presentation/api/routers/content.py:1-196](file://presentation/api/routers/content.py#L1-L196)
-- [application/services/content_service.py:1-169](file://application/services/content_service.py#L1-L169)
-- [presentation/api/app.py:1-66](file://presentation/api/app.py#L1-L66)
-
-## 核心组件
-- 内容路由：提供导入、文风分析、剧情分析、记忆查询、故事结构整理等端点。
-- 内容服务：封装导入、解析、分析与文本拼接逻辑，协调仓储与分析器。
-- 文风分析器：基于正则与统计的文本特征抽取，生成词汇、句式、修辞、对话风格、叙述视角、节奏等指标。
-- 剧情分析器：提取人物、时间线事件、伏笔线索，支持基础命名识别与时间标记。
-- Agent分析工具：通过LLM进行结构化分析与恢复重试，产出角色、世界观、剧情大纲与写作风格等。
-- 请求/响应DTO：统一输入输出结构，便于前端对接与扩展。
-
-章节来源
-- [presentation/api/routers/content.py:70-196](file://presentation/api/routers/content.py#L70-L196)
+**图示来源**
+- [presentation/api/app.py:19-66](file://presentation/api/app.py#L19-L66)
+- [presentation/api/routers/content.py:23-214](file://presentation/api/routers/content.py#L23-L214)
 - [application/services/content_service.py:29-169](file://application/services/content_service.py#L29-L169)
 - [domain/services/style_analyzer.py:18-286](file://domain/services/style_analyzer.py#L18-L286)
 - [domain/services/plot_analyzer.py:46-225](file://domain/services/plot_analyzer.py#L46-L225)
-- [application/agent_mvp/tools.py:13-142](file://application/agent_mvp/tools.py#L13-L142)
-- [application/dto/request_dto.py:30-43](file://application/dto/request_dto.py#L30-L43)
-- [application/dto/response_dto.py:61-185](file://application/dto/response_dto.py#L61-L185)
+- [domain/value_objects/style_profile.py:14-30](file://domain/value_objects/style_profile.py#L14-L30)
+- [infrastructure/file/txt_parser.py:25-316](file://infrastructure/file/txt_parser.py#L25-L316)
+- [application/agent_mvp/tools.py:15-516](file://application/agent_mvp/tools.py#L15-L516)
+- [application/agent_mvp/models.py:40-91](file://application/agent_mvp/models.py#L40-L91)
+
+**章节来源**
+- [presentation/api/app.py:19-66](file://presentation/api/app.py#L19-L66)
+- [presentation/api/routers/content.py:23-214](file://presentation/api/routers/content.py#L23-L214)
+
+## 核心组件
+- 路由与控制器：定义HTTP端点、参数校验、异常映射与响应序列化。
+- 内容服务：协调TXT解析、章节入库、文风/剧情分析、文本聚合。
+- 文风分析器：统计词汇、句式、修辞、对话风格、叙述视角、节奏。
+- 剧情分析器：抽取人物、构建时间线、提取伏笔。
+- TXT解析器：自动识别章节标题、切分章节、统计字数。
+- 分析工具：面向LLM的章节拆分、增量分析、全局收敛与记忆合并。
+- DTO：统一请求/响应结构，便于前端消费与契约约束。
+
+**章节来源**
+- [application/services/content_service.py:29-169](file://application/services/content_service.py#L29-L169)
+- [domain/services/style_analyzer.py:18-286](file://domain/services/style_analyzer.py#L18-L286)
+- [domain/services/plot_analyzer.py:46-225](file://domain/services/plot_analyzer.py#L46-L225)
+- [infrastructure/file/txt_parser.py:25-316](file://infrastructure/file/txt_parser.py#L25-L316)
+- [application/agent_mvp/tools.py:15-516](file://application/agent_mvp/tools.py#L15-L516)
 
 ## 架构总览
-内容分析API采用分层架构，路由负责HTTP协议与错误处理，服务层负责业务编排，领域层负责具体分析算法，Agent工具负责LLM驱动的结构化分析与容错恢复。
+内容分析API采用分层架构：
+- 表现层：FastAPI路由，负责HTTP协议与异常映射。
+- 应用层：服务编排，连接仓储、解析器与分析器。
+- 领域层：文风/剧情分析算法，封装语言学与故事学规则。
+- 基础设施层：TXT解析与文件IO。
+- 智能体层：基于LLM的章节拆分、增量分析与记忆收敛。
 
 ```mermaid
 sequenceDiagram
-participant C as "客户端"
-participant R as "内容路由"
-participant S as "内容服务"
-participant ST as "文风分析器"
-participant PT as "剧情分析器"
-participant A as "Agent分析工具"
-C->>R : GET /api/content/style/{novel_id}
-R->>S : analyze_style(novel_id)
-S->>ST : analyze(chapters)
-ST-->>S : StyleProfile
-S-->>R : StyleAnalysisResponse
-R-->>C : 200 + JSON
-C->>R : GET /api/content/plot/{novel_id}
-R->>S : analyze_plot(novel_id)
-S->>PT : analyze(chapters)
-PT-->>S : {characters, timeline, foreshadowings}
-S-->>R : PlotAnalysisResponse
-R-->>C : 200 + JSON
-C->>R : POST /api/content/organize/{novel_id}
-R->>S : get_novel_text(novel_id)
-S-->>R : 全文字符串
-R->>A : execute_async(TaskContext, {novel_text})
-A-->>R : ToolResult(payload)
-R->>S : bind_memory_to_novel(...)
-R-->>C : 200 + {project_id, memory}
+participant 客户端 as "客户端"
+participant 路由 as "内容路由"
+participant 服务 as "内容服务"
+participant 解析器 as "TXT解析器"
+participant 文风 as "文风分析器"
+participant 剧情 as "剧情分析器"
+客户端->>路由 : POST /api/content/import
+路由->>服务 : import_novel(ImportNovelRequest)
+服务->>解析器 : parse_novel_file(file_path)
+解析器-->>服务 : {intro, chapters}
+服务->>服务 : 保存章节并更新小说统计
+服务-->>路由 : NovelResponse
+路由-->>客户端 : {novel, project_id, memory, analysis_status}
+客户端->>路由 : GET /api/content/style/{novel_id}
+路由->>服务 : analyze_style(novel_id)
+服务->>文风 : analyze(chapters)
+文风-->>服务 : StyleProfile
+服务-->>路由 : StyleAnalysisResponse
+路由-->>客户端 : 文风分析结果
+客户端->>路由 : GET /api/content/plot/{novel_id}
+路由->>服务 : analyze_plot(novel_id)
+服务->>剧情 : analyze(chapters)
+剧情-->>服务 : {characters, timeline, foreshadowings}
+服务-->>路由 : PlotAnalysisResponse
+路由-->>客户端 : 剧情分析结果
 ```
 
-图表来源
-- [presentation/api/routers/content.py:109-196](file://presentation/api/routers/content.py#L109-L196)
-- [application/services/content_service.py:93-154](file://application/services/content_service.py#L93-L154)
+**图示来源**
+- [presentation/api/routers/content.py:88-171](file://presentation/api/routers/content.py#L88-L171)
+- [application/services/content_service.py:52-169](file://application/services/content_service.py#L52-L169)
+- [infrastructure/file/txt_parser.py:108-139](file://infrastructure/file/txt_parser.py#L108-L139)
 - [domain/services/style_analyzer.py:25-66](file://domain/services/style_analyzer.py#L25-L66)
 - [domain/services/plot_analyzer.py:55-75](file://domain/services/plot_analyzer.py#L55-L75)
-- [application/agent_mvp/tools.py:35-81](file://application/agent_mvp/tools.py#L35-L81)
 
 ## 详细组件分析
 
 ### 接口总览
-- 导入小说
-  - 方法与路径：POST /api/content/import
-  - 功能：导入TXT章节并自动进行故事结构整理与记忆绑定
-  - 请求体：参见“请求DTO：ImportNovelRequest”
-  - 响应体：包含小说信息、项目ID、内存（记忆）与分析状态
-- 文风分析
-  - 方法与路径：GET /api/content/style/{novel_id}
-  - 功能：分析文风特征（词汇、句式、修辞、对话风格、叙述视角、节奏、示例句）
+- POST /api/content/import
+  - 功能：导入小说文件，解析章节并入库，同时进行结构整理与记忆绑定。
+  - 请求体：ImportNovelRequest
+  - 响应体：包含小说信息、项目ID、内存快照与分析状态。
+- GET /api/content/style/{novel_id}
+  - 功能：分析文风，返回词汇统计、句式模板、修辞统计、对话风格、叙述视角、节奏与示例句子。
   - 响应体：StyleAnalysisResponse
-- 剧情分析
-  - 方法与路径：GET /api/content/plot/{novel_id}
-  - 功能：提取人物、时间线事件、伏笔线索
+- GET /api/content/plot/{novel_id}
+  - 功能：分析剧情，返回人物、时间线、伏笔信息。
   - 响应体：PlotAnalysisResponse
-- 记忆查询
-  - 方法与路径：GET /api/content/memory/{novel_id}
-  - 功能：查询项目绑定的记忆（含进度）
-  - 响应体：包含project_id与memory
-- 故事结构整理
-  - 方法与路径：POST /api/content/organize/{novel_id}
-  - 功能：基于LLM进行结构化分析，合并到记忆并绑定至项目
-  - 响应体：包含status、project_id与memory
+- GET /api/content/memory/{novel_id}
+  - 功能：查询项目与小说绑定的记忆。
+  - 响应体：{project_id, memory}
+- POST /api/content/organize/{novel_id}
+  - 功能：对已有内容进行结构整理与记忆收敛。
+  - 响应体：{status, project_id, memory}
 
-章节来源
-- [presentation/api/routers/content.py:70-196](file://presentation/api/routers/content.py#L70-L196)
+**章节来源**
+- [presentation/api/routers/content.py:88-171](file://presentation/api/routers/content.py#L88-L171)
 
-### 请求与响应DTO规范
+### 请求与响应数据结构
 
-- 请求DTO
-  - ImportNovelRequest
-    - 字段：novel_id, file_path, options
-    - 用途：导入小说文件
-  - AnalyzeNovelRequest
-    - 字段：novel_id, analyze_style, analyze_plot, options
-    - 用途：统一分析入口（当前路由未直接使用该DTO，但结构已定义）
-  - 其他通用字段：BaseRequest包含user_id、session_id、trace_id，便于追踪与上下文传递
+#### 请求体：ImportNovelRequest
+- novel_id: string（必填，小说唯一标识）
+- file_path: string（必填，本地TXT文件绝对路径）
+- options: object（可选，扩展参数）
 
-- 响应DTO
-  - StyleAnalysisResponse
-    - vocabulary_stats: 词汇统计（高频词、平均词长、词汇丰富度、总词数、独立词数）
-    - sentence_patterns: 句式模板（示例模式）
-    - rhetoric_stats: 修辞统计（比喻、拟人、排比、夸张等计数）
-    - dialogue_style: 对话风格（长度与情感倾向）
-    - narrative_voice: 叙述视角（第一/第三人称/混合）
-    - pacing: 节奏（快/中等/慢）
-    - sample_sentences: 示例句子
-  - PlotAnalysisResponse
-    - characters: 人物列表（名称、别名、出场次数、首次出场章节等）
-    - timeline: 时间线事件列表（章节号、事件描述、涉及人物）
-    - foreshadowings: 伏笔列表（描述、章节号、状态）
+字段校验与默认值参考请求DTO定义。
 
-章节来源
-- [application/dto/request_dto.py:30-43](file://application/dto/request_dto.py#L30-L43)
-- [application/dto/response_dto.py:61-185](file://application/dto/response_dto.py#L61-L185)
-- [domain/value_objects/style_profile.py:14-30](file://domain/value_objects/style_profile.py#L14-L30)
+**章节来源**
+- [application/dto/request_dto.py:30-34](file://application/dto/request_dto.py#L30-L34)
 
-### 文风分析流程与算法
+#### 响应体：StyleAnalysisResponse
+- vocabulary_stats: object（词汇统计）
+  - 高频词：数组，每项包含词与频次
+  - 平均词长：数值
+  - 词汇丰富度：数值
+  - 总词数：数值
+  - 独立词数：数值
+- sentence_patterns: array[string]（句式模板示例）
+- rhetoric_stats: object（修辞统计）
+  - 比喻：整数
+  - 拟人：整数
+  - 排比：整数
+  - 夸张：整数
+- dialogue_style: string（对话风格，如“简洁，情感强烈”）
+- narrative_voice: string（叙述视角，如“第一人称”）
+- pacing: string（节奏，如“快节奏”）
+- sample_sentences: array[string]（示例句子）
+
+**章节来源**
+- [application/dto/response_dto.py:61-70](file://application/dto/response_dto.py#L61-L70)
+- [domain/value_objects/style_profile.py:23-29](file://domain/value_objects/style_profile.py#L23-L29)
+
+#### 响应体：PlotAnalysisResponse
+- characters: array[object]（人物信息）
+  - name: string
+  - aliases: array[string]
+  - appearance_count: integer
+  - first_appearance_chapter: integer
+- timeline: array[object]（时间线事件）
+  - chapter_number: integer
+  - event_description: string
+  - characters_involved: array[string]
+- foreshadowings: array[object]（伏笔）
+  - description: string
+  - chapter_number: integer
+  - status: string
+
+**章节来源**
+- [application/dto/response_dto.py:72-77](file://application/dto/response_dto.py#L72-L77)
+- [domain/services/plot_analyzer.py:77-202](file://domain/services/plot_analyzer.py#L77-L202)
+
+### 文本解析与章节拆分
+- 自动识别章节标题模式（支持中文序数词、Chapter数字、中文顿号等）。
+- 提取章节标题与正文，计算字数。
+- 支持大纲文件解析（提取题材、背景、字数等）。
 
 ```mermaid
 flowchart TD
-Start(["开始"]) --> Load["加载章节内容"]
-Load --> Empty{"是否有内容？"}
-Empty -- 否 --> ReturnEmpty["返回默认空特征"]
-Empty -- 是 --> Vocab["词汇分析<br/>高频词/平均词长/丰富度"]
-Vocab --> Patterns["句式模板分析"]
-Patterns --> Rhetoric["修辞统计分析"]
-Rhetoric --> Dialogue["对话风格提取"]
-Dialogue --> Voice["叙述视角检测"]
-Voice --> Pacing["节奏分析"]
-Pacing --> Sample["抽取示例句子"]
-Sample --> Build["组装StyleProfile"]
-Build --> End(["结束"])
+Start(["开始"]) --> Detect["检测章节标题模式"]
+Detect --> Found{"是否匹配到章节标题?"}
+Found --> |否| IntroOnly["仅解析简介/全文"]
+Found --> |是| Split["按匹配结果切分章节"]
+Split --> Extract["提取章节号与标题"]
+Extract --> Save["统计字数并保存章节"]
+IntroOnly --> Save
+Save --> End(["结束"])
 ```
 
-图表来源
+**图示来源**
+- [infrastructure/file/txt_parser.py:45-106](file://infrastructure/file/txt_parser.py#L45-L106)
+- [infrastructure/file/txt_parser.py:108-139](file://infrastructure/file/txt_parser.py#L108-L139)
+
+**章节来源**
+- [infrastructure/file/txt_parser.py:25-316](file://infrastructure/file/txt_parser.py#L25-L316)
+
+### 文风分析流程
+- 词汇统计：高频词、平均词长、词汇丰富度、总词数、独立词数。
+- 句式分析：提取句式模板（如“X字+，+Y字+...”）。
+- 修辞统计：统计比喻、拟人、排比、夸张出现次数。
+- 对话风格：基于引号内对话长度与语气标点判断。
+- 叙述视角：基于“我/他/她/它”的相对频次判断。
+- 节奏分析：基于句子长度分布判断快/中/慢节奏。
+- 示例句子：抽取若干代表性句子。
+
+```mermaid
+flowchart TD
+S(["开始"]) --> Load["加载所有章节文本"]
+Load --> Vocab["词汇统计"]
+Load --> Patterns["句式模板"]
+Load --> Rhetoric["修辞统计"]
+Load --> Dialogue["对话风格"]
+Load --> Voice["叙述视角"]
+Load --> Pacing["节奏分析"]
+Vocab --> Sample["抽取示例句子"]
+Patterns --> Sample
+Rhetoric --> Sample
+Dialogue --> Sample
+Voice --> Sample
+Pacing --> Sample
+Sample --> E(["结束"])
+```
+
+**图示来源**
 - [domain/services/style_analyzer.py:25-66](file://domain/services/style_analyzer.py#L25-L66)
 - [domain/services/style_analyzer.py:68-286](file://domain/services/style_analyzer.py#L68-L286)
 
-- 算法要点
-  - 词汇统计：基于中文词序列，计算高频词、平均词长、词汇丰富度等
-  - 句式模板：识别逗号分割的句式模式，限制样本数量
-  - 修辞统计：通过预设正则匹配统计比喻、拟人、排比、夸张等
-  - 对话风格：统计对话长度与语气标点，判断风格倾向
-  - 叙述视角：比较“我/咱”与“他/她/它”出现频次
-  - 节奏：按句长分布计算短句比例，判定快/中/慢节奏
-  - 示例句：抽取符合长度阈值的句子作为示例
+**章节来源**
+- [domain/services/style_analyzer.py:18-286](file://domain/services/style_analyzer.py#L18-L286)
+- [domain/value_objects/style_profile.py:14-30](file://domain/value_objects/style_profile.py#L14-L30)
 
-章节来源
-- [domain/services/style_analyzer.py:25-286](file://domain/services/style_analyzer.py#L25-L286)
-- [tests/unit/test_style_analyzer.py:19-140](file://tests/unit/test_style_analyzer.py#L19-L140)
-
-### 剧情分析流程与算法
+### 剧情分析流程
+- 人物抽取：基于命名模式与出现频率提取主要角色。
+- 时间线构建：识别时间词与事件句，抽取关键事件。
+- 伏笔提取：基于关键词模式匹配潜在伏笔。
 
 ```mermaid
 flowchart TD
-StartP(["开始"]) --> ExtractChars["提取人物<br/>基于命名正则与出现频次"]
-ExtractChars --> Timeline["构建时间线<br/>基于时间标记与事件句"]
-Timeline --> Foreshadow["提取伏笔<br/>基于关键词与上下文"]
-Foreshadow --> Pack["打包结果<br/>{characters, timeline, foreshadowings}"]
-Pack --> EndP(["结束"])
+A(["开始"]) --> Chs["遍历章节内容"]
+Chs --> Names["提取人名与提及次数"]
+Chs --> Time["识别时间词与事件句"]
+Chs --> Foreshadow["匹配伏笔关键词"]
+Names --> Characters["生成人物列表"]
+Time --> Timeline["构建时间线事件"]
+Foreshadow --> Foreshadowings["提取伏笔列表"]
+Characters --> Out(["结束"])
+Timeline --> Out
+Foreshadowings --> Out
 ```
 
-图表来源
-- [domain/services/plot_analyzer.py:55-75](file://domain/services/plot_analyzer.py#L55-L75)
-- [domain/services/plot_analyzer.py:77-225](file://domain/services/plot_analyzer.py#L77-L225)
+**图示来源**
+- [domain/services/plot_analyzer.py:77-202](file://domain/services/plot_analyzer.py#L77-L202)
 
-- 算法要点
-  - 人物提取：通过多种命名正则匹配，统计出现次数并排序
-  - 时间线：识别时间词与事件句，按章节聚合若干事件
-  - 伏笔：基于关键词与上下文截断，控制数量上限
-
-章节来源
+**章节来源**
 - [domain/services/plot_analyzer.py:46-225](file://domain/services/plot_analyzer.py#L46-L225)
-- [tests/unit/test_plot_analyzer.py:19-158](file://tests/unit/test_plot_analyzer.py#L19-L158)
 
-### 结构整理与记忆绑定（LLM驱动）
+### 结构整理与记忆绑定（智能体分析）
+- 章节拆分：将长文本拆分为章节单元。
+- 增量分析：逐章分析，产出人物、世界设定、剧情主线、文风特征与进度。
+- 全局收敛：合并各章增量记忆，精简并标准化文风特征。
+- 记忆绑定：将最终记忆绑定到项目，供后续续写/生成使用。
 
 ```mermaid
 sequenceDiagram
-participant R as "内容路由"
-participant S as "内容服务"
-participant A as "AnalysisTool"
-participant PRJ as "项目服务"
-participant LLM as "LLM客户端"
-R->>S : get_novel_text(novel_id)
-S-->>R : 全文
-R->>A : execute_async(TaskContext, {novel_text})
-A->>LLM : generate(prompt, max_tokens, temperature)
-LLM-->>A : JSON文本
-A->>A : 解析并标准化字段
-A-->>R : ToolResult(payload)
-R->>PRJ : bind_memory_to_novel(novel_id, merged_memory)
-PRJ-->>R : 绑定完成
-R-->>Client : {project_id, memory}
+participant 路由 as "内容路由"
+participant 服务 as "内容服务"
+participant 工具 as "AnalysisTool"
+participant 记忆 as "merge_memory"
+路由->>服务 : import_novel()
+服务-->>路由 : NovelResponse
+路由->>工具 : structure_mode(novel_text)
+工具-->>路由 : 章节列表
+loop 遍历章节
+路由->>工具 : incremental_mode(chapter)
+工具-->>记忆 : 增量记忆
+end
+路由->>工具 : consolidate_mode(memory)
+工具-->>记忆 : 全局收敛记忆
+路由-->>客户端 : {project_id, memory}
 ```
 
-图表来源
-- [presentation/api/routers/content.py:37-67](file://presentation/api/routers/content.py#L37-L67)
-- [application/agent_mvp/tools.py:35-142](file://application/agent_mvp/tools.py#L35-L142)
+**图示来源**
+- [presentation/api/routers/content.py:38-85](file://presentation/api/routers/content.py#L38-L85)
+- [application/agent_mvp/tools.py:37-134](file://application/agent_mvp/tools.py#L37-L134)
+- [application/agent_mvp/tools.py:197-212](file://application/agent_mvp/tools.py#L197-L212)
 
-- 关键行为
-  - Prompt结构：要求仅输出JSON，包含角色、世界观、剧情大纲、写作风格与进度
-  - 容错机制：主备模型切换、文本修复、降级回退
-  - 进度字段：latest_chapter_number、latest_goal、last_summary
-  - 绑定策略：合并分析结果到NovelMemory并写入项目
-
-章节来源
-- [presentation/api/routers/content.py:37-67](file://presentation/api/routers/content.py#L37-L67)
-- [application/agent_mvp/tools.py:83-142](file://application/agent_mvp/tools.py#L83-L142)
-
-### 状态查询与进度监控
-- 记忆查询端点：GET /api/content/memory/{novel_id}
-  - 返回：project_id与memory（包含current_progress）
-  - 用途：前端轮询或一次性读取进度与上下文
-
-章节来源
-- [presentation/api/routers/content.py:155-167](file://presentation/api/routers/content.py#L155-L167)
-
-### 错误处理与质量评估
-- HTTP状态码
-  - 404：小说不存在或章节缺失
-  - 400：输入非法或分析失败
-  - 500：内部错误
-- 错误详情结构：包含code、message、user_message，便于前端展示
-- 质量评估与验证
-  - 文风/剧情分析：通过单元测试覆盖边界条件与典型场景
-  - LLM分析：具备重试与降级策略，保证稳定性
-
-章节来源
-- [presentation/api/routers/content.py:25-26](file://presentation/api/routers/content.py#L25-L26)
-- [presentation/api/routers/content.py:103-107](file://presentation/api/routers/content.py#L103-L107)
-- [presentation/api/routers/content.py:180-195](file://presentation/api/routers/content.py#L180-L195)
-- [tests/unit/test_style_analyzer.py:42-114](file://tests/unit/test_style_analyzer.py#L42-L114)
-- [tests/unit/test_plot_analyzer.py:82-103](file://tests/unit/test_plot_analyzer.py#L82-L103)
-
-### 使用场景与示例
-
-- 场景一：导入小说并自动分析
-  - 步骤：POST /api/content/import → 自动执行结构整理 → 返回memory
-  - 适用：首次导入或需要快速建立上下文时
-- 场景二：单独文风分析
-  - 步骤：GET /api/content/style/{novel_id}
-  - 适用：需要了解词汇、句式、修辞、节奏等语言特征
-- 场景三：单独剧情分析
-  - 步骤：GET /api/content/plot/{novel_id}
-  - 适用：需要提取人物、时间线与伏笔线索
-- 场景四：手动触发结构整理
-  - 步骤：POST /api/content/organize/{novel_id}
-  - 适用：需要重新梳理或补充上下文
-- 场景五：进度查询
-  - 步骤：GET /api/content/memory/{novel_id}
-  - 适用：前端轮询或断点续用
-
-章节来源
-- [frontend/src/api/index.js:50-56](file://frontend/src/api/index.js#L50-L56)
-- [presentation/api/routers/content.py:70-196](file://presentation/api/routers/content.py#L70-L196)
+**章节来源**
+- [presentation/api/routers/content.py:38-85](file://presentation/api/routers/content.py#L38-L85)
+- [application/agent_mvp/tools.py:15-516](file://application/agent_mvp/tools.py#L15-L516)
+- [application/agent_mvp/models.py:40-91](file://application/agent_mvp/models.py#L40-L91)
 
 ## 依赖分析
+- 路由依赖应用服务与项目服务，应用服务依赖仓储、解析器与分析器。
+- 文风/剧情分析器依赖章节实体与类型系统。
+- TXT解析器提供章节切分与字数统计。
+- 智能体分析工具依赖模型路由与恢复管道，实现鲁棒的LLM调用。
 
 ```mermaid
 graph LR
-R["内容路由"] --> S["内容服务"]
-S --> SA["文风分析器"]
-S --> PA["剧情分析器"]
-S --> AG["Agent分析工具"]
-R --> D1["请求DTO"]
-R --> D2["响应DTO"]
+路由["内容路由"] --> 服务["内容服务"]
+服务 --> 解析器["TXT解析器"]
+服务 --> 文风["文风分析器"]
+服务 --> 剧情["剧情分析器"]
+文风 --> 值对象["StyleProfile"]
+路由 --> 工具["AnalysisTool"]
+工具 --> 上下文["TaskContext"]
 ```
 
-图表来源
-- [presentation/api/routers/content.py:13-19](file://presentation/api/routers/content.py#L13-L19)
-- [application/services/content_service.py:22-50](file://application/services/content_service.py#L22-L50)
-- [application/agent_mvp/tools.py:17-21](file://application/agent_mvp/tools.py#L17-L21)
+**图示来源**
+- [presentation/api/routers/content.py:13-20](file://presentation/api/routers/content.py#L13-L20)
+- [application/services/content_service.py:29-51](file://application/services/content_service.py#L29-L51)
+- [domain/services/style_analyzer.py:18-25](file://domain/services/style_analyzer.py#L18-L25)
+- [domain/services/plot_analyzer.py:46-66](file://domain/services/plot_analyzer.py#L46-L66)
+- [application/agent_mvp/tools.py:15-36](file://application/agent_mvp/tools.py#L15-L36)
+- [application/agent_mvp/models.py:40-51](file://application/agent_mvp/models.py#L40-L51)
 
-章节来源
-- [presentation/api/routers/content.py:13-19](file://presentation/api/routers/content.py#L13-L19)
-- [application/services/content_service.py:22-50](file://application/services/content_service.py#L22-L50)
-- [application/agent_mvp/tools.py:17-21](file://application/agent_mvp/tools.py#L17-L21)
+**章节来源**
+- [presentation/api/routers/content.py:13-20](file://presentation/api/routers/content.py#L13-L20)
+- [application/services/content_service.py:29-51](file://application/services/content_service.py#L29-L51)
 
 ## 性能考虑
-- 文风/剧情分析
-  - 时间复杂度：与文本长度线性相关，建议对超长文本分段或采样
-  - 缓存策略：对已分析章节结果进行缓存，避免重复计算
-- LLM分析
-  - 温度与token上限：当前温度较低以提升确定性，注意控制输入长度
-  - 重试与降级：主备模型切换与降级回退减少失败率
-- 批量分析
-  - 并发控制：限制并发数，避免资源争用
-  - 分片处理：将长文本切分为块，分别分析后合并
-- 前端交互
-  - 轮询间隔：合理设置轮询周期，避免频繁请求
-  - 断点续传：利用memory中的进度字段实现断点续用
+- 文风/剧情分析复杂度近似于章节总数与文本长度的线性组合，建议：
+  - 控制单次分析的章节数量，避免超长文本导致内存与计算压力。
+  - 对大文件优先进行结构整理与增量分析，减少重复计算。
+  - 合理设置LLM调用的温度与最大令牌数，平衡质量与成本。
+- TXT解析器对大文件的正则匹配可能成为瓶颈，建议：
+  - 使用更严格的章节标题模式以减少误匹配。
+  - 对超大文件分块处理或预切分。
 
-## 故障排查指南
-- 常见错误
-  - 小说不存在：检查novel_id与文件路径
-  - 文件不存在：确认file_path有效
-  - 分析失败：查看错误详情中的code与message
-- 定位方法
-  - 查看HTTP状态码与错误详情
-  - 检查memory中的current_progress，定位卡住环节
-  - 单元测试参考：文风与剧情分析的边界条件测试
-- 建议
-  - 在网关层增加限流与熔断
-  - 对LLM调用增加可观测性（trace_id）
+## 故障排除指南
+常见错误与处理：
+- 小说不存在
+  - 触发条件：查询小说或章节时未找到对应实体。
+  - 返回：404，消息包含具体提示。
+- 文件不存在
+  - 触发条件：导入请求的file_path指向的文件不存在。
+  - 返回：404，消息包含文件路径。
+- 章节拆分失败
+  - 触发条件：未识别到有效章节标题或解析失败。
+  - 返回：400，消息提示章节拆分失败。
+- 章节分析失败
+  - 触发条件：某章节分析返回非成功状态。
+  - 返回：400，消息包含章节标题或索引。
+- 全局收敛失败
+  - 触发条件：记忆收敛阶段失败。
+  - 返回：400，消息提示收敛失败。
+- 内部错误
+  - 触发条件：未知异常。
+  - 返回：500，消息提示内部错误。
 
-章节来源
-- [presentation/api/routers/content.py:103-107](file://presentation/api/routers/content.py#L103-L107)
-- [presentation/api/routers/content.py:180-195](file://presentation/api/routers/content.py#L180-L195)
-- [tests/unit/test_style_analyzer.py:42-114](file://tests/unit/test_style_analyzer.py#L42-L114)
-- [tests/unit/test_plot_analyzer.py:82-103](file://tests/unit/test_plot_analyzer.py#L82-L103)
+异常映射与错误详情构造参考路由实现。
+
+**章节来源**
+- [presentation/api/routers/content.py:121-124](file://presentation/api/routers/content.py#L121-L124)
+- [presentation/api/routers/content.py:198-213](file://presentation/api/routers/content.py#L198-L213)
 
 ## 结论
-内容分析API提供了从文风到剧情的全面分析能力，并通过LLM驱动的故事结构整理与记忆绑定，为后续写作与RAG检索奠定基础。通过清晰的DTO规范、完善的错误处理与性能建议，可在实际工程中稳定落地并扩展。
+内容分析API提供了从文件导入、章节解析、文风/剧情分析到结构整理与记忆绑定的完整链路。通过清晰的DTO契约与分层设计，既保证了易用性，也为后续扩展（如续写、生成）奠定了基础。建议在生产环境中结合缓存与分批处理策略，进一步提升吞吐与稳定性。
 
 ## 附录
 
-### 端点一览表
+### API端点一览
 - POST /api/content/import
   - 请求体：ImportNovelRequest
-  - 响应体：包含novel、project_id、memory、analysis_status
+  - 成功响应：包含novel、project_id、memory、analysis_status
 - GET /api/content/style/{novel_id}
-  - 响应体：StyleAnalysisResponse
+  - 成功响应：StyleAnalysisResponse
 - GET /api/content/plot/{novel_id}
-  - 响应体：PlotAnalysisResponse
+  - 成功响应：PlotAnalysisResponse
 - GET /api/content/memory/{novel_id}
-  - 响应体：{project_id, memory}
+  - 成功响应：{project_id, memory}
 - POST /api/content/organize/{novel_id}
-  - 响应体：{status, project_id, memory}
+  - 成功响应：{status, project_id, memory}
 
-章节来源
-- [presentation/api/routers/content.py:70-196](file://presentation/api/routers/content.py#L70-L196)
-- [frontend/src/api/index.js:50-56](file://frontend/src/api/index.js#L50-L56)
+**章节来源**
+- [presentation/api/routers/content.py:88-171](file://presentation/api/routers/content.py#L88-L171)

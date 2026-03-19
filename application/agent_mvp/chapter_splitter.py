@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import logging
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -10,6 +13,41 @@ class Chapter:
     title: str
     content: str
     index: int
+
+
+@dataclass
+class TextChunk:
+    content: str
+    start: int
+    end: int
+
+
+def split_into_chunks_by_chars(text: str, chunk_size: int = 4000, overlap: int = 500) -> List[dict]:
+    source = str(text or "")
+    if not source:
+        return []
+    normalized = source.replace("\r\n", "\n").replace("\r", "\n")
+    chunk_size = max(3000, min(5000, int(chunk_size or 4000)))
+    overlap = max(0, min(int(overlap or 500), chunk_size // 2))
+    chunks: List[dict] = []
+    start = 0
+    total = len(normalized)
+    while start < total:
+        end = min(total, start + chunk_size)
+        content = normalized[start:end]
+        if content.strip():
+            chunks.append({"content": content, "start": start, "end": end})
+        if end >= total:
+            break
+        start = max(0, end - overlap)
+    logger.info(
+        "[Splitter] split_into_chunks_by_chars 完成 total_length=%d chunk_size=%d overlap=%d chunks=%d",
+        total,
+        chunk_size,
+        overlap,
+        len(chunks)
+    )
+    return chunks
 
 
 def split_into_chapters(text: str) -> List[Chapter]:
@@ -35,11 +73,10 @@ def split_into_chapters(text: str) -> List[Chapter]:
     paragraph_chunks = [item.strip() for item in re.split(r"\n\s*\n+", normalized) if item.strip()]
     if not paragraph_chunks:
         return []
-    chunk_size = 6
-    chapters = []
-    for start in range(0, len(paragraph_chunks), chunk_size):
-        idx = len(chapters) + 1
-        body = "\n\n".join(paragraph_chunks[start:start + chunk_size]).strip()
+    chunks = split_into_chunks_by_chars(normalized, chunk_size=4000, overlap=500)
+    chapters: List[Chapter] = []
+    for idx, chunk in enumerate(chunks, 1):
+        body = str(chunk.get("content") or "").strip()
         if body:
-            chapters.append(Chapter(title=f"第{idx}章", content=body, index=idx))
+            chapters.append(Chapter(title=f"第{idx}段", content=body, index=idx))
     return chapters

@@ -8,6 +8,7 @@
 
 
 import json
+import os
 import sqlite3
 from datetime import datetime
 from typing import Optional, List
@@ -22,13 +23,14 @@ class SQLiteProjectRepository(IProjectRepository):
     
     def __init__(self, db_path: str):
         self.db_path = db_path
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         self._init_table()
     
     def _init_table(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
-# 文件：模块：sqlite_project_repo
-
                 CREATE TABLE IF NOT EXISTS projects (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -81,8 +83,6 @@ class SQLiteProjectRepository(IProjectRepository):
     def save(self, project: Project) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
-# 文件：模块：sqlite_project_repo
-
                 INSERT OR REPLACE INTO projects 
                 (id, name, novel_id, config, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -113,12 +113,24 @@ class SQLiteProjectRepository(IProjectRepository):
             return cursor.fetchone()[0]
     
     def _row_to_project(self, row: sqlite3.Row) -> Project:
+        try:
+            status = ProjectStatus(row["status"])
+        except Exception:
+            status = ProjectStatus.ACTIVE
+        config_raw = row["config"]
+        if config_raw:
+            try:
+                config = ProjectConfig.from_dict(json.loads(config_raw))
+            except Exception:
+                config = ProjectConfig()
+        else:
+            config = ProjectConfig()
         return Project(
             id=ProjectId(row["id"]),
             name=row["name"],
             novel_id=NovelId(row["novel_id"]),
-            config=ProjectConfig.from_dict(json.loads(row["config"])) if row["config"] else ProjectConfig(),
-            status=ProjectStatus(row["status"]),
+            config=config,
+            status=status,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"])
         )

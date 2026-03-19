@@ -33,7 +33,8 @@ class ProjectService:
         self,
         name: str,
         genre: GenreType = GenreType.XUANHUAN,
-        target_words: int = 8000000
+        target_words: int = 8000000,
+        author: str = ""
     ) -> Project:
         """创建新项目"""
 # 文件：模块：project_service
@@ -43,7 +44,7 @@ class ProjectService:
         novel = Novel(
             id=novel_id,
             title=name,
-            author="",
+            author=author,
             genre=genre.value,
             target_word_count=target_words,
             created_at=now,

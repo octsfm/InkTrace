@@ -20,18 +20,20 @@ from application.agent_mvp import (
     ContinueWritingTool,
     ExecutionContext,
     RAGSearchTool,
+    StoryBranchTool,
     TaskContext,
     WritingGenerateTool
 )
 from application.services.project_service import ProjectService
 from application.services.writing_service import WritingService
-from application.dto.request_dto import ContinueWritingRequest, GenerateChapterRequest, PlanPlotRequest
+from application.dto.request_dto import ContinueWritingRequest, GenerateBranchesRequest, GenerateChapterRequest, PlanPlotRequest
 from application.dto.response_dto import ContinueWritingResponse, GenerateChapterResponse
+from infrastructure.llm.llm_factory import LLMFactory
 from domain.entities.chapter import Chapter
 from domain.repositories.chapter_repository import IChapterRepository
 from domain.repositories.novel_repository import INovelRepository
 from domain.types import ChapterId, ChapterStatus, NovelId
-from presentation.api.dependencies import get_chapter_repo, get_novel_repo, get_project_service, get_writing_service
+from presentation.api.dependencies import get_chapter_repo, get_llm_factory, get_novel_repo, get_project_service, get_writing_service
 
 
 router = APIRouter(prefix="/api/writing", tags=["writing"])
@@ -52,6 +54,31 @@ def _gray_ratio() -> int:
     except ValueError:
         value = 0
     return max(0, min(100, value))
+
+
+def _has_llm_credentials() -> bool:
+    return bool(os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("KIMI_API_KEY"))
+
+
+def _fallback_generate_response(request: GenerateChapterRequest) -> GenerateChapterResponse:
+    fallback_result = WritingGenerateTool().execute(
+        TaskContext(
+            novel_id=request.novel_id,
+            goal=request.goal,
+            target_word_count=request.target_word_count
+        ),
+        {
+            "goal": request.goal,
+            "target_word_count": request.target_word_count
+        }
+    )
+    payload = fallback_result.payload or {}
+    return GenerateChapterResponse(
+        chapter_id=str(payload.get("chapter_title") or "fallback-chapter"),
+        content=str(payload.get("content") or ""),
+        word_count=int(payload.get("word_count") or 0),
+        metadata={"route": "legacy_fallback", "gray_ratio": _gray_ratio()}
+    )
 
 
 def _should_use_agent(request: GenerateChapterRequest) -> bool:
@@ -164,7 +191,12 @@ async def generate_chapter(
                 }
             )
 
-        legacy_response = service.generate_chapter(_build_legacy_generate_request(request))
+        if not _has_llm_credentials():
+            return _fallback_generate_response(request)
+        try:
+            legacy_response = service.generate_chapter(_build_legacy_generate_request(request))
+        except Exception:
+            return _fallback_generate_response(request)
         metadata = legacy_response.metadata or {}
         metadata.update({"route": "legacy", "gray_ratio": _gray_ratio()})
         legacy_response.metadata = metadata
@@ -173,12 +205,82 @@ async def generate_chapter(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/branches")
+async def generate_story_branches(
+    request: GenerateBranchesRequest,
+    project_service: ProjectService = Depends(get_project_service),
+    chapter_repo: IChapterRepository = Depends(get_chapter_repo),
+    llm_factory: LLMFactory = Depends(get_llm_factory)
+):
+    try:
+        novel_id = NovelId(request.novel_id)
+        project_service.ensure_project_for_novel(novel_id)
+        memory = project_service.get_memory_by_novel(novel_id)
+        if not memory:
+            raise HTTPException(
+                status_code=400,
+                detail=_error_detail("MEMORY_REQUIRED", "memory为空", "请先整理故事结构后再生成剧情分支。")
+            )
+        chapters = chapter_repo.find_by_novel(novel_id)
+        latest_text = request.current_chapter_content or (chapters[-1].content if chapters else "")
+        tool = StoryBranchTool(llm_factory.primary_client, llm_factory.backup_client)
+        task_context = TaskContext(
+            novel_id=request.novel_id,
+            goal=request.direction_hint or "按主线推进",
+            target_word_count=0
+        )
+        task_context.memory = memory
+        result = await tool.execute_async(
+            task_context,
+            {
+                "memory": memory,
+                "current_chapter_content": latest_text,
+                "direction_hint": request.direction_hint or "",
+                "branch_count": request.branch_count
+            }
+        )
+        if result.status != "success":
+            error = result.error or {}
+            raise HTTPException(
+                status_code=400,
+                detail=_error_detail(
+                    error.get("code") or "BRANCH_FAILED",
+                    error.get("message") or "剧情分支生成失败",
+                    "剧情分支生成失败，请稍后重试。"
+                )
+            )
+        return {
+            "branches": (result.payload or {}).get("branches") or [],
+            "memory_snapshot": memory,
+            "latest_chapter_number": chapters[-1].number if chapters else 0
+        }
+    except ValueError as e:
+        message = str(e)
+        if "小说不存在" in message or "项目不存在" in message:
+            raise HTTPException(
+                status_code=404,
+                detail=_error_detail("NOVEL_NOT_FOUND", message, "未找到对应作品，请先创建或导入。")
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=_error_detail("BRANCH_INPUT_INVALID", message, "剧情分支参数有误，请检查后重试。")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail("BRANCH_INTERNAL_ERROR", str(e), "剧情分支生成失败，请稍后重试。")
+        )
+
+
 @router.post("/continue", response_model=ContinueWritingResponse)
 async def continue_writing(
     request: ContinueWritingRequest,
     project_service: ProjectService = Depends(get_project_service),
     chapter_repo: IChapterRepository = Depends(get_chapter_repo),
-    novel_repo: INovelRepository = Depends(get_novel_repo)
+    novel_repo: INovelRepository = Depends(get_novel_repo),
+    llm_factory: LLMFactory = Depends(get_llm_factory)
 ):
     try:
         idempotency_key = f"{request.novel_id}:{request.goal}:{request.trace_id or 'default'}"
@@ -199,12 +301,14 @@ async def continue_writing(
             goal=request.goal,
             target_word_count=request.target_word_count
         )
-        tool = ContinueWritingTool()
-        result = tool.execute(
+        task_context.memory = memory
+        tool = ContinueWritingTool(llm_factory.primary_client, llm_factory.backup_client)
+        result = await tool.execute_async(
             task_context,
             {
-                "goal": request.goal,
+                "direction": request.goal,
                 "memory": memory,
+                "chapters": [{"content": ch.content, "number": ch.number, "title": ch.title} for ch in chapters[-8:]],
                 "target_word_count": request.target_word_count,
                 "recent_chapter_text": recent_chapter_text,
                 "idempotency_key": idempotency_key

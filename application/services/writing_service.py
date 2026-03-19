@@ -10,6 +10,7 @@
 from datetime import datetime
 from typing import List, Optional
 import uuid
+import re
 
 from domain.entities.novel import Novel
 from domain.entities.chapter import Chapter
@@ -57,7 +58,7 @@ class WritingService:
         Returns:
             剧情节点列表
         """
-# 文件：模块：writing_service
+        print(">>> writing_service: start writing")
 
         novel = self.novel_repo.find_by_id(NovelId(request.novel_id))
         if not novel:
@@ -67,7 +68,7 @@ class WritingService:
             raise ValueError("小说没有大纲")
         
         llm_client = self.llm_factory.primary_client
-        
+        print(">>> client type:", type(llm_client))
         
         engine = WritingEngine(llm_client, self._get_style_profile(novel.id.value))
         
@@ -98,14 +99,14 @@ class WritingService:
         Returns:
             生成响应
         """
-# 文件：模块：writing_service
+        print(">>> writing_service: start writing")
 
         novel = self.novel_repo.find_by_id(NovelId(request.novel_id))
         if not novel:
             raise ValueError(f"小说不存在: {request.novel_id}")
         
         llm_client = self.llm_factory.primary_client
-        
+        print(">>> client type:", type(llm_client))
         
         style_profile = self._get_style_profile(novel.id.value)
         
@@ -118,7 +119,7 @@ class WritingService:
             novel_title=novel.title,
             outline_summary=novel.outline.premise if novel.outline else "",
             previous_chapters=previous_contents,
-            plot_direction=request.plot_direction
+            plot_direction=self._normalize_direction(request.plot_direction)
         )
         
         config = WritingConfig(
@@ -128,6 +129,14 @@ class WritingService:
         )
         
         content = engine.generate_chapter(context, config)
+        if self._is_bad_chapter(content, previous_contents):
+            retry_context = WritingContext(
+                novel_title=novel.title,
+                outline_summary=novel.outline.premise if novel.outline else "",
+                previous_chapters=previous_contents,
+                plot_direction=self._normalize_direction(request.plot_direction, strict=True)
+            )
+            content = engine.generate_chapter(retry_context, config)
         
         now = datetime.now()
         chapter = Chapter(
@@ -164,6 +173,53 @@ class WritingService:
             consistency_report=consistency_report
         )
 
+    def generate_chapter_with_direction(
+        self,
+        novel_id: str,
+        memory: dict,
+        chapters: List[str],
+        direction: str,
+        chapter_count: int,
+        target_word_count: int
+    ) -> dict:
+        print(">>> writing_service: start writing")
+
+        novel = self.novel_repo.find_by_id(NovelId(novel_id))
+        if not novel:
+            raise ValueError(f"小说不存在: {novel_id}")
+        llm_client = self.llm_factory.primary_client
+        print(">>> client type:", type(llm_client))
+        style_profile = self._get_style_profile(novel.id.value)
+        engine = WritingEngine(llm_client, style_profile)
+        recent = [str(item or "") for item in chapters[-8:]]
+        print(">>> MEMORY RAW:", memory)
+        memory_text = self._memory_to_text(memory)
+        print(">>> MEMORY TEXT:", memory_text)
+        context = WritingContext(
+            novel_title=novel.title,
+            outline_summary=memory_text,
+            previous_chapters=recent,
+            plot_direction=self._normalize_direction(direction)
+        )
+        config = WritingConfig(
+            target_word_count=target_word_count,
+            enable_style_mimicry=True,
+            enable_consistency_check=True
+        )
+        chapter_text = engine.generate_chapter(context, config)
+        if self._is_bad_chapter(chapter_text, recent):
+            chapter_text = engine.generate_chapter(
+                WritingContext(
+                    novel_title=novel.title,
+                    outline_summary=memory_text,
+                    previous_chapters=recent,
+                    plot_direction=self._normalize_direction(direction, strict=True)
+                ),
+                config
+            )
+        events = self._extract_new_events(chapter_text, memory)
+        return {"chapter_text": chapter_text, "new_events": events, "chapter_count": chapter_count}
+
     def _get_style_profile(self, novel_id: str) -> StyleProfile:
         """获取或创建文风特征"""
         if novel_id not in self._style_profiles:
@@ -177,3 +233,56 @@ class WritingService:
                 sample_sentences=[]
             )
         return self._style_profiles[novel_id]
+
+    def _normalize_direction(self, direction: str, strict: bool = False) -> str:
+        base = str(direction or "").strip()
+        if strict:
+            return f"{base}\n必须推进至少一个新事件，不得复述前文，不得偏离人物设定。"
+        return base
+
+    def _is_bad_chapter(self, text: str, previous_contents: List[str]) -> bool:
+        content = str(text or "").strip()
+        if len(content) < 120:
+            return True
+        filler = ["不知道为什么", "一时间", "似乎", "总之", "然后", "接着", "忽然之间"]
+        filler_hits = sum(content.count(k) for k in filler)
+        if filler_hits >= 8:
+            return True
+        history = "\n".join(previous_contents)[-1200:]
+        if history:
+            overlap = 0
+            for i in range(0, max(len(content) - 40, 1), 40):
+                seg = content[i:i + 80]
+                if len(seg) >= 40 and seg in history:
+                    overlap += 1
+            if overlap >= 2:
+                return True
+        return False
+
+    def _memory_to_text(self, memory: dict) -> str:
+        characters = memory.get("characters") or []
+        names = [str(item.get("name") or "").strip() for item in characters if isinstance(item, dict)]
+        world_settings = str(memory.get("world_settings") or "")
+        plot_outline = str(memory.get("plot_outline") or "")
+        writing_style = str(memory.get("writing_style") or "")
+        current_progress = str(memory.get("current_progress") or "")
+        events = memory.get("events") or []
+        event_text = "；".join([str(ev.get("event") or "") for ev in events if isinstance(ev, dict)])
+        parts = [",".join([n for n in names if n]), world_settings, plot_outline, writing_style, current_progress, event_text]
+        return "；".join([p for p in parts if p])
+
+    def _extract_new_events(self, chapter_text: str, memory: dict) -> List[dict]:
+        lead = "主角"
+        characters = memory.get("characters") or []
+        if characters and isinstance(characters[0], dict):
+            lead = str(characters[0].get("name") or lead)
+        summary = re.sub(r"\s+", " ", str(chapter_text or ""))[:120]
+        return [
+            {
+                "event": f"{lead}在本章推进主线并触发新冲突：{summary}",
+                "actors": [lead],
+                "action": "推进",
+                "result": "局势升级",
+                "impact": "下一章必须处理升级后的冲突"
+            }
+        ]

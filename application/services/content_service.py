@@ -11,6 +11,7 @@ import os
 from datetime import datetime
 from typing import List, Optional
 import uuid
+import logging
 
 from domain.entities.novel import Novel
 from domain.entities.chapter import Chapter
@@ -48,6 +49,7 @@ class ContentService:
         self.txt_parser = txt_parser
         self.style_analyzer = StyleAnalyzer()
         self.plot_analyzer = PlotAnalyzer()
+        self.logger = logging.getLogger(__name__)
 
     def import_novel(self, request: ImportNovelRequest) -> NovelResponse:
         """
@@ -151,7 +153,14 @@ class ContentService:
         if not novel:
             raise ValueError(f"小说不存在: {novel_id}")
         chapters = self.chapter_repo.find_by_novel(novel.id)
-        return "\n\n".join([chapter.content for chapter in chapters if chapter.content])
+        text = "\n\n".join([chapter.content for chapter in chapters if chapter.content])
+        self.logger.info(
+            "[ContentService] 获取小说文本 novel_id=%s chapters=%d text_length=%d",
+            novel_id,
+            len(chapters),
+            len(text)
+        )
+        return text
 
     def _nov_to_response(self, novel: Novel) -> NovelResponse:
         """将小说实体转换为响应"""
@@ -160,9 +169,11 @@ class ContentService:
             title=novel.title,
             author=novel.author,
             genre=novel.genre,
+            word_count=novel.current_word_count,
             target_word_count=novel.target_word_count,
             current_word_count=novel.current_word_count,
             chapter_count=novel.chapter_count,
+            status="active",
             created_at=novel.created_at.isoformat(),
             updated_at=novel.updated_at.isoformat()
         )

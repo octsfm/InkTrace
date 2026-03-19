@@ -23,8 +23,8 @@
             <span>基本信息</span>
           </template>
           <el-descriptions :column="2" border>
-            <el-descriptions-item label="作者">{{ novel?.author }}</el-descriptions-item>
-            <el-descriptions-item label="题材">{{ novel?.genre }}</el-descriptions-item>
+            <el-descriptions-item label="作者">{{ novel?.author || '未知' }}</el-descriptions-item>
+            <el-descriptions-item label="题材">{{ formatGenre(novel?.genre) }}</el-descriptions-item>
             <el-descriptions-item label="当前字数">{{ formatNumber(novel?.current_word_count) }}</el-descriptions-item>
             <el-descriptions-item label="目标字数">{{ formatNumber(novel?.target_word_count) }}</el-descriptions-item>
             <el-descriptions-item label="章节数">{{ novel?.chapter_count }}</el-descriptions-item>
@@ -71,6 +71,10 @@
               </el-card>
             </el-col>
           </el-row>
+          <div v-if="organizing || organizeProgress.total > 0" class="organize-progress">
+            <div class="organize-progress-text">{{ organizeProgress.message }}</div>
+            <el-progress :percentage="organizeProgress.percent" :stroke-width="10" />
+          </div>
         </el-card>
 
         <el-card class="memory-card">
@@ -125,6 +129,7 @@
               v-for="chapter in chapters" 
               :key="chapter.id" 
               class="chapter-item"
+              @click="openChapterEditor(chapter)"
             >
               <span class="chapter-title">第{{ chapter.number }}章 {{ chapter.title }}</span>
               <span class="chapter-words">{{ chapter.word_count }}字</span>
@@ -178,11 +183,26 @@
         </el-tab-pane>
       </el-tabs>
     </el-dialog>
+
+    <el-dialog v-model="chapterDialogVisible" title="章节编辑" width="800px">
+      <el-form label-width="80px">
+        <el-form-item label="标题">
+          <el-input v-model="editingChapter.title" />
+        </el-form-item>
+        <el-form-item label="内容">
+          <el-input v-model="editingChapter.content" type="textarea" :rows="14" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="chapterDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingChapter" @click="saveChapter">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { novelApi, contentApi, exportApi } from '@/api'
@@ -198,6 +218,33 @@ const plotResult = ref(null)
 const memoryData = ref({})
 const memoryLoading = ref(false)
 const memoryCollapse = ref(['characters', 'world', 'plot', 'style'])
+const organizing = ref(false)
+const organizeProgress = ref({
+  current: 0,
+  total: 0,
+  percent: 0,
+  status: 'idle',
+  message: '暂无整理任务'
+})
+let organizePollTimer = null
+const chapterDialogVisible = ref(false)
+const savingChapter = ref(false)
+const editingChapter = ref({
+  id: '',
+  number: 0,
+  title: '',
+  content: ''
+})
+const genreMap = {
+  xuanhuan: '玄幻',
+  xianxia: '仙侠',
+  dushi: '都市',
+  lishi: '历史',
+  kehuan: '科幻',
+  wuxia: '武侠',
+  qihuan: '奇幻',
+  other: '其他'
+}
 
 const memoryCharacters = computed(() => {
   const source = memoryData.value?.characters || []
@@ -273,6 +320,8 @@ const getProgress = () => {
   return Math.min(100, Math.round((novel.value.current_word_count / novel.value.target_word_count) * 100))
 }
 
+const formatGenre = (genre) => genreMap[genre] || genre || '未知'
+
 const analyzeStyle = async () => {
   try {
     ElMessage.info('正在分析文风...')
@@ -308,18 +357,95 @@ const exportNovel = async () => {
 
 const organizeStory = async () => {
   try {
+    organizing.value = true
+    organizeProgress.value = {
+      current: 0,
+      total: 0,
+      percent: 0,
+      status: 'running',
+      message: '正在初始化整理任务（0%）'
+    }
+    startOrganizeProgressPolling()
     ElMessage.info('正在整理故事结构...')
     await contentApi.organize(route.params.id)
+    await fetchOrganizeProgress()
     await loadMemory()
     ElMessage.success('故事结构已更新')
   } catch (error) {
     console.error('整理失败:', error)
+  } finally {
+    organizing.value = false
+    stopOrganizeProgressPolling()
+  }
+}
+
+const fetchOrganizeProgress = async () => {
+  try {
+    const progress = await contentApi.organizeProgress(route.params.id)
+    organizeProgress.value = progress || organizeProgress.value
+  } catch (error) {
+    console.error('加载整理进度失败:', error)
+  }
+}
+
+const startOrganizeProgressPolling = () => {
+  stopOrganizeProgressPolling()
+  organizePollTimer = setInterval(async () => {
+    await fetchOrganizeProgress()
+    if (organizeProgress.value.status === 'done' || organizeProgress.value.status === 'error') {
+      stopOrganizeProgressPolling()
+    }
+  }, 1200)
+}
+
+const stopOrganizeProgressPolling = () => {
+  if (organizePollTimer) {
+    clearInterval(organizePollTimer)
+    organizePollTimer = null
+  }
+}
+
+const openChapterEditor = async (chapter) => {
+  try {
+    const detail = await novelApi.getChapter(route.params.id, chapter.id)
+    editingChapter.value = {
+      id: detail.id,
+      number: detail.number,
+      title: detail.title || '',
+      content: detail.content || ''
+    }
+    chapterDialogVisible.value = true
+  } catch (error) {
+    console.error('加载章节详情失败:', error)
+  }
+}
+
+const saveChapter = async () => {
+  if (!editingChapter.value.id) return
+  try {
+    savingChapter.value = true
+    await novelApi.updateChapter(route.params.id, editingChapter.value.id, {
+      title: editingChapter.value.title,
+      content: editingChapter.value.content
+    })
+    chapterDialogVisible.value = false
+    await loadNovel()
+    ElMessage.success('章节已保存')
+  } catch (error) {
+    console.error('保存章节失败:', error)
+  } finally {
+    savingChapter.value = false
   }
 }
 
 onMounted(() => {
   loadNovel()
   loadMemory()
+  fetchOrganizeProgress()
+})
+
+onBeforeUnmount(() => {
+  stopOrganizeProgressPolling()
 })
 </script>
 
@@ -372,6 +498,20 @@ onMounted(() => {
 .tool-desc {
   font-size: 12px;
   color: #909399;
+}
+
+.organize-progress {
+  margin-top: 14px;
+  padding: 12px;
+  background: #f8fbff;
+  border: 1px solid #e6f0ff;
+  border-radius: 8px;
+}
+
+.organize-progress-text {
+  margin-bottom: 8px;
+  color: #606266;
+  font-size: 13px;
 }
 
 .chapter-item {

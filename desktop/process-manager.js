@@ -8,6 +8,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+const os = require('os');
 
 class ProcessManager {
     constructor() {
@@ -22,6 +23,12 @@ class ProcessManager {
             await this.stop();
         }
 
+        await this._freePort(port);
+        const stillInUse = await this._isPortInUse(port);
+        if (stillInUse) {
+            throw new Error(`端口 ${port} 被占用，请先结束冲突进程后重试`);
+        }
+
         this.port = port;
         this.status = 'starting';
         this._notifyStatusChange();
@@ -30,11 +37,21 @@ class ProcessManager {
 
         return new Promise((resolve, reject) => {
             const backendDir = path.dirname(backendPath);
+            const userDataDir = path.join(process.env.APPDATA || path.join(os.homedir(), '.inktrace'), 'InkTrace');
+            const dbPath = path.join(userDataDir, 'inktrace.db');
+            const chromaDir = path.join(userDataDir, 'chroma');
+            fs.mkdirSync(userDataDir, { recursive: true });
+            fs.mkdirSync(chromaDir, { recursive: true });
             
             const env = {
                 ...process.env,
                 PYTHONIOENCODING: 'utf-8',
-                PORT: String(port)
+                PORT: String(port),
+                INKTRACE_PORT: String(port),
+                INKTRACE_HOST: '127.0.0.1',
+                INKTRACE_DEBUG: isDev ? 'true' : 'false',
+                INKTRACE_DB_PATH: dbPath,
+                INKTRACE_CHROMA_DIR: chromaDir
             };
 
             let command, args;
@@ -76,7 +93,7 @@ class ProcessManager {
                 this._notifyStatusChange();
             });
 
-            this._waitForBackend(port, 30000)
+            this._waitForBackend(port, 45000)
                 .then(() => {
                     this.status = 'running';
                     this._notifyStatusChange();
@@ -164,6 +181,10 @@ class ProcessManager {
             const startTime = Date.now();
             
             const checkServer = () => {
+                if (!this.process) {
+                    reject(new Error('Backend process exited unexpectedly'));
+                    return;
+                }
                 const req = http.request({
                     hostname: 'localhost',
                     port: port,
@@ -199,6 +220,64 @@ class ProcessManager {
             };
 
             checkServer();
+        });
+    }
+
+    _freePort(port) {
+        if (process.platform !== 'win32') {
+            return Promise.resolve();
+        }
+        return new Promise((resolve) => {
+            const cmd = `for /f "tokens=5" %a in ('netstat -ano ^| findstr LISTENING ^| findstr :${port}') do @echo %a`;
+            const killer = spawn('cmd.exe', ['/c', cmd], { stdio: ['ignore', 'pipe', 'ignore'] });
+            let output = '';
+            killer.stdout.on('data', (data) => {
+                output += data.toString();
+            });
+            killer.on('close', () => {
+                const pids = Array.from(
+                    new Set(
+                        output
+                            .split(/\r?\n/)
+                            .map((line) => line.trim())
+                            .filter((line) => /^\d+$/.test(line))
+                    )
+                );
+                if (pids.length === 0) {
+                    return resolve();
+                }
+                let done = 0;
+                pids.forEach((pid) => {
+                    if (Number(pid) <= 4) {
+                        done += 1;
+                        if (done >= pids.length) resolve();
+                        return;
+                    }
+                    const tk = spawn('taskkill', ['/PID', String(pid), '/F'], { stdio: 'ignore' });
+                    tk.on('close', () => {
+                        done += 1;
+                        if (done >= pids.length) resolve();
+                    });
+                });
+            });
+        });
+    }
+
+    _isPortInUse(port) {
+        return new Promise((resolve) => {
+            const req = http.request({
+                hostname: '127.0.0.1',
+                port: port,
+                path: '/health',
+                method: 'GET',
+                timeout: 800
+            }, () => resolve(true));
+            req.on('error', () => resolve(false));
+            req.on('timeout', () => {
+                req.destroy();
+                resolve(false);
+            });
+            req.end();
         });
     }
 }

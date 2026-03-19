@@ -2,452 +2,474 @@
 
 <cite>
 **本文引用的文件**
-- [presentation/api/routers/novel.py](file://presentation/api/routers/novel.py)
-- [presentation/api/routers/export.py](file://presentation/api/routers/export.py)
-- [presentation/api/routers/content.py](file://presentation/api/routers/content.py)
-- [application/services/project_service.py](file://application/services/project_service.py)
-- [application/services/export_service.py](file://application/services/export_service.py)
-- [application/dto/request_dto.py](file://application/dto/request_dto.py)
-- [application/dto/response_dto.py](file://application/dto/response_dto.py)
-- [domain/entities/novel.py](file://domain/entities/novel.py)
-- [domain/repositories/novel_repository.py](file://domain/repositories/novel_repository.py)
-- [domain/types.py](file://domain/types.py)
-- [infrastructure/file/markdown_exporter.py](file://infrastructure/file/markdown_exporter.py)
-- [infrastructure/file/txt_parser.py](file://infrastructure/file/txt_parser.py)
-- [presentation/api/app.py](file://presentation/api/app.py)
-- [frontend/src/views/novel/NovelImport.vue](file://frontend/src/views/novel/NovelImport.vue)
-- [frontend/src/api/index.js](file://frontend/src/api/index.js)
+- [novel.py](file://presentation/api/routers/novel.py)
+- [project_service.py](file://application/services/project_service.py)
+- [request_dto.py](file://application/dto/request_dto.py)
+- [response_dto.py](file://application/dto/response_dto.py)
+- [types.py](file://domain/types.py)
+- [app.py](file://presentation/api/app.py)
+- [sqlite_novel_repo.py](file://infrastructure/persistence/sqlite_novel_repo.py)
+- [project.py](file://domain/entities/project.py)
+- [novel_entity.py](file://domain/entities/novel.py)
+- [index.js](file://frontend/src/api/index.js)
 </cite>
 
 ## 目录
 1. [简介](#简介)
 2. [项目结构](#项目结构)
 3. [核心组件](#核心组件)
-4. [架构总览](#架构总览)
+4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖分析](#依赖分析)
+6. [依赖关系分析](#依赖关系分析)
 7. [性能考虑](#性能考虑)
-8. [故障排查指南](#故障排查指南)
+8. [故障排除指南](#故障排除指南)
 9. [结论](#结论)
 10. [附录](#附录)
 
 ## 简介
-本文件为“小说管理API”的权威接口文档，覆盖小说的CRUD操作、导入与导出能力，以及相关实体与数据结构说明。文档面向开发者与测试人员，提供HTTP方法、URL路径、请求参数、响应格式、请求/响应示例与错误处理机制，并给出最佳实践与常见问题解决方案。
+本文件为小说管理API的详细接口文档，涵盖小说项目的CRUD操作接口，包括创建小说(create_novel)、列出小说(list_novels)、获取小说详情(get_novel)、删除小说(delete_novel)等核心接口。文档详细说明了每个接口的HTTP方法、URL路径、请求参数、响应格式和错误处理机制。同时提供了CreateNovelRequest请求DTO和NovelResponse响应DTO的字段定义与验证规则，并通过实际代码路径展示小说状态管理、章节统计和项目配置的API交互模式。
 
 ## 项目结构
-- 后端采用FastAPI框架，路由按功能模块划分：
-  - 小说管理路由：/novels
-  - 导出路由：/export
-  - 内容导入路由：/api/content
-- 应用层服务负责业务编排：
-  - 项目管理服务：负责创建/查询/删除小说项目及绑定记忆体
-  - 导出服务：负责小说与章节的导出
-- 领域层实体与仓储：
-  - 小说实体、仓储接口、领域类型（ID、枚举）
-- 基础设施层：
-  - Markdown导出器、TXT解析器
-- 前端：
-  - 小说导入页面与API封装
+小说管理API采用分层架构设计，主要分为以下层次：
+- 表现层(Presentation Layer): FastAPI路由定义和API端点
+- 应用层(Application Layer): 业务服务逻辑和DTO定义
+- 领域层(Domain Layer): 实体、值对象和仓储接口
+- 基础设施层(Infrastructure Layer): 数据持久化实现
 
 ```mermaid
 graph TB
 subgraph "表现层"
-A["FastAPI 应用<br/>presentation/api/app.py"]
-B["小说路由<br/>presentation/api/routers/novel.py"]
-C["导出路由<br/>presentation/api/routers/export.py"]
-D["内容路由<br/>presentation/api/routers/content.py"]
+Router[novel.py<br/>API路由]
+App[app.py<br/>FastAPI应用]
 end
 subgraph "应用层"
-E["项目管理服务<br/>application/services/project_service.py"]
-F["导出服务<br/>application/services/export_service.py"]
+Service[ProjectService<br/>项目服务]
+DTOReq[request_dto.py<br/>请求DTO]
+DTOResp[response_dto.py<br/>响应DTO]
 end
 subgraph "领域层"
-G["小说实体<br/>domain/entities/novel.py"]
-H["小说仓储接口<br/>domain/repositories/novel_repository.py"]
-I["领域类型<br/>domain/types.py"]
+Entity[Project/Novel<br/>实体]
+Types[types.py<br/>类型定义]
 end
 subgraph "基础设施层"
-J["Markdown导出器<br/>infrastructure/file/markdown_exporter.py"]
-K["TXT解析器<br/>infrastructure/file/txt_parser.py"]
+Repo[SQLite实现<br/>持久化]
 end
-A --> B
-A --> C
-A --> D
-B --> E
-C --> F
-D --> E
-D --> F
-E --> H
-F --> H
-F --> J
-D --> K
-E --> G
-H --> G
-I --> G
+App --> Router
+Router --> Service
+Service --> Entity
+Service --> Repo
+Service --> DTOReq
+Service --> DTOResp
+Entity --> Types
+Repo --> Entity
 ```
 
-图表来源
-- [presentation/api/app.py:19-62](file://presentation/api/app.py#L19-L62)
-- [presentation/api/routers/novel.py:21](file://presentation/api/routers/novel.py#L21)
-- [presentation/api/routers/export.py:21](file://presentation/api/routers/export.py#L21)
-- [presentation/api/routers/content.py:22](file://presentation/api/routers/content.py#L22)
-- [application/services/project_service.py:21-67](file://application/services/project_service.py#L21-L67)
-- [application/services/export_service.py:23-69](file://application/services/export_service.py#L23-L69)
-- [domain/entities/novel.py:20-178](file://domain/entities/novel.py#L20-L178)
-- [domain/repositories/novel_repository.py:17-70](file://domain/repositories/novel_repository.py#L17-L70)
-- [domain/types.py:15-284](file://domain/types.py#L15-L284)
-- [infrastructure/file/markdown_exporter.py:17-126](file://infrastructure/file/markdown_exporter.py#L17-L126)
-- [infrastructure/file/txt_parser.py:25-316](file://infrastructure/file/txt_parser.py#L25-L316)
+**图表来源**
+- [novel.py:1-162](file://presentation/api/routers/novel.py#L1-L162)
+- [project_service.py:1-203](file://application/services/project_service.py#L1-L203)
+- [request_dto.py:1-97](file://application/dto/request_dto.py#L1-L97)
+- [response_dto.py:1-200](file://application/dto/response_dto.py#L1-L200)
+- [types.py:1-284](file://domain/types.py#L1-L284)
 
-章节来源
-- [presentation/api/app.py:19-62](file://presentation/api/app.py#L19-L62)
+**章节来源**
+- [novel.py:1-162](file://presentation/api/routers/novel.py#L1-L162)
+- [app.py:1-66](file://presentation/api/app.py#L1-L66)
 
 ## 核心组件
-- 小说管理路由：提供创建、列出、查询、删除小说的REST接口
-- 导出路由：提供小说导出与文件下载接口
-- 内容导入路由：提供小说文件导入、文风/剧情分析、故事结构整理接口
-- 项目管理服务：封装小说项目生命周期管理
-- 导出服务：封装小说与章节导出逻辑
-- DTO：统一请求/响应数据结构
-- 实体与仓储：小说聚合根与仓储接口
-- 基础设施：Markdown导出器、TXT解析器
+本系统的核心组件包括：
 
-章节来源
-- [presentation/api/routers/novel.py:21-162](file://presentation/api/routers/novel.py#L21-L162)
-- [presentation/api/routers/export.py:21-103](file://presentation/api/routers/export.py#L21-L103)
-- [presentation/api/routers/content.py:22-196](file://presentation/api/routers/content.py#L22-L196)
-- [application/services/project_service.py:21-203](file://application/services/project_service.py#L21-L203)
-- [application/services/export_service.py:23-70](file://application/services/export_service.py#L23-L70)
-- [application/dto/request_dto.py:14-97](file://application/dto/request_dto.py#L14-L97)
-- [application/dto/response_dto.py:15-200](file://application/dto/response_dto.py#L15-L200)
-- [domain/entities/novel.py:20-178](file://domain/entities/novel.py#L20-L178)
-- [domain/repositories/novel_repository.py:17-70](file://domain/repositories/novel_repository.py#L17-L70)
-- [domain/types.py:15-284](file://domain/types.py#L15-L284)
-- [infrastructure/file/markdown_exporter.py:17-126](file://infrastructure/file/markdown_exporter.py#L17-L126)
-- [infrastructure/file/txt_parser.py:25-316](file://infrastructure/file/txt_parser.py#L25-L316)
+### API路由层
+- novel.py: 定义小说管理相关的所有REST API端点
+- 支持四种基本操作：POST创建、GET列表、GET详情、DELETE删除
 
-## 架构总览
-- 控制器层：各路由模块接收请求，调用应用服务
-- 应用服务层：封装业务规则，协调仓储与基础设施
-- 领域层：实体与值对象承载业务语义
-- 基础设施层：文件导出与文本解析
-- 前端：通过封装的API调用后端接口
+### 业务服务层
+- ProjectService: 实现项目管理的核心业务逻辑
+- 负责小说项目与小说实体的关联管理
+- 提供项目配置管理和状态控制功能
+
+### 数据传输对象层
+- CreateNovelRequest: 创建小说的请求DTO，包含验证规则
+- NovelResponse: 小说详情的响应DTO，标准化输出格式
+
+### 领域实体层
+- Project: 项目实体，包含配置信息和状态管理
+- Novel: 小说实体，管理章节、人物等聚合内容
+- GenreType: 题材类型枚举，支持多种文学类型
+
+**章节来源**
+- [project_service.py:21-67](file://application/services/project_service.py#L21-L67)
+- [request_dto.py:21-28](file://application/dto/request_dto.py#L21-L28)
+- [response_dto.py:22-34](file://application/dto/response_dto.py#L22-L34)
+
+## 架构概览
+小说管理API采用经典的三层架构模式，通过依赖注入实现松耦合设计。
 
 ```mermaid
 sequenceDiagram
-participant FE as "前端"
-participant API as "FastAPI 应用"
-participant NOV as "小说路由"
-participant PRJ as "项目管理服务"
-participant REP as "小说仓储接口"
-FE->>API : "POST /novels/"
-API->>NOV : "转发创建请求"
-NOV->>PRJ : "create_project(name, genre, target_words)"
-PRJ->>REP : "save(novel)"
-PRJ-->>NOV : "Project"
-NOV-->>FE : "NovelResponse"
+participant Client as 客户端
+participant Router as API路由
+participant Service as 项目服务
+participant Repo as 仓储层
+participant DB as 数据库
+Client->>Router : POST /novels/
+Router->>Service : create_project()
+Service->>Repo : save(novel)
+Repo->>DB : INSERT novels
+DB-->>Repo : OK
+Repo-->>Service : Novel对象
+Service-->>Router : Project对象
+Router-->>Client : NovelResponse
+Note over Client,DB : 创建小说流程
 ```
 
-图表来源
-- [presentation/api/routers/novel.py:24-61](file://presentation/api/routers/novel.py#L24-L61)
-- [application/services/project_service.py:32-67](file://application/services/project_service.py#L32-L67)
-- [domain/repositories/novel_repository.py:20-30](file://domain/repositories/novel_repository.py#L20-L30)
+**图表来源**
+- [novel.py:24-61](file://presentation/api/routers/novel.py#L24-L61)
+- [project_service.py:32-67](file://application/services/project_service.py#L32-L67)
+- [sqlite_novel_repo.py:54-72](file://infrastructure/persistence/sqlite_novel_repo.py#L54-L72)
 
 ## 详细组件分析
 
-### 小说管理API
+### CreateNovelRequest 请求DTO
+CreateNovelRequest是创建小说的请求数据传输对象，包含以下字段和验证规则：
 
-- 基础路径：/novels
-- 认证与鉴权：默认未启用，具体以部署配置为准
+| 字段名 | 类型 | 必填 | 验证规则 | 描述 |
+|--------|------|------|----------|------|
+| user_id | string | 否 | 可选 | 用户标识符 |
+| session_id | string | 否 | 可选 | 会话标识符 |
+| trace_id | string | 否 | 可选 | 追踪标识符 |
+| title | string | 是 | min_length=1, max_length=100 | 小说标题 |
+| author | string | 是 | min_length=1, max_length=50 | 作者姓名 |
+| genre | string | 是 | min_length=1 | 小说题材 |
+| target_word_count | int | 是 | gt=0, le=1000000 | 目标字数 |
+| options | dict | 否 | 可选 | 扩展选项 |
 
-1) 创建小说
-- 方法：POST
-- 路径：/novels/
-- 请求体：CreateNovelRequest
-  - 字段：title, author, genre, target_word_count, options
-  - 校验：长度、数值范围
-- 成功响应：NovelResponse
-- 错误码：400（参数校验失败）、500（内部异常）
+**章节来源**
+- [request_dto.py:21-28](file://application/dto/request_dto.py#L21-L28)
 
-2) 列出小说
-- 方法：GET
-- 路径：/novels/
-- 查询参数：无
-- 成功响应：NovelResponse数组
-- 错误码：500（内部异常）
+### NovelResponse 响应DTO
+NovelResponse是小说详情的标准响应格式，包含以下字段：
 
-3) 获取小说详情
-- 方法：GET
-- 路径：/novels/{novel_id}
-- 路径参数：novel_id（字符串）
-- 成功响应：NovelResponse
-- 错误码：404（小说不存在）、500（内部异常）
+| 字段名 | 类型 | 默认值 | 描述 |
+|--------|------|--------|------|
+| success | boolean | true | 操作是否成功 |
+| message | string | null | 操作消息 |
+| trace_id | string | null | 追踪标识符 |
+| id | string | - | 小说唯一标识符 |
+| title | string | - | 小说标题 |
+| author | string | "" | 作者姓名 |
+| genre | string | - | 小说题材 |
+| word_count | int | 0 | 总字数 |
+| target_word_count | int | - | 目标字数 |
+| current_word_count | int | 0 | 当前字数 |
+| chapter_count | int | 0 | 章节数量 |
+| chapters | array | null | 章节列表 |
+| memory | dict | null | 记忆配置 |
+| status | string | "draft" | 项目状态 |
+| created_at | string | - | 创建时间(ISO格式) |
+| updated_at | string | - | 更新时间(ISO格式) |
 
-4) 删除小说
-- 方法：DELETE
-- 路径：/novels/{novel_id}
-- 路径参数：novel_id（字符串）
-- 成功响应：{"message": "删除成功"}
-- 错误码：404（小说不存在）、500（内部异常）
+**章节来源**
+- [response_dto.py:22-34](file://application/dto/response_dto.py#L22-L34)
 
-请求示例（创建小说）
-- 方法：POST
-- 路径：/novels/
-- 请求头：Content-Type: application/json
-- 请求体：
-  - title: "我的仙路"
-  - author: "作者名"
-  - genre: "玄幻"
-  - target_word_count: 800000
+### API接口规范
 
-响应示例（创建小说）
-- 响应体：
-  - id: "uuid字符串"
-  - title: "我的仙路"
-  - author: ""
-  - genre: "玄幻"
-  - target_word_count: 800000
-  - current_word_count: 0
-  - chapter_count: 0
-  - status: "draft"
-  - created_at: "ISO时间字符串"
-  - updated_at: "ISO时间字符串"
+#### 创建小说 (create_novel)
+- **HTTP方法**: POST
+- **URL路径**: `/novels/`
+- **请求体**: CreateNovelRequest
+- **响应体**: NovelResponse
+- **功能描述**: 创建新的小说项目，初始化小说实体和项目配置
 
-章节来源
-- [presentation/api/routers/novel.py:24-133](file://presentation/api/routers/novel.py#L24-L133)
-- [application/dto/request_dto.py:21-28](file://application/dto/request_dto.py#L21-L28)
-- [application/dto/response_dto.py:22-34](file://application/dto/response_dto.py#L22-L34)
-- [application/services/project_service.py:32-67](file://application/services/project_service.py#L32-L67)
+**请求示例路径**:
+- [请求示例](file://frontend/src/api/index.js#L46)
 
-### 小说导入API
+**响应示例路径**:
+- [响应示例:47-61](file://presentation/api/routers/novel.py#L47-L61)
 
-- 基础路径：/api/content
-- 导入流程：前端先创建小说，再调用导入接口解析TXT并整理结构
+**错误处理**:
+- 400: 请求参数验证失败
+- 500: 服务器内部错误
 
-1) 导入小说
-- 方法：POST
-- 路径：/api/content/import
-- 请求体：ImportNovelRequest
-  - novel_id: 小说ID
-  - file_path: 小说文件路径
-  - options: 可选参数
-- 成功响应：包含novel、project_id、memory、analysis_status的对象
-- 错误码：400（文件不存在/解析失败）、404（小说不存在）
+**章节来源**
+- [novel.py:24-61](file://presentation/api/routers/novel.py#L24-L61)
+- [project_service.py:32-67](file://application/services/project_service.py#L32-L67)
 
-2) 文风分析
-- 方法：GET
-- 路径：/api/content/style/{novel_id}
-- 成功响应：StyleAnalysisResponse
-- 错误码：404（小说不存在）
+#### 列出小说 (list_novels)
+- **HTTP方法**: GET
+- **URL路径**: `/novels/`
+- **响应体**: List[NovelResponse]
+- **功能描述**: 获取所有小说项目的列表，包含章节统计信息
 
-3) 剧情分析
-- 方法：GET
-- 路径：/api/content/plot/{novel_id}
-- 成功响应：PlotAnalysisResponse
-- 错误码：404（小说不存在）
+**请求示例路径**:
+- [请求示例](file://frontend/src/api/index.js#L44)
 
-4) 获取记忆体
-- 方法：GET
-- 路径：/api/content/memory/{novel_id}
-- 成功响应：包含project_id与memory的对象
-- 错误码：404（小说不存在）
+**响应示例路径**:
+- [响应示例:82-85](file://presentation/api/routers/novel.py#L82-L85)
 
-5) 整理故事结构
-- 方法：POST
-- 路径：/api/content/organize/{novel_id}
-- 成功响应：包含status、project_id与memory的对象
-- 错误码：400/404/500（根据内部异常类型）
+**错误处理**:
+- 500: 数据库查询失败
 
-前端调用示意
-- 先调用novelApi.create创建小说，得到novel.id
-- 再调用contentApi.import传入novel_id与file_path
-- 成功后可进行文风/剧情分析与续写
+**章节来源**
+- [novel.py:64-85](file://presentation/api/routers/novel.py#L64-L85)
 
-章节来源
-- [presentation/api/routers/content.py:70-107](file://presentation/api/routers/content.py#L70-L107)
-- [presentation/api/routers/content.py:109-153](file://presentation/api/routers/content.py#L109-L153)
-- [presentation/api/routers/content.py:155-167](file://presentation/api/routers/content.py#L155-L167)
-- [presentation/api/routers/content.py:170-196](file://presentation/api/routers/content.py#L170-L196)
-- [application/dto/request_dto.py:30-35](file://application/dto/request_dto.py#L30-L35)
-- [application/dto/response_dto.py:61-84](file://application/dto/response_dto.py#L61-L84)
-- [application/dto/response_dto.py:72-84](file://application/dto/response_dto.py#L72-L84)
-- [frontend/src/views/novel/NovelImport.vue:128-178](file://frontend/src/views/novel/NovelImport.vue#L128-L178)
-- [frontend/src/api/index.js:43-56](file://frontend/src/api/index.js#L43-L56)
+#### 获取小说详情 (get_novel)
+- **HTTP方法**: GET
+- **URL路径**: `/novels/{novel_id}`
+- **路径参数**: novel_id (string)
+- **响应体**: NovelResponse
+- **功能描述**: 根据小说ID获取详细信息，包含章节列表和统计信息
 
-### 小说导出API
+**请求示例路径**:
+- [请求示例](file://frontend/src/api/index.js#L45)
 
-- 基础路径：/export
-- 当前支持格式：markdown
+**响应示例路径**:
+- [响应示例:106-110](file://presentation/api/routers/novel.py#L106-L110)
 
-1) 导出小说
-- 方法：POST
-- 路径：/export/
-- 请求体：ExportNovelRequest
-  - novel_id: 小说ID
-  - output_path: 输出文件路径（相对exports目录）
-  - format: 导出格式，默认markdown
-  - options: 可选参数
-- 成功响应：ExportResponse
-  - file_path: 输出文件路径
-  - format: 导出格式
-  - word_count: 总字数
-  - chapter_count: 章节数
-- 错误码：400（无效/不支持格式）、404（文件不存在）
+**错误处理**:
+- 404: 小说不存在
+- 500: 数据库查询失败
 
-2) 下载导出文件
-- 方法：GET
-- 路径：/export/download/{file_path}
-- 路径参数：file_path（相对exports目录的路径）
-- 成功响应：文件流
-- 安全校验：路径合法性、存在性、文件类型限制
+**章节来源**
+- [novel.py:88-110](file://presentation/api/routers/novel.py#L88-L110)
 
-前端调用示意
-- 调用exportApi.export提交导出请求
-- 使用exportApi.download拼接下载链接
+#### 删除小说 (delete_novel)
+- **HTTP方法**: DELETE
+- **URL路径**: `/novels/{novel_id}`
+- **路径参数**: novel_id (string)
+- **响应体**: JSON对象
+- **功能描述**: 删除指定的小说项目及其关联数据
 
-章节来源
-- [presentation/api/routers/export.py:60-103](file://presentation/api/routers/export.py#L60-L103)
-- [application/dto/request_dto.py:73-79](file://application/dto/request_dto.py#L73-L79)
-- [application/dto/response_dto.py:101-107](file://application/dto/response_dto.py#L101-L107)
-- [application/services/export_service.py:39-70](file://application/services/export_service.py#L39-L70)
-- [infrastructure/file/markdown_exporter.py:62-100](file://infrastructure/file/markdown_exporter.py#L62-L100)
-- [frontend/src/api/index.js:64-67](file://frontend/src/api/index.js#L64-L67)
+**请求示例路径**:
+- [请求示例](file://frontend/src/api/index.js#L47)
 
-### 数据模型与字段定义
+**响应示例路径**:
+- [响应示例:131-132](file://presentation/api/routers/novel.py#L131-L132)
 
-- 小说实体（部分关键字段）
-  - id: NovelId
-  - title: 标题
-  - author: 作者
-  - genre: 题材
-  - target_word_count: 目标字数
-  - current_word_count: 当前字数
-  - created_at/updated_at: 时间戳
-  - chapters: 章节列表
-  - characters: 人物列表
-  - outline: 大纲（可选）
+**错误处理**:
+- 404: 小说不存在
+- 500: 删除失败
 
-- 小说响应（部分关键字段）
-  - id: 字符串
-  - title: 标题
-  - author: 作者
-  - genre: 题材
-  - target_word_count: 目标字数
-  - current_word_count: 当前字数
-  - chapter_count: 章节数
-  - status: 状态
-  - created_at/updated_at: ISO时间字符串
-  - chapters: 章节数组（可选）
+**章节来源**
+- [novel.py:113-132](file://presentation/api/routers/novel.py#L113-L132)
 
-- 导出响应（部分关键字段）
-  - file_path: 输出文件路径
-  - format: 导出格式
-  - word_count: 总字数
-  - chapter_count: 章节数
+### 状态管理与章节统计
 
-章节来源
-- [domain/entities/novel.py:20-178](file://domain/entities/novel.py#L20-L178)
-- [application/dto/response_dto.py:22-34](file://application/dto/response_dto.py#L22-L34)
-- [application/dto/response_dto.py:101-107](file://application/dto/response_dto.py#L101-L107)
+#### 小说状态管理
+系统支持多种项目状态：
+- draft: 草稿状态
+- active: 激活状态  
+- archived: 归档状态
 
-## 依赖分析
+状态转换通过Project实体的方法实现，确保状态变更的原子性和一致性。
+
+#### 章节统计逻辑
+章节统计通过_project_to_novel_response函数实现：
+1. 查询小说关联的所有章节
+2. 计算章节总数和总字数
+3. 统计当前字数(current_word_count)
+4. 生成章节列表(chapters)
+
+```mermaid
+flowchart TD
+Start([获取小说详情]) --> GetProject["获取项目信息"]
+GetProject --> GetChapters["查询章节列表"]
+GetChapters --> CalcStats["计算统计信息"]
+CalcStats --> CountChapters["统计章节数量"]
+CalcStats --> SumWords["计算总字数"]
+CalcStats --> BuildResponse["构建响应对象"]
+CountChapters --> BuildResponse
+SumWords --> BuildResponse
+BuildResponse --> End([返回响应])
+```
+
+**图表来源**
+- [novel.py:135-161](file://presentation/api/routers/novel.py#L135-L161)
+
+**章节来源**
+- [novel.py:135-161](file://presentation/api/routers/novel.py#L135-L161)
+- [project_service.py:79-81](file://application/services/project_service.py#L79-L81)
+
+### 项目配置管理
+
+#### GenreType 枚举
+支持的题材类型包括：
+- xuanhuan: 仙侠
+- xianxia: 修仙
+- dushi: 都市
+- lishi: 历史
+- kehuan: 科幻
+- wuxia: 武侠
+- qihuan: 奇幻
+- other: 其他
+
+#### ProjectConfig 配置
+项目配置包含以下关键参数：
+- genre: 小说题材类型
+- target_words: 目标字数
+- chapter_words: 章节目标字数(默认2100)
+- style_intensity: 文风强度(默认0.8)
+- check_consistency: 是否检查一致性(默认true)
+- memory: 记忆配置(字典形式)
+
+**章节来源**
+- [types.py:251-261](file://domain/types.py#L251-L261)
+- [project.py:18-46](file://domain/entities/project.py#L18-L46)
+
+## 依赖关系分析
 
 ```mermaid
 classDiagram
+class CreateNovelRequest {
++string title
++string author
++string genre
++int target_word_count
++dict options
+}
+class NovelResponse {
++string id
++string title
++string author
++string genre
++int word_count
++int target_word_count
++int current_word_count
++int chapter_count
++list chapters
++dict memory
++string status
++string created_at
++string updated_at
+}
 class ProjectService {
 +create_project(name, genre, target_words)
-+get_project_by_novel(novel_id)
 +list_projects(status)
++get_project_by_novel(novel_id)
 +delete_project(project_id)
 }
-class ExportService {
-+export_novel(request) ExportResponse
+class Project {
++ProjectId id
++string name
++NovelId novel_id
++ProjectConfig config
++ProjectStatus status
 }
-class INovelRepository {
-<<interface>>
-+save(novel)
-+find_by_id(id)
-+find_all()
-+delete(id)
+class ProjectConfig {
++GenreType genre
++int target_words
++int chapter_words
++float style_intensity
++bool check_consistency
++dict memory
 }
-class MarkdownExporter {
-+export_novel(novel, chapters, output_path)
-}
-ProjectService --> INovelRepository : "使用"
-ExportService --> INovelRepository : "使用"
-ExportService --> MarkdownExporter : "使用"
+CreateNovelRequest --> ProjectService : 使用
+ProjectService --> Project : 创建
+Project --> ProjectConfig : 包含
+Project --> NovelResponse : 转换
 ```
 
-图表来源
-- [application/services/project_service.py:21-203](file://application/services/project_service.py#L21-L203)
-- [application/services/export_service.py:23-70](file://application/services/export_service.py#L23-L70)
-- [domain/repositories/novel_repository.py:17-70](file://domain/repositories/novel_repository.py#L17-L70)
-- [infrastructure/file/markdown_exporter.py:17-126](file://infrastructure/file/markdown_exporter.py#L17-L126)
+**图表来源**
+- [request_dto.py:21-28](file://application/dto/request_dto.py#L21-L28)
+- [response_dto.py:22-34](file://application/dto/response_dto.py#L22-L34)
+- [project_service.py:32-67](file://application/services/project_service.py#L32-L67)
+- [project.py:49-112](file://domain/entities/project.py#L49-L112)
 
-章节来源
-- [application/services/project_service.py:21-203](file://application/services/project_service.py#L21-L203)
-- [application/services/export_service.py:23-70](file://application/services/export_service.py#L23-L70)
-- [domain/repositories/novel_repository.py:17-70](file://domain/repositories/novel_repository.py#L17-L70)
-- [infrastructure/file/markdown_exporter.py:17-126](file://infrastructure/file/markdown_exporter.py#L17-L126)
+**章节来源**
+- [project_service.py:21-31](file://application/services/project_service.py#L21-L31)
+- [types.py:14-18](file://domain/types.py#L14-L18)
 
 ## 性能考虑
-- 导出流程涉及磁盘IO与文件写入，建议：
-  - 在高并发场景下对输出路径进行幂等与去重
-  - 对大文件导出增加进度上报与超时控制
-- 导入流程包含文件解析与LLM分析，建议：
-  - 对TXT解析设置最大内存与超时阈值
-  - 对LLM分析结果进行缓存与增量更新
-- 建议在生产环境开启GZip压缩与限流策略
+1. **数据库优化**: 使用SQLite进行本地存储，适合中小规模项目
+2. **缓存策略**: 可在章节仓库中添加缓存机制以提升查询性能
+3. **批量操作**: 列表查询使用单次数据库扫描，避免多次往返
+4. **内存管理**: 项目配置通过字典存储，便于序列化和传输
+5. **并发处理**: FastAPI基于异步IO，支持高并发请求处理
 
-## 故障排查指南
-- 创建小说返回400
-  - 检查请求体字段长度与数值范围
-  - 参考请求DTO字段约束
-- 获取小说返回404
-  - 确认novel_id是否存在
-  - 检查数据库中是否存在对应记录
-- 导出返回400/404
-  - 确认format是否为支持格式（当前仅markdown）
-  - 确认output_path位于exports目录且路径合法
-- 导入返回400/404
-  - 确认file_path指向有效文件
-  - 确认TXT文件符合章节标题识别规则
-- 下载文件提示路径不安全
-  - 确认file_path不包含路径穿越字符
-  - 确认文件存在于exports目录内
+## 故障排除指南
 
-章节来源
-- [presentation/api/routers/novel.py:107-109](file://presentation/api/routers/novel.py#L107-L109)
-- [presentation/api/routers/export.py:26-58](file://presentation/api/routers/export.py#L26-L58)
-- [presentation/api/routers/export.py:77-81](file://presentation/api/routers/export.py#L77-L81)
-- [presentation/api/routers/content.py:103-107](file://presentation/api/routers/content.py#L103-L107)
-- [infrastructure/file/txt_parser.py:34-66](file://infrastructure/file/txt_parser.py#L34-L66)
+### 常见错误及解决方案
+
+#### 404 错误
+**现象**: 小说不存在
+**原因**: 小说ID无效或已被删除
+**解决方案**: 
+- 验证小说ID格式
+- 检查数据库中是否存在该记录
+- 确认用户权限
+
+#### 400 错误
+**现象**: 请求参数验证失败
+**原因**: CreateNovelRequest中的字段不符合验证规则
+**解决方案**:
+- 检查title长度(1-100字符)
+- 确认target_word_count范围(1-1000000)
+- 验证genre字段非空
+
+#### 500 错误
+**现象**: 服务器内部错误
+**原因**: 数据库操作失败或业务逻辑异常
+**解决方案**:
+- 检查数据库连接状态
+- 查看服务器日志
+- 验证依赖服务可用性
+
+**章节来源**
+- [novel.py:107-108](file://presentation/api/routers/novel.py#L107-L108)
+- [novel.py:127-129](file://presentation/api/routers/novel.py#L127-L129)
 
 ## 结论
-本API围绕小说的创建、查询、删除与导入、导出提供了完整的REST接口，配合项目管理服务与导出服务，实现了从文本导入到结构整理再到多格式导出的闭环。建议在生产环境中加强安全校验、错误处理与性能优化，确保稳定可用。
+小说管理API提供了完整的小说项目生命周期管理能力，包括创建、查询、更新和删除操作。通过清晰的分层架构设计和严格的DTO验证机制，确保了系统的可维护性和扩展性。系统支持多种题材类型和灵活的项目配置，能够满足不同类型的写作需求。建议在未来版本中增加更多的状态管理和监控功能，以进一步提升用户体验。
 
 ## 附录
 
-### API一览表
+### API端点对照表
 
-- 小说管理
-  - POST /novels/：创建小说
-  - GET /novels/：列出小说
-  - GET /novels/{novel_id}：获取小说详情
-  - DELETE /novels/{novel_id}：删除小说
+| 方法 | 路径 | 功能 | 响应类型 |
+|------|------|------|----------|
+| POST | /novels/ | 创建小说 | NovelResponse |
+| GET | /novels/ | 列出小说 | List[NovelResponse] |
+| GET | /novels/{novel_id} | 获取小说详情 | NovelResponse |
+| DELETE | /novels/{novel_id} | 删除小说 | JSON对象 |
 
-- 内容导入与分析
-  - POST /api/content/import：导入小说
-  - GET /api/content/style/{novel_id}：文风分析
-  - GET /api/content/plot/{novel_id}：剧情分析
-  - GET /api/content/memory/{novel_id}：获取记忆体
-  - POST /api/content/organize/{novel_id}：整理故事结构
+### 数据模型关系图
 
-- 导出
-  - POST /export/：导出小说
-  - GET /export/download/{file_path}：下载导出文件
+```mermaid
+erDiagram
+CREATE_NOVEL_REQUEST {
+string title
+string author
+string genre
+int target_word_count
+dict options
+}
+NOVEL_RESPONSE {
+string id
+string title
+string author
+string genre
+int word_count
+int target_word_count
+int current_word_count
+int chapter_count
+list chapters
+dict memory
+string status
+string created_at
+string updated_at
+}
+PROJECT_CONFIG {
+enum genre
+int target_words
+int chapter_words
+float style_intensity
+bool check_consistency
+dict memory
+}
+CREATE_NOVEL_REQUEST ||--|| NOVEL_RESPONSE : "创建"
+PROJECT_CONFIG ||--|| NOVEL_RESPONSE : "配置"
+```
 
-章节来源
-- [presentation/api/routers/novel.py:24-133](file://presentation/api/routers/novel.py#L24-L133)
-- [presentation/api/routers/content.py:70-196](file://presentation/api/routers/content.py#L70-L196)
-- [presentation/api/routers/export.py:60-103](file://presentation/api/routers/export.py#L60-L103)
+**图表来源**
+- [request_dto.py:21-28](file://application/dto/request_dto.py#L21-L28)
+- [response_dto.py:22-34](file://application/dto/response_dto.py#L22-L34)
+- [project.py:18-46](file://domain/entities/project.py#L18-L46)

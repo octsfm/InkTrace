@@ -7,18 +7,26 @@
 # 文件路径：presentation/api/routers/novel.py
 
 
-from typing import List
+from datetime import datetime
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from application.services.project_service import ProjectService
 from application.dto.request_dto import CreateNovelRequest
 from application.dto.response_dto import NovelResponse
 from domain.repositories.chapter_repository import IChapterRepository
-from presentation.api.dependencies import get_chapter_repo, get_project_service
-from domain.types import NovelId
+from domain.repositories.novel_repository import INovelRepository
+from presentation.api.dependencies import get_chapter_repo, get_project_service, get_novel_repo
+from domain.types import NovelId, GenreType, ChapterId
 
 
-router = APIRouter(prefix="/novels", tags=["小说管理"])
+router = APIRouter(prefix="/api/novels", tags=["小说管理"])
+
+
+class ChapterUpdatePayload(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
 
 
 @router.post("/", response_model=NovelResponse)
@@ -38,16 +46,22 @@ async def create_novel(
     """
 # 文件：模块：novel
 
+    try:
+        genre = GenreType(request.genre)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"无效的题材类型: {request.genre}")
+
     project = service.create_project(
         name=request.title,
-        genre=request.genre,
-        target_words=request.target_word_count
+        genre=genre,
+        target_words=request.target_word_count,
+        author=request.author
     )
     
     return NovelResponse(
         id=str(project.novel_id),
         title=project.name,
-        author="",
+        author=request.author,
         genre=project.config.genre.value,
         word_count=0,
         target_word_count=project.config.target_words,
@@ -64,7 +78,8 @@ async def create_novel(
 @router.get("/", response_model=List[NovelResponse])
 async def list_novels(
     service: ProjectService = Depends(get_project_service),
-    chapter_repo: IChapterRepository = Depends(get_chapter_repo)
+    chapter_repo: IChapterRepository = Depends(get_chapter_repo),
+    novel_repo: INovelRepository = Depends(get_novel_repo)
 ) -> List[NovelResponse]:
     """
     列出所有小说
@@ -80,7 +95,7 @@ async def list_novels(
     projects = service.list_projects()
     
     return [
-        _project_to_novel_response(project, chapter_repo)
+        _project_to_novel_response(project, chapter_repo, novel_repo)
         for project in projects
     ]
 
@@ -89,7 +104,8 @@ async def list_novels(
 async def get_novel(
     novel_id: str,
     service: ProjectService = Depends(get_project_service),
-    chapter_repo: IChapterRepository = Depends(get_chapter_repo)
+    chapter_repo: IChapterRepository = Depends(get_chapter_repo),
+    novel_repo: INovelRepository = Depends(get_novel_repo)
 ) -> NovelResponse:
     """
     获取小说详情
@@ -107,7 +123,60 @@ async def get_novel(
     if not project:
         raise HTTPException(status_code=404, detail="小说不存在")
     
-    return _project_to_novel_response(project, chapter_repo)
+    return _project_to_novel_response(project, chapter_repo, novel_repo)
+
+
+@router.get("/{novel_id}/chapters/{chapter_id}")
+async def get_chapter_detail(
+    novel_id: str,
+    chapter_id: str,
+    chapter_repo: IChapterRepository = Depends(get_chapter_repo)
+) -> dict:
+    chapter = chapter_repo.find_by_id(ChapterId(chapter_id))
+    if not chapter or chapter.novel_id.value != novel_id:
+        raise HTTPException(status_code=404, detail="章节不存在")
+    return {
+        "id": chapter.id.value,
+        "novel_id": chapter.novel_id.value,
+        "number": chapter.number,
+        "title": chapter.title,
+        "content": chapter.content,
+        "word_count": chapter.word_count,
+        "updated_at": chapter.updated_at.isoformat()
+    }
+
+
+@router.put("/{novel_id}/chapters/{chapter_id}")
+async def update_chapter(
+    novel_id: str,
+    chapter_id: str,
+    payload: ChapterUpdatePayload,
+    chapter_repo: IChapterRepository = Depends(get_chapter_repo),
+    novel_repo: INovelRepository = Depends(get_novel_repo)
+) -> dict:
+    chapter = chapter_repo.find_by_id(ChapterId(chapter_id))
+    if not chapter or chapter.novel_id.value != novel_id:
+        raise HTTPException(status_code=404, detail="章节不存在")
+    if payload.title is None and payload.content is None:
+        raise HTTPException(status_code=400, detail="缺少可更新字段")
+    now = datetime.now()
+    if payload.title is not None:
+        chapter.update_title(payload.title, now)
+    if payload.content is not None:
+        chapter.update_content(payload.content, now)
+    chapter_repo.save(chapter)
+    novel = novel_repo.find_by_id(NovelId(novel_id))
+    if novel:
+        novel.add_chapter(chapter, now)
+        novel_repo.save(novel)
+    return {
+        "id": chapter.id.value,
+        "number": chapter.number,
+        "title": chapter.title,
+        "content": chapter.content,
+        "word_count": chapter.word_count,
+        "updated_at": chapter.updated_at.isoformat()
+    }
 
 
 @router.delete("/{novel_id}")
@@ -132,8 +201,9 @@ async def delete_novel(
     return {"message": "删除成功"}
 
 
-def _project_to_novel_response(project, chapter_repo: IChapterRepository) -> NovelResponse:
+def _project_to_novel_response(project, chapter_repo: IChapterRepository, novel_repo: INovelRepository) -> NovelResponse:
     chapters = chapter_repo.find_by_novel(project.novel_id)
+    novel = novel_repo.find_by_id(project.novel_id)
     chapter_items = [
         {
             "id": str(chapter.id),
@@ -147,7 +217,7 @@ def _project_to_novel_response(project, chapter_repo: IChapterRepository) -> Nov
     return NovelResponse(
         id=str(project.novel_id),
         title=project.name,
-        author="",
+        author=(novel.author if novel else ""),
         genre=project.config.genre.value,
         word_count=current_word_count,
         target_word_count=project.config.target_words,

@@ -61,21 +61,32 @@ class StyleProfileMemory:
 class NovelMemory:
     def __init__(self) -> None:
         self._characters: Dict[str, CharacterMemory] = {}
-        self._world_settings: List[str] = []
+        self._world_settings: str = ""
         self._plot_threads: Dict[str, PlotThreadMemory] = {}
-        self._style_profile = StyleProfileMemory()
+        self._style_profile_text: str = ""
+        self._current_progress_text: str = ""
+        self._events: List[Dict[str, Any]] = []
 
     def merge_analysis(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
-        self._merge_characters(analysis.get("characters") or [])
-        self._merge_world_settings(analysis.get("world_settings") or [])
-        self._merge_plot_threads(
-            analysis.get("plot_outline")
-            or analysis.get("plot_threads")
-            or analysis.get("plot_points")
-            or []
-        )
-        self._style_profile.merge(analysis.get("writing_style") or analysis.get("style_profile") or {})
-        return self.to_agent_context()
+        merged = merge_memory(self.to_agent_context(), analysis)
+        self._characters = {}
+        for item in merged.get("characters") or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            cm = CharacterMemory(name=name)
+            cm.merge(item)
+            self._characters[name] = cm
+        self._world_settings = str(merged.get("world_settings") or "")
+        self._style_profile_text = str(merged.get("writing_style") or "")
+        self._current_progress_text = str(merged.get("current_progress") or "")
+        self._events = [ev for ev in (merged.get("events") or []) if isinstance(ev, dict)]
+        self._plot_threads = {}
+        for point in _split_text_points(str(merged.get("plot_outline") or "")):
+            self._plot_threads[point] = PlotThreadMemory(title=point, points=[point], status="ongoing")
+        return merged
 
     def update_character_relationship(self, name: str, target: str, relationship: str) -> Dict[str, Any]:
         char_name = str(name).strip()
@@ -89,18 +100,12 @@ class NovelMemory:
         return self.to_agent_context()
 
     def add_world_setting(self, value: str) -> Dict[str, Any]:
-        text = str(value).strip()
-        if text and text not in self._world_settings:
-            self._world_settings.append(text)
-        return self.to_agent_context()
+        return merge_memory(self.to_agent_context(), {"world_settings": str(value or "")})
 
     def to_agent_context(self) -> Dict[str, Any]:
-        plot_outline = []
-        for thread in sorted(self._plot_threads.values(), key=lambda p: p.title):
-            if thread.points:
-                plot_outline.append(f"{thread.title}：{thread.points[-1]}")
-            else:
-                plot_outline.append(thread.title)
+        plot_outline = "；".join(
+            [thread.points[-1] if thread.points else thread.title for thread in sorted(self._plot_threads.values(), key=lambda p: p.title)]
+        ).strip("；")
         return {
             "characters": [
                 {
@@ -110,31 +115,11 @@ class NovelMemory:
                 }
                 for char in sorted(self._characters.values(), key=lambda c: c.name)
             ],
-            "world_settings": list(self._world_settings),
+            "world_settings": self._world_settings,
             "plot_outline": plot_outline,
-            "plot_threads": [
-                {
-                    "title": thread.title,
-                    "points": list(thread.points),
-                    "status": thread.status
-                }
-                for thread in sorted(self._plot_threads.values(), key=lambda p: p.title)
-            ],
-            "writing_style": {
-                "tone": self._style_profile.tone,
-                "pacing": self._style_profile.pacing,
-                "narrative_style": self._style_profile.narrative_style
-            },
-            "style_profile": {
-                "tone": self._style_profile.tone,
-                "pacing": self._style_profile.pacing,
-                "narrative_style": self._style_profile.narrative_style
-            },
-            "current_progress": {
-                "latest_chapter_number": 0,
-                "latest_goal": "",
-                "last_summary": ""
-            }
+            "writing_style": self._style_profile_text,
+            "current_progress": self._current_progress_text,
+            "events": list(self._events)
         }
 
     def _merge_characters(self, characters: List[Any]) -> None:
@@ -154,8 +139,8 @@ class NovelMemory:
                 text = str(item.get("content") or item.get("description") or item.get("name") or "").strip()
             else:
                 text = str(item).strip()
-            if text and text not in self._world_settings:
-                self._world_settings.append(text)
+            if text:
+                self._world_settings = _concat_unique_text(self._world_settings, text)
 
     def _merge_plot_threads(self, plot_threads: List[Any]) -> None:
         for item in plot_threads:
@@ -209,41 +194,90 @@ def merge_memory(old_memory: Dict[str, Any], new_memory: Dict[str, Any]) -> Dict
                 target_name = str(target).strip()
                 relation_text = str(relation).strip()
                 if target_name and relation_text:
-                    by_name[name]["relationships"][target_name] = relation_text
+                    if target_name not in by_name[name]["relationships"]:
+                        by_name[name]["relationships"][target_name] = relation_text
 
-    def _listify(value: Any) -> List[str]:
-        if isinstance(value, str):
-            return [value] if value.strip() else []
-        if isinstance(value, list):
-            return [str(v).strip() for v in value if str(v).strip()]
-        return []
-
-    world_settings = list(dict.fromkeys([*_listify(base.get("world_settings")), *_listify(incoming.get("world_settings"))]))
-    plot_outline = list(dict.fromkeys([*_listify(base.get("plot_outline")), *_listify(incoming.get("plot_outline"))]))
-
-    base_style = base.get("writing_style") or base.get("style_profile") or {}
-    incoming_style = incoming.get("writing_style") or incoming.get("style_profile") or {}
-    writing_style = {
-        "tone": str(incoming_style.get("tone") or base_style.get("tone") or "").strip(),
-        "pacing": str(incoming_style.get("pacing") or base_style.get("pacing") or "").strip(),
-        "narrative_style": str(
-            incoming_style.get("narrative_style")
-            or base_style.get("narrative_style")
-            or ""
-        ).strip()
-    }
-    current_progress = incoming.get("current_progress") or base.get("current_progress") or {
-        "latest_chapter_number": 0,
-        "latest_goal": "",
-        "last_summary": ""
-    }
+    world_settings = _concat_unique_text(base.get("world_settings"), incoming.get("world_settings"))
+    plot_outline = _concat_unique_text(base.get("plot_outline"), incoming.get("plot_outline"))
+    writing_style = _concat_unique_text(base.get("writing_style"), incoming.get("writing_style") or incoming.get("style_profile"))
+    current_progress = _concat_unique_text(base.get("current_progress"), incoming.get("current_progress"))
+    events = [ev for ev in (base.get("events") or []) if isinstance(ev, dict)]
+    incoming_events = [ev for ev in (incoming.get("events") or []) if isinstance(ev, dict)]
+    events.extend([_normalize_event(ev) for ev in incoming_events if _normalize_event(ev)])
 
     merged = {
         "characters": list(by_name.values()),
         "world_settings": world_settings,
         "plot_outline": plot_outline,
         "writing_style": writing_style,
-        "current_progress": current_progress
+        "current_progress": current_progress,
+        "events": events
     }
-    merged["style_profile"] = dict(writing_style)
     return merged
+
+
+def _split_text_points(value: str) -> List[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    segments = re_split_points(text)
+    return [s for s in segments if s]
+
+
+def _concat_unique_text(old_value: Any, new_value: Any) -> str:
+    points = []
+    for item in _to_text_points(old_value):
+        if item not in points:
+            points.append(item)
+    for item in _to_text_points(new_value):
+        if item not in points:
+            points.append(item)
+    return "；".join(points)
+
+
+def _to_text_points(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [s for s in re_split_points(value) if s]
+    if isinstance(value, list):
+        items = []
+        for item in value:
+            if isinstance(item, dict):
+                text = str(item.get("content") or item.get("description") or item.get("name") or item.get("event") or "").strip()
+            else:
+                text = str(item).strip()
+            if not text:
+                continue
+            for seg in re_split_points(text):
+                if seg:
+                    items.append(seg)
+        return items
+    if isinstance(value, dict):
+        text = str(value)
+        return [s for s in re_split_points(text) if s]
+    text = str(value).strip()
+    return [s for s in re_split_points(text) if s]
+
+
+def re_split_points(text: str) -> List[str]:
+    normalized = str(text or "").replace("\n", "；")
+    parts = []
+    for part in normalized.split("；"):
+        segment = part.strip().strip("。")
+        if segment:
+            parts.append(segment)
+    return parts
+
+
+def _normalize_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    payload = {
+        "event": str(event.get("event") or "").strip(),
+        "actors": [str(v).strip() for v in (event.get("actors") or []) if str(v).strip()],
+        "action": str(event.get("action") or "").strip(),
+        "result": str(event.get("result") or "").strip(),
+        "impact": str(event.get("impact") or "").strip()
+    }
+    if not payload["event"] or not payload["action"] or not payload["result"] or not payload["impact"]:
+        return {}
+    return payload

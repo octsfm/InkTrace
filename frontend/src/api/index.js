@@ -3,8 +3,19 @@ import { ElMessage } from 'element-plus'
 
 const isElectron = window.electronAPI !== undefined
 
+const queryPort = (() => {
+  try {
+    const params = new URLSearchParams(window.location.search || '')
+    return params.get('backend_port')
+  } catch (error) {
+    return null
+  }
+})()
+
+const electronPort = queryPort || '9527'
+
 const baseURL = isElectron 
-  ? 'http://localhost:9527/api'
+  ? `http://localhost:${electronPort}/api`
   : '/api'
 
 const api = axios.create({
@@ -25,16 +36,50 @@ const ERROR_MESSAGE_MAP = {
   CONTINUE_INTERNAL_ERROR: '续写失败，请稍后再试。'
 }
 
+const formatValidationErrors = (detail) => {
+  if (!Array.isArray(detail)) {
+    return ''
+  }
+  const lines = detail
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return ''
+      }
+      const loc = Array.isArray(item.loc) ? item.loc.filter(Boolean).join('.') : ''
+      const msg = item.msg || item.message || ''
+      if (!loc && !msg) {
+        return ''
+      }
+      return loc ? `${loc}: ${msg}` : msg
+    })
+    .filter(Boolean)
+  if (!lines.length) {
+    return ''
+  }
+  return `参数校验失败：${lines.join('；')}`
+}
+
+const resolveErrorMessage = (error) => {
+  const detail = error.response?.data?.detail
+  if (Array.isArray(detail)) {
+    const formatted = formatValidationErrors(detail)
+    if (formatted) {
+      return formatted
+    }
+  }
+  if (detail && typeof detail === 'object') {
+    return detail.user_message || ERROR_MESSAGE_MAP[detail.code] || detail.message || error.message || '请求失败'
+  }
+  if (detail) {
+    return detail
+  }
+  return error.message || '请求失败'
+}
+
 api.interceptors.response.use(
   response => response.data,
   error => {
-    const detail = error.response?.data?.detail
-    let message = error.message || '请求失败'
-    if (detail && typeof detail === 'object') {
-      message = detail.user_message || ERROR_MESSAGE_MAP[detail.code] || detail.message || message
-    } else if (detail) {
-      message = detail
-    }
+    const message = resolveErrorMessage(error)
     ElMessage.error(message)
     return Promise.reject(error)
   }
@@ -44,19 +89,26 @@ export const novelApi = {
   list: () => api.get('/novels/'),
   get: (id) => api.get(`/novels/${id}`),
   create: (data) => api.post('/novels/', data),
-  delete: (id) => api.delete(`/novels/${id}`)
+  delete: (id) => api.delete(`/novels/${id}`),
+  getChapter: (novelId, chapterId) => api.get(`/novels/${novelId}/chapters/${chapterId}`),
+  updateChapter: (novelId, chapterId, data) => api.put(`/novels/${novelId}/chapters/${chapterId}`, data)
 }
 
 export const contentApi = {
   import: (data) => api.post('/content/import', data),
+  importUpload: (formData) => api.post('/content/import/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
   memory: (novelId) => api.get(`/content/memory/${novelId}`),
-  organize: (novelId) => api.post(`/content/organize/${novelId}`),
+  organize: (novelId) => api.post(`/content/organize/${novelId}`, {}, { timeout: 0 }),
+  organizeProgress: (novelId) => api.get(`/content/organize/progress/${novelId}`),
   analyzeStyle: (novelId) => api.get(`/content/style/${novelId}`),
   analyzePlot: (novelId) => api.get(`/content/plot/${novelId}`)
 }
 
 export const writingApi = {
   planPlot: (data) => api.post('/writing/plan', data),
+  branches: (data) => api.post('/writing/branches', data),
   generate: (data) => api.post('/writing/generate', data),
   continue: (data) => api.post('/writing/continue', data)
 }

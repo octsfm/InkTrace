@@ -23,7 +23,7 @@ class CreateNovelRequest(BaseRequest):
     title: str = Field(..., min_length=1, max_length=100)
     author: str = Field(..., min_length=1, max_length=50)
     genre: str = Field(..., min_length=1)
-    target_word_count: int = Field(..., gt=0, le=1000000)
+    target_word_count: int = Field(..., gt=0, le=50000000)
     options: Optional[Dict[str, Any]] = None
 
 
@@ -58,6 +58,15 @@ class ContinueWritingRequest(BaseRequest):
     novel_id: str = Field(..., min_length=1)
     goal: str = Field(..., min_length=1)
     target_word_count: int = Field(2100, gt=0, le=50000)
+    options: Optional[Dict[str, Any]] = None
+
+
+class GenerateBranchesRequest(BaseRequest):
+    """生成剧情分支请求"""
+    novel_id: str = Field(..., min_length=1)
+    branch_count: int = Field(3, ge=3, le=5)
+    current_chapter_content: Optional[str] = None
+    direction_hint: Optional[str] = None
     options: Optional[Dict[str, Any]] = None
 
 

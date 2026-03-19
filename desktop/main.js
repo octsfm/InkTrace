@@ -16,7 +16,9 @@ let mainWindow = null;
 let processManager = null;
 let trayManager = null;
 
-const BACKEND_PORT = 9527;
+const PRIMARY_BACKEND_PORT = 9527;
+const FALLBACK_BACKEND_PORT = 9530;
+let activeBackendPort = PRIMARY_BACKEND_PORT;
 
 async function createWindow() {
     // 创建窗口时直接显示，不等待 ready-to-show
@@ -52,7 +54,7 @@ async function createWindow() {
     try {
         if (isDev) {
             // 开发模式：加载开发服务器
-            await mainWindow.loadURL('http://localhost:3000');
+            await mainWindow.loadURL(`http://localhost:3000?backend_port=${activeBackendPort}`);
             mainWindow.webContents.openDevTools();
         } else {
             // 生产模式：加载打包后的前端文件
@@ -61,7 +63,7 @@ async function createWindow() {
             console.log('Frontend file exists:', require('fs').existsSync(frontendPath));
             
             if (require('fs').existsSync(frontendPath)) {
-                await mainWindow.loadFile(frontendPath);
+                await mainWindow.loadFile(frontendPath, { query: { backend_port: String(activeBackendPort) } });
             } else {
                 // 如果前端文件不存在，显示错误页面
                 await showErrorPage('前端文件未找到');
@@ -137,7 +139,14 @@ async function startBackend() {
     console.log('Backend path:', backendPath);
     console.log('File exists:', require('fs').existsSync(backendPath));
     
-    await processManager.start(backendPath, BACKEND_PORT, isDev);
+    try {
+        await processManager.start(backendPath, PRIMARY_BACKEND_PORT, isDev);
+        activeBackendPort = PRIMARY_BACKEND_PORT;
+    } catch (primaryError) {
+        console.warn(`Primary backend port ${PRIMARY_BACKEND_PORT} unavailable, fallback to ${FALLBACK_BACKEND_PORT}`, primaryError);
+        await processManager.start(backendPath, FALLBACK_BACKEND_PORT, isDev);
+        activeBackendPort = FALLBACK_BACKEND_PORT;
+    }
 }
 
 function setupTray() {
@@ -162,16 +171,16 @@ function setupAppEvents() {
     app.whenReady().then(async () => {
         try {
             console.log('Application starting...');
-            
-            // 先创建窗口，让用户立即看到界面
-            console.log('Creating window...');
-            await createWindow();
-            console.log('Window created successfully');
-            
-            // 然后启动后端服务
+
+            // 先启动后端，确认可用端口
             console.log('Starting backend...');
             await startBackend();
             console.log('Backend started successfully');
+
+            // 再创建窗口，注入后端端口
+            console.log('Creating window...');
+            await createWindow();
+            console.log('Window created successfully');
             
             // 设置系统托盘
             setupTray();

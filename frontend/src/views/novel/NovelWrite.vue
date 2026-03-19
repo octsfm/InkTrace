@@ -30,6 +30,16 @@
                 placeholder="请描述续写的剧情方向，如：主角突破筑基期，遇到新的敌人..."
               />
             </el-form-item>
+            <el-form-item label="剧情分支">
+              <div class="branch-panel">
+                <el-button @click="generateBranches" :loading="branchLoading">生成分支</el-button>
+                <el-radio-group v-model="selectedBranchId" class="branch-radio-group">
+                  <el-radio v-for="item in branches" :key="item.id" :label="item.id">
+                    {{ item.title }}：{{ item.summary }}
+                  </el-radio>
+                </el-radio-group>
+              </div>
+            </el-form-item>
             
             <el-form-item label="生成章节数">
               <el-input-number v-model="form.chapter_count" :min="1" :max="10" />
@@ -155,9 +165,12 @@ import { writingApi, novelApi } from '@/api'
 const route = useRoute()
 const generating = ref(false)
 const generatingNext = ref(false)
+const branchLoading = ref(false)
 const generatedContent = ref(null)
 const recentChapters = ref([])
 const continueHint = ref('')
+const branches = ref([])
+const selectedBranchId = ref('')
 
 const form = reactive({
   plot_direction: '',
@@ -167,9 +180,42 @@ const form = reactive({
   enable_consistency_check: true
 })
 
+const selectedBranch = () => branches.value.find((item) => item.id === selectedBranchId.value)
+
+const resolveDirection = () => {
+  const branch = selectedBranch()
+  if (branch) {
+    return `${branch.title}：${branch.key_event}。${branch.summary}`
+  }
+  return form.plot_direction
+}
+
+const generateBranches = async () => {
+  try {
+    branchLoading.value = true
+    const result = await writingApi.branches({
+      novel_id: route.params.id,
+      branch_count: 4,
+      direction_hint: form.plot_direction || ''
+    })
+    branches.value = result.branches || []
+    if (branches.value.length > 0) {
+      selectedBranchId.value = branches.value[0].id
+      if (!form.plot_direction) {
+        form.plot_direction = `${branches.value[0].title}：${branches.value[0].summary}`
+      }
+    }
+  } catch (error) {
+    console.error('生成分支失败:', error)
+  } finally {
+    branchLoading.value = false
+  }
+}
+
 const generateChapter = async () => {
-  if (!form.plot_direction) {
-    ElMessage.warning('请输入剧情方向')
+  const direction = resolveDirection()
+  if (!direction) {
+    ElMessage.warning('请先生成并选择剧情分支，或手动填写剧情方向')
     return
   }
   
@@ -179,7 +225,7 @@ const generateChapter = async () => {
     
     generatedContent.value = await writingApi.generate({
       novel_id: route.params.id,
-      goal: form.plot_direction,
+      goal: direction,
       target_word_count: form.target_word_count,
       options: {
         enable_style_mimicry: form.enable_style_mimicry,
@@ -196,8 +242,9 @@ const generateChapter = async () => {
 }
 
 const continueNextChapter = async () => {
-  if (!form.plot_direction) {
-    ElMessage.warning('请输入本章写作目标')
+  const direction = resolveDirection()
+  if (!direction) {
+    ElMessage.warning('请先生成并选择剧情分支，或手动填写剧情方向')
     return
   }
   try {
@@ -205,7 +252,7 @@ const continueNextChapter = async () => {
     ElMessage.info('正在延展剧情...')
     generatedContent.value = await writingApi.continue({
       novel_id: route.params.id,
-      goal: form.plot_direction,
+      goal: direction,
       target_word_count: form.target_word_count
     })
     ElMessage.success('创作完成')
@@ -266,6 +313,7 @@ onMounted(() => {
     }
   }
   loadRecentChapters()
+  generateBranches()
 })
 </script>
 
@@ -328,5 +376,18 @@ onMounted(() => {
 .chapter-words {
   color: #909399;
   font-size: 12px;
+}
+
+.branch-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.branch-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>
