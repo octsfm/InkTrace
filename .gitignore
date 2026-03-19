@@ -137,3 +137,18 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 node_modules
+
+# 3. 忽略某类文件（用通配符 *）
+*.log               # 忽略所有 .log 后缀的文件
+*.zip               # 忽略所有压缩包
+*.pyc               # 忽略 Python 编译后的文件
+*.exe
+
+# tool
+codeline_report.py
+collect_code.py
+list_code_files.py
+collected_code.md
+dirs.txt
+files.txt
+dist/
