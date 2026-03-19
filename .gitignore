@@ -152,3 +152,6 @@ collected_code.md
 dirs.txt
 files.txt
 dist/
+/data/inktrace.db
+/data/novel/修仙从逃出生天开始.txt
+/data/novel/大纲.txt
