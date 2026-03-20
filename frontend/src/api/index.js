@@ -14,12 +14,12 @@ const queryPort = (() => {
 
 const electronPort = queryPort || '9527'
 
-const baseURL = isElectron 
+const baseURL = isElectron
   ? `http://localhost:${electronPort}/api`
   : '/api'
 
 const api = axios.create({
-  baseURL: baseURL,
+  baseURL,
   timeout: 120000,
   headers: {
     'Content-Type': 'application/json'
@@ -77,8 +77,8 @@ const resolveErrorMessage = (error) => {
 }
 
 api.interceptors.response.use(
-  response => response.data,
-  error => {
+  (response) => response.data,
+  (error) => {
     const message = resolveErrorMessage(error)
     ElMessage.error(message)
     return Promise.reject(error)
@@ -100,7 +100,8 @@ export const contentApi = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   memory: (novelId) => api.get(`/content/memory/${novelId}`),
-  organize: (novelId, forceRebuild = false) => api.post(`/content/organize/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}`, {}, { timeout: 0 }),
+  organize: (novelId, forceRebuild = false) =>
+    api.post(`/content/organize/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}`, {}, { timeout: 0 }),
   organizeProgress: (novelId) => api.get(`/content/organize/progress/${novelId}`),
   analyzeStyle: (novelId) => api.get(`/content/style/${novelId}`),
   analyzePlot: (novelId) => api.get(`/content/plot/${novelId}`)

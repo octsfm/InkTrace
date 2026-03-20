@@ -9,7 +9,7 @@
         <h2 class="page-title">续写小说</h2>
       </div>
     </div>
-    
+
     <el-row :gutter="20">
       <el-col :span="16">
         <el-card class="write-card">
@@ -23,16 +23,16 @@
           />
           <el-form :model="form" label-width="100px">
             <el-form-item label="剧情方向">
-              <el-input 
-                v-model="form.plot_direction" 
-                type="textarea" 
+              <el-input
+                v-model="form.plot_direction"
+                type="textarea"
                 :rows="3"
                 placeholder="请描述续写的剧情方向，如：主角突破筑基期，遇到新的敌人..."
               />
             </el-form-item>
             <el-form-item label="剧情分支">
               <div class="branch-panel">
-                <el-button @click="generateBranches" :loading="branchLoading">生成分支</el-button>
+                <el-button :loading="branchLoading" @click="generateBranches">生成分支</el-button>
                 <el-radio-group v-model="selectedBranchId" class="branch-radio-group">
                   <el-radio v-for="item in branches" :key="item.id" :label="item.id">
                     {{ item.title }}：{{ item.summary }}
@@ -40,39 +40,39 @@
                 </el-radio-group>
               </div>
             </el-form-item>
-            
+
             <el-form-item label="生成章节数">
               <el-input-number v-model="form.chapter_count" :min="1" :max="10" />
             </el-form-item>
-            
+
             <el-form-item label="每章字数">
               <el-input-number v-model="form.target_word_count" :min="1000" :max="5000" :step="100" />
             </el-form-item>
-            
+
             <el-form-item label="文风模仿">
               <el-switch v-model="form.enable_style_mimicry" />
               <span class="switch-tip">开启后将模仿原文风格</span>
             </el-form-item>
-            
+
             <el-form-item label="连贯性检查">
               <el-switch v-model="form.enable_consistency_check" />
               <span class="switch-tip">开启后将检查人物状态、时间线一致性</span>
             </el-form-item>
-            
+
             <el-form-item>
-              <el-button type="primary" @click="generateChapter" :loading="generating">
+              <el-button type="primary" :loading="generating" @click="generateChapter">
                 <el-icon><Edit /></el-icon>
                 延展剧情
               </el-button>
-              <el-button type="success" @click="continueNextChapter" :loading="generatingNext">
+              <el-button type="success" :loading="generatingNext" @click="continueNextChapter">
                 <el-icon><Edit /></el-icon>
                 继续生成
               </el-button>
             </el-form-item>
           </el-form>
         </el-card>
-        
-        <el-card class="result-card" v-if="generatedContent">
+
+        <el-card v-if="generatedContent" class="result-card">
           <template #header>
             <div class="card-header">
               <span>生成结果</span>
@@ -82,34 +82,34 @@
               </el-button>
             </div>
           </template>
-          
+
           <div class="content-info">
             <el-tag>字数：{{ generatedContent.word_count }}</el-tag>
-            <el-tag type="success" v-if="generatedContent.consistency_report?.is_valid">连贯性检查通过</el-tag>
-            <el-tag type="danger" v-else-if="generatedContent.consistency_report">连贯性检查未通过</el-tag>
+            <el-tag v-if="generatedContent.consistency_report?.is_valid" type="success">连贯性检查通过</el-tag>
+            <el-tag v-else-if="generatedContent.consistency_report" type="danger">连贯性检查未通过</el-tag>
           </div>
-          
+
           <el-divider />
-          
+
           <div class="content-body">
             {{ generatedContent.content }}
           </div>
-          
+
           <el-divider />
-          
+
           <div class="content-actions">
-            <el-button type="primary" disabled>章节已自动保存</el-button>
+            <el-button type="primary" disabled>{{ saveHintLabel }}</el-button>
             <el-button @click="regenerate">重新生成</el-button>
           </div>
         </el-card>
       </el-col>
-      
+
       <el-col :span="8">
         <el-card class="tips-card">
           <template #header>
             <span>续写提示</span>
           </template>
-          
+
           <el-collapse>
             <el-collapse-item title="如何描述剧情方向？" name="1">
               <p>描述要生成的剧情走向，例如：</p>
@@ -138,12 +138,12 @@
             </el-collapse-item>
           </el-collapse>
         </el-card>
-        
+
         <el-card class="history-card">
           <template #header>
             <span>最近章节</span>
           </template>
-          
+
           <el-scrollbar height="200px">
             <div v-for="chapter in recentChapters" :key="chapter.id" class="chapter-item">
               <span>第{{ chapter.number }}章 {{ chapter.title }}</span>
@@ -157,10 +157,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { writingApi, novelApi } from '@/api'
+import { novelApi, writingApi } from '@/api'
 
 const route = useRoute()
 const generating = ref(false)
@@ -182,10 +182,17 @@ const form = reactive({
 
 const selectedBranch = () => branches.value.find((item) => item.id === selectedBranchId.value)
 
+const isPersistedResult = computed(() => {
+  const routeName = generatedContent.value?.metadata?.route
+  return routeName === 'continue_tool' || routeName === 'first_chapter'
+})
+
+const saveHintLabel = computed(() => (isPersistedResult.value ? '已保存到章节列表' : '仅预览，尚未保存'))
+
 const resolveDirection = () => {
   const branch = selectedBranch()
   if (branch) {
-    return `${branch.title}：${branch.key_event}。${branch.summary}`
+    return `${branch.title}：${branch.key_event || ''}。${branch.summary}`
   }
   return form.plot_direction
 }
@@ -218,11 +225,10 @@ const generateChapter = async () => {
     ElMessage.warning('请先生成并选择剧情分支，或手动填写剧情方向')
     return
   }
-  
+
   try {
     generating.value = true
     ElMessage.info('正在延展剧情...')
-    
     generatedContent.value = await writingApi.generate({
       novel_id: route.params.id,
       goal: direction,
@@ -232,7 +238,7 @@ const generateChapter = async () => {
         enable_consistency_check: form.enable_consistency_check
       }
     })
-    
+    ElMessage.info('Preview only, not saved yet')
     ElMessage.success('创作完成')
   } catch (error) {
     console.error('生成失败:', error)
@@ -255,6 +261,7 @@ const continueNextChapter = async () => {
       goal: direction,
       target_word_count: form.target_word_count
     })
+    ElMessage.info('Saved to chapter list')
     ElMessage.success('创作完成')
     await loadRecentChapters()
   } catch (error) {

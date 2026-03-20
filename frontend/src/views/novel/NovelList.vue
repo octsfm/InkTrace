@@ -7,21 +7,21 @@
         导入新小说
       </el-button>
     </div>
-    
+
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="3" animated />
     </div>
-    
+
     <div v-else-if="novels.length === 0" class="empty-container">
       <el-empty description="还没有小说，点击上方按钮导入">
         <el-button type="primary" @click="$router.push('/import')">导入小说</el-button>
       </el-empty>
     </div>
-    
+
     <div v-else class="card-list">
-      <el-card 
-        v-for="novel in novels" 
-        :key="novel.id" 
+      <el-card
+        v-for="novel in novels"
+        :key="novel.id"
         class="novel-card"
         shadow="hover"
         @click="$router.push(`/novel/${novel.id}`)"
@@ -31,7 +31,7 @@
           <p class="novel-author">作者：{{ novel.author || '未知' }}</p>
           <el-tag size="small" type="info">{{ formatGenre(novel.genre) }}</el-tag>
         </div>
-        
+
         <div class="novel-stats">
           <div class="stat-item">
             <span class="stat-value">{{ formatNumber(novel.current_word_count) }}</span>
@@ -46,16 +46,16 @@
             <span class="stat-label">章节数</span>
           </div>
         </div>
-        
+
         <div class="novel-progress">
-          <el-progress 
-            :percentage="getProgress(novel)" 
+          <el-progress
+            :percentage="getProgress(novel)"
             :stroke-width="8"
             :show-text="false"
           />
           <span class="progress-text">完成度 {{ getProgress(novel) }}%</span>
         </div>
-        
+
         <div class="novel-actions">
           <el-button type="primary" size="small" @click.stop="$router.push(`/novel/${novel.id}/write`)">
             <el-icon><Edit /></el-icon>
@@ -71,7 +71,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { novelApi } from '@/api'
 

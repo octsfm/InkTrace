@@ -7,8 +7,8 @@
           <el-button type="primary" @click="showCreateDialog">新建项目</el-button>
         </div>
       </template>
-      
-      <el-table :data="projects" v-loading="loading">
+
+      <el-table v-loading="loading" :data="projects">
         <el-table-column prop="name" label="项目名称" />
         <el-table-column prop="genre" label="题材">
           <template #default="{ row }">
@@ -35,13 +35,13 @@
         <el-table-column label="操作" width="200">
           <template #default="{ row }">
             <el-button size="small" @click="enterProject(row)">进入</el-button>
-            <el-button size="small" type="warning" @click="archiveProject(row)" v-if="row.status === 'active'">归档</el-button>
+            <el-button v-if="row.status === 'active'" size="small" type="warning" @click="archiveProject(row)">归档</el-button>
             <el-button size="small" type="danger" @click="deleteProject(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
-    
+
     <el-dialog v-model="createDialogVisible" title="创建小说" width="620px">
       <el-form :model="createForm" label-width="80px">
         <el-form-item label="项目名称" required>
@@ -85,20 +85,19 @@
       </el-form>
       <template #footer>
         <el-button @click="createDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="createProject" :loading="creating">
+        <el-button type="primary" :loading="creating" @click="createProject">
           {{ creating ? '正在创作...' : '创建并生成' }}
         </el-button>
       </template>
     </el-dialog>
-
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import api from '@/api'
 import { ElMessage } from 'element-plus'
+import api from '@/api'
 
 const router = useRouter()
 const projects = ref([])
@@ -221,5 +220,4 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
 }
-
 </style>

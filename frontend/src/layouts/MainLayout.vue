@@ -12,14 +12,10 @@
         </el-button>
       </div>
     </el-header>
-    
+
     <el-container class="main-container">
       <el-aside width="220px" class="sidebar">
-        <el-menu
-          :default-active="$route.path"
-          router
-          class="sidebar-menu"
-        >
+        <el-menu :default-active="$route.path" router class="sidebar-menu">
           <el-menu-item index="/projects">
             <el-icon><Folder /></el-icon>
             <span>项目管理</span>
@@ -37,13 +33,13 @@
             <span>大模型配置</span>
           </el-menu-item>
         </el-menu>
-        
+
         <div class="sidebar-footer">
           <el-tag type="info" size="small">v2.0.0</el-tag>
           <span class="author">作者：孔利群</span>
         </div>
       </el-aside>
-      
+
       <el-main class="main-content">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
@@ -56,7 +52,7 @@
 </template>
 
 <script setup>
-import { Edit, Plus, Folder, Notebook, Upload, Setting } from '@element-plus/icons-vue'
+import { Edit, Folder, Notebook, Plus, Setting, Upload } from '@element-plus/icons-vue'
 </script>
 
 <style scoped>
