@@ -31,6 +31,7 @@ class ImportNovelRequest(BaseRequest):
     """导入小说请求"""
     novel_id: str = Field(..., min_length=1)
     file_path: str = Field(..., min_length=1)
+    outline_path: Optional[str] = None
     options: Optional[Dict[str, Any]] = None
 
 

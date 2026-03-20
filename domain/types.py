@@ -248,6 +248,13 @@ class ProjectStatus(Enum):
     ARCHIVED = "archived"
 
 
+class OrganizeJobStatus(Enum):
+    IDLE = "idle"
+    RUNNING = "running"
+    DONE = "done"
+    ERROR = "error"
+
+
 class GenreType(Enum):
     """题材类型枚举"""
     XUANHUAN = "xuanhuan"

@@ -15,7 +15,7 @@
         </el-button>
       </div>
     </div>
-    
+
     <el-row :gutter="20">
       <el-col :span="16">
         <el-card class="info-card">
@@ -30,30 +30,30 @@
             <el-descriptions-item label="章节数">{{ novel?.chapter_count }}</el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ novel?.created_at?.substring(0, 10) }}</el-descriptions-item>
           </el-descriptions>
-          
+
           <div class="progress-section">
             <span>完成进度</span>
-            <el-progress 
-              :percentage="getProgress()" 
+            <el-progress
+              :percentage="getProgress()"
               :stroke-width="12"
               style="margin-top: 10px;"
             />
           </div>
         </el-card>
-        
+
         <el-card class="analysis-card">
           <template #header>
             <div class="card-header">
               <span>创作操作</span>
             </div>
           </template>
-          
+
           <el-row :gutter="20">
             <el-col :span="8">
-              <el-card shadow="hover" class="tool-card" @click="organizeStory">
+              <el-card shadow="hover" class="tool-card" @click="organizeStory()">
                 <el-icon class="tool-icon"><Reading /></el-icon>
-                <div class="tool-name">整理故事结构</div>
-                <div class="tool-desc">按当前内容整理人物、设定与主线</div>
+                <div class="tool-name">{{ organizeActionLabel }}</div>
+                <div class="tool-desc">{{ organizeActionDesc }}</div>
               </el-card>
             </el-col>
             <el-col :span="8">
@@ -71,6 +71,9 @@
               </el-card>
             </el-col>
           </el-row>
+          <div class="organize-actions">
+            <el-button size="small" @click="organizeStory(true)" :loading="organizing">重新整理</el-button>
+          </div>
           <div v-if="organizing || organizeProgress.total > 0" class="organize-progress">
             <div class="organize-progress-text">{{ organizeProgress.message }}</div>
             <el-progress :percentage="organizeProgress.percent" :stroke-width="10" />
@@ -113,36 +116,36 @@
           </el-collapse>
         </el-card>
       </el-col>
-      
+
       <el-col :span="8">
         <el-card class="chapters-card">
           <template #header>
             <span>章节列表</span>
           </template>
-          
+
           <div v-if="loading" class="loading">
             <el-skeleton :rows="5" animated />
           </div>
-          
+
           <el-scrollbar v-else height="400px">
-            <div 
-              v-for="chapter in chapters" 
-              :key="chapter.id" 
+            <div
+              v-for="chapter in chapters"
+              :key="chapter.id"
               class="chapter-item"
               @click="openChapterEditor(chapter)"
             >
               <span class="chapter-title">第{{ chapter.number }}章 {{ chapter.title }}</span>
               <span class="chapter-words">{{ chapter.word_count }}字</span>
             </div>
-            
+
             <el-empty v-if="chapters.length === 0" description="暂无章节" />
           </el-scrollbar>
         </el-card>
       </el-col>
     </el-row>
-    
+
     <el-dialog v-model="styleDialogVisible" title="文风分析结果" width="600px">
-      <el-descriptions :column="1" border v-if="styleResult">
+      <el-descriptions v-if="styleResult" :column="1" border>
         <el-descriptions-item label="叙述视角">{{ styleResult.narrative_voice }}</el-descriptions-item>
         <el-descriptions-item label="对话风格">{{ styleResult.dialogue_style }}</el-descriptions-item>
         <el-descriptions-item label="节奏特点">{{ styleResult.pacing }}</el-descriptions-item>
@@ -153,7 +156,7 @@
         </el-descriptions-item>
       </el-descriptions>
     </el-dialog>
-    
+
     <el-dialog v-model="plotDialogVisible" title="剧情分析结果" width="700px">
       <el-tabs v-if="plotResult">
         <el-tab-pane label="人物">
@@ -165,8 +168,8 @@
         </el-tab-pane>
         <el-tab-pane label="时间线">
           <el-timeline>
-            <el-timeline-item 
-              v-for="(event, index) in plotResult.timeline" 
+            <el-timeline-item
+              v-for="(event, index) in plotResult.timeline"
               :key="index"
               :timestamp="'第' + event.chapter_number + '章'"
             >
@@ -202,10 +205,10 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { novelApi, contentApi, exportApi } from '@/api'
+import { contentApi, exportApi, novelApi } from '@/api'
 
 const route = useRoute()
 const novel = ref(null)
@@ -259,28 +262,48 @@ const memoryCharacters = computed(() => {
 
 const worldSettingSummary = computed(() => {
   const source = memoryData.value?.world_settings || []
-  const text = source.map((item) => String(item)).join('；')
+  const items = Array.isArray(source) ? source : [source]
+  const text = items.map((item) => String(item)).join('；')
   return text ? text.slice(0, 200) : ''
 })
 
 const plotOutline = computed(() => {
   const explicitOutline = memoryData.value?.plot_outline || []
-  if (explicitOutline.length > 0) {
-    return explicitOutline.map((item) => String(item)).slice(0, 8)
+  const outlineItems = Array.isArray(explicitOutline) ? explicitOutline : [explicitOutline].filter(Boolean)
+  if (outlineItems.length > 0) {
+    return outlineItems.map((item) => String(item)).slice(0, 8)
   }
   const threads = memoryData.value?.plot_threads || []
-  return threads.map((item) => {
-    if (typeof item === 'string') return item
-    const title = item?.title || ''
-    const points = item?.points || []
-    const tail = points.length ? points[points.length - 1] : ''
-    return tail ? `${title}：${tail}` : title
-  }).filter(Boolean).slice(0, 8)
+  return threads
+    .map((item) => {
+      if (typeof item === 'string') return item
+      const title = item?.title || ''
+      const points = item?.points || []
+      const tail = points.length ? points[points.length - 1] : ''
+      return tail ? `${title}：${tail}` : title
+    })
+    .filter(Boolean)
+    .slice(0, 8)
 })
 
 const styleTags = computed(() => {
   const style = memoryData.value?.writing_style || memoryData.value?.style_profile || {}
+  if (typeof style === 'string') {
+    return style ? [style] : []
+  }
   return [style.tone, style.pacing, style.narrative_style].filter((item) => !!item)
+})
+
+const organizeActionLabel = computed(() => {
+  if (organizeProgress.value.resumable) return '继续整理故事结构'
+  if (organizeProgress.value.status === 'done') return '再次整理故事结构'
+  return '整理故事结构'
+})
+
+const organizeActionDesc = computed(() => {
+  if (organizeProgress.value.resumable) return '从上次中断的位置继续分析'
+  if (organizeProgress.value.status === 'done') return '基于当前内容重新生成结构摘要'
+  return '按当前内容整理人物、设定与主线'
 })
 
 const loadNovel = async () => {
@@ -355,19 +378,26 @@ const exportNovel = async () => {
   }
 }
 
-const organizeStory = async () => {
+const organizeStory = async (forceRebuild = false) => {
   try {
     organizing.value = true
-    organizeProgress.value = {
-      current: 0,
-      total: 0,
-      percent: 0,
-      status: 'running',
-      message: '正在初始化整理任务（0%）'
+    if (forceRebuild || !organizeProgress.value.resumable) {
+      organizeProgress.value = {
+        current: 0,
+        total: 0,
+        percent: 0,
+        status: 'running',
+        message: forceRebuild ? '正在重新整理故事结构（0%）' : '正在初始化整理任务（0%）',
+        resumable: false
+      }
     }
     startOrganizeProgressPolling()
-    ElMessage.info('正在整理故事结构...')
-    await contentApi.organize(route.params.id)
+    ElMessage.info(
+      forceRebuild
+        ? '正在从头重新整理故事结构...'
+        : (organizeProgress.value.resumable ? '正在继续整理故事结构...' : '正在整理故事结构...')
+    )
+    await contentApi.organize(route.params.id, forceRebuild)
     await fetchOrganizeProgress()
     await loadMemory()
     ElMessage.success('故事结构已更新')
@@ -506,6 +536,10 @@ onBeforeUnmount(() => {
   background: #f8fbff;
   border: 1px solid #e6f0ff;
   border-radius: 8px;
+}
+
+.organize-actions {
+  margin-top: 14px;
 }
 
 .organize-progress-text {

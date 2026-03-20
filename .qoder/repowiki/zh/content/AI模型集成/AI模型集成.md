@@ -16,7 +16,11 @@
 - [LLMConfig.vue](file://frontend/src/views/config/LLMConfig.vue)
 - [model_router.py](file://application/agent_mvp/model_router.py)
 - [orchestrator.py](file://application/agent_mvp/orchestrator.py)
+- [tools.py](file://application/agent_mvp/tools.py)
+- [recovery.py](file://application/agent_mvp/recovery.py)
 - [test_llm_client.py](file://tests/unit/test_llm_client.py)
+- [test_llm_client_improved.py](file://tests/unit/test_llm_client_improved.py)
+- [test_recovery.py](file://tests/unit/test_recovery.py)
 </cite>
 
 ## 目录
@@ -32,7 +36,7 @@
 10. [附录](#附录)
 
 ## 简介
-本文件面向InkTrace项目的AI模型集成，系统性阐述基于工厂模式的大模型客户端统一管理方案，详解DeepSeek与Kimi两大模型的接入方式、参数配置、错误处理与主备切换机制；并覆盖LLM配置管理（API密钥、模型参数、调用频率限制）、模型选择策略与性能优化、最佳实践与调试方法，以及如何扩展新的AI模型支持。
+本文件面向InkTrace项目的AI模型集成，系统性阐述基于工厂模式的大模型客户端统一管理方案，详解DeepSeek与Kimi两大模型的接入方式、参数配置、错误处理与主备切换机制；并覆盖LLM配置管理（API密钥、模型参数、调用频率限制）、模型选择策略与性能优化、最佳实践与调试方法，以及如何扩展新的AI模型支持。本次更新重点介绍了新增的JSON提取工具和增强的LLM交互模式，提供更强大的解析能力和错误处理机制。
 
 ## 项目结构
 围绕AI模型集成的关键目录与文件如下：
@@ -42,6 +46,7 @@
 - 后端API：presentation/api/routers/config 提供配置读写与测试
 - 前端配置界面与状态：frontend/src/views/config 与 stores
 - 应用编排：application/agent_mvp/model_router 与 orchestrator 的调用链路
+- 工具与恢复：application/agent_mvp/tools 与 recovery 提供JSON提取和错误恢复机制
 
 ```mermaid
 graph TB
@@ -50,6 +55,8 @@ BC["LLMClient 抽象接口<br/>base_client.py"]
 DS["DeepSeek 客户端<br/>deepseek_client.py"]
 KM["Kimi 客户端<br/>kimi_client.py"]
 F["LLM 工厂<br/>llm_factory.py"]
+ENDP["JSON提取工具<br/>tools.py"]
+RP["恢复管道<br/>recovery.py"]
 end
 subgraph "领域"
 EX["异常体系<br/>exceptions.py"]
@@ -82,9 +89,11 @@ FEV --> FES
 FES --> FEA
 MR --> F
 ORCH --> MR
+ENDP --> MR
+RP --> ENDP
 ```
 
-图表来源
+**图表来源**
 - [base_client.py:14-83](file://infrastructure/llm/base_client.py#L14-L83)
 - [deepseek_client.py:25-238](file://infrastructure/llm/deepseek_client.py#L25-L238)
 - [kimi_client.py:25-244](file://infrastructure/llm/kimi_client.py#L25-L244)
@@ -99,8 +108,10 @@ ORCH --> MR
 - [config.js:1-240](file://frontend/src/api/config.js#L1-L240)
 - [model_router.py:6-42](file://application/agent_mvp/model_router.py#L6-L42)
 - [orchestrator.py:17-212](file://application/agent_mvp/orchestrator.py#L17-L212)
+- [tools.py:118-156](file://application/agent_mvp/tools.py#L118-L156)
+- [recovery.py:15-51](file://application/agent_mvp/recovery.py#L15-L51)
 
-章节来源
+**章节来源**
 - [llm_factory.py:1-121](file://infrastructure/llm/llm_factory.py#L1-L121)
 - [base_client.py:1-83](file://infrastructure/llm/base_client.py#L1-L83)
 - [deepseek_client.py:1-238](file://infrastructure/llm/deepseek_client.py#L1-L238)
@@ -115,6 +126,8 @@ ORCH --> MR
 - [config.js:1-240](file://frontend/src/api/config.js#L1-L240)
 - [model_router.py:1-42](file://application/agent_mvp/model_router.py#L1-L42)
 - [orchestrator.py:1-212](file://application/agent_mvp/orchestrator.py#L1-L212)
+- [tools.py:1-1018](file://application/agent_mvp/tools.py#L1-L1018)
+- [recovery.py:1-51](file://application/agent_mvp/recovery.py#L1-L51)
 
 ## 核心组件
 - 抽象接口 LLMClient：定义 generate/chat/model_name/max_context_tokens/is_available 等标准方法，保证不同模型客户端的一致行为契约。
@@ -123,8 +136,10 @@ ORCH --> MR
 - 配置与仓储：LLMConfig 实体与 SQLiteLLMConfigRepository 提供配置的持久化与查询。
 - 异常体系：统一的 LLMClientError 及其子类（APIKeyError、RateLimitError、NetworkError、TokenLimitError）便于上层捕获与处理。
 - 前后端配置通道：后端 FastAPI 路由提供配置读取/保存/测试；前端 Store/API 组件完成用户交互与状态同步。
+- JSON提取工具：提供强大的JSON解析能力，支持代码围栏去除、对象和数组提取、容错处理。
+- 恢复管道：实现多阶段错误恢复机制，包括重试、修复、回退和降级处理。
 
-章节来源
+**章节来源**
 - [base_client.py:14-83](file://infrastructure/llm/base_client.py#L14-L83)
 - [deepseek_client.py:25-238](file://infrastructure/llm/deepseek_client.py#L25-L238)
 - [kimi_client.py:25-244](file://infrastructure/llm/kimi_client.py#L25-L244)
@@ -133,9 +148,11 @@ ORCH --> MR
 - [sqlite_llm_config_repo.py:18-145](file://infrastructure/persistence/sqlite_llm_config_repo.py#L18-L145)
 - [exceptions.py:51-100](file://domain/exceptions.py#L51-L100)
 - [config.py:19-173](file://presentation/api/routers/config.py#L19-L173)
+- [tools.py:118-156](file://application/agent_mvp/tools.py#L118-L156)
+- [recovery.py:15-51](file://application/agent_mvp/recovery.py#L15-L51)
 
 ## 架构总览
-下图展示从前端配置到后端API再到LLM客户端工厂与具体模型的完整调用链与数据流。
+下图展示从前端配置到后端API再到LLM客户端工厂与具体模型的完整调用链与数据流，包括新增的JSON提取和恢复机制。
 
 ```mermaid
 sequenceDiagram
@@ -149,6 +166,8 @@ participant ENT as "实体<br/>LLMConfig"
 participant FAC as "工厂<br/>LLMFactory"
 participant PRI as "主模型<br/>DeepSeekClient"
 participant BAK as "备模型<br/>KimiClient"
+participant TOOL as "工具<br/>tools.py"
+participant RP as "恢复管道<br/>recovery.py"
 FE->>FS : 打开配置页/加载状态
 FS->>FA : 调用 getLLMConfig()
 FA->>API : GET /api/config/llm
@@ -172,9 +191,18 @@ FS->>FAC : 获取可用客户端
 FAC->>PRI : is_available()
 PRI-->>FAC : 可用/不可用
 FAC-->>FS : 返回当前客户端
+Note over TOOL,RP : 新增JSON提取和恢复机制
+FS->>TOOL : 调用LLM工具
+TOOL->>RP : 执行恢复管道
+RP->>PRI : 主模型调用
+PRI-->>RP : 成功/失败
+RP->>BAK : 备用模型调用
+BAK-->>RP : 成功/失败
+RP-->>TOOL : 返回结果
+TOOL-->>FS : JSON提取和解析
 ```
 
-图表来源
+**图表来源**
 - [LLMConfig.vue:104-164](file://frontend/src/views/config/LLMConfig.vue#L104-L164)
 - [config.js（store）:42-107](file://frontend/src/stores/config.js#L42-L107)
 - [config.js:1-240](file://frontend/src/api/config.js#L1-L240)
@@ -183,6 +211,8 @@ FAC-->>FS : 返回当前客户端
 - [llm_factory.py:78-121](file://infrastructure/llm/llm_factory.py#L78-L121)
 - [deepseek_client.py:213-227](file://infrastructure/llm/deepseek_client.py#L213-L227)
 - [kimi_client.py:219-227](file://infrastructure/llm/kimi_client.py#L219-L227)
+- [tools.py:118-156](file://application/agent_mvp/tools.py#L118-L156)
+- [recovery.py:19-51](file://application/agent_mvp/recovery.py#L19-L51)
 
 ## 详细组件分析
 
@@ -211,13 +241,13 @@ SetBak --> ReturnCur
 ReturnCur --> End(["结束"])
 ```
 
-图表来源
+**图表来源**
 - [llm_factory.py:78-95](file://infrastructure/llm/llm_factory.py#L78-L95)
 - [llm_factory.py:97-121](file://infrastructure/llm/llm_factory.py#L97-L121)
 - [deepseek_client.py:213-227](file://infrastructure/llm/deepseek_client.py#L213-L227)
 - [kimi_client.py:219-227](file://infrastructure/llm/kimi_client.py#L219-L227)
 
-章节来源
+**章节来源**
 - [llm_factory.py:31-121](file://infrastructure/llm/llm_factory.py#L31-L121)
 - [base_client.py:14-83](file://infrastructure/llm/base_client.py#L14-L83)
 
@@ -232,7 +262,7 @@ ReturnCur --> End(["结束"])
   - 基础URL与模型名可配置，默认值见工厂配置。
   - 日志记录便于问题定位。
 
-章节来源
+**章节来源**
 - [deepseek_client.py:25-238](file://infrastructure/llm/deepseek_client.py#L25-L238)
 
 ### Kimi（Moonshot）客户端集成
@@ -243,7 +273,7 @@ ReturnCur --> End(["结束"])
 - 关键点
   - 不同模型族的上下文上限差异，需在调用侧合理设置 max_tokens。
 
-章节来源
+**章节来源**
 - [kimi_client.py:25-244](file://infrastructure/llm/kimi_client.py#L25-L244)
 
 ### LLM 配置管理
@@ -288,12 +318,12 @@ ILLMConfigRepository <|.. SQLiteLLMConfigRepository
 LLMConfig ..> SQLiteLLMConfigRepository : "被仓储持久化"
 ```
 
-图表来源
+**图表来源**
 - [llm_config.py:15-54](file://domain/entities/llm_config.py#L15-L54)
 - [llm_config_repository.py:16-68](file://domain/repositories/llm_config_repository.py#L16-L68)
 - [sqlite_llm_config_repo.py:18-145](file://infrastructure/persistence/sqlite_llm_config_repo.py#L18-L145)
 
-章节来源
+**章节来源**
 - [llm_config.py:15-54](file://domain/entities/llm_config.py#L15-L54)
 - [llm_config_repository.py:16-68](file://domain/repositories/llm_config_repository.py#L16-L68)
 - [sqlite_llm_config_repo.py:18-145](file://infrastructure/persistence/sqlite_llm_config_repo.py#L18-L145)
@@ -308,7 +338,7 @@ LLMConfig ..> SQLiteLLMConfigRepository : "被仓储持久化"
   - 返回结果包含 ok、text、route（primary/backup/terminate）与 primary_error 信息，便于上层决策。
 - 编排器 Orchestrator
   - 在工具执行失败时结合可重试标记决定是否重试。
-  - 与模型路由配合，形成“主模型优先、备模型兜底”的稳定输出链路。
+  - 与模型路由配合，形成"主模型优先、备模型兜底"的稳定输出链路。
 
 ```mermaid
 sequenceDiagram
@@ -336,13 +366,91 @@ MR-->>ORCH : {"ok" : False, "route" : "terminate", "error" : "primary_unavailabl
 end
 ```
 
-图表来源
+**图表来源**
 - [model_router.py:11-42](file://application/agent_mvp/model_router.py#L11-L42)
 - [orchestrator.py:189-191](file://application/agent_mvp/orchestrator.py#L189-L191)
 
-章节来源
+**章节来源**
 - [model_router.py:6-42](file://application/agent_mvp/model_router.py#L6-L42)
 - [orchestrator.py:17-212](file://application/agent_mvp/orchestrator.py#L17-L212)
+
+### JSON提取工具与增强的LLM交互模式
+- JSON提取工具设计
+  - `_strip_code_fence`：去除代码围栏标记，支持多种编程语言标识。
+  - `_extract_json_object`：提取JSON对象，支持直接解析和范围查找两种方式。
+  - `_extract_json_array`：提取JSON数组，自动过滤非字典元素。
+- 增强的LLM交互模式
+  - 在AnalysisTool、StoryBranchTool、ContinueWritingTool中广泛应用JSON提取。
+  - 支持容错处理：当JSON解析失败时，自动尝试范围提取和修复。
+  - 提供标准化输出：统一的字段规范化和数据清洗。
+- 关键应用场景
+  - 结构分析：从LLM输出中提取人物、事件、世界观等结构化数据。
+  - 分支生成：提取多个剧情分支的JSON数组。
+  - 续写生成：提取章节内容和新增事件的JSON对象。
+
+```mermaid
+flowchart TD
+Start(["LLM输出"]) --> Strip["去除代码围栏<br/>_strip_code_fence"]
+Strip --> TryDirect["直接JSON解析<br/>json.loads"]
+TryDirect --> DirectSuccess{"解析成功?"}
+DirectSuccess --> |是| ReturnObj["返回对象/数组"]
+DirectSuccess --> |否| FindRange["查找{}或[]范围"]
+FindRange --> TryRange["范围JSON解析"]
+TryRange --> RangeSuccess{"解析成功?"}
+RangeSuccess --> |是| Filter["过滤字典元素"]
+RangeSuccess --> |否| Empty["返回空结果"]
+Filter --> ReturnObj
+ReturnObj --> Normalize["标准化输出<br/>字段清洗和规范化"]
+Normalize --> End(["完成"])
+Empty --> End
+```
+
+**图表来源**
+- [tools.py:118-156](file://application/agent_mvp/tools.py#L118-L156)
+
+**章节来源**
+- [tools.py:118-156](file://application/agent_mvp/tools.py#L118-L156)
+
+### 恢复管道与错误处理机制
+- 恢复管道设计
+  - `RecoveryPipeline`：实现多阶段错误恢复，包括重试、修复、回退和降级。
+  - `RecoveryResult`：数据类封装恢复结果，包含状态、数据、阶段和错误信息。
+- 多阶段恢复策略
+  - Execute阶段：正常执行，支持多次重试。
+  - Repair阶段：修复输入或参数，提高成功率。
+  - Fallback阶段：使用备用模型或替代方案。
+  - Degrade阶段：降级到基本功能，确保系统可用性。
+- 应用场景
+  - AnalysisTool：结构分析的多阶段恢复。
+  - StoryBranchTool：分支生成的容错处理。
+  - ContinueWritingTool：续写生成的质量保证。
+
+```mermaid
+flowchart TD
+Start(["开始恢复"]) --> Execute["Execute阶段<br/>正常执行"]
+Execute --> ExecSuccess{"执行成功?"}
+ExecSuccess --> |是| Success["返回成功结果"]
+ExecSuccess --> |否| RetryCount{"重试次数<限制?"}
+RetryCount --> |是| Execute
+RetryCount --> |否| Repair["Repair阶段<br/>修复输入"]
+Repair --> RepairSuccess{"修复成功?"}
+RepairSuccess --> |是| Success
+RepairSuccess --> |否| Fallback["Fallback阶段<br/>备用方案"]
+Fallback --> FallSuccess{"回退成功?"}
+FallSuccess --> |是| Success
+FallSuccess --> |否| Degrade["Degrade阶段<br/>降级处理"]
+Degrade --> DegradeSuccess{"降级成功?"}
+DegradeSuccess --> |是| Success
+DegradeSuccess --> |否| Fail["返回失败结果"]
+Success --> End(["结束"])
+Fail --> End
+```
+
+**图表来源**
+- [recovery.py:19-51](file://application/agent_mvp/recovery.py#L19-L51)
+
+**章节来源**
+- [recovery.py:15-51](file://application/agent_mvp/recovery.py#L15-L51)
 
 ### 错误处理与异常体系
 - 统一异常类型
@@ -354,21 +462,27 @@ end
   - 限流：等待 retry-after 或降低并发。
   - 网络：指数退避重试，必要时切换备模型。
   - Token：缩短输入或调整 max_tokens。
+- JSON提取错误处理
+  - 提供容错机制，当JSON解析失败时自动尝试范围提取。
+  - 支持多种格式的输入，包括带代码围栏的输出。
 
-章节来源
+**章节来源**
 - [exceptions.py:51-100](file://domain/exceptions.py#L51-L100)
 - [deepseek_client.py:163-193](file://infrastructure/llm/deepseek_client.py#L163-L193)
 - [kimi_client.py:169-199](file://infrastructure/llm/kimi_client.py#L169-L199)
+- [tools.py:118-156](file://application/agent_mvp/tools.py#L118-L156)
 
 ## 依赖分析
 - 组件耦合
   - 工厂仅依赖抽象接口与具体实现类，保持低耦合。
   - 客户端依赖异常体系与HTTP库，职责清晰。
   - 前后端通过API路由与数据模型解耦。
+  - 工具模块依赖恢复管道和JSON提取工具，形成完整的错误处理链。
 - 外部依赖
   - httpx 用于异步HTTP请求与连接池。
   - FastAPI/Pydantic 用于后端API与数据校验。
   - Element Plus/Vue/Pinia 用于前端配置界面与状态管理。
+  - Python标准库：json、re、logging、asyncio 等。
 
 ```mermaid
 graph LR
@@ -380,9 +494,13 @@ KM --> |使用| EXC
 API["配置API路由"] --> |读写| REPO["SQLiteLLMConfigRepository"]
 API --> |读写| ENT["LLMConfig实体"]
 FE["前端Store/API"] --> |调用| API
+TOOL["工具模块"] --> |使用| MR["ModelRouter"]
+TOOL --> |使用| RP["RecoveryPipeline"]
+TOOL --> |使用| JSON["JSON提取工具"]
+RP --> |使用| MR
 ```
 
-图表来源
+**图表来源**
 - [llm_factory.py:14-16](file://infrastructure/llm/llm_factory.py#L14-L16)
 - [base_client.py:10-12](file://infrastructure/llm/base_client.py#L10-L12)
 - [deepseek_client.py:13-22](file://infrastructure/llm/deepseek_client.py#L13-L22)
@@ -390,8 +508,10 @@ FE["前端Store/API"] --> |调用| API
 - [config.py:13-16](file://presentation/api/routers/config.py#L13-L16)
 - [sqlite_llm_config_repo.py:14-15](file://infrastructure/persistence/sqlite_llm_config_repo.py#L14-L15)
 - [llm_config.py:10-12](file://domain/entities/llm_config.py#L10-L12)
+- [tools.py:118-156](file://application/agent_mvp/tools.py#L118-L156)
+- [recovery.py:19-51](file://application/agent_mvp/recovery.py#L19-L51)
 
-章节来源
+**章节来源**
 - [llm_factory.py:14-16](file://infrastructure/llm/llm_factory.py#L14-L16)
 - [base_client.py:10-12](file://infrastructure/llm/base_client.py#L10-L12)
 - [deepseek_client.py:13-22](file://infrastructure/llm/deepseek_client.py#L13-L22)
@@ -399,6 +519,8 @@ FE["前端Store/API"] --> |调用| API
 - [config.py:13-16](file://presentation/api/routers/config.py#L13-L16)
 - [sqlite_llm_config_repo.py:14-15](file://infrastructure/persistence/sqlite_llm_config_repo.py#L14-L15)
 - [llm_config.py:10-12](file://domain/entities/llm_config.py#L10-L12)
+- [tools.py:118-156](file://application/agent_mvp/tools.py#L118-L156)
+- [recovery.py:15-51](file://application/agent_mvp/recovery.py#L15-L51)
 
 ## 性能考虑
 - 连接复用与并发
@@ -411,6 +533,12 @@ FE["前端Store/API"] --> |调用| API
   - 根据模型族选择合适的 max_tokens，避免超出模型上下文上限。
 - 主备切换
   - 通过 is_available() 快速探测，减少无效调用；在高负载或限流时主动切换备模型。
+- JSON提取优化
+  - 使用范围查找算法，避免全量扫描整个文本。
+  - 提供容错机制，减少因格式问题导致的失败重试。
+- 恢复管道效率
+  - 多阶段恢复减少单次失败的影响，提高整体成功率。
+  - 最大重试次数限制防止无限循环重试。
 
 ## 故障排查指南
 - 常见问题定位
@@ -418,22 +546,28 @@ FE["前端Store/API"] --> |调用| API
   - 限流：关注 RateLimitError 中的 retry-after；降低并发或等待。
   - 网络异常：检查客户端日志与网络连通性；必要时切换备模型。
   - Token超限：缩短输入或调整 max_tokens；确认模型上下文上限。
+  - JSON解析失败：检查LLM输出格式，确认是否包含代码围栏。
 - 调试步骤
-  - 前端：使用配置页面的“测试”按钮，观察返回结果与错误信息。
+  - 前端：使用配置页面的"测试"按钮，观察返回结果与错误信息。
   - 后端：通过 /api/config/llm/test 获取各模型连通性测试结果。
   - 客户端：启用更详细的日志级别，观察重试与错误堆栈。
+  - JSON提取：检查输入格式，确认是否为有效的JSON或带围栏的格式。
+  - 恢复管道：观察各阶段的执行情况，确定失败发生在哪个阶段。
 - 单元测试参考
   - 测试覆盖了客户端接口一致性、上下文长度判断与工厂创建逻辑，可作为行为回归依据。
+  - JSON提取工具和恢复管道都有专门的单元测试，确保功能稳定性。
 
-章节来源
+**章节来源**
 - [exceptions.py:58-100](file://domain/exceptions.py#L58-L100)
 - [deepseek_client.py:155-193](file://infrastructure/llm/deepseek_client.py#L155-L193)
 - [kimi_client.py:161-199](file://infrastructure/llm/kimi_client.py#L161-L199)
 - [config.py:126-147](file://presentation/api/routers/config.py#L126-L147)
 - [test_llm_client.py:1-133](file://tests/unit/test_llm_client.py#L1-L133)
+- [test_llm_client_improved.py:1-228](file://tests/unit/test_llm_client_improved.py#L1-L228)
+- [test_recovery.py:1-219](file://tests/unit/test_recovery.py#L1-L219)
 
 ## 结论
-InkTrace 的AI模型集成为后续扩展提供了清晰的抽象与稳定的主备切换机制。通过工厂模式统一管理不同模型客户端，结合完善的异常体系与前后端配置通道，既满足了易用性也兼顾了可靠性。建议在生产环境中进一步完善密钥轮换、限流策略与可观测性指标，持续优化主备切换与重试策略。
+InkTrace 的AI模型集成为后续扩展提供了清晰的抽象与稳定的主备切换机制。通过工厂模式统一管理不同模型客户端，结合完善的异常体系与前后端配置通道，既满足了易用性也兼顾了可靠性。本次更新新增的JSON提取工具和增强的LLM交互模式，显著提升了系统的解析能力和错误处理机制。通过多阶段恢复管道和容错处理，系统能够在各种异常情况下保持稳定运行。建议在生产环境中进一步完善密钥轮换、限流策略与可观测性指标，持续优化主备切换与重试策略。
 
 ## 附录
 
@@ -448,9 +582,29 @@ InkTrace 的AI模型集成为后续扩展提供了清晰的抽象与稳定的主
 - 测试
   - 补充单元测试，覆盖接口一致性、上下文长度与工厂创建逻辑。
 
-章节来源
+### JSON提取工具使用指南
+- 基本使用
+  - `_strip_code_fence`：去除代码围栏标记，支持多种语言标识。
+  - `_extract_json_object`：提取JSON对象，支持直接解析和范围查找。
+  - `_extract_json_array`：提取JSON数组，自动过滤非字典元素。
+- 最佳实践
+  - 在LLM工具中优先使用JSON提取工具，确保输出格式正确。
+  - 对于可能包含代码围栏的输出，先使用 `_strip_code_fence` 处理。
+  - 结合恢复管道使用，提高解析成功率。
+
+### 恢复管道配置建议
+- 重试次数
+  - 根据业务重要性设置合理的重试次数，避免无限重试。
+- 阶段顺序
+  - Execute → Repair → Fallback → Degrade 的顺序确保最优的失败处理效果。
+- 错误分类
+  - 明确区分可重试和不可重试错误，避免对不可重试错误进行重试。
+
+**章节来源**
 - [base_client.py:14-83](file://infrastructure/llm/base_client.py#L14-L83)
 - [llm_factory.py:31-121](file://infrastructure/llm/llm_factory.py#L31-L121)
 - [LLMConfig.vue:1-285](file://frontend/src/views/config/LLMConfig.vue#L1-L285)
 - [config.js（store）:75-107](file://frontend/src/stores/config.js#L75-L107)
 - [config.py:102-124](file://presentation/api/routers/config.py#L102-L124)
+- [tools.py:118-156](file://application/agent_mvp/tools.py#L118-L156)
+- [recovery.py:15-51](file://application/agent_mvp/recovery.py#L15-L51)

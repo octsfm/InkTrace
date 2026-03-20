@@ -5,8 +5,8 @@ from fastapi.testclient import TestClient
 
 from domain.entities.chapter import Chapter
 from domain.types import ChapterId, ChapterStatus, NovelId
-from presentation.api.app import create_app
 from presentation.api import dependencies
+from presentation.api.app import create_app
 
 
 class _FakeProject:
@@ -42,10 +42,27 @@ class _FakeContentService:
         self.novel_text_called = True
         return "测试文本"
 
+    def get_outline_context(self, novel_id):
+        return {}
+
 
 class _FakeLLMFactory:
     primary_client = None
     backup_client = None
+
+
+class _FakeOrganizeJobRepo:
+    def __init__(self):
+        self.job = None
+
+    def find_by_novel_id(self, novel_id: NovelId):
+        return self.job
+
+    def save(self, job):
+        self.job = job
+
+    def delete(self, novel_id: NovelId):
+        self.job = None
 
 
 class _FakeChapterRepo:
@@ -91,7 +108,8 @@ def test_organize_story_returns_error_code_when_novel_missing():
         {
             dependencies.get_project_service: lambda: fake_project_service,
             dependencies.get_content_service: lambda: fake_content_service,
-            dependencies.get_llm_factory: lambda: _FakeLLMFactory()
+            dependencies.get_llm_factory: lambda: _FakeLLMFactory(),
+            dependencies.get_organize_job_repo: lambda: _FakeOrganizeJobRepo(),
         }
     )
     response = client.post("/api/content/organize/novel-x")
@@ -100,13 +118,13 @@ def test_organize_story_returns_error_code_when_novel_missing():
     assert detail["code"] == "NOVEL_NOT_FOUND"
 
 
-def test_organize_story_reuses_existing_memory_without_overwrite():
+def test_organize_story_rebuilds_memory_instead_of_reusing_existing_snapshot():
     existing_memory = {
         "characters": [{"name": "孔凡圣", "traits": ["谨慎"], "relationships": {}}],
         "world_settings": ["旧设定"],
         "plot_outline": ["旧主线"],
         "writing_style": {"tone": "紧张", "pacing": "中速", "narrative_style": "第三人称"},
-        "current_progress": {"latest_chapter_number": 1, "latest_goal": "第1章", "last_summary": "旧摘要"}
+        "current_progress": "旧摘要",
     }
     fake_project_service = _FakeProjectService(memory=existing_memory)
     fake_content_service = _FakeContentService()
@@ -114,15 +132,16 @@ def test_organize_story_reuses_existing_memory_without_overwrite():
         {
             dependencies.get_project_service: lambda: fake_project_service,
             dependencies.get_content_service: lambda: fake_content_service,
-            dependencies.get_llm_factory: lambda: _FakeLLMFactory()
+            dependencies.get_llm_factory: lambda: _FakeLLMFactory(),
+            dependencies.get_organize_job_repo: lambda: _FakeOrganizeJobRepo(),
         }
     )
     response = client.post("/api/content/organize/novel-y")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["memory"]["plot_outline"] == ["旧主线"]
-    assert fake_project_service.bind_count == 0
-    assert fake_content_service.novel_text_called is False
+    assert payload["progress"]["status"] == "done"
+    assert fake_project_service.bind_count == 1
+    assert fake_content_service.novel_text_called is True
 
 
 def test_continue_writing_returns_error_code_when_memory_missing():
@@ -133,12 +152,12 @@ def test_continue_writing_returns_error_code_when_memory_missing():
         {
             dependencies.get_project_service: lambda: fake_project_service,
             dependencies.get_chapter_repo: lambda: fake_chapter_repo,
-            dependencies.get_novel_repo: lambda: fake_novel_repo
+            dependencies.get_novel_repo: lambda: fake_novel_repo,
         }
     )
     response = client.post(
         "/api/writing/continue",
-        json={"novel_id": "novel-z", "goal": "第2章：延展冲突", "target_word_count": 1200}
+        json={"novel_id": "novel-z", "goal": "第2章：延展冲突", "target_word_count": 1200},
     )
     assert response.status_code == 400
     detail = response.json()["detail"]
@@ -151,7 +170,8 @@ def test_continue_writing_persists_next_chapter_and_updates_progress():
         "world_settings": ["古城遗迹存在血脉机关"],
         "plot_outline": ["遗迹开启：主角获得密卷"],
         "writing_style": {"tone": "悬疑紧张", "pacing": "中快节奏", "narrative_style": "第三人称近距离"},
-        "current_progress": {"latest_chapter_number": 1, "latest_goal": "第1章", "last_summary": "上章摘要"}
+        "events": [{"event": "主角获得密卷", "actors": ["孔凡圣"], "action": "获得", "result": "掌握线索", "impact": "推进主线"}],
+        "current_progress": {"latest_chapter_number": 1, "latest_goal": "第1章", "last_summary": "上章摘要"},
     }
     fake_project_service = _FakeProjectService(memory=memory)
     chapter_one = Chapter(
@@ -162,7 +182,7 @@ def test_continue_writing_persists_next_chapter_and_updates_progress():
         content="第一章内容",
         status=ChapterStatus.DRAFT,
         created_at=datetime.now(),
-        updated_at=datetime.now()
+        updated_at=datetime.now(),
     )
     fake_chapter_repo = _FakeChapterRepo(chapters=[chapter_one])
     fake_novel_repo = _FakeNovelRepo()
@@ -170,12 +190,12 @@ def test_continue_writing_persists_next_chapter_and_updates_progress():
         {
             dependencies.get_project_service: lambda: fake_project_service,
             dependencies.get_chapter_repo: lambda: fake_chapter_repo,
-            dependencies.get_novel_repo: lambda: fake_novel_repo
+            dependencies.get_novel_repo: lambda: fake_novel_repo,
         }
     )
     response = client.post(
         "/api/writing/continue",
-        json={"novel_id": "novel-1", "goal": "第2章：承接第一章并推进主线", "target_word_count": 1200}
+        json={"novel_id": "novel-1", "goal": "第2章：承接第一章并推进主线", "target_word_count": 1200},
     )
     assert response.status_code == 200
     payload = response.json()

@@ -823,9 +823,6 @@ class ContinueWritingTool:
         memory = tool_input.get("memory") or task_context.memory or {}
         chapters = tool_input.get("chapters") or []
         chapter_count = int(tool_input.get("chapter_count") or len(chapters) or 0)
-        recent_chapter_text = str(tool_input.get("recent_chapter_text") or "").strip()
-        if recent_chapter_text:
-            chapters = [*chapters, {"content": recent_chapter_text}]
         idempotency_key = str(tool_input.get("idempotency_key") or task_context.request_id).strip()
         target_word_count = int(tool_input.get("target_word_count") or task_context.target_word_count or 2100)
         if not direction:

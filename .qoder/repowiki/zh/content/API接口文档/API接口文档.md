@@ -62,11 +62,11 @@ B --> M["配置管理<br/>presentation/api/routers/config.py"]
 A --> N["依赖注入<br/>presentation/api/dependencies.py"]
 ```
 
-图表来源
+**图表来源**
 - [presentation/api/app.py:19-62](file://presentation/api/app.py#L19-L62)
 - [presentation/api/dependencies.py:50-177](file://presentation/api/dependencies.py#L50-L177)
 
-章节来源
+**章节来源**
 - [presentation/api/app.py:19-62](file://presentation/api/app.py#L19-L62)
 - [presentation/api/dependencies.py:50-177](file://presentation/api/dependencies.py#L50-L177)
 
@@ -76,7 +76,7 @@ A --> N["依赖注入<br/>presentation/api/dependencies.py"]
 - DTO 层：统一请求/响应模型与字段校验规则
 - 异常体系：领域异常与 LLM 客户端异常，便于统一错误处理
 
-章节来源
+**章节来源**
 - [presentation/api/app.py:19-62](file://presentation/api/app.py#L19-L62)
 - [presentation/api/dependencies.py:50-177](file://presentation/api/dependencies.py#L50-L177)
 - [application/dto/request_dto.py:14-97](file://application/dto/request_dto.py#L14-L97)
@@ -89,7 +89,7 @@ A --> N["依赖注入<br/>presentation/api/dependencies.py"]
 ```mermaid
 graph TB
 subgraph "API层"
-R1["/novels/*"]
+R1["/api/novels/*"]
 R2["/api/content/*"]
 R3["/api/writing/*"]
 R4["/export/*"]
@@ -140,7 +140,7 @@ S8 --> X2
 S9 --> X2
 ```
 
-图表来源
+**图表来源**
 - [presentation/api/routers/novel.py:24-161](file://presentation/api/routers/novel.py#L24-L161)
 - [presentation/api/routers/content.py:88-213](file://presentation/api/routers/content.py#L88-L213)
 - [presentation/api/routers/writing.py:111-277](file://presentation/api/routers/writing.py#L111-L277)
@@ -156,23 +156,32 @@ S9 --> X2
 ## 详细组件分析
 
 ### 小说管理接口（CRUD）
-- 基础路径：/novels
-- 支持：创建、列表、详情、删除
+- 基础路径：/api/novels
+- 支持：创建、列表、详情、章节查询与更新、删除
 
 接口定义
-- POST /novels/
+- POST /api/novels/
   - 请求体：CreateNovelRequest
   - 响应体：NovelResponse
   - 说明：创建小说项目并返回项目概要
-- GET /novels/
+- GET /api/novels/
   - 查询参数：无
   - 响应体：List[NovelResponse]
   - 说明：列出所有小说项目
-- GET /novels/{novel_id}
+- GET /api/novels/{novel_id}
   - 路径参数：novel_id
   - 响应体：NovelResponse
   - 说明：获取指定小说详情
-- DELETE /novels/{novel_id}
+- GET /api/novels/{novel_id}/chapters/{chapter_id}
+  - 路径参数：novel_id、chapter_id
+  - 响应体：字典（章节详情）
+  - 说明：获取指定章节详情
+- PUT /api/novels/{novel_id}/chapters/{chapter_id}
+  - 路径参数：novel_id、chapter_id
+  - 请求体：ChapterUpdatePayload（title/content 可选）
+  - 响应体：字典（更新后的章节）
+  - 说明：更新章节标题或内容
+- DELETE /api/novels/{novel_id}
   - 路径参数：novel_id
   - 响应体：字典
   - 说明：删除小说项目
@@ -181,25 +190,32 @@ S9 --> X2
 - CreateNovelRequest
   - 字段：title、author、genre、target_word_count、options
   - 校验：字符串长度、数值范围
+- ChapterUpdatePayload
+  - 字段：title（可选）、content（可选）
+  - 校验：至少提供一个有效字段
 
 响应 DTO
 - NovelResponse
   - 字段：id、title、author、genre、target_word_count、current_word_count、chapter_count、status、created_at、updated_at、chapters、memory
 
-章节来源
+**章节来源**
 - [presentation/api/routers/novel.py:24-161](file://presentation/api/routers/novel.py#L24-L161)
 - [application/dto/request_dto.py:21-28](file://application/dto/request_dto.py#L21-L28)
 - [application/dto/response_dto.py:22-34](file://application/dto/response_dto.py#L22-L34)
 
 ### 内容分析接口（文风/剧情/内存/结构整理）
 - 基础路径：/api/content
-- 支持：导入小说、文风分析、剧情分析、获取记忆、组织故事结构
+- 支持：导入小说、文风分析、剧情分析、获取记忆、组织故事结构、进度查询
 
 接口定义
 - POST /api/content/import
   - 请求体：ImportNovelRequest
   - 响应体：字典（包含 novel、project_id、memory、analysis_status）
   - 说明：导入小说并进行章节拆分与增量分析，合并记忆
+- POST /api/content/import/upload
+  - 表单：novel_id、novel_file（必填）、outline_file（可选）
+  - 响应体：字典（包含 novel、project_id、memory、analysis_status、outline_uploaded）
+  - 说明：上传文件导入小说，支持大纲文件
 - GET /api/content/style/{novel_id}
   - 路径参数：novel_id
   - 响应体：StyleAnalysisResponse
@@ -216,6 +232,10 @@ S9 --> X2
   - 路径参数：novel_id
   - 响应体：字典（status、project_id、memory）
   - 说明：对导入内容进行全局收敛与进度更新
+- GET /api/content/organize/progress/{novel_id}
+  - 路径参数：novel_id
+  - 响应体：字典（进度信息）
+  - 说明：获取结构整理进度
 
 请求 DTO
 - ImportNovelRequest
@@ -229,15 +249,15 @@ S9 --> X2
 - PlotAnalysisResponse
   - 字段：characters、timeline、foreshadowings
 
-章节来源
+**章节来源**
 - [presentation/api/routers/content.py:88-213](file://presentation/api/routers/content.py#L88-L213)
 - [application/dto/request_dto.py:30-43](file://application/dto/request_dto.py#L30-L43)
 - [application/dto/response_dto.py:61-77](file://application/dto/response_dto.py#L61-L77)
 - [application/dto/response_dto.py:72-77](file://application/dto/response_dto.py#L72-L77)
 
-### AI写作接口（章节生成/续写/剧情规划）
+### AI写作接口（章节生成/续写/剧情规划/分支生成）
 - 基础路径：/api/writing
-- 支持：生成章节、续写下一章、规划剧情走向
+- 支持：生成章节、续写下一章、规划剧情走向、生成剧情分支
 
 接口定义
 - POST /api/writing/generate
@@ -252,6 +272,10 @@ S9 --> X2
   - 请求体：PlanPlotRequest
   - 响应体：List[dict]
   - 说明：规划剧情节点
+- POST /api/writing/branches
+  - 请求体：GenerateBranchesRequest
+  - 响应体：字典（branches、memory_snapshot、latest_chapter_number）
+  - 说明：生成剧情分支选项
 
 请求 DTO
 - GenerateChapterRequest
@@ -260,6 +284,8 @@ S9 --> X2
   - 字段：novel_id、goal、target_word_count、options
 - PlanPlotRequest
   - 字段：novel_id、goal、constraints、chapter_count、options
+- GenerateBranchesRequest
+  - 字段：novel_id、branch_count、current_chapter_content、direction_hint、options
 
 响应 DTO
 - GenerateChapterResponse
@@ -273,7 +299,7 @@ S9 --> X2
   - INKTRACE_AGENT_GRAY_RATIO：灰度比例（0-100）
 - 路由逻辑：根据 novel_id 与 goal 的哈希决定是否走 Agent 链路
 
-章节来源
+**章节来源**
 - [presentation/api/routers/writing.py:111-277](file://presentation/api/routers/writing.py#L111-L277)
 - [application/dto/request_dto.py:45-71](file://application/dto/request_dto.py#L45-L71)
 - [application/dto/response_dto.py:86-99](file://application/dto/response_dto.py#L86-L99)
@@ -304,7 +330,7 @@ S9 --> X2
 安全校验
 - 路径校验：防止目录穿越，仅允许 exports 目录内文件
 
-章节来源
+**章节来源**
 - [presentation/api/routers/export.py:60-102](file://presentation/api/routers/export.py#L60-L102)
 - [application/dto/request_dto.py:73-79](file://application/dto/request_dto.py#L73-L79)
 - [application/dto/response_dto.py:101-107](file://application/dto/response_dto.py#L101-L107)
@@ -355,7 +381,7 @@ S9 --> X2
 - CreateProjectAIResponse
   - 字段：project、memory、first_chapter（包含 title、content、word_count）
 
-章节来源
+**章节来源**
 - [presentation/api/routers/project.py:91-289](file://presentation/api/routers/project.py#L91-L289)
 
 ### 模板管理接口（二期）
@@ -393,7 +419,7 @@ S9 --> X2
 - TemplateDetailResponse
   - 字段：id、name、genre、description、worldview_framework、character_templates、plot_templates、style_reference、is_builtin
 
-章节来源
+**章节来源**
 - [presentation/api/routers/template.py:90-159](file://presentation/api/routers/template.py#L90-L159)
 
 ### 人物管理接口（二期）
@@ -402,15 +428,31 @@ S9 --> X2
 
 接口定义
 - POST /api/novels/{novel_id}/characters
+  - 请求体：CreateCharacterRequest
+  - 响应体：CharacterResponse
 - GET /api/novels/{novel_id}/characters
+  - 查询参数：role（可选）、keyword（可选）
+  - 响应体：List[CharacterResponse]
 - GET /api/novels/{novel_id}/characters/{character_id}
+  - 路径参数：character_id
+  - 响应体：CharacterResponse
 - PUT /api/novels/{novel_id}/characters/{character_id}
+  - 请求体：UpdateCharacterRequest
+  - 响应体：CharacterResponse
 - DELETE /api/novels/{novel_id}/characters/{character_id}
+  - 响应体：字典
 - POST /api/novels/{novel_id}/characters/{character_id}/relations
+  - 请求体：AddRelationRequest
+  - 响应体：RelationResponse
 - GET /api/novels/{novel_id}/characters/{character_id}/relations
+  - 响应体：List[RelationResponse]
 - DELETE /api/novels/{novel_id}/characters/{character_id}/relations/{target_id}
+  - 响应体：字典
 - POST /api/novels/{novel_id}/characters/{character_id}/state
+  - 请求体：字符串状态
+  - 响应体：字典（message、current_state）
 - GET /api/novels/{novel_id}/characters/{character_id}/states
+  - 响应体：List[str]
 
 请求 DTO
 - CreateCharacterRequest
@@ -426,7 +468,7 @@ S9 --> X2
 - RelationResponse
   - 字段：target_id、relation_type、description
 
-章节来源
+**章节来源**
 - [presentation/api/routers/character.py:76-279](file://presentation/api/routers/character.py#L76-L279)
 
 ### 世界观接口（二期）
@@ -435,20 +477,40 @@ S9 --> X2
 
 接口定义
 - GET /api/novels/{novel_id}/worldview
+  - 响应体：WorldviewResponse
 - PUT /api/novels/{novel_id}/worldview/power-system
+  - 请求体：UpdatePowerSystemRequest
+  - 响应体：字典（message、levels）
 - POST /api/novels/{novel_id}/worldview/check
+  - 响应体：List[ConsistencyIssueResponse]
 - POST /api/novels/{novel_id}/worldview/techniques
+  - 请求体：CreateTechniqueRequest
+  - 响应体：TechniqueResponse
 - GET /api/novels/{novel_id}/worldview/techniques
+  - 响应体：List[TechniqueResponse]
 - DELETE /api/novels/{novel_id}/worldview/techniques/{technique_id}
+  - 响应体：字典
 - POST /api/novels/{novel_id}/worldview/factions
+  - 请求体：CreateFactionRequest
+  - 响应体：FactionResponse
 - GET /api/novels/{novel_id}/worldview/factions
+  - 响应体：List[FactionResponse]
 - DELETE /api/novels/{novel_id}/worldview/factions/{faction_id}
+  - 响应体：字典
 - POST /api/novels/{novel_id}/worldview/locations
+  - 请求体：CreateLocationRequest
+  - 响应体：LocationResponse
 - GET /api/novels/{novel_id}/worldview/locations
+  - 响应体：List[LocationResponse]
 - DELETE /api/novels/{novel_id}/worldview/locations/{location_id}
+  - 响应体：字典
 - POST /api/novels/{novel_id}/worldview/items
+  - 请求体：CreateItemRequest
+  - 响应体：ItemResponse
 - GET /api/novels/{novel_id}/worldview/items
+  - 响应体：List[ItemResponse]
 - DELETE /api/novels/{novel_id}/worldview/items/{item_id}
+  - 响应体：字典
 
 请求 DTO
 - UpdatePowerSystemRequest
@@ -467,7 +529,7 @@ S9 --> X2
   - 字段：id、novel_id、name、power_system
 - 技术/势力/地点/物品响应 DTO 对应字段详见路由文件
 
-章节来源
+**章节来源**
 - [presentation/api/routers/worldview.py:119-374](file://presentation/api/routers/worldview.py#L119-L374)
 
 ### 向量索引接口（三期）
@@ -476,8 +538,11 @@ S9 --> X2
 
 接口定义
 - POST /api/novels/{novel_id}/vector/index
+  - 响应体：IndexResultResponse
 - GET /api/novels/{novel_id}/vector/status
+  - 响应体：IndexStatusResponse
 - DELETE /api/novels/{novel_id}/vector/index
+  - 响应体：字典（message、count）
 
 响应 DTO
 - IndexStatusResponse
@@ -485,7 +550,7 @@ S9 --> X2
 - IndexResultResponse
   - 字段：chapters_indexed、characters_indexed、worldview_indexed、errors
 
-章节来源
+**章节来源**
 - [presentation/api/routers/vector.py:39-76](file://presentation/api/routers/vector.py#L39-L76)
 
 ### RAG检索接口（三期）
@@ -494,8 +559,14 @@ S9 --> X2
 
 接口定义
 - POST /api/novels/{novel_id}/rag/search
+  - 请求体：SearchRequest
+  - 响应体：List[SearchResultItem]
 - POST /api/novels/{novel_id}/rag/context
+  - 请求体：SearchRequest
+  - 响应体：RAGContextResponse
 - POST /api/novels/{novel_id}/rag/prompt
+  - 请求体：SearchRequest
+  - 响应体：字典（prompt）
 
 请求 DTO
 - SearchRequest
@@ -507,7 +578,7 @@ S9 --> X2
 - RAGContextResponse
   - 字段：query、chapters、characters、worldview
 
-章节来源
+**章节来源**
 - [presentation/api/routers/rag.py:46-111](file://presentation/api/routers/rag.py#L46-L111)
 
 ### 配置管理接口（配置管理路由）
@@ -516,10 +587,16 @@ S9 --> X2
 
 接口定义
 - GET /api/config/llm
+  - 响应体：LLMConfigResponse
 - POST /api/config/llm
+  - 请求体：LLMConfigRequest
 - POST /api/config/llm/test
+  - 请求体：ConfigTestRequest
+  - 响应体：ConfigTestResponse
 - DELETE /api/config/llm
+  - 响应体：字典
 - GET /api/config/llm/exists
+  - 响应体：字典（exists）
 
 请求 DTO
 - LLMConfigRequest
@@ -533,7 +610,7 @@ S9 --> X2
 - ConfigTestResponse
   - 字段：deepseek、kimi
 
-章节来源
+**章节来源**
 - [presentation/api/routers/config.py:67-172](file://presentation/api/routers/config.py#L67-L172)
 
 ## 依赖分析
@@ -555,10 +632,10 @@ D --> R["RAGRetrievalService"]
 D --> Con["ConfigService"]
 ```
 
-图表来源
+**图表来源**
 - [presentation/api/dependencies.py:122-177](file://presentation/api/dependencies.py#L122-L177)
 
-章节来源
+**章节来源**
 - [presentation/api/dependencies.py:50-177](file://presentation/api/dependencies.py#L50-L177)
 
 ## 性能与限流
@@ -566,8 +643,6 @@ D --> Con["ConfigService"]
 - LRU 缓存：依赖注入模块使用 LRU 缓存仓储与工厂实例，降低重复初始化开销
 - I/O 优化：导出接口对文件路径进行严格校验，避免无效扫描与磁盘 IO
 - 并发建议：对外部 LLM 调用建议增加超时与重试策略，结合服务端队列与幂等键避免重复执行
-
-[本节为通用性能建议，无需特定文件引用]
 
 ## 故障排查指南
 常见错误与处理
@@ -580,7 +655,7 @@ D --> Con["ConfigService"]
 - 领域异常：EntityNotFoundError、InvalidOperationError、ValidationError
 - LLM 客户端异常：APIKeyError、RateLimitError、NetworkError、TokenLimitError
 
-章节来源
+**章节来源**
 - [domain/exceptions.py:11-99](file://domain/exceptions.py#L11-L99)
 - [presentation/api/routers/writing.py:130-171](file://presentation/api/routers/writing.py#L130-L171)
 - [presentation/api/routers/export.py:26-57](file://presentation/api/routers/export.py#L26-L57)
@@ -588,15 +663,13 @@ D --> Con["ConfigService"]
 ## 结论
 本 API 文档系统化梳理了 InkTrace 的核心接口与数据模型，明确了请求/响应 DTO 的设计与验证规则，提供了错误处理与安全策略建议。通过依赖注入与仓储抽象，系统具备良好的可维护性与扩展性。建议在生产环境中配合限流、熔断与日志审计机制，确保稳定性与可观测性。
 
-[本节为总结性内容，无需特定文件引用]
-
 ## 附录
 
 ### API 版本管理与向后兼容
 - 版本号：应用工厂中声明版本号，便于客户端识别
 - 兼容策略：新增接口以新路由前缀区分（如 /api/content、/api/writing、/api/projects 等），旧接口保持不变以保证兼容
 
-章节来源
+**章节来源**
 - [presentation/api/app.py:21-25](file://presentation/api/app.py#L21-L25)
 
 ### 认证授权与安全
@@ -604,7 +677,7 @@ D --> Con["ConfigService"]
 - 路径安全：导出下载接口对文件路径进行严格校验，防止目录穿越
 - 配置安全：LLM 密钥存储于本地数据库并加密，测试接口用于验证可用性而非明文暴露
 
-章节来源
+**章节来源**
 - [presentation/api/app.py:27-33](file://presentation/api/app.py#L27-L33)
 - [presentation/api/routers/export.py:26-57](file://presentation/api/routers/export.py#L26-L57)
 - [presentation/api/routers/config.py:56-64](file://presentation/api/routers/config.py#L56-L64)
@@ -615,6 +688,4 @@ D --> Con["ConfigService"]
 - 调试技巧：
   - 开启服务端日志，观察路由匹配与异常栈
   - 使用 DTO 的字段约束定位问题（如长度、范围、枚举）
-  - 对外部 LLM 调用增加超时与重试，必要时降级为“传统”生成路径
-
-[本节为通用指导，无需特定文件引用]
+  - 对外部 LLM 调用增加超时与重试，必要时降级为"传统"生成路径

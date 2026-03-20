@@ -15,7 +15,8 @@ import logging
 
 from domain.entities.novel import Novel
 from domain.entities.chapter import Chapter
-from domain.types import NovelId, ChapterId, ChapterStatus
+from domain.entities.outline import Outline
+from domain.types import NovelId, ChapterId, ChapterStatus, OutlineId
 from domain.repositories.novel_repository import INovelRepository
 from domain.repositories.chapter_repository import IChapterRepository
 from domain.repositories.character_repository import ICharacterRepository
@@ -70,6 +71,9 @@ class ContentService:
         if not os.path.exists(request.file_path):
             raise FileNotFoundError(f"文件不存在: {request.file_path}")
         
+        if request.outline_path and not os.path.exists(request.outline_path):
+            raise FileNotFoundError(f"Outline file not found: {request.outline_path}")
+
         parsed = self.txt_parser.parse_novel_file(request.file_path)
         
         now = datetime.now()
@@ -87,6 +91,11 @@ class ContentService:
             )
             self.chapter_repo.save(chapter)
             novel.add_chapter(chapter, now)
+
+        if request.outline_path:
+            outline = self._build_outline(novel.id, request.outline_path, now)
+            self.outline_repo.save(outline)
+            novel.set_outline(outline, now)
         
         self.novel_repo.save(novel)
         
@@ -161,6 +170,31 @@ class ContentService:
             len(text)
         )
         return text
+
+    def get_outline_context(self, novel_id: str) -> dict:
+        outline = self.outline_repo.find_by_novel(NovelId(novel_id))
+        if not outline:
+            return {}
+        return {
+            'premise': outline.premise,
+            'story_background': outline.story_background,
+            'world_setting': outline.world_setting
+        }
+
+    def _build_outline(self, novel_id: NovelId, outline_path: str, now: datetime) -> Outline:
+        parsed_outline = self.txt_parser.parse_outline_file(outline_path)
+        return Outline(
+            id=OutlineId(str(uuid.uuid4())),
+            novel_id=novel_id,
+            premise=str(parsed_outline.get('genre') or '').strip(),
+            story_background=str(parsed_outline.get('story_background') or '').strip(),
+            world_setting=str(parsed_outline.get('world_setting') or '').strip(),
+            main_plots=[],
+            sub_plots=[],
+            volumes=[],
+            created_at=now,
+            updated_at=now
+        )
 
     def _nov_to_response(self, novel: Novel) -> NovelResponse:
         """将小说实体转换为响应"""

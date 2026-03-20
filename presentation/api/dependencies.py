@@ -16,6 +16,7 @@ from domain.repositories.chapter_repository import IChapterRepository
 from domain.repositories.character_repository import ICharacterRepository
 from domain.repositories.outline_repository import IOutlineRepository
 from domain.repositories.project_repository import IProjectRepository
+from domain.repositories.organize_job_repository import IOrganizeJobRepository
 from domain.repositories.template_repository import ITemplateRepository
 from domain.repositories.worldview_repository import IWorldviewRepository
 from domain.repositories.vector_repository import IVectorRepository
@@ -25,6 +26,7 @@ from infrastructure.persistence.sqlite_chapter_repo import SQLiteChapterReposito
 from infrastructure.persistence.sqlite_character_repo import SQLiteCharacterRepository
 from infrastructure.persistence.sqlite_outline_repo import SQLiteOutlineRepository
 from infrastructure.persistence.sqlite_project_repo import SQLiteProjectRepository
+from infrastructure.persistence.sqlite_organize_job_repo import SQLiteOrganizeJobRepository
 from infrastructure.persistence.sqlite_template_repo import SQLiteTemplateRepository
 from infrastructure.persistence.sqlite_worldview_repo import SQLiteWorldviewRepository
 from infrastructure.persistence.chromadb_vector_repo import ChromaDBVectorRepository
@@ -80,6 +82,12 @@ def get_outline_repo() -> IOutlineRepository:
 def get_project_repo() -> IProjectRepository:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     return SQLiteProjectRepository(DB_PATH)
+
+
+@lru_cache()
+def get_organize_job_repo() -> IOrganizeJobRepository:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    return SQLiteOrganizeJobRepository(DB_PATH)
 
 
 @lru_cache()

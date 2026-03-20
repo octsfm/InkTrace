@@ -100,7 +100,7 @@ export const contentApi = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   memory: (novelId) => api.get(`/content/memory/${novelId}`),
-  organize: (novelId) => api.post(`/content/organize/${novelId}`, {}, { timeout: 0 }),
+  organize: (novelId, forceRebuild = false) => api.post(`/content/organize/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}`, {}, { timeout: 0 }),
   organizeProgress: (novelId) => api.get(`/content/organize/progress/${novelId}`),
   analyzeStyle: (novelId) => api.get(`/content/style/${novelId}`),
   analyzePlot: (novelId) => api.get(`/content/plot/${novelId}`)

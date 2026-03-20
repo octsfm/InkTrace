@@ -60,6 +60,13 @@ def _has_llm_credentials() -> bool:
     return bool(os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("KIMI_API_KEY"))
 
 
+def _has_available_llm_client(llm_factory: LLMFactory) -> bool:
+    return bool(
+        getattr(llm_factory.config, "deepseek_api_key", "")
+        or getattr(llm_factory.config, "kimi_api_key", "")
+    )
+
+
 def _fallback_generate_response(request: GenerateChapterRequest) -> GenerateChapterResponse:
     fallback_result = WritingGenerateTool().execute(
         TaskContext(
@@ -139,7 +146,8 @@ async def plan_plot(
 async def generate_chapter(
     request: GenerateChapterRequest,
     service: WritingService = Depends(get_writing_service),
-    project_service: ProjectService = Depends(get_project_service)
+    project_service: ProjectService = Depends(get_project_service),
+    llm_factory: LLMFactory = Depends(get_llm_factory)
 ):
     """
     生成章节
@@ -191,7 +199,7 @@ async def generate_chapter(
                 }
             )
 
-        if not _has_llm_credentials():
+        if not _has_available_llm_client(llm_factory):
             return _fallback_generate_response(request)
         try:
             legacy_response = service.generate_chapter(_build_legacy_generate_request(request))
@@ -295,7 +303,6 @@ async def continue_writing(
         chapters = chapter_repo.find_by_novel(novel_id)
         latest_chapter = chapters[-1] if chapters else None
         next_number = (latest_chapter.number + 1) if latest_chapter else 1
-        recent_chapter_text = latest_chapter.content if latest_chapter else ""
         task_context = TaskContext(
             novel_id=request.novel_id,
             goal=request.goal,
@@ -310,7 +317,6 @@ async def continue_writing(
                 "memory": memory,
                 "chapters": [{"content": ch.content, "number": ch.number, "title": ch.title} for ch in chapters[-8:]],
                 "target_word_count": request.target_word_count,
-                "recent_chapter_text": recent_chapter_text,
                 "idempotency_key": idempotency_key
             }
         )
