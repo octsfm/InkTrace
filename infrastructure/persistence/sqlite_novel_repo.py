@@ -15,6 +15,7 @@ from datetime import datetime
 from domain.types import NovelId
 from domain.entities.novel import Novel
 from domain.repositories.novel_repository import INovelRepository
+from domain.utils import repair_mojibake
 
 
 class SQLiteNovelRepository(INovelRepository):
@@ -78,8 +79,8 @@ class SQLiteNovelRepository(INovelRepository):
             if row:
                 return Novel(
                     id=NovelId(row['id']),
-                    title=row['title'],
-                    author=row['author'] or '',
+                    title=repair_mojibake(row['title']),
+                    author=repair_mojibake(row['author'] or ''),
                     genre=row['genre'] or '',
                     target_word_count=row['target_word_count'] or 0,
                     current_word_count=row['current_word_count'] or 0,
@@ -98,8 +99,8 @@ class SQLiteNovelRepository(INovelRepository):
             return [
                 Novel(
                     id=NovelId(row['id']),
-                    title=row['title'],
-                    author=row['author'] or '',
+                    title=repair_mojibake(row['title']),
+                    author=repair_mojibake(row['author'] or ''),
                     genre=row['genre'] or '',
                     target_word_count=row['target_word_count'] or 0,
                     current_word_count=row['current_word_count'] or 0,

@@ -1,4 +1,7 @@
 @echo off
+chcp 65001 >nul
+set PYTHONUTF8=1
+set PYTHONIOENCODING=utf-8
 REM InkTrace Desktop Build Script
 REM Author: Kong Liqun
 

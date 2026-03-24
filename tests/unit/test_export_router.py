@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from presentation.api.routers.export import router, _validate_file_path, EXPORTS_DIR
+from presentation.api.dependencies import get_export_service
 from application.services.export_service import ExportService
 from application.dto.response_dto import ExportResponse
 
@@ -27,12 +28,12 @@ class TestExportRouter:
         return service
 
     @pytest.fixture
-    def app(self):
+    def app(self, mock_export_service):
         """创建测试应用"""
         app = FastAPI()
         app.include_router(router)
+        app.dependency_overrides[get_export_service] = lambda: mock_export_service
         return app
-
     @pytest.fixture
     def client(self, app):
         """创建测试客户端"""
@@ -47,32 +48,31 @@ class TestExportRouter:
             chapter_count=10
         )
         
-        with patch('presentation.api.routers.export.get_export_service', return_value=mock_export_service):
-            mock_export_service.export_novel.return_value = mock_response
-            
-            response = client.post("/export/", json={
-                "novel_id": "novel_001",
-                "output_path": str(tmp_path / "test.md"),
-                "format": "markdown"
-            })
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["format"] == "markdown"
-            assert data["word_count"] == 1000
+        mock_export_service.export_novel.return_value = mock_response
+
+        response = client.post("/export/", json={
+            "novel_id": "novel_001",
+            "output_path": str(tmp_path / "test.md"),
+            "format": "markdown"
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["format"] == "markdown"
+        assert data["word_count"] == 1000
 
     def test_export_novel_validation_error(self, client, mock_export_service):
         """测试导出小说 - 验证错误"""
-        with patch('presentation.api.routers.export.get_export_service', return_value=mock_export_service):
-            mock_export_service.export_novel.side_effect = ValueError("小说不存在")
-            
-            response = client.post("/export/", json={
-                "novel_id": "nonexistent",
-                "output_path": "/path/to/file.md",
-                "format": "markdown"
-            })
-            
-            assert response.status_code == 400
+        client.app.dependency_overrides[get_export_service] = lambda: mock_export_service
+        mock_export_service.export_novel.side_effect = ValueError("?????")
+
+        response = client.post("/export/", json={
+            "novel_id": "nonexistent",
+            "output_path": "/path/to/file.md",
+            "format": "markdown"
+        })
+
+        assert response.status_code == 400
 
     def test_validate_file_path_success(self, tmp_path):
         """测试验证文件路径 - 成功"""

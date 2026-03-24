@@ -116,7 +116,14 @@ export const writingApi = {
 
 export const exportApi = {
   export: (data) => api.post('/export/', data),
-  download: (filePath) => `${baseURL}/export/download/${encodeURIComponent(filePath)}`
+  download: (filePath) => {
+    const normalized = String(filePath || '')
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
+    return `${baseURL}/export/download/${normalized}`
+  }
 }
 
 export const vectorApi = {
@@ -134,11 +141,24 @@ export const ragApi = {
 export const projectApi = {
   list: () => api.get('/projects/'),
   get: (id) => api.get(`/projects/${id}`),
+  getByNovel: (novelId) => api.get(`/projects/by-novel/${novelId}`),
   create: (data) => api.post('/projects/', data),
   update: (id, data) => api.put(`/projects/${id}`, data),
   delete: (id) => api.delete(`/projects/${id}`),
   activate: (id) => api.post(`/projects/${id}/activate`),
-  archive: (id) => api.post(`/projects/${id}/archive`)
+  archive: (id) => api.post(`/projects/${id}/archive`),
+  importV2: (data) => api.post('/projects/import', data, { timeout: 0 }),
+  importV2Upload: (formData) => api.post('/projects/import/upload', formData, {
+    timeout: 0,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  organizeV2: (projectId, data) => api.post(`/projects/${projectId}/organize`, data || { mode: 'chapter_first', rebuild_memory: true }, { timeout: 0 }),
+  memoryV2: (projectId) => api.get(`/projects/${projectId}/memory`),
+  memoryViewV2: (projectId) => api.get(`/projects/${projectId}/memory-view`),
+  branchesV2: (projectId, data) => api.post(`/projects/${projectId}/branches`, data),
+  chapterPlanV2: (projectId, data) => api.post(`/projects/${projectId}/chapter-plan`, data),
+  writeV2: (projectId, data) => api.post(`/projects/${projectId}/write`, data, { timeout: 0 }),
+  refreshMemoryV2: (projectId, data) => api.post(`/projects/${projectId}/refresh-memory`, data)
 }
 
 export const templateApi = {

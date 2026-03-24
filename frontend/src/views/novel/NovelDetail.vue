@@ -27,7 +27,7 @@
             <el-descriptions-item label="题材">{{ formatGenre(novel?.genre) }}</el-descriptions-item>
             <el-descriptions-item label="当前字数">{{ formatNumber(novel?.current_word_count) }}</el-descriptions-item>
             <el-descriptions-item label="目标字数">{{ formatNumber(novel?.target_word_count) }}</el-descriptions-item>
-            <el-descriptions-item label="章节数">{{ novel?.chapter_count }}</el-descriptions-item>
+            <el-descriptions-item label="章节数">{{ novel?.chapter_count || 0 }}</el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ novel?.created_at?.substring(0, 10) }}</el-descriptions-item>
           </el-descriptions>
 
@@ -60,17 +60,18 @@
               <el-card shadow="hover" class="tool-card" @click="$router.push(`/novel/${$route.params.id}/write`)">
                 <el-icon class="tool-icon"><Connection /></el-icon>
                 <div class="tool-name">继续创作</div>
-                <div class="tool-desc">基于既有设定延展下一章</div>
+                <div class="tool-desc">基于最新章节继续生成后续剧情</div>
               </el-card>
             </el-col>
             <el-col :span="8">
               <el-card shadow="hover" class="tool-card" @click="exportNovel">
                 <el-icon class="tool-icon"><Download /></el-icon>
                 <div class="tool-name">导出小说</div>
-                <div class="tool-desc">导出Markdown格式</div>
+                <div class="tool-desc">导出为 Markdown 并自动下载</div>
               </el-card>
             </el-col>
           </el-row>
+
           <div class="organize-actions">
             <el-button size="small" @click="organizeStory(true)" :loading="organizing">重新整理</el-button>
           </div>
@@ -88,6 +89,12 @@
             <el-skeleton :rows="4" animated />
           </div>
           <el-collapse v-else v-model="memoryCollapse">
+            <el-collapse-item title="大纲摘要" name="outline">
+              <div v-if="outlineSummary.length === 0" class="empty-text">暂无数据</div>
+              <ul v-else class="plot-list">
+                <li v-for="(item, index) in outlineSummary" :key="`outline-${index}`">{{ item }}</li>
+              </ul>
+            </el-collapse-item>
             <el-collapse-item title="人物（主角与关键配角）" name="characters">
               <div v-if="memoryCharacters.length === 0" class="empty-text">暂无数据</div>
               <div v-else class="memory-list">
@@ -104,13 +111,13 @@
             <el-collapse-item title="剧情主线" name="plot">
               <div v-if="plotOutline.length === 0" class="empty-text">暂无数据</div>
               <ul v-else class="plot-list">
-                <li v-for="(item, index) in plotOutline" :key="index">{{ item }}</li>
+                <li v-for="(item, index) in plotOutline" :key="`plot-${index}`">{{ item }}</li>
               </ul>
             </el-collapse-item>
             <el-collapse-item title="写作风格" name="style">
               <div v-if="styleTags.length === 0" class="empty-text">暂无数据</div>
               <div v-else class="style-tags">
-                <el-tag v-for="(tag, index) in styleTags" :key="index" type="success">{{ tag }}</el-tag>
+                <el-tag v-for="(tag, index) in styleTags" :key="`style-${index}`" type="success">{{ tag }}</el-tag>
               </div>
             </el-collapse-item>
           </el-collapse>
@@ -148,7 +155,7 @@
       <el-descriptions v-if="styleResult" :column="1" border>
         <el-descriptions-item label="叙述视角">{{ styleResult.narrative_voice }}</el-descriptions-item>
         <el-descriptions-item label="对话风格">{{ styleResult.dialogue_style }}</el-descriptions-item>
-        <el-descriptions-item label="节奏特点">{{ styleResult.pacing }}</el-descriptions-item>
+        <el-descriptions-item label="节奏特征">{{ styleResult.pacing }}</el-descriptions-item>
         <el-descriptions-item label="修辞统计">
           <el-tag v-for="(count, key) in styleResult.rhetoric_stats" :key="key" style="margin-right: 5px;">
             {{ key }}: {{ count }}
@@ -171,7 +178,7 @@
             <el-timeline-item
               v-for="(event, index) in plotResult.timeline"
               :key="index"
-              :timestamp="'第' + event.chapter_number + '章'"
+              :timestamp="`第${event.chapter_number}章`"
             >
               {{ event.event_description }}
             </el-timeline-item>
@@ -208,7 +215,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { contentApi, exportApi, novelApi } from '@/api'
+import { contentApi, exportApi, novelApi, projectApi } from '@/api'
 
 const route = useRoute()
 const novel = ref(null)
@@ -219,8 +226,9 @@ const plotDialogVisible = ref(false)
 const styleResult = ref(null)
 const plotResult = ref(null)
 const memoryData = ref({})
+const projectId = ref('')
 const memoryLoading = ref(false)
-const memoryCollapse = ref(['characters', 'world', 'plot', 'style'])
+const memoryCollapse = ref(['outline', 'characters', 'world', 'plot', 'style'])
 const organizing = ref(false)
 const organizeProgress = ref({
   current: 0,
@@ -238,6 +246,7 @@ const editingChapter = ref({
   title: '',
   content: ''
 })
+
 const genreMap = {
   xuanhuan: '玄幻',
   xianxia: '仙侠',
@@ -249,49 +258,70 @@ const genreMap = {
   other: '其他'
 }
 
+const asArray = (value) => (Array.isArray(value) ? value : (value ? [value] : []))
+
 const memoryCharacters = computed(() => {
-  const source = memoryData.value?.characters || []
-  return source.slice(0, 5).map((item) => {
-    const traits = (item?.traits || []).slice(0, 3).join('、')
-    return {
-      name: item?.name || '',
-      brief: traits || '暂无性格标签'
-    }
-  })
+  const source = asArray(memoryData.value?.characters)
+  return source.slice(0, 6).map((item) => ({
+    name: item?.name || '',
+    brief: asArray(item?.traits).slice(0, 3).join('、') || item?.role || '暂无描述'
+  }))
 })
 
 const worldSettingSummary = computed(() => {
-  const source = memoryData.value?.world_settings || []
-  const items = Array.isArray(source) ? source : [source]
-  const text = items.map((item) => String(item)).join('；')
-  return text ? text.slice(0, 200) : ''
+  const worldFacts = memoryData.value?.world_facts || {}
+  const items = [
+    ...asArray(worldFacts.background),
+    ...asArray(worldFacts.power_system),
+    ...asArray(worldFacts.organizations),
+    ...asArray(worldFacts.locations),
+    ...asArray(worldFacts.rules),
+    ...asArray(worldFacts.artifacts)
+  ]
+  const fallback = asArray(memoryData.value?.world_settings)
+  const text = [...items, ...fallback].map((item) => String(item)).filter(Boolean).join('；')
+  return text ? text.slice(0, 320) : ''
 })
 
 const plotOutline = computed(() => {
-  const explicitOutline = memoryData.value?.plot_outline || []
-  const outlineItems = Array.isArray(explicitOutline) ? explicitOutline : [explicitOutline].filter(Boolean)
-  if (outlineItems.length > 0) {
-    return outlineItems.map((item) => String(item)).slice(0, 8)
+  const viewLines = asArray(memoryData.value?.plot_outline).map((item) => String(item)).filter(Boolean)
+  if (viewLines.length) {
+    return viewLines.slice(-8)
   }
-  const threads = memoryData.value?.plot_threads || []
+  const chapterSummaries = asArray(memoryData.value?.chapter_summaries).map((item) => String(item)).filter(Boolean)
+  if (chapterSummaries.length) {
+    return chapterSummaries.slice(-8)
+  }
+  const threads = asArray(memoryData.value?.plot_threads)
   return threads
     .map((item) => {
       if (typeof item === 'string') return item
       const title = item?.title || ''
-      const points = item?.points || []
+      const points = asArray(item?.points)
       const tail = points.length ? points[points.length - 1] : ''
       return tail ? `${title}：${tail}` : title
     })
     .filter(Boolean)
-    .slice(0, 8)
+    .slice(-8)
 })
 
 const styleTags = computed(() => {
-  const style = memoryData.value?.writing_style || memoryData.value?.style_profile || {}
-  if (typeof style === 'string') {
-    return style ? [style] : []
+  const styleProfile = memoryData.value?.style_profile || {}
+  const tags = [
+    ...asArray(styleProfile?.tone_tags),
+    ...asArray(styleProfile?.rhythm_tags),
+    styleProfile?.narrative_pov
+  ].filter(Boolean)
+  if (tags.length) {
+    return tags.slice(0, 6)
   }
-  return [style.tone, style.pacing, style.narrative_style].filter((item) => !!item)
+  const legacy = memoryData.value?.writing_style
+  return typeof legacy === 'string' ? legacy.split('；').filter(Boolean).slice(0, 6) : []
+})
+
+const outlineSummary = computed(() => {
+  const summary = memoryData.value?.outline_summary || memoryData.value?.outline_context?.summary || []
+  return asArray(summary).map((item) => String(item)).filter(Boolean).slice(0, 6)
 })
 
 const organizeActionLabel = computed(() => {
@@ -320,11 +350,33 @@ const loadNovel = async () => {
 const loadMemory = async () => {
   memoryLoading.value = true
   try {
-    const res = await contentApi.memory(route.params.id)
-    memoryData.value = res?.memory || {}
+    if (!projectId.value) {
+      const project = await projectApi.getByNovel(route.params.id)
+      projectId.value = project?.id || ''
+    }
+    if (!projectId.value) {
+      memoryData.value = {}
+      return
+    }
+    const view = await projectApi.memoryViewV2(projectId.value)
+    const raw = await projectApi.memoryV2(projectId.value)
+    const memory = raw?.memory || {}
+    const memoryView = view?.memory_view || {}
+    memoryData.value = {
+      ...memory,
+      characters: memory?.characters || memoryView?.main_characters || [],
+      world_facts: memory?.world_facts || {},
+      world_settings: memoryView?.world_summary || memory?.world_settings || [],
+      plot_outline: memoryView?.main_plot_lines || memory?.plot_outline || [],
+      chapter_summaries: memory?.chapter_summaries || [],
+      style_profile: memory?.style_profile || {},
+      writing_style: memory?.writing_style || (memoryView?.style_tags || []).join('；'),
+      current_progress: memoryView?.current_progress || memory?.current_progress || '',
+      outline_summary: memoryView?.outline_summary || memory?.outline_context?.summary || []
+    }
   } catch (error) {
     memoryData.value = {}
-    console.error('加载memory失败:', error)
+    console.error('加载 memory 失败:', error)
   } finally {
     memoryLoading.value = false
   }
@@ -333,9 +385,9 @@ const loadMemory = async () => {
 const formatNumber = (num) => {
   if (!num) return '0'
   if (num >= 10000) {
-    return (num / 10000).toFixed(1) + '万'
+    return `${(num / 10000).toFixed(1)}万`
   }
-  return num.toLocaleString()
+  return Number(num).toLocaleString()
 }
 
 const getProgress = () => {
@@ -369,10 +421,17 @@ const exportNovel = async () => {
   try {
     const result = await exportApi.export({
       novel_id: route.params.id,
-      output_path: `exports/${novel.value.title}.md`,
+      output_path: `${novel.value?.title || 'novel'}.md`,
       format: 'markdown'
     })
-    ElMessage.success(`导出成功！共 ${result.chapter_count} 章，${result.word_count} 字`)
+    const link = document.createElement('a')
+    link.href = exportApi.download(result.file_path)
+    link.target = '_blank'
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    ElMessage.success(`导出成功，共 ${result.chapter_count} 章，${result.word_count} 字`)
   } catch (error) {
     console.error('导出失败:', error)
   }
@@ -397,7 +456,17 @@ const organizeStory = async (forceRebuild = false) => {
         ? '正在从头重新整理故事结构...'
         : (organizeProgress.value.resumable ? '正在继续整理故事结构...' : '正在整理故事结构...')
     )
-    await contentApi.organize(route.params.id, forceRebuild)
+    if (!projectId.value) {
+      const project = await projectApi.getByNovel(route.params.id)
+      projectId.value = project?.id || ''
+    }
+    if (!projectId.value) {
+      throw new Error('项目不存在，无法执行 v2 整理')
+    }
+    await projectApi.organizeV2(projectId.value, {
+      mode: 'chapter_first',
+      rebuild_memory: !!forceRebuild
+    })
     await fetchOrganizeProgress()
     await loadMemory()
     ElMessage.success('故事结构已更新')
@@ -528,6 +597,7 @@ onBeforeUnmount(() => {
 .tool-desc {
   font-size: 12px;
   color: #909399;
+  line-height: 1.5;
 }
 
 .organize-progress {

@@ -71,9 +71,6 @@ class ContentService:
         if not os.path.exists(request.file_path):
             raise FileNotFoundError(f"文件不存在: {request.file_path}")
         
-        if request.outline_path and not os.path.exists(request.outline_path):
-            raise FileNotFoundError(f"Outline file not found: {request.outline_path}")
-
         parsed = self.txt_parser.parse_novel_file(request.file_path)
         
         now = datetime.now()
@@ -91,13 +88,39 @@ class ContentService:
             )
             self.chapter_repo.save(chapter)
             novel.add_chapter(chapter, now)
-
-        if request.outline_path:
-            outline = self._build_outline(novel.id, request.outline_path, now)
-            self.outline_repo.save(outline)
-            novel.set_outline(outline, now)
         
         self.novel_repo.save(novel)
+        if request.outline_path and os.path.exists(request.outline_path):
+            outline_text = self.txt_parser.parse_outline_file(request.outline_path)
+            if isinstance(outline_text, dict):
+                premise = str(outline_text.get("raw_content") or "")[:1200]
+                story_background = str(
+                    outline_text.get("story_background")
+                    or outline_text.get("raw_content")
+                    or ""
+                )[:2400]
+                world_setting = str(
+                    outline_text.get("world_setting")
+                    or outline_text.get("story_background")
+                    or outline_text.get("raw_content")
+                    or ""
+                )[:2400]
+            else:
+                premise = str(outline_text or "")[:1200]
+                story_background = str(outline_text or "")[:2400]
+                world_setting = str(outline_text or "")[:2400]
+            outline = Outline(
+                id=OutlineId(str(uuid.uuid4())),
+                novel_id=novel.id,
+                premise=premise,
+                story_background=story_background,
+                world_setting=world_setting,
+                created_at=now,
+                updated_at=now
+            )
+            self.outline_repo.save(outline)
+            novel.set_outline(outline, now)
+            self.novel_repo.save(novel)
         
         return self._nov_to_response(novel)
 
@@ -172,29 +195,20 @@ class ContentService:
         return text
 
     def get_outline_context(self, novel_id: str) -> dict:
-        outline = self.outline_repo.find_by_novel(NovelId(novel_id))
+        novel = self.novel_repo.find_by_id(NovelId(novel_id))
+        if not novel:
+            raise ValueError(f"小说不存在: {novel_id}")
+        outline = self.outline_repo.find_by_novel(novel.id)
         if not outline:
             return {}
+        summary = [outline.premise, outline.story_background, outline.world_setting]
+        summary = [str(x) for x in summary if str(x).strip()]
         return {
-            'premise': outline.premise,
-            'story_background': outline.story_background,
-            'world_setting': outline.world_setting
+            "premise": outline.premise or "",
+            "story_background": outline.story_background or "",
+            "world_setting": outline.world_setting or "",
+            "summary": summary[:5],
         }
-
-    def _build_outline(self, novel_id: NovelId, outline_path: str, now: datetime) -> Outline:
-        parsed_outline = self.txt_parser.parse_outline_file(outline_path)
-        return Outline(
-            id=OutlineId(str(uuid.uuid4())),
-            novel_id=novel_id,
-            premise=str(parsed_outline.get('genre') or '').strip(),
-            story_background=str(parsed_outline.get('story_background') or '').strip(),
-            world_setting=str(parsed_outline.get('world_setting') or '').strip(),
-            main_plots=[],
-            sub_plots=[],
-            volumes=[],
-            created_at=now,
-            updated_at=now
-        )
 
     def _nov_to_response(self, novel: Novel) -> NovelResponse:
         """将小说实体转换为响应"""

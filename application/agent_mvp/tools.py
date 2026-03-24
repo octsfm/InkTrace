@@ -8,104 +8,18 @@ from typing import Dict, Any, List
 
 from application.agent_mvp.chapter_splitter import split_into_chunks_by_chars
 from application.agent_mvp.memory import merge_memory
+from application.agent_mvp.prompts_v2 import (
+    build_branch_generation_prompt,
+    build_chapter_analysis_prompt,
+    build_chapter_writing_prompt,
+)
 from application.agent_mvp.model_router import ModelRouter
 from application.agent_mvp.models import TaskContext, ToolResult
 from application.agent_mvp.recovery import RecoveryPipeline
 
 logger = logging.getLogger(__name__)
 
-ANALYSIS_SYSTEM_PROMPT = """你是小说结构分析器。只允许输出JSON对象，不允许解释文本。
-输出结构必须严格为：
-{
-  "characters":[{"name":"","traits":[],"relationships":{}}],
-  "world_settings":"",
-  "plot_outline":"",
-  "writing_style":"",
-  "current_progress":"",
-  "events":[
-    {"event":"","actors":[],"action":"","result":"","impact":""}
-  ]
-}
-约束：
-1) 必须提取新出现人物与关键配角；
-2) 必须提取人物行为、冲突事件、事件结果；
-3) events每项字段不得为空，不得出现“发生了一些事情”这类模糊描述；
-4) world_settings/plot_outline/writing_style/current_progress必须是字符串；
-5) 禁止输出自然语言说明。"""
-
-ANALYSIS_USER_PROMPT_TEMPLATE = """任务模式: {mode}
-章节标题: {chapter_title}
-已有memory: {memory_json}
-小说文本:
-{text}
-
-仅返回JSON对象。"""
-
-BRANCH_SYSTEM_PROMPT = """你是剧情分支设计器。你必须只输出JSON数组，不允许任何解释。
-输出格式:
-[
-  {
-    "id":"b1",
-    "title":"",
-    "summary":"",
-    "next_goal":"",
-    "impact":"",
-    "tone":""
-  }
-]
-强约束：
-1) 必须输出{branch_count}个分支；
-2) 每个分支必须和memory一致，不得脱离人物设定/世界观；
-3) 每个分支必须基于events推导；
-4) 分支之间必须明显不同。"""
-
-BRANCH_USER_PROMPT_TEMPLATE = """memory:
-{memory_json}
-
-当前章节内容:
-{chapter_text}
-
-方向提示:
-{direction_hint}
-
-输出{branch_count}个分支JSON数组。"""
-
-CONTINUE_SYSTEM_PROMPT = """你是长篇小说续写引擎。你必须严格遵守约束：
-1) 输出JSON对象：{"chapter_text":"","new_events":[{"event":"","actors":[],"action":"","result":"","impact":""}]}
-2) 必须承接上一章并围绕direction展开；
-3) 必须推进剧情，至少新增1个事件；
-4) 禁止重复已有内容，禁止空洞套话；
-5) 不得偏离人物设定与世界观。"""
-
-CONTINUE_USER_PROMPT_TEMPLATE = """【人物】
-{characters}
-
-【世界观】
-{world_settings}
-
-【剧情主线】
-{plot_outline}
-
-【已发生事件】
-{events}
-
-【当前进度】
-{current_progress}
-
-【用户选择方向】
-{direction}
-
-【章节数量】
-{chapter_count}
-
-【目标字数】
-{target_word_count}
-
-【幂等键】
-{idempotency_key}
-
-【前文章节】
-{chapters_text}"""
+# prompts 已迁移到 prompts_v2.py
 
 
 def _strip_code_fence(text: str) -> str:
@@ -292,13 +206,19 @@ class AnalysisTool:
                 progress_made=False
             )
         result = recovered.data or self._fallback_analysis(source_text, chapter_title)
-        incremental_memory = merge_memory(merge_input, result)
+        incremental_memory = dict(result)
+        if self._need_legacy_compat(merge_input):
+            legacy_payload = self._to_legacy_memory_payload(result)
+            incremental_memory = merge_memory(merge_input, legacy_payload)
+            incremental_memory.update(result)
         chunk_no = int(chapter_payload.get("index") or 0) if isinstance(chapter_payload, dict) else 0
-        progress_text = str(incremental_memory.get("current_progress") or "").strip()
+        progress_text = str((incremental_memory.get("current_state") or {}).get("latest_summary") or "").strip()
         append_text = f"chunk={chunk_no} {chapter_title}分析完成".strip() if chapter_title else f"chunk={chunk_no} 章节分析完成".strip()
-        incremental_memory["current_progress"] = (
+        current_state = incremental_memory.get("current_state") if isinstance(incremental_memory.get("current_state"), dict) else {}
+        current_state["latest_summary"] = (
             f"{progress_text}；{append_text}" if progress_text and append_text not in progress_text else (append_text or progress_text)
         )
+        incremental_memory["current_state"] = current_state
         logger.info(
             "[AnalysisTool] incremental_mode 完成 novel_id=%s chapter=%s characters=%d events=%d",
             task_context.novel_id,
@@ -314,14 +234,15 @@ class AnalysisTool:
         )
 
     def _build_analysis_prompt(self, text: str, chapter_title: str, merge_input: Dict[str, Any]) -> str:
-        memory_json = json.dumps(merge_input, ensure_ascii=False)[:4000]
-        user_prompt = ANALYSIS_USER_PROMPT_TEMPLATE.format(
-            mode="incremental_mode",
-            chapter_title=chapter_title or "未命名章节",
-            memory_json=memory_json,
-            text=text[:12000]
+        outline_context = {}
+        if isinstance(merge_input.get("outline_context"), dict):
+            outline_context = merge_input.get("outline_context") or {}
+        return build_chapter_analysis_prompt(
+            chapter_title=chapter_title,
+            chapter_text=text,
+            merge_memory=merge_input,
+            outline_context=outline_context,
         )
-        return f"{ANALYSIS_SYSTEM_PROMPT}\n\n{user_prompt}"
 
     async def _analyze_with_router(self, text: str, chapter_title: str, merge_input: Dict[str, Any]) -> Dict[str, Any]:
         prompt = self._build_analysis_prompt(text, chapter_title, merge_input)
@@ -350,42 +271,34 @@ class AnalysisTool:
             chars.append({"name": "主角", "traits": ["果断", "坚韧"], "relationships": {}})
         if len(chars) < 2:
             chars.append({"name": "关键配角", "traits": ["谨慎", "机敏"], "relationships": {chars[0]["name"]: "同伴"}})
-        world_settings = [str(v).strip() for v in (data.get("world_settings") or []) if str(v).strip()]
-        if not world_settings:
-            raw_world = str(data.get("world_settings") or "").strip()
-            if raw_world:
-                world_settings = [raw_world]
-        plot_outline = [str(v).strip() for v in (data.get("plot_outline") or []) if str(v).strip()]
-        if not plot_outline:
-            raw_plot = str(data.get("plot_outline") or "").strip()
-            if raw_plot:
-                plot_outline = [raw_plot]
         sample = [line.strip() for line in source_text.splitlines() if line.strip()]
         snippet = "；".join(sample[:3])[:120]
-        while len(world_settings) < 3:
-            world_settings.append(f"世界规则线索{len(world_settings)+1}：{snippet or '资源与势力冲突持续升级'}")
-        while len(plot_outline) < 3:
-            plot_outline.append(f"剧情推进{len(plot_outline)+1}：围绕“{chapter_title or '当前章节'}”发生关键冲突并产生后果")
-        style = data.get("writing_style") or data.get("style_profile") or ""
-        if isinstance(style, dict):
-            writing_style = "；".join(
-                [
-                    str(style.get("tone") or "").strip(),
-                    str(style.get("pacing") or "").strip(),
-                    str(style.get("narrative_style") or "").strip()
-                ]
-            ).strip("；")
-        else:
-            writing_style = str(style or "").strip()
-        if not writing_style:
-            writing_style = "紧张克制；中快节奏；第三人称"
+        world_facts = self._normalize_world_facts(data.get("world_facts"), data.get("world_settings"), snippet)
+        chapter_summaries = self._normalize_chapter_summaries(data.get("chapter_summaries"), data.get("plot_outline"), chapter_title, snippet)
+        style_profile = self._normalize_style_profile(data.get("style_profile"), data.get("writing_style"))
+        style_tags = [str(v).strip() for v in (data.get("style_tags") or []) if str(v).strip()][:5]
+        if not style_tags:
+            style_tags = [*(style_profile.get("tone_tags") or []), *(style_profile.get("rhythm_tags") or [])][:5]
         events = self._normalize_events(data.get("events") or [], source_text, chars)
+        chapter_summary = str(data.get("chapter_summary") or f"{chapter_title or '当前章节'}：{snippet or '发生关键推进'}").strip()
+        current_state = data.get("current_state") if isinstance(data.get("current_state"), dict) else {}
+        current_state = {
+            "latest_chapter_number": int(current_state.get("latest_chapter_number") or 0),
+            "latest_summary": str(current_state.get("latest_summary") or chapter_summary),
+            "active_arc_ids": [str(x) for x in (current_state.get("active_arc_ids") or []) if str(x)][:6],
+            "recent_conflicts": [str(x) for x in (current_state.get("recent_conflicts") or []) if str(x)][:6],
+            "next_writing_focus": str(current_state.get("next_writing_focus") or chapter_summary[:80]),
+        }
         return {
+            "chapter_summary": chapter_summary,
+            "chapter_summaries": chapter_summaries,
             "characters": chars[:8],
-            "world_settings": "；".join(world_settings[:8]),
-            "plot_outline": "；".join(plot_outline[:12]),
-            "writing_style": writing_style,
-            "current_progress": str(data.get("current_progress") or f"{chapter_title or '当前片段'}分析完成"),
+            "world_facts": world_facts,
+            "plot_arcs": data.get("plot_arcs") if isinstance(data.get("plot_arcs"), list) else [],
+            "style_profile": style_profile,
+            "style_tags": style_tags,
+            "current_state": current_state,
+            "continuity_flags": data.get("continuity_flags") if isinstance(data.get("continuity_flags"), list) else [],
             "events": events
         }
 
@@ -393,14 +306,31 @@ class AnalysisTool:
         lines = [line.strip() for line in novel_text.splitlines() if line.strip()]
         sample = "；".join(lines[:4])[:180]
         return {
+            "chapter_summary": f"{chapter_title or '当前章节'}：主角推进目标并触发新冲突",
+            "chapter_summaries": [f"{chapter_title or '当前章节'}：主线推进并触发后续悬念"],
             "characters": [
                 {"name": "主角", "traits": ["谨慎", "坚韧"], "relationships": {"关键配角": "同伴"}},
                 {"name": "关键配角", "traits": ["机敏", "务实"], "relationships": {"主角": "同伴"}}
             ],
-            "world_settings": f"世界规则线索：{sample or '力量体系与势力边界正在重塑'}；资源争夺持续升级；关键区域存在未公开规则",
-            "plot_outline": f"承接“{chapter_title or '当前片段'}”推进冲突；主角获得新线索；章节尾部抛出下一步行动目标",
-            "writing_style": "叙事；中速；第三人称",
-            "current_progress": f"{chapter_title or '当前片段'}分析完成",
+            "world_facts": {
+                "background": [sample or "力量体系与势力边界正在重塑"],
+                "power_system": ["修行阶段存在明显门槛"],
+                "organizations": ["关键势力正在角逐资源"],
+                "locations": ["核心冲突区域持续升级"],
+                "rules": ["行动会引发连锁后果"],
+                "artifacts": [],
+            },
+            "plot_arcs": [],
+            "style_profile": {"narrative_pov": "第三人称", "tone_tags": ["紧张"], "rhythm_tags": ["中速"]},
+            "style_tags": ["紧张", "中速", "第三人称"],
+            "current_state": {
+                "latest_chapter_number": 0,
+                "latest_summary": f"{chapter_title or '当前片段'}分析完成",
+                "active_arc_ids": [],
+                "recent_conflicts": [],
+                "next_writing_focus": "围绕冲突升级推进下一章",
+            },
+            "continuity_flags": [],
             "events": [
                 {
                     "event": "主角在推进目标时遭遇新阻力",
@@ -413,14 +343,103 @@ class AnalysisTool:
         }
 
     def _consolidate_memory(self, memory: Dict[str, Any]) -> Dict[str, Any]:
-        merged = merge_memory(memory, {})
-        merged["world_settings"] = str(merged.get("world_settings") or "")[:1200]
-        merged["plot_outline"] = str(merged.get("plot_outline") or "")[:1600]
-        merged["writing_style"] = str(merged.get("writing_style") or "叙事；中速；第三人称")
-        merged["current_progress"] = str(merged.get("current_progress") or "")
-        events = [ev for ev in (merged.get("events") or []) if isinstance(ev, dict)]
-        merged["events"] = events[-60:]
+        merged = dict(memory if isinstance(memory, dict) else {})
+        if self._need_legacy_compat(merged):
+            legacy = merge_memory(merged, {})
+            legacy["events"] = [ev for ev in (legacy.get("events") or []) if isinstance(ev, dict)][-60:]
+            return legacy
+        merged["characters"] = [item for item in (merged.get("characters") or []) if isinstance(item, dict)][:12]
+        world_facts = self._normalize_world_facts(merged.get("world_facts"), None, "")
+        merged["world_facts"] = world_facts
+        merged["chapter_summaries"] = [str(x) for x in (merged.get("chapter_summaries") or []) if str(x)][:300]
+        style_profile = self._normalize_style_profile(merged.get("style_profile"), None)
+        merged["style_profile"] = style_profile
+        current_state = merged.get("current_state") if isinstance(merged.get("current_state"), dict) else {}
+        merged["current_state"] = {
+            "latest_chapter_number": int(current_state.get("latest_chapter_number") or 0),
+            "latest_summary": str(current_state.get("latest_summary") or ""),
+            "active_arc_ids": [str(x) for x in (current_state.get("active_arc_ids") or []) if str(x)][:8],
+            "recent_conflicts": [str(x) for x in (current_state.get("recent_conflicts") or []) if str(x)][:8],
+            "next_writing_focus": str(current_state.get("next_writing_focus") or ""),
+        }
+        merged["events"] = [ev for ev in (merged.get("events") or []) if isinstance(ev, dict)][-80:]
+        merged["continuity_flags"] = [x for x in (merged.get("continuity_flags") or []) if isinstance(x, dict)][-80:]
         return merged
+
+    def _need_legacy_compat(self, memory: Dict[str, Any]) -> bool:
+        return any(key in memory for key in ("world_settings", "plot_outline", "writing_style", "current_progress"))
+
+    def _to_legacy_memory_payload(self, structured: Dict[str, Any]) -> Dict[str, Any]:
+        world_facts = structured.get("world_facts") if isinstance(structured.get("world_facts"), dict) else {}
+        world_settings = []
+        for key in ("background", "power_system", "organizations", "locations", "rules", "artifacts"):
+            world_settings.extend([str(x) for x in (world_facts.get(key) or []) if str(x)])
+        style = structured.get("style_profile") if isinstance(structured.get("style_profile"), dict) else {}
+        writing_style = "；".join(
+            [
+                str(style.get("narrative_pov") or ""),
+                "、".join([str(x) for x in (style.get("tone_tags") or []) if str(x)]),
+                "、".join([str(x) for x in (style.get("rhythm_tags") or []) if str(x)]),
+            ]
+        ).strip("；")
+        current_state = structured.get("current_state") if isinstance(structured.get("current_state"), dict) else {}
+        current_progress = str(current_state.get("latest_summary") or "")
+        return {
+            "characters": structured.get("characters") or [],
+            "world_settings": "；".join(world_settings),
+            "plot_outline": "；".join([str(x) for x in (structured.get("chapter_summaries") or []) if str(x)]),
+            "writing_style": writing_style,
+            "current_progress": current_progress,
+            "events": structured.get("events") or [],
+        }
+
+    def _normalize_world_facts(self, world_facts: Any, legacy_world: Any, snippet: str) -> Dict[str, List[str]]:
+        normalized = world_facts if isinstance(world_facts, dict) else {}
+        legacy_points: List[str] = []
+        if isinstance(legacy_world, list):
+            legacy_points = [str(x).strip() for x in legacy_world if str(x).strip()]
+        elif isinstance(legacy_world, str):
+            legacy_points = [x.strip() for x in legacy_world.split("；") if x.strip()]
+        if not normalized:
+            normalized = {"background": legacy_points[:4]}
+        background = [str(x).strip() for x in (normalized.get("background") or []) if str(x).strip()]
+        if not background:
+            background = [snippet or "关键世界规则正在形成"]
+        return {
+            "background": background[:40],
+            "power_system": [str(x).strip() for x in (normalized.get("power_system") or []) if str(x).strip()][:40],
+            "organizations": [str(x).strip() for x in (normalized.get("organizations") or []) if str(x).strip()][:40],
+            "locations": [str(x).strip() for x in (normalized.get("locations") or []) if str(x).strip()][:40],
+            "rules": [str(x).strip() for x in (normalized.get("rules") or []) if str(x).strip()][:40],
+            "artifacts": [str(x).strip() for x in (normalized.get("artifacts") or []) if str(x).strip()][:40],
+        }
+
+    def _normalize_chapter_summaries(self, chapter_summaries: Any, legacy_outline: Any, chapter_title: str, snippet: str) -> List[str]:
+        items: List[str] = []
+        if isinstance(chapter_summaries, list):
+            items.extend([str(x).strip() for x in chapter_summaries if str(x).strip()])
+        if isinstance(legacy_outline, list):
+            items.extend([str(x).strip() for x in legacy_outline if str(x).strip()])
+        elif isinstance(legacy_outline, str):
+            items.extend([x.strip() for x in legacy_outline.split("；") if x.strip()])
+        if not items:
+            items = [f"{chapter_title or '当前章节'}：{snippet or '主线推进并触发新冲突'}"]
+        return list(dict.fromkeys(items))[:300]
+
+    def _normalize_style_profile(self, style_profile: Any, legacy_style: Any) -> Dict[str, Any]:
+        style = style_profile if isinstance(style_profile, dict) else {}
+        if not style and isinstance(legacy_style, str):
+            parts = [x.strip() for x in legacy_style.split("；") if x.strip()]
+            style = {
+                "narrative_pov": parts[0] if parts else "第三人称",
+                "tone_tags": parts[1:3],
+                "rhythm_tags": parts[3:5],
+            }
+        return {
+            "narrative_pov": str(style.get("narrative_pov") or "第三人称"),
+            "tone_tags": [str(x).strip() for x in (style.get("tone_tags") or []) if str(x).strip()][:6],
+            "rhythm_tags": [str(x).strip() for x in (style.get("rhythm_tags") or []) if str(x).strip()][:6],
+        }
 
     def _normalize_events(self, events: Any, source_text: str, chars: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         normalized: List[Dict[str, Any]] = []
@@ -693,21 +712,21 @@ class StoryBranchTool:
             result = await self.model_router.generate(prompt, max_tokens=1800, temperature=0.5)
             if not result.get("ok"):
                 raise RuntimeError(result.get("error") or "router_failed")
-            return self._normalize_branches(_extract_json_array(result.get("text") or ""), branch_count, direction_hint)
+            return self._normalize_branches(self._extract_branches(result.get("text") or ""), branch_count, direction_hint)
 
         async def _repair() -> List[Dict[str, Any]]:
             prompt = self._build_branch_prompt(memory, chapter_text, direction_hint, branch_count) + "\n输出必须严格是JSON数组。"
             result = await self.model_router.generate(prompt, max_tokens=1800, temperature=0.4)
             if not result.get("ok"):
                 raise RuntimeError(result.get("error") or "router_failed")
-            return self._normalize_branches(_extract_json_array(result.get("text") or ""), branch_count, direction_hint)
+            return self._normalize_branches(self._extract_branches(result.get("text") or ""), branch_count, direction_hint)
 
         async def _fallback() -> List[Dict[str, Any]]:
             if self.backup_llm_client is None:
                 raise RuntimeError("backup_unavailable")
             prompt = self._build_branch_prompt(memory, chapter_text, direction_hint, branch_count)
             raw = await self.backup_llm_client.generate(prompt, max_tokens=1800, temperature=0.4)
-            return self._normalize_branches(_extract_json_array(raw), branch_count, direction_hint)
+            return self._normalize_branches(self._extract_branches(raw), branch_count, direction_hint)
 
         def _degrade() -> Dict[str, Any]:
             return {"branches": self._fallback_branches(memory, chapter_text, direction_hint, branch_count)}
@@ -735,14 +754,16 @@ class StoryBranchTool:
         return self._fallback_branches(memory, current_chapter, "沿已发生事件推进", branch_count)
 
     def _build_branch_prompt(self, memory: Dict[str, Any], chapter_text: str, direction_hint: str, branch_count: int) -> str:
-        system = BRANCH_SYSTEM_PROMPT.format(branch_count=branch_count)
-        user = BRANCH_USER_PROMPT_TEMPLATE.format(
-            memory_json=json.dumps(memory, ensure_ascii=False)[:5000],
-            chapter_text=chapter_text[:2000],
+        outline_context = {}
+        if isinstance(memory.get("outline_context"), dict):
+            outline_context = memory.get("outline_context") or {}
+        return build_branch_generation_prompt(
+            memory=memory,
+            chapter_text=chapter_text,
             direction_hint=direction_hint or "沿主线推进冲突并制造新悬念",
-            branch_count=branch_count
+            branch_count=branch_count,
+            outline_context=outline_context,
         )
-        return f"{system}\n\n{user}"
 
     def _normalize_branches(self, branches: List[Dict[str, Any]], branch_count: int, direction_hint: str) -> List[Dict[str, Any]]:
         normalized = []
@@ -775,6 +796,12 @@ class StoryBranchTool:
                 }
             )
         return normalized
+
+    def _extract_branches(self, raw: str) -> List[Dict[str, Any]]:
+        obj = _extract_json_object(raw)
+        if isinstance(obj.get("branches"), list):
+            return [item for item in obj.get("branches") if isinstance(item, dict)]
+        return _extract_json_array(raw)
 
     def _fallback_branches(self, memory: Dict[str, Any], chapter_text: str, direction_hint: str, branch_count: int) -> List[Dict[str, Any]]:
         lead = "主角"
@@ -823,6 +850,9 @@ class ContinueWritingTool:
         memory = tool_input.get("memory") or task_context.memory or {}
         chapters = tool_input.get("chapters") or []
         chapter_count = int(tool_input.get("chapter_count") or len(chapters) or 0)
+        recent_chapter_text = str(tool_input.get("recent_chapter_text") or "").strip()
+        if recent_chapter_text:
+            chapters = [*chapters, {"content": recent_chapter_text}]
         idempotency_key = str(tool_input.get("idempotency_key") or task_context.request_id).strip()
         target_word_count = int(tool_input.get("target_word_count") or task_context.target_word_count or 2100)
         if not direction:
@@ -860,9 +890,10 @@ class ContinueWritingTool:
                 "direction": direction,
                 "used_memory": {
                     "characters": len(memory.get("characters") or []),
-                    "world_settings": len(str(memory.get("world_settings") or "")),
-                    "plot_outline": len(str(memory.get("plot_outline") or "")),
-                    "style_profile": bool(str(memory.get("writing_style") or ""))
+                    "world_facts": len((memory.get("world_facts") or {}).get("background") or []),
+                    "chapter_summaries": len(memory.get("chapter_summaries") or []),
+                    "style_profile": bool(memory.get("style_profile")),
+                    "current_state": bool(memory.get("current_state")),
                 }
             },
             observation="续写完成，已强制注入memory和direction",
@@ -900,9 +931,16 @@ class ContinueWritingTool:
             raise RuntimeError(result.get("error") or "router_failed")
         raw = str(result.get("text") or "").strip()
         payload = _extract_json_object(raw)
-        if isinstance(payload, dict) and payload.get("chapter_text"):
-            return payload
-        return {"chapter_text": raw, "new_events": []}
+        if isinstance(payload, dict):
+            if payload.get("chapter_text"):
+                return payload
+            if payload.get("content"):
+                return {
+                    "chapter_text": str(payload.get("content") or ""),
+                    "new_events": payload.get("new_facts") or [],
+                    "possible_continuity_flags": payload.get("possible_continuity_flags") or [],
+                }
+        return {"chapter_text": raw, "new_events": [], "possible_continuity_flags": []}
 
     def _build_continue_prompt(
         self,
@@ -914,29 +952,38 @@ class ContinueWritingTool:
         chapter_count: int,
         strict: bool
     ) -> str:
-        system = CONTINUE_SYSTEM_PROMPT
+        ending_hook = ""
         if strict:
-            system += "\n附加约束：若出现重复句、空洞句、无事件推进，立即重写。"
-        user = CONTINUE_USER_PROMPT_TEMPLATE.format(
-            characters=json.dumps(memory.get("characters") or [], ensure_ascii=False),
-            world_settings=str(memory.get("world_settings") or ""),
-            plot_outline=str(memory.get("plot_outline") or ""),
-            events=json.dumps(memory.get("events") or [], ensure_ascii=False),
-            current_progress=str(memory.get("current_progress") or ""),
-            direction=direction,
+            ending_hook = "结尾必须抛出下一章悬念并触发新冲突"
+        return build_chapter_writing_prompt(
+            memory=memory,
+            direction=f"{direction}；幂等键:{idempotency_key}",
+            chapters_text=chapters_text[:5000],
             chapter_count=chapter_count,
-            idempotency_key=idempotency_key,
             target_word_count=target_word_count,
-            chapters_text=chapters_text[:5000]
+            ending_hook=ending_hook,
         )
-        return f"{system}\n\n{user}"
 
     def _has_required_memory(self, memory: Dict[str, Any]) -> bool:
         characters = memory.get("characters") or []
+        world_facts = memory.get("world_facts") if isinstance(memory.get("world_facts"), dict) else {}
+        chapter_summaries = memory.get("chapter_summaries") if isinstance(memory.get("chapter_summaries"), list) else []
+        style_profile = memory.get("style_profile") if isinstance(memory.get("style_profile"), dict) else {}
+        current_state = memory.get("current_state") if isinstance(memory.get("current_state"), dict) else {}
+        events = memory.get("events") or []
+        structured_ready = bool(
+            characters
+            and any((world_facts.get(key) or []) for key in ("background", "power_system", "organizations", "locations", "rules", "artifacts"))
+            and chapter_summaries
+            and style_profile
+            and current_state
+            and events
+        )
+        if structured_ready:
+            return True
         world_settings = str(memory.get("world_settings") or "").strip()
         plot_outline = str(memory.get("plot_outline") or "").strip()
         style = str(memory.get("writing_style") or "").strip()
-        events = memory.get("events") or []
         return bool(characters and world_settings and plot_outline and style and events)
 
     def _compact_chapters(self, chapters: List[Any]) -> str:
@@ -983,8 +1030,12 @@ class ContinueWritingTool:
         chars = memory.get("characters") or []
         if chars and isinstance(chars[0], dict):
             lead = str(chars[0].get("name") or lead)
-        world = str(memory.get("world_settings") or "")[:160]
-        plot = str(memory.get("plot_outline") or "")[:160]
+        world = "；".join([str(x) for x in ((memory.get("world_facts") or {}).get("background") or []) if str(x)])[:160]
+        if not world:
+            world = str(memory.get("world_settings") or "")[:160]
+        plot = "；".join([str(x) for x in (memory.get("chapter_summaries") or []) if str(x)])[:160]
+        if not plot:
+            plot = str(memory.get("plot_outline") or "")[:160]
         seed = (
             f"{lead}围绕“{direction}”展开行动。"
             f"上章线索：{chapters_text[:120]}。"

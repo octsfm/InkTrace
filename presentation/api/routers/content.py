@@ -13,6 +13,7 @@ from application.dto.request_dto import ImportNovelRequest
 from application.dto.response_dto import PlotAnalysisResponse, StyleAnalysisResponse
 from application.services.content_service import ContentService
 from application.services.project_service import ProjectService
+from application.services.v2_workflow_service import V2WorkflowService
 from domain.entities.organize_job import OrganizeJob
 from domain.repositories.organize_job_repository import IOrganizeJobRepository
 from domain.types import NovelId, OrganizeJobStatus
@@ -21,6 +22,7 @@ from presentation.api.dependencies import (
     get_llm_factory,
     get_organize_job_repo,
     get_project_service,
+    get_v2_workflow_service,
 )
 
 
@@ -268,22 +270,17 @@ async def import_novel(
     request: ImportNovelRequest,
     service: ContentService = Depends(get_content_service),
     project_service: ProjectService = Depends(get_project_service),
-    organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
-    llm_factory=Depends(get_llm_factory),
+    v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     try:
         novel = service.import_novel(request)
-        memory_result = await _analyze_and_bind_memory(
-            request.novel_id,
-            service,
-            project_service,
-            organize_job_repo,
-            llm_factory,
-        )
+        project = project_service.ensure_project_for_novel(NovelId(request.novel_id))
+        organize_result = await v2_service.organize_project(project.id.value, "chapter_first", True)
         return {
             "novel": _to_dict(novel),
-            "project_id": memory_result["project_id"],
-            "memory": memory_result["memory"],
+            "project_id": project.id.value,
+            "memory": v2_service.get_memory(project.id.value),
+            "memory_view": organize_result.get("memory_view") or {},
             "analysis_status": "done",
         }
     except FileNotFoundError as e:
@@ -313,8 +310,7 @@ async def import_novel_upload(
     outline_file: Optional[UploadFile] = File(default=None),
     service: ContentService = Depends(get_content_service),
     project_service: ProjectService = Depends(get_project_service),
-    organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
-    llm_factory=Depends(get_llm_factory),
+    v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     temp_dir = tempfile.mkdtemp(prefix="inktrace_upload_")
     novel_path = os.path.join(temp_dir, novel_file.filename or "novel.txt")
@@ -329,17 +325,13 @@ async def import_novel_upload(
 
         request = ImportNovelRequest(novel_id=novel_id, file_path=novel_path, outline_path=outline_path)
         novel = service.import_novel(request)
-        memory_result = await _analyze_and_bind_memory(
-            novel_id,
-            service,
-            project_service,
-            organize_job_repo,
-            llm_factory,
-        )
+        project = project_service.ensure_project_for_novel(NovelId(novel_id))
+        organize_result = await v2_service.organize_project(project.id.value, "chapter_first", True)
         return {
             "novel": _to_dict(novel),
-            "project_id": memory_result["project_id"],
-            "memory": memory_result["memory"],
+            "project_id": project.id.value,
+            "memory": v2_service.get_memory(project.id.value),
+            "memory_view": organize_result.get("memory_view") or {},
             "analysis_status": "done",
             "outline_uploaded": bool(outline_path),
         }
@@ -391,12 +383,20 @@ async def analyze_plot(
 async def get_memory_by_novel(
     novel_id: str,
     project_service: ProjectService = Depends(get_project_service),
+    v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     try:
-        project = project_service.ensure_project_for_novel(NovelId(novel_id))
+        project = project_service.get_project_by_novel(NovelId(novel_id))
+        if not project:
+            project = project_service.ensure_project_for_novel(NovelId(novel_id))
+        memory = v2_service.get_memory(project.id.value) or {}
+        memory_view = v2_service.get_memory_view(project.id.value) or {}
         return {
             "project_id": project.id.value,
-            "memory": project_service.get_memory_by_novel(NovelId(novel_id)),
+            "memory": memory,
+            "memory_view": memory_view,
+            "compat_mode": True,
+            "route": "content_compat_v2",
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -406,26 +406,39 @@ async def get_memory_by_novel(
 async def organize_story_structure(
     novel_id: str,
     force_rebuild: bool = Query(False),
-    service: ContentService = Depends(get_content_service),
     project_service: ProjectService = Depends(get_project_service),
     organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
-    llm_factory=Depends(get_llm_factory),
+    v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     try:
         logger.info("[StructureAPI] request novel_id=%s force_rebuild=%s", novel_id, force_rebuild)
-        result = await _analyze_and_bind_memory(
+        project = project_service.ensure_project_for_novel(NovelId(novel_id))
+        _cache_progress(
             novel_id,
-            service,
-            project_service,
-            organize_job_repo,
-            llm_factory,
-            force_rebuild=force_rebuild,
+            _build_progress_payload(
+                0,
+                1,
+                OrganizeJobStatus.RUNNING.value,
+                "正在按v2工作流整理故事结构（0%）",
+            ),
         )
+        v2_result = await v2_service.organize_project(project.id.value, "chapter_first", force_rebuild)
         progress = PROGRESS_CACHE.get(novel_id) or _job_to_progress(organize_job_repo.find_by_novel_id(NovelId(novel_id)))
+        if progress.get("status") != OrganizeJobStatus.DONE.value:
+            progress = _cache_progress(
+                novel_id,
+                _build_progress_payload(
+                    1,
+                    1,
+                    OrganizeJobStatus.DONE.value,
+                    "v2整理完成（100%）",
+                ),
+            )
         return {
             "status": "done",
-            "project_id": result["project_id"],
-            "memory": result["memory"],
+            "project_id": project.id.value,
+            "memory": v2_service.get_memory(project.id.value),
+            "memory_view": v2_result.get("memory_view") or {},
             "progress": progress,
         }
     except ValueError as e:

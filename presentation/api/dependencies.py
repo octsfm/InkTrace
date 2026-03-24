@@ -1,11 +1,6 @@
 """
-API依赖注入模块
-
-作者：孔利群
+API dependency injection helpers.
 """
-
-# 文件路径：presentation/api/dependencies.py
-
 
 from functools import lru_cache
 import os
@@ -45,6 +40,8 @@ from application.services.worldview_service import WorldviewService
 from application.services.vector_index_service import VectorIndexService
 from application.services.rag_retrieval_service import RAGRetrievalService
 from application.services.config_service import ConfigService
+from application.services.v2_workflow_service import V2WorkflowService
+from infrastructure.persistence.sqlite_v2_repo import SQLiteV2Repository
 
 
 DB_PATH = os.environ.get("INKTRACE_DB_PATH", "data/inktrace.db")
@@ -124,43 +121,43 @@ def get_config_service() -> ConfigService:
     return ConfigService(get_llm_config_repo(), ENCRYPTION_KEY)
 
 
-def _get_api_keys() -> tuple:
+def _get_api_keys() -> tuple[str, str]:
     """
-    获取API密钥
-    
-    优先从数据库读取，环境变量作为fallback
-    
-    Returns:
-        (deepseek_api_key, kimi_api_key)
+    Only read API credentials from the persisted database config.
     """
     logger = logging.getLogger(__name__)
     config_service = get_config_service()
-    
+
     try:
         decrypted = config_service.get_decrypted_config()
         if decrypted:
             deepseek_key, kimi_key = decrypted
-            logger.info(f"[API Keys] 从数据库获取成功, DeepSeek前4位: {deepseek_key[:4] if deepseek_key else 'N/A'}, Kimi前4位: {kimi_key[:4] if kimi_key else 'N/A'}")
+            logger.info(
+                "[API Keys] Loaded from database, DeepSeek prefix=%s, Kimi prefix=%s",
+                deepseek_key[:4] if deepseek_key else "N/A",
+                kimi_key[:4] if kimi_key else "N/A",
+            )
             return deepseek_key, kimi_key
-    except Exception as e:
-        logger.warning(f"[API Keys] 从数据库获取失败: {e}")
-    
-    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
-    kimi_key = os.environ.get("KIMI_API_KEY", "")
-    logger.info(f"[API Keys] 从环境变量获取, DeepSeek前4位: {deepseek_key[:4] if deepseek_key else 'N/A'}, Kimi前4位: {kimi_key[:4] if kimi_key else 'N/A'}")
-    
-    return deepseek_key, kimi_key
+    except Exception as exc:
+        logger.warning("[API Keys] Failed to load from database: %s", exc)
+
+    logger.info("[API Keys] No valid database config found, returning empty credentials")
+    return "", ""
 
 
 def get_llm_factory() -> LLMFactory:
     logger = logging.getLogger(__name__)
     deepseek_key, kimi_key = _get_api_keys()
-    
-    logger.info(f"[LLM Factory] 创建LLMFactory, DeepSeek Key长度: {len(deepseek_key)}, Kimi Key长度: {len(kimi_key)}")
-    
+
+    logger.info(
+        "[LLM Factory] Creating factory, DeepSeek key length=%d, Kimi key length=%d",
+        len(deepseek_key),
+        len(kimi_key),
+    )
+
     config = LLMConfig(
         deepseek_api_key=deepseek_key,
-        kimi_api_key=kimi_key
+        kimi_api_key=kimi_key,
     )
     return LLMFactory(config)
 
@@ -185,7 +182,7 @@ def get_content_service() -> ContentService:
         get_chapter_repo(),
         get_character_repo(),
         get_outline_repo(),
-        get_txt_parser()
+        get_txt_parser(),
     )
 
 
@@ -193,14 +190,14 @@ def get_writing_service() -> WritingService:
     return WritingService(
         get_novel_repo(),
         get_chapter_repo(),
-        get_llm_factory()
+        get_llm_factory(),
     )
 
 
 def get_export_service() -> ExportService:
     return ExportService(
         get_novel_repo(),
-        get_chapter_repo()
+        get_chapter_repo(),
     )
 
 
@@ -221,7 +218,7 @@ def get_vector_index_service() -> VectorIndexService:
         get_vector_repo(),
         get_chapter_repo(),
         get_character_repo(),
-        get_worldview_repo()
+        get_worldview_repo(),
     )
 
 
@@ -229,5 +226,23 @@ def get_rag_retrieval_service() -> RAGRetrievalService:
     return RAGRetrievalService(
         get_vector_repo(),
         get_chapter_repo(),
-        get_character_repo()
+        get_character_repo(),
+    )
+
+
+@lru_cache()
+def get_v2_repo() -> SQLiteV2Repository:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    return SQLiteV2Repository(DB_PATH)
+
+
+def get_v2_workflow_service() -> V2WorkflowService:
+    return V2WorkflowService(
+        project_service=get_project_service(),
+        content_service=get_content_service(),
+        chapter_repo=get_chapter_repo(),
+        novel_repo=get_novel_repo(),
+        outline_repo=get_outline_repo(),
+        llm_factory=get_llm_factory(),
+        v2_repo=get_v2_repo(),
     )

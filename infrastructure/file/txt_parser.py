@@ -1,21 +1,17 @@
 """
-TXT文件解析器模块
-
-作者：孔利群
+TXT 文件解析器。
 """
 
-# 文件路径：infrastructure/file/txt_parser.py
+from __future__ import annotations
 
-
-import re
-import os
-from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
+from pathlib import Path
+import re
+from typing import Dict, List, Optional
 
 
 @dataclass
 class ChapterData:
-    """章节数据"""
     number: int
     title: str
     content: str
@@ -23,305 +19,268 @@ class ChapterData:
 
 
 class TxtParser:
-    """
-# 文件：模块：txt_parser
-
-    TXT文件解析器
-    
-    用于解析小说TXT文件，自动识别章节结构。
-    """
-
     READ_ENCODINGS = ["utf-8", "utf-8-sig", "gb18030", "gbk"]
 
-    def _read_text(self, filepath: str) -> str:
-        last_error = None
-        for encoding in self.READ_ENCODINGS:
-            try:
-                with open(filepath, 'r', encoding=encoding) as f:
-                    return f.read()
-            except UnicodeDecodeError as e:
-                last_error = e
-                continue
-        if last_error is not None:
-            raise last_error
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return f.read()
-
     CHAPTER_PATTERNS = [
-        r'第[一二三四五六七八九十百千万零\d]+章\s+[^\n]+',
-        r'第[一二三四五六七八九十百千万零\d]+节\s+[^\n]+',
-        r'Chapter\s*\d+[:\s]*[^\n]*',
-        r'[一二三四五六七八九十]+[、.．]\s*[^\n]+',
+        r"^\s*第[零〇一二两三四五六七八九十百千万\d]+章[^\n]*$",
+        r"^\s*第[零〇一二两三四五六七八九十百千万\d]+节[^\n]*$",
+        r"^\s*chapter\s*\d+[:：\s-]*[^\n]*$",
+        r"^\s*\d+[\.、\s-]+[^\n]{1,40}$",
     ]
 
     SECTION_PATTERNS = [
-        r'^[^\n]{1,20}$',
+        r"^[^\n]{1,30}$",
     ]
 
-    def detect_chapter_pattern(self, filepath: str) -> Optional[re.Pattern]:
-        """
-# 文件：模块：txt_parser
+    def _read_text(self, filepath: str) -> str:
+        last_error: Optional[Exception] = None
+        for encoding in self.READ_ENCODINGS:
+            try:
+                with open(filepath, "r", encoding=encoding) as file:
+                    return file.read()
+            except UnicodeDecodeError as error:
+                last_error = error
+        if last_error is not None:
+            raise last_error
+        with open(filepath, "r", encoding="utf-8") as file:
+            return file.read()
 
-        检测章节标题模式
-        
-        Args:
-            filepath: 文件路径
-            
-        Returns:
-            匹配的正则表达式模式，未检测到则返回None
-        """
+    def detect_chapter_pattern(self, filepath: str) -> Optional[re.Pattern]:
         content = self._read_text(filepath)
-        
         for pattern_str in self.CHAPTER_PATTERNS:
-            matches = re.findall(pattern_str, content, re.MULTILINE)
+            flags = re.MULTILINE | (re.IGNORECASE if "chapter" in pattern_str.lower() else 0)
+            matches = re.findall(pattern_str, content, flags)
             if len(matches) >= 2:
-                return re.compile(pattern_str, re.MULTILINE)
-        
+                return re.compile(pattern_str, flags)
         return None
 
     def parse_chapters(self, filepath: str) -> List[Dict]:
-        """
-# 文件：模块：txt_parser
-
-        解析章节
-        
-        Args:
-            filepath: 文件路径
-            
-        Returns:
-            章节列表，每个元素包含number, title, content, word_count
-        """
         content = self._read_text(filepath)
-        
         pattern = self.detect_chapter_pattern(filepath)
         if not pattern:
             return []
-        
+
         matches = list(pattern.finditer(content))
-        chapters = []
-        
-        for i, match in enumerate(matches):
+        chapters: List[Dict] = []
+        for index, match in enumerate(matches):
             start = match.end()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
-            
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
             title_line = match.group().strip()
             chapter_content = content[start:end].strip()
-            
-            number = self._extract_chapter_number(title_line)
+            number = self._extract_chapter_number(title_line) or (index + 1)
             title = self._extract_chapter_title(title_line)
-            
-            chapters.append({
-                'number': number,
-                'title': title,
-                'content': chapter_content,
-                'word_count': self.count_words(chapter_content)
-            })
-        
+            chapters.append(
+                {
+                    "number": number,
+                    "title": title,
+                    "content": chapter_content,
+                    "word_count": self.count_words(chapter_content),
+                }
+            )
         return chapters
 
     def parse_novel_file(self, filepath: str) -> Dict:
-        """
-# 文件：模块：txt_parser
-
-        解析小说文件
-        
-        Args:
-            filepath: 文件路径
-            
-        Returns:
-            包含intro和chapters的字典
-        """
         content = self._read_text(filepath)
-        
         pattern = self.detect_chapter_pattern(filepath)
-        
         if pattern:
             first_match = pattern.search(content)
-            if first_match:
-                intro = content[:first_match.start()].strip()
-            else:
-                intro = ""
-        else:
-            intro = content
-        
-        chapters = self.parse_chapters(filepath)
-        
-        return {
-            'intro': intro,
-            'chapters': chapters
-        }
+            intro = content[: first_match.start()].strip() if first_match else ""
+            chapters = self.parse_chapters(filepath)
+            return {"intro": intro, "chapters": chapters}
+
+        sections = self.extract_sections(content)
+        if len(sections) >= 2:
+            return {
+                "intro": "",
+                "chapters": [
+                    {
+                        "number": index,
+                        "title": section["title"],
+                        "content": section["content"],
+                        "word_count": self.count_words(section["content"]),
+                    }
+                    for index, section in enumerate(sections, 1)
+                ],
+            }
+
+        fallback_title = Path(filepath).stem or "正文"
+        fallback_content = content.strip()
+        chapters = []
+        if fallback_content:
+            chapters.append(
+                {
+                    "number": 1,
+                    "title": fallback_title,
+                    "content": fallback_content,
+                    "word_count": self.count_words(fallback_content),
+                }
+            )
+        return {"intro": "", "chapters": chapters}
 
     def parse_outline_file(self, filepath: str) -> Dict:
-        """
-# 文件：模块：txt_parser
-
-        解析大纲文件
-        
-        Args:
-            filepath: 文件路径
-            
-        Returns:
-            大纲数据字典
-        """
         content = self._read_text(filepath)
-        
         result = {
-            'genre': '',
-            'story_background': '',
-            'world_setting': '',
-            'target_word_count': '',
-            'raw_content': content
+            "genre": "",
+            "story_background": "",
+            "world_setting": "",
+            "target_word_count": "",
+            "raw_content": content,
         }
-        
-        lines = content.split('\n')
-        
+
         section_map = {
-            '题材': 'genre',
-            '故事背景': 'story_background',
-            '世界背景': 'world_setting',
-            '世界观': 'world_setting',
-            '预计字数': 'target_word_count',
-            '字数': 'target_word_count'
+            "题材": "genre",
+            "故事背景": "story_background",
+            "背景设定": "story_background",
+            "世界背景": "world_setting",
+            "世界观": "world_setting",
+            "世界设定": "world_setting",
+            "预计字数": "target_word_count",
+            "目标字数": "target_word_count",
+            "字数": "target_word_count",
         }
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            
+
+        lines = [line.strip() for line in content.splitlines()]
+        for index, line in enumerate(lines):
+            if not line:
+                continue
             for key, field in section_map.items():
-                if key in line and len(line) < 20:
-                    if field == 'target_word_count':
-                        j = i + 1
-                        while j < len(lines):
-                            next_line = lines[j].strip()
-                            if next_line:
-                                numbers = re.findall(r'[\d万]+', next_line)
-                                if numbers:
-                                    result[field] = numbers[0]
-                                break
-                            j += 1
+                if key in line:
+                    value = self._extract_outline_value(lines, index, key)
+                    if not value:
+                        break
+                    if field == "target_word_count":
+                        numbers = re.findall(r"[\d万]+", value)
+                        if numbers:
+                            result[field] = numbers[0]
                     else:
-                        j = i + 1
-                        while j < len(lines):
-                            next_line = lines[j].strip()
-                            if next_line and len(next_line) < 50 and not any(k in next_line for k in section_map.keys()):
-                                result[field] = next_line
-                                break
-                            j += 1
+                        result[field] = value
                     break
-            
-            i += 1
-        
+
+        if not result["story_background"]:
+            result["story_background"] = content[:2400]
+        if not result["world_setting"]:
+            result["world_setting"] = content[:2400]
         return result
 
     def extract_sections(self, content: str) -> List[Dict]:
-        """
-# 文件：模块：txt_parser
-
-        提取章节内容
-        
-        Args:
-            content: 文本内容
-            
-        Returns:
-            章节列表
-        """
-        lines = content.split('\n')
-        sections = []
+        sections: List[Dict] = []
         current_title = ""
-        current_content = []
-        
-        for line in lines:
-            stripped = line.strip()
-            if stripped and len(stripped) < 30 and not stripped.startswith('　'):
+        current_content: List[str] = []
+
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if self._is_section_title_candidate(line) and (
+                not current_title or self._has_substantive_content(current_content)
+            ):
                 if current_title:
-                    sections.append({
-                        'title': current_title,
-                        'content': '\n'.join(current_content).strip()
-                    })
-                current_title = stripped
+                    sections.append(
+                        {
+                            "title": current_title,
+                            "content": "\n".join(current_content).strip(),
+                        }
+                    )
+                current_title = line
                 current_content = []
             else:
-                current_content.append(line)
-        
+                current_content.append(raw_line)
+
         if current_title:
-            sections.append({
-                'title': current_title,
-                'content': '\n'.join(current_content).strip()
-            })
-        
-        return sections
+            sections.append(
+                {
+                    "title": current_title,
+                    "content": "\n".join(current_content).strip(),
+                }
+            )
+        return [section for section in sections if section["content"]]
 
     def count_words(self, text: str) -> int:
-        """
-# 文件：模块：txt_parser
-
-        统计字数
-        
-        Args:
-            text: 文本内容
-            
-        Returns:
-            字数
-        """
-        cleaned = text.replace(' ', '').replace('\n', '').replace('\r', '')
+        cleaned = re.sub(r"\s+", "", text or "")
         return len(cleaned)
 
     def _extract_chapter_number(self, title_line: str) -> int:
-        """
-# 文件：模块：txt_parser
-
-        提取章节号
-        
-        Args:
-            title_line: 章节标题行
-            
-        Returns:
-            章节号
-        """
-        chinese_nums = {
-            '零': 0, '一': 1, '二': 2, '三': 3, '四': 4,
-            '五': 5, '六': 6, '七': 7, '八': 8, '九': 9,
-            '十': 10, '百': 100, '千': 1000, '万': 10000
-        }
-        
-        match = re.search(r'第([一二三四五六七八九十百千万零\d]+)', title_line)
-        if not match:
-            return 0
-        
-        num_str = match.group(1)
-        
-        if num_str.isdigit():
-            return int(num_str)
-        
-        result = 0
-        temp = 0
-        for char in num_str:
-            if char in chinese_nums:
-                val = chinese_nums[char]
-                if val >= 10:
-                    if temp == 0:
-                        temp = 1
-                    result += temp * val
-                    temp = 0
-                else:
-                    temp = temp * 10 + val if temp else val
-        
-        return result + temp
+        match = re.search(r"第([零〇一二两三四五六七八九十百千万\d]+)[章节]", title_line, re.IGNORECASE)
+        if match:
+            return self._parse_number(match.group(1))
+        match = re.search(r"chapter\s*(\d+)", title_line, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+        match = re.search(r"^\s*(\d+)", title_line)
+        if match:
+            return int(match.group(1))
+        return 0
 
     def _extract_chapter_title(self, title_line: str) -> str:
-        """
-# 文件：模块：txt_parser
-
-        提取章节标题
-        
-        Args:
-            title_line: 章节标题行
-            
-        Returns:
-            章节标题
-        """
-        match = re.search(r'第[一二三四五六七八九十百千万零\d]+[章节]\s*(.+)', title_line)
-        if match:
+        match = re.search(r"第[零〇一二两三四五六七八九十百千万\d]+[章节]\s*(.+)", title_line, re.IGNORECASE)
+        if match and match.group(1).strip():
             return match.group(1).strip()
-        return title_line
+        match = re.search(r"chapter\s*\d+[:：\s-]*(.+)", title_line, re.IGNORECASE)
+        if match and match.group(1).strip():
+            return match.group(1).strip()
+        match = re.search(r"^\s*\d+[\.、\s-]+(.+)", title_line)
+        if match and match.group(1).strip():
+            return match.group(1).strip()
+        return title_line.strip()
+
+    def _extract_outline_value(self, lines: List[str], index: int, key: str) -> str:
+        current = lines[index]
+        inline = re.split(r"[:：]", current, maxsplit=1)
+        if len(inline) == 2 and inline[1].strip():
+            return inline[1].strip()
+        for next_index in range(index + 1, len(lines)):
+            next_line = lines[next_index].strip()
+            if not next_line:
+                continue
+            if any(token in next_line for token in ("题材", "故事背景", "背景设定", "世界背景", "世界观", "世界设定", "预计字数", "目标字数", "字数")):
+                break
+            return next_line
+        return ""
+
+    def _parse_number(self, raw: str) -> int:
+        if raw.isdigit():
+            return int(raw)
+
+        mapping = {
+            "零": 0,
+            "〇": 0,
+            "一": 1,
+            "二": 2,
+            "两": 2,
+            "三": 3,
+            "四": 4,
+            "五": 5,
+            "六": 6,
+            "七": 7,
+            "八": 8,
+            "九": 9,
+        }
+        units = {"十": 10, "百": 100, "千": 1000, "万": 10000}
+
+        total = 0
+        current = 0
+        for char in raw:
+            if char in mapping:
+                current = mapping[char]
+                continue
+            if char in units:
+                unit = units[char]
+                if current == 0:
+                    current = 1
+                total += current * unit
+                current = 0
+        return total + current
+
+    def _is_section_title_candidate(self, line: str) -> bool:
+        if not line or len(line) > 30:
+            return False
+        if line.startswith("#"):
+            return False
+        if re.search(r"[。！？：；，]$", line):
+            return False
+        return True
+
+    def _has_substantive_content(self, lines: List[str]) -> bool:
+        for raw_line in lines:
+            line = raw_line.strip()
+            if line and not line.startswith("#"):
+                return True
+        return False

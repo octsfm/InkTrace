@@ -86,7 +86,7 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { contentApi, novelApi } from '@/api'
+import { novelApi, projectApi } from '@/api'
 
 const router = useRouter()
 const formRef = ref(null)
@@ -175,31 +175,40 @@ const handleImport = async () => {
     currentStep.value = 0
 
     currentStep.value = 1
-    const novel = await novelApi.create({
-      title: form.title,
-      author: form.author,
-      genre: form.genre,
-      target_word_count: form.target_word_count
-    })
-    createdNovelId.value = novel.id
-    novelCreated.value = true
+    let novel = null
+    if (!window.electronAPI && !form.selectedFile) {
+      novel = await novelApi.create({
+        title: form.title,
+        author: form.author,
+        genre: form.genre,
+        target_word_count: form.target_word_count
+      })
+      createdNovelId.value = novel.id
+      novelCreated.value = true
+    }
 
     currentStep.value = 2
     ElMessage.info('正在整理故事结构...')
     if (!window.electronAPI && form.selectedFile) {
       const formData = new FormData()
-      formData.append('novel_id', novel.id)
+      formData.append('project_name', form.title)
+      formData.append('genre', form.genre)
       formData.append('novel_file', form.selectedFile)
       if (form.selectedOutline) {
         formData.append('outline_file', form.selectedOutline)
       }
-      await contentApi.importUpload(formData)
+      formData.append('auto_organize', 'true')
+      const result = await projectApi.importV2Upload(formData)
+      novel = { id: result.novel_id }
     } else {
-      await contentApi.import({
-        novel_id: novel.id,
-        file_path: form.file_path,
-        outline_path: form.outline_path || undefined
+      const result = await projectApi.importV2({
+        project_name: form.title,
+        genre: form.genre,
+        novel_file_path: form.file_path,
+        outline_file_path: form.outline_path || '',
+        auto_organize: true
       })
+      novel = { id: result.novel_id }
     }
 
     currentStep.value = 3

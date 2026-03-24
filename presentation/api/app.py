@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from presentation.api.routers import novel, content, writing, export
 from presentation.api.routers import project, template, character, worldview
 from presentation.api.routers import vector, rag, config
+from presentation.api.routers import projects_v2
 
 
 def create_app() -> FastAPI:
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(content.router)
     app.include_router(writing.router)
     app.include_router(export.router)
+    app.include_router(export.router, prefix="/api")
     
     # 二期路由
     app.include_router(project.router)
@@ -50,6 +52,7 @@ def create_app() -> FastAPI:
     
     # 配置管理路由
     app.include_router(config.router)
+    app.include_router(projects_v2.router)
     
     @app.get("/")
     async def root():

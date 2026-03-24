@@ -16,6 +16,7 @@ from typing import Optional, List
 from domain.entities.project import Project, ProjectConfig
 from domain.repositories.project_repository import IProjectRepository
 from domain.types import ProjectId, NovelId, ProjectStatus
+from domain.utils import repair_mojibake
 
 
 class SQLiteProjectRepository(IProjectRepository):
@@ -127,7 +128,7 @@ class SQLiteProjectRepository(IProjectRepository):
             config = ProjectConfig()
         return Project(
             id=ProjectId(row["id"]),
-            name=row["name"],
+            name=repair_mojibake(row["name"]),
             novel_id=NovelId(row["novel_id"]),
             config=config,
             status=status,

@@ -1,3 +1,4 @@
+# 文件：模块：codeline_report
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -6,6 +7,9 @@
 ✅ 仅将 /tests/ 目录视为测试代码
 ✅ 其他所有代码（包括 test_xxx 命名）均视为生产代码
 """
+
+# 文件路径：codeline_report.py
+
 
 import re
 from pathlib import Path
