@@ -42,6 +42,9 @@
             <el-form-item label="结尾钩子">
               <el-input v-model="outline.ending_hook" />
             </el-form-item>
+            <el-form-item label="开篇承接">
+              <el-input v-model="outline.opening_continuation" />
+            </el-form-item>
             <el-form-item label="备注">
               <el-input v-model="outline.notes" type="textarea" :rows="3" />
             </el-form-item>
@@ -137,6 +140,7 @@ const outline = ref({
   eventsText: '',
   character_progress: '',
   ending_hook: '',
+  opening_continuation: '',
   notes: ''
 })
 
@@ -154,6 +158,7 @@ const toOutlinePayload = () => ({
   events: outline.value.eventsText.split('\n').map((x) => x.trim()).filter(Boolean),
   character_progress: outline.value.character_progress,
   ending_hook: outline.value.ending_hook,
+  opening_continuation: outline.value.opening_continuation,
   notes: outline.value.notes
 })
 
@@ -163,6 +168,7 @@ const fillOutline = (data) => {
   outline.value.eventsText = Array.isArray(data?.events) ? data.events.join('\n') : ''
   outline.value.character_progress = data?.character_progress || ''
   outline.value.ending_hook = data?.ending_hook || ''
+  outline.value.opening_continuation = data?.opening_continuation || ''
   outline.value.notes = data?.notes || ''
 }
 
@@ -198,6 +204,13 @@ const loadChapter = async () => {
   }
 }
 
+const saveOutlineInternal = async (silent = false) => {
+  await chapterEditorApi.saveOutline(currentChapterId.value, toOutlinePayload())
+  if (!silent) {
+    ElMessage.success('大纲已保存')
+  }
+}
+
 const saveChapter = async (saveType) => {
   try {
     saving.value = true
@@ -206,7 +219,8 @@ const saveChapter = async (saveType) => {
       title: form.value.title,
       content: form.value.content
     })
-    ElMessage.success(saveType === 'draft' ? '草稿已保存' : '章节已保存')
+    await saveOutlineInternal(true)
+    ElMessage.success(saveType === 'draft' ? '草稿与大纲已保存' : '章节与大纲已保存')
   } finally {
     saving.value = false
   }
@@ -215,8 +229,7 @@ const saveChapter = async (saveType) => {
 const saveOutline = async () => {
   try {
     savingOutline.value = true
-    await chapterEditorApi.saveOutline(currentChapterId.value, toOutlinePayload())
-    ElMessage.success('大纲已保存')
+    await saveOutlineInternal(false)
   } finally {
     savingOutline.value = false
   }

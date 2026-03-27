@@ -79,7 +79,7 @@ class ChapterAIService:
         prompt = (
             "你是章节级写作助手。请严格返回JSON对象，不要返回markdown。\n"
             "JSON结构：{\"result_text\": str, \"analysis\": object, \"outline_draft\": object|null}\n"
-            "其中outline_draft结构固定为：goal/conflict/events/character_progress/ending_hook/notes。\n"
+            "其中outline_draft结构固定为：goal/conflict/events/character_progress/ending_hook/opening_continuation/notes。\n"
             f"输入数据：{json.dumps(prompt_payload, ensure_ascii=False)}"
         )
         result = await self.model_router.generate(prompt, max_tokens=2200, temperature=0.45)
@@ -125,7 +125,7 @@ class ChapterAIService:
         }
         prompt = (
             "你是章节分析助手。请只输出一个JSON对象，不要输出markdown，不要解释。\n"
-            "固定字段：goal, conflict, events, character_progress, ending_hook, notes。\n"
+            "固定字段：goal, conflict, events, character_progress, ending_hook, opening_continuation, notes。\n"
             "events必须是字符串数组，长度1-8。\n"
             f"输入：{json.dumps(prompt_payload, ensure_ascii=False)}"
         )
@@ -153,6 +153,7 @@ class ChapterAIService:
             "events": normalized_events,
             "character_progress": str(draft.get("character_progress") or "").strip(),
             "ending_hook": str(draft.get("ending_hook") or "").strip(),
+            "opening_continuation": str(draft.get("opening_continuation") or "").strip(),
             "notes": str(draft.get("notes") or "").strip(),
         }
 
@@ -218,6 +219,7 @@ class ChapterAIService:
             "events": key_events,
             "character_progress": character_progress,
             "ending_hook": ending_hook,
+            "opening_continuation": lines[0] if lines else "",
             "notes": notes,
         }
 

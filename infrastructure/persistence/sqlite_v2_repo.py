@@ -30,6 +30,12 @@ class SQLiteV2Repository:
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()
 
+    def _ensure_column(self, conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
+        row = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        names = {item["name"] for item in row}
+        if column_name not in names:
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
     def _init_schema(self) -> None:
         schema_path = Path(__file__).resolve().parents[2] / "backend" / "src" / "infrastructure" / "persistence" / "sqlite" / "schema_v2.sql"
         if not schema_path.exists():
@@ -38,6 +44,25 @@ class SQLiteV2Repository:
             return
         with self._connect() as conn:
             conn.executescript(schema_path.read_text(encoding="utf-8"))
+            self._ensure_column(conn, "project_memories", "global_constraints_json", "TEXT NOT NULL DEFAULT '{}'")
+            self._ensure_column(conn, "project_memories", "chapter_analysis_memories_json", "TEXT NOT NULL DEFAULT '[]'")
+            self._ensure_column(conn, "project_memories", "chapter_continuation_memories_json", "TEXT NOT NULL DEFAULT '[]'")
+            self._ensure_column(conn, "project_memories", "chapter_tasks_json", "TEXT NOT NULL DEFAULT '[]'")
+            self._ensure_column(conn, "project_memories", "structural_drafts_json", "TEXT NOT NULL DEFAULT '[]'")
+            self._ensure_column(conn, "project_memories", "detemplated_drafts_json", "TEXT NOT NULL DEFAULT '[]'")
+            self._ensure_column(conn, "project_memories", "draft_integrity_checks_json", "TEXT NOT NULL DEFAULT '[]'")
+            self._ensure_column(conn, "project_memories", "style_requirements_json", "TEXT NOT NULL DEFAULT '{}'")
+            self._ensure_column(conn, "chapter_plans", "chapter_id", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "chapter_plans", "chapter_function", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "chapter_plans", "goals_json", "TEXT NOT NULL DEFAULT '[]'")
+            self._ensure_column(conn, "chapter_plans", "must_continue_points_json", "TEXT NOT NULL DEFAULT '[]'")
+            self._ensure_column(conn, "chapter_plans", "forbidden_jumps_json", "TEXT NOT NULL DEFAULT '[]'")
+            self._ensure_column(conn, "chapter_plans", "required_foreshadowing_action", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "chapter_plans", "required_hook_strength", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "chapter_plans", "pace_target", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "chapter_plans", "opening_continuation", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "chapter_plans", "chapter_payoff", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "chapter_plans", "style_bias", "TEXT DEFAULT ''")
             conn.commit()
 
     def save_project_memory(self, payload: Dict[str, Any]) -> None:
@@ -49,8 +74,11 @@ class SQLiteV2Repository:
                 INSERT INTO project_memories (
                   id, project_id, version, characters_json, world_facts_json, plot_arcs_json,
                   events_json, style_profile_json, outline_context_json, current_state_json,
-                  chapter_summaries_json, continuity_flags_json, is_active, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                  chapter_summaries_json, continuity_flags_json, global_constraints_json,
+                  chapter_analysis_memories_json, chapter_continuation_memories_json, chapter_tasks_json,
+                  structural_drafts_json, detemplated_drafts_json, draft_integrity_checks_json, style_requirements_json,
+                  is_active, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """,
                 (
                     payload["id"],
@@ -65,6 +93,14 @@ class SQLiteV2Repository:
                     json.dumps(payload.get("current_state") or {}, ensure_ascii=False),
                     json.dumps(payload.get("chapter_summaries") or [], ensure_ascii=False),
                     json.dumps(payload.get("continuity_flags") or [], ensure_ascii=False),
+                    json.dumps(payload.get("global_constraints") or {}, ensure_ascii=False),
+                    json.dumps(payload.get("chapter_analysis_memories") or [], ensure_ascii=False),
+                    json.dumps(payload.get("chapter_continuation_memories") or [], ensure_ascii=False),
+                    json.dumps(payload.get("chapter_tasks") or [], ensure_ascii=False),
+                    json.dumps(payload.get("structural_drafts") or [], ensure_ascii=False),
+                    json.dumps(payload.get("detemplated_drafts") or [], ensure_ascii=False),
+                    json.dumps(payload.get("draft_integrity_checks") or [], ensure_ascii=False),
+                    json.dumps(payload.get("style_requirements") or {}, ensure_ascii=False),
                     now,
                 ),
             )
@@ -91,6 +127,14 @@ class SQLiteV2Repository:
                 "current_state": json.loads(row["current_state_json"] or "{}"),
                 "chapter_summaries": json.loads(row["chapter_summaries_json"] or "[]"),
                 "continuity_flags": json.loads(row["continuity_flags_json"] or "[]"),
+                "global_constraints": json.loads(row["global_constraints_json"] or "{}"),
+                "chapter_analysis_memories": json.loads(row["chapter_analysis_memories_json"] or "[]"),
+                "chapter_continuation_memories": json.loads(row["chapter_continuation_memories_json"] or "[]"),
+                "chapter_tasks": json.loads(row["chapter_tasks_json"] or "[]"),
+                "structural_drafts": json.loads(row["structural_drafts_json"] or "[]"),
+                "detemplated_drafts": json.loads(row["detemplated_drafts_json"] or "[]"),
+                "draft_integrity_checks": json.loads(row["draft_integrity_checks_json"] or "[]"),
+                "style_requirements": json.loads(row["style_requirements_json"] or "{}"),
             }
 
     def save_memory_view(self, payload: Dict[str, Any]) -> None:
@@ -219,8 +263,10 @@ class SQLiteV2Repository:
                     """
                     INSERT INTO chapter_plans (
                       id, project_id, branch_id, chapter_number, title, goal, conflict, progression,
-                      ending_hook, target_words, related_arc_ids_json, status, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      ending_hook, target_words, related_arc_ids_json, chapter_id, chapter_function, goals_json,
+                      must_continue_points_json, forbidden_jumps_json, required_foreshadowing_action, required_hook_strength,
+                      pace_target, opening_continuation, chapter_payoff, style_bias, status, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         item["id"],
@@ -234,6 +280,17 @@ class SQLiteV2Repository:
                         item.get("ending_hook") or "",
                         int(item.get("target_words") or 2500),
                         json.dumps(item.get("related_arc_ids") or [], ensure_ascii=False),
+                        item.get("chapter_id") or "",
+                        item.get("chapter_function") or "",
+                        json.dumps(item.get("goals") or [], ensure_ascii=False),
+                        json.dumps(item.get("must_continue_points") or [], ensure_ascii=False),
+                        json.dumps(item.get("forbidden_jumps") or [], ensure_ascii=False),
+                        item.get("required_foreshadowing_action") or "",
+                        item.get("required_hook_strength") or "",
+                        item.get("pace_target") or "",
+                        item.get("opening_continuation") or "",
+                        item.get("chapter_payoff") or "",
+                        item.get("style_bias") or "",
                         item.get("status") or "pending",
                         now,
                         now,
@@ -267,6 +324,17 @@ class SQLiteV2Repository:
                     "ending_hook": row["ending_hook"] or "",
                     "target_words": row["target_words"] or 2500,
                     "related_arc_ids": json.loads(row["related_arc_ids_json"] or "[]"),
+                    "chapter_id": row["chapter_id"] or "",
+                    "chapter_function": row["chapter_function"] or "",
+                    "goals": json.loads(row["goals_json"] or "[]"),
+                    "must_continue_points": json.loads(row["must_continue_points_json"] or "[]"),
+                    "forbidden_jumps": json.loads(row["forbidden_jumps_json"] or "[]"),
+                    "required_foreshadowing_action": row["required_foreshadowing_action"] or "",
+                    "required_hook_strength": row["required_hook_strength"] or "",
+                    "pace_target": row["pace_target"] or "",
+                    "opening_continuation": row["opening_continuation"] or "",
+                    "chapter_payoff": row["chapter_payoff"] or "",
+                    "style_bias": row["style_bias"] or "",
                     "status": row["status"] or "pending",
                 }
                 for row in rows

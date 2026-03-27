@@ -15,6 +15,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import File, Form, UploadFile
 from pydantic import BaseModel, Field
 
+from application.dto.response_dto import (
+    ChapterPlanEnvelope,
+    ProjectMemoryEnvelope,
+    ProjectMemoryViewEnvelope,
+    StyleRequirementsEnvelope,
+    WriteResultResponse,
+)
 from application.services.v2_workflow_service import V2WorkflowService
 from presentation.api.dependencies import get_v2_workflow_service, get_project_service
 from domain.types import NovelId
@@ -58,6 +65,14 @@ class WriteRequest(BaseModel):
 class RefreshMemoryRequest(BaseModel):
     from_chapter_number: int = Field(..., ge=1)
     to_chapter_number: int = Field(..., ge=1)
+
+
+class StyleRequirementsRequest(BaseModel):
+    author_voice_keywords: list[str] = Field(default_factory=list)
+    avoid_patterns: list[str] = Field(default_factory=list)
+    preferred_rhythm: str = ""
+    narrative_distance: str = ""
+    dialogue_density: str = ""
 
 
 @router.post("/import")
@@ -145,7 +160,7 @@ async def organize_project(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/{project_id}/memory")
+@router.get("/{project_id}/memory", response_model=ProjectMemoryEnvelope)
 def get_memory(
     project_id: str,
     service: V2WorkflowService = Depends(get_v2_workflow_service),
@@ -153,12 +168,35 @@ def get_memory(
     return {"project_id": project_id, "memory": service.get_memory(project_id)}
 
 
-@router.get("/{project_id}/memory-view")
+@router.get("/{project_id}/memory-view", response_model=ProjectMemoryViewEnvelope)
 def get_memory_view(
     project_id: str,
     service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     return {"project_id": project_id, "memory_view": service.get_memory_view(project_id)}
+
+
+@router.get("/{project_id}/style-requirements", response_model=StyleRequirementsEnvelope)
+def get_style_requirements(
+    project_id: str,
+    service: V2WorkflowService = Depends(get_v2_workflow_service),
+):
+    try:
+        return service.get_style_requirements(project_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/{project_id}/style-requirements", response_model=StyleRequirementsEnvelope)
+def update_style_requirements(
+    project_id: str,
+    request: StyleRequirementsRequest,
+    service: V2WorkflowService = Depends(get_v2_workflow_service),
+):
+    try:
+        return service.update_style_requirements(project_id, request.model_dump())
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{project_id}/workflow-jobs")
@@ -199,7 +237,7 @@ async def generate_branches(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/{project_id}/chapter-plan")
+@router.post("/{project_id}/chapter-plan", response_model=ChapterPlanEnvelope)
 def create_plan(
     project_id: str,
     request: ChapterPlanRequest,
@@ -211,7 +249,7 @@ def create_plan(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/{project_id}/write")
+@router.post("/{project_id}/write", response_model=WriteResultResponse)
 async def write_by_plan(
     project_id: str,
     request: WriteRequest,
@@ -223,7 +261,7 @@ async def write_by_plan(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/{project_id}/refresh-memory")
+@router.post("/{project_id}/refresh-memory", response_model=ProjectMemoryViewEnvelope)
 async def refresh_memory(
     project_id: str,
     request: RefreshMemoryRequest,

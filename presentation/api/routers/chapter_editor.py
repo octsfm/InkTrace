@@ -128,6 +128,7 @@ async def get_chapter_outline(
             "events": [],
             "character_progress": "",
             "ending_hook": "",
+            "opening_continuation": "",
             "notes": "",
         }
     return {
@@ -137,18 +138,11 @@ async def get_chapter_outline(
         "events": outline.events,
         "character_progress": outline.character_progress,
         "ending_hook": outline.ending_hook,
+        "opening_continuation": outline.opening_continuation,
         "notes": outline.notes,
         "updated_at": outline.updated_at.isoformat(),
         "memory_refresh_required": False,
     }
-    logger.info(
-        "章节大纲已保存",
-        extra=build_log_context(
-            event="chapter_outline_saved",
-            chapter_id=chapter_id,
-        ),
-    )
-    return payload
 
 
 @router.get("/{chapter_id}/context")
@@ -190,6 +184,7 @@ async def save_chapter_outline(
         events=[str(x) for x in (request.events or [])],
         character_progress=request.character_progress,
         ending_hook=request.ending_hook,
+        opening_continuation=request.opening_continuation,
         notes=request.notes,
         created_at=existed.created_at if existed else now,
         updated_at=now,
@@ -202,6 +197,7 @@ async def save_chapter_outline(
         "events": outline.events,
         "character_progress": outline.character_progress,
         "ending_hook": outline.ending_hook,
+        "opening_continuation": outline.opening_continuation,
         "notes": outline.notes,
         "updated_at": outline.updated_at.isoformat(),
     }
@@ -218,13 +214,14 @@ async def save_chapter_outline(
 def _outline_dict(chapter_id: str, repo: IChapterOutlineRepository) -> dict:
     outline = repo.find_by_chapter_id(ChapterId(chapter_id))
     if not outline:
-        return {"goal": "", "conflict": "", "events": [], "character_progress": "", "ending_hook": "", "notes": ""}
+        return {"goal": "", "conflict": "", "events": [], "character_progress": "", "ending_hook": "", "opening_continuation": "", "notes": ""}
     return {
         "goal": outline.goal,
         "conflict": outline.conflict,
         "events": outline.events,
         "character_progress": outline.character_progress,
         "ending_hook": outline.ending_hook,
+        "opening_continuation": outline.opening_continuation,
         "notes": outline.notes,
     }
 
@@ -280,6 +277,7 @@ async def import_chapter_content(
         events=[str(x) for x in (outline_draft.get("events") or [])],
         character_progress=outline_draft.get("character_progress") or "",
         ending_hook=outline_draft.get("ending_hook") or "",
+        opening_continuation=outline_draft.get("opening_continuation") or "",
         notes=outline_draft.get("notes") or "",
         created_at=existed.created_at if existed else now,
         updated_at=now,
@@ -298,6 +296,7 @@ async def import_chapter_content(
             "events": outline.events,
             "character_progress": outline.character_progress,
             "ending_hook": outline.ending_hook,
+            "opening_continuation": outline.opening_continuation,
             "notes": outline.notes,
         },
     }

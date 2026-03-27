@@ -109,6 +109,7 @@ class ChapterOutlineRequest(BaseRequest):
     events: List[str] = Field(default_factory=list)
     character_progress: str = ""
     ending_hook: str = ""
+    opening_continuation: str = ""
     notes: str = ""
 
 

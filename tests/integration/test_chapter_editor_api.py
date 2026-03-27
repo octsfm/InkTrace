@@ -22,6 +22,7 @@ class _FakeChapterAIService:
                 "events": ["事件1", "事件2"],
                 "character_progress": "角色成长",
                 "ending_hook": "埋下悬念",
+                "opening_continuation": "承接上章",
                 "notes": "测试草稿",
             },
             "used_fallback": False,
@@ -43,6 +44,7 @@ class _FakeChapterAIService:
             "events": ["分析事件"],
             "character_progress": "分析推进",
             "ending_hook": "分析悬念",
+            "opening_continuation": "分析承接",
             "notes": "分析备注",
         }
         return {"result_text": "", "analysis": {"outline_draft": draft}, "outline_draft": draft, "used_fallback": False}
@@ -96,15 +98,18 @@ def test_chapter_editor_read_save_outline_and_ai_actions(caplog):
                 "events": ["发现线索", "遭遇盘查"],
                 "character_progress": "主角从试探转入主动调查",
                 "ending_hook": "神秘人现身",
+                "opening_continuation": "承接上一章的古城追踪",
                 "notes": "保持紧张节奏",
             },
         )
         assert outline_resp.status_code == 200
         assert outline_resp.json()["goal"] == "推进主角调查"
         assert outline_resp.json()["character_progress"] == "主角从试探转入主动调查"
+        assert outline_resp.json()["opening_continuation"] == "承接上一章的古城追踪"
         outline_get = client.get(f"/api/chapters/{chapter_id}/outline")
         assert outline_get.status_code == 200
         assert outline_get.json()["character_progress"] == "主角从试探转入主动调查"
+        assert outline_get.json()["opening_continuation"] == "承接上一章的古城追踪"
 
         import_resp = client.post(
             f"/api/chapters/{chapter_id}/import",
@@ -119,7 +124,7 @@ def test_chapter_editor_read_save_outline_and_ai_actions(caplog):
         assert imported["title"] == "第1章 再入古城"
         assert imported["content"]
         assert "used_fallback" in imported
-        for key in ["goal", "conflict", "events", "character_progress", "ending_hook", "notes"]:
+        for key in ["goal", "conflict", "events", "character_progress", "ending_hook", "opening_continuation", "notes"]:
             assert key in imported["outline_draft"]
 
         optimize_resp = client.post(

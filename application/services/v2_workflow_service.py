@@ -259,7 +259,14 @@ class V2WorkflowService:
                 )
                 self.v2_repo.finish_workflow_job(job_id, "failed", error_message="章节分析失败")
                 raise ValueError("章节分析失败")
-            merged_memory = self._merge_structured_memory(merged_memory, incremental.payload or {}, chapter.get("title") or "")
+            merged_memory = self._merge_structured_memory(
+                merged_memory,
+                incremental.payload or {},
+                chapter.get("title") or "",
+                chapter_number=int(chapter.get("index") or index),
+                chapter_id=str(chapter.get("id") or ""),
+                chapter_content=str(chapter.get("content") or ""),
+            )
             self.logger.info(
                 "章节分析完成",
                 extra=build_log_context(
@@ -344,6 +351,50 @@ class V2WorkflowService:
 
     def get_memory_view(self, project_id: str) -> Dict[str, Any]:
         return self.v2_repo.find_memory_view(project_id) or {}
+
+    def get_style_requirements(self, project_id: str) -> Dict[str, Any]:
+        memory = self.get_memory(project_id) or {}
+        style_requirements = memory.get("style_requirements")
+        if not isinstance(style_requirements, dict):
+            style_requirements = {}
+        return {
+            "project_id": project_id,
+            "style_requirements": {
+                "author_voice_keywords": [str(x) for x in (style_requirements.get("author_voice_keywords") or []) if str(x).strip()],
+                "avoid_patterns": [str(x) for x in (style_requirements.get("avoid_patterns") or []) if str(x).strip()],
+                "preferred_rhythm": self.clean_text(str(style_requirements.get("preferred_rhythm") or "")),
+                "narrative_distance": self.clean_text(str(style_requirements.get("narrative_distance") or "")),
+                "dialogue_density": self.clean_text(str(style_requirements.get("dialogue_density") or "")),
+            },
+        }
+
+    def update_style_requirements(self, project_id: str, style_requirements: Dict[str, Any]) -> Dict[str, Any]:
+        project = self.project_service.get_project(ProjectId(project_id))
+        if not project:
+            raise ValueError("项目不存在")
+        outline_context = self._get_outline_context(project.novel_id)
+        memory = self._load_structured_memory(project_id, project.novel_id, outline_context)
+        incoming = style_requirements if isinstance(style_requirements, dict) else {}
+        current = memory.get("style_requirements") if isinstance(memory.get("style_requirements"), dict) else {}
+        merged = {
+            "author_voice_keywords": self.normalize_text_list(
+                [str(x) for x in ((incoming.get("author_voice_keywords") if "author_voice_keywords" in incoming else current.get("author_voice_keywords")) or [])],
+                20,
+            ),
+            "avoid_patterns": self.normalize_text_list(
+                [str(x) for x in ((incoming.get("avoid_patterns") if "avoid_patterns" in incoming else current.get("avoid_patterns")) or [])],
+                20,
+            ),
+            "preferred_rhythm": self.clean_text(str(incoming.get("preferred_rhythm") if "preferred_rhythm" in incoming else current.get("preferred_rhythm") or "")),
+            "narrative_distance": self.clean_text(str(incoming.get("narrative_distance") if "narrative_distance" in incoming else current.get("narrative_distance") or "")),
+            "dialogue_density": self.clean_text(str(incoming.get("dialogue_density") if "dialogue_density" in incoming else current.get("dialogue_density") or "")),
+        }
+        memory["style_requirements"] = merged
+        self.project_service.bind_memory_to_novel(project.novel_id, memory)
+        memory_payload = self._to_project_memory_payload(project_id, memory)
+        self.v2_repo.save_project_memory(memory_payload)
+        self.v2_repo.save_memory_view(self._to_memory_view_payload(project_id, memory_payload))
+        return {"project_id": project_id, "style_requirements": merged}
 
     def get_chapter_editor_context(self, project_id: str, chapter_number: int = 0, recent_limit: int = 5) -> Dict[str, Any]:
         project = self.project_service.get_project(ProjectId(project_id))
@@ -486,7 +537,14 @@ class V2WorkflowService:
                 str(outline_context.get("world_setting") or ""),
             ]
         ).strip("；")
+        memory = self._load_structured_memory(project_id, project.novel_id, outline_context)
         plans = []
+        continuation_memories = memory.get("chapter_continuation_memories") if isinstance(memory.get("chapter_continuation_memories"), list) else []
+        latest_continuation = continuation_memories[-1] if continuation_memories else {}
+        must_continue_points = latest_continuation.get("must_continue_points") if isinstance(latest_continuation, dict) else []
+        forbidden_jumps = latest_continuation.get("forbidden_jumps") if isinstance(latest_continuation, dict) else []
+        opening_continuation = str((latest_continuation or {}).get("last_hook") or memory.get("current_state", {}).get("latest_summary") or "")
+        tone_tags = [str(x).strip() for x in ((memory.get("style_profile") or {}).get("tone_tags") or []) if str(x).strip()]
         for i in range(chapter_count):
             no = start_no + i
             outline_clause = f"并参考大纲约束：{outline_summary[:120]}" if outline_summary else "并保持与当前大纲和设定一致"
@@ -504,9 +562,25 @@ class V2WorkflowService:
                     "target_words": target_words_per_chapter,
                     "related_arc_ids": [],
                     "status": "ready",
+                    "chapter_id": f"planned_{project_id}_{no}",
+                    "chapter_function": "推进主线",
+                    "goals": [f"推进“{branch['title']}”分支主线", f"第{no}章完成阶段推进"],
+                    "must_continue_points": [str(x) for x in (must_continue_points or []) if str(x).strip()],
+                    "forbidden_jumps": [str(x) for x in (forbidden_jumps or []) if str(x).strip()],
+                    "required_foreshadowing_action": "推进",
+                    "required_hook_strength": "中",
+                    "pace_target": "中速推进",
+                    "opening_continuation": self.clean_text(opening_continuation),
+                    "chapter_payoff": f"完成分支“{branch['title']}”的阶段性收益",
+                    "style_bias": "、".join(tone_tags[:3]),
                 }
             )
         self.v2_repo.replace_plans(project_id, plans)
+        memory["chapter_tasks"] = [*(memory.get("chapter_tasks") or []), *plans][-300:]
+        self.project_service.bind_memory_to_novel(project.novel_id, memory)
+        memory_payload = self._to_project_memory_payload(project_id, memory)
+        self.v2_repo.save_project_memory(memory_payload)
+        self.v2_repo.save_memory_view(self._to_memory_view_payload(project_id, memory_payload))
         self.logger.info(
             "章节计划完成",
             extra=build_log_context(event="chapter_plan_finished", project_id=project_id, branch_id=branch_id, chapter_count=len(plans)),
@@ -529,6 +603,9 @@ class V2WorkflowService:
         latest_content = ""
         latest_title = ""
         latest_chapter_number = 0
+        latest_structural_draft: Dict[str, Any] = {}
+        latest_detemplated_draft: Dict[str, Any] = {}
+        latest_integrity_check: Dict[str, Any] = {}
         chapters = self.chapter_repo.find_by_novel(project.novel_id)
         next_number = max([int(ch.number) for ch in chapters], default=0) + 1 if auto_commit else 0
         memory["outline_context"] = outline_context
@@ -538,6 +615,22 @@ class V2WorkflowService:
                 TaskContext(novel_id=str(project.novel_id), goal=direction, target_word_count=plan["target_words"]),
                 {
                     "direction": direction,
+                    "chapter_task": {
+                        "chapter_id": str(plan.get("chapter_id") or ""),
+                        "chapter_number": int(plan.get("chapter_number") or 0),
+                        "chapter_function": str(plan.get("chapter_function") or ""),
+                        "goals": [str(x) for x in (plan.get("goals") or [])],
+                        "must_continue_points": [str(x) for x in (plan.get("must_continue_points") or [])],
+                        "forbidden_jumps": [str(x) for x in (plan.get("forbidden_jumps") or [])],
+                        "required_foreshadowing_action": str(plan.get("required_foreshadowing_action") or "推进"),
+                        "required_hook_strength": str(plan.get("required_hook_strength") or "中"),
+                        "pace_target": str(plan.get("pace_target") or ""),
+                        "opening_continuation": str(plan.get("opening_continuation") or ""),
+                        "chapter_payoff": str(plan.get("chapter_payoff") or ""),
+                        "style_bias": str(plan.get("style_bias") or ""),
+                    },
+                    "global_constraints": memory.get("global_constraints") or {},
+                    "style_requirements": memory.get("style_requirements") or {},
                     "memory": self._to_tool_memory_context(memory),
                     "chapters": [{"content": ch.content, "number": ch.number} for ch in chapters[-8:]],
                     "chapter_count": len(chapters),
@@ -555,8 +648,42 @@ class V2WorkflowService:
                 plan_title=str(plan.get("title") or ""),
                 chapter_number=int(plan.get("chapter_number") or 0),
             )
-            latest_content = normalized["content"]
-            latest_title = normalized["title"]
+            task_id = str(plan.get("id") or "")
+            structural_id = f"struct_{uuid.uuid4().hex[:10]}"
+            structural_draft = {
+                "id": structural_id,
+                "chapter_id": str(plan.get("chapter_id") or ""),
+                "chapter_number": int(normalized["chapter_number"] or 0),
+                "title": self._ensure_chapter_title(normalized["title"], int(normalized["chapter_number"] or 0)),
+                "content": normalized["content"],
+                "source_task_id": task_id,
+                "generation_notes": [self.clean_text(str(plan.get("chapter_function") or "推进主线"))],
+            }
+            detemplated_text = self._detemplate_content(structural_draft["content"], memory.get("style_requirements") or {}, plan)
+            detemplated_draft = {
+                "id": f"det_{uuid.uuid4().hex[:10]}",
+                "chapter_id": str(plan.get("chapter_id") or ""),
+                "chapter_number": structural_draft["chapter_number"],
+                "title": structural_draft["title"],
+                "content": detemplated_text,
+                "based_on_structural_draft_id": structural_id,
+                "style_requirements_snapshot": memory.get("style_requirements") or {},
+            }
+            integrity_check = self._check_draft_integrity(structural_draft, detemplated_draft, plan)
+            used_structural_fallback = False
+            if not self._is_integrity_ok(integrity_check):
+                detemplated_draft["content"] = structural_draft["content"]
+                detemplated_draft["title"] = structural_draft["title"]
+                used_structural_fallback = True
+                integrity_check["risk_notes"] = [*(integrity_check.get("risk_notes") or []), "检测到一致性风险，已回退结构稿"]
+            memory["structural_drafts"] = [*(memory.get("structural_drafts") or []), structural_draft][-200:]
+            memory["detemplated_drafts"] = [*(memory.get("detemplated_drafts") or []), detemplated_draft][-200:]
+            memory["draft_integrity_checks"] = [*(memory.get("draft_integrity_checks") or []), integrity_check][-200:]
+            latest_structural_draft = dict(structural_draft)
+            latest_detemplated_draft = dict(detemplated_draft)
+            latest_integrity_check = dict(integrity_check)
+            latest_content = detemplated_draft["content"]
+            latest_title = detemplated_draft["title"]
             latest_chapter_number = int(normalized["chapter_number"] or 0)
             if auto_commit:
                 no = next_number
@@ -577,6 +704,26 @@ class V2WorkflowService:
                 generated_ids.append(chapter.id.value)
                 latest_title = chapter.title
                 latest_chapter_number = no
+                structural_draft["chapter_id"] = chapter.id.value
+                structural_draft["chapter_number"] = no
+                structural_draft["title"] = chapter.title
+                detemplated_draft["chapter_id"] = chapter.id.value
+                detemplated_draft["chapter_number"] = no
+                detemplated_draft["title"] = chapter.title
+                integrity_check["chapter_number"] = no
+                tasks = memory.get("chapter_tasks") or []
+                updated_tasks = []
+                for task in tasks:
+                    if isinstance(task, dict) and str(task.get("id") or "") == str(plan.get("id") or ""):
+                        copied = dict(task)
+                        copied["chapter_id"] = chapter.id.value
+                        copied["chapter_number"] = no
+                        copied["title"] = chapter.title
+                        copied["status"] = "done"
+                        updated_tasks.append(copied)
+                    else:
+                        updated_tasks.append(task)
+                memory["chapter_tasks"] = updated_tasks[-300:]
             if auto_commit:
                 memory["events"] = [*(memory.get("events") or []), *((result.payload or {}).get("new_events") or [])][-120:]
                 memory["chapter_summaries"] = [*(memory.get("chapter_summaries") or []), latest_content[:120]][-300:]
@@ -617,6 +764,10 @@ class V2WorkflowService:
                 "title": latest_title,
                 "content": latest_content,
             },
+            "latest_structural_draft": latest_structural_draft,
+            "latest_detemplated_draft": latest_detemplated_draft,
+            "latest_draft_integrity_check": latest_integrity_check,
+            "used_structural_fallback": bool((latest_integrity_check.get("risk_notes") or []) and "回退结构稿" in "；".join(latest_integrity_check.get("risk_notes") or [])),
             "memory_view": view_payload,
         }
 
@@ -649,7 +800,14 @@ class V2WorkflowService:
                 },
             )
             if incremental.status == "success":
-                memory = self._merge_structured_memory(memory, incremental.payload or {}, chapter.title or f"第{chapter.number}章")
+                memory = self._merge_structured_memory(
+                    memory,
+                    incremental.payload or {},
+                    chapter.title or f"第{chapter.number}章",
+                    chapter_number=chapter.number,
+                    chapter_id=chapter.id.value,
+                    chapter_content=chapter.content or "",
+                )
         consolidate = await analyzer.execute_async(
             TaskContext(novel_id=str(project.novel_id), goal="v2_refresh_consolidate"),
             {"mode": "consolidate_mode", "memory": self._to_tool_memory_context(memory)},
@@ -696,6 +854,94 @@ class V2WorkflowService:
             title = f"第{safe_no}章"
         return {"chapter_number": safe_no, "title": title, "content": content}
 
+    def _build_global_constraints(self, memory: Dict[str, Any]) -> Dict[str, Any]:
+        chapter_summaries = [self.clean_text(str(x)) for x in (memory.get("chapter_summaries") or []) if str(x).strip()]
+        plot_lines = self._build_plot_lines(memory)
+        protagonist_traits: List[str] = []
+        for char in (memory.get("characters") or []):
+            if isinstance(char, dict):
+                protagonist_traits.extend([str(x) for x in (char.get("traits") or []) if str(x).strip()])
+        return {
+            "main_plot": plot_lines[0] if plot_lines else "",
+            "hidden_plot": plot_lines[1] if len(plot_lines) > 1 else "",
+            "core_selling_points": self.normalize_text_list(plot_lines[:5], 8),
+            "protagonist_core_traits": self.normalize_text_list(protagonist_traits, 12),
+            "must_keep_threads": self.normalize_text_list(chapter_summaries[-10:], 12),
+            "genre_guardrails": self.normalize_text_list([str(memory.get("outline_context", {}).get("premise") or "")], 6),
+        }
+
+    def _build_style_requirements(self, style_profile: Dict[str, Any]) -> Dict[str, Any]:
+        style = style_profile if isinstance(style_profile, dict) else {}
+        return {
+            "author_voice_keywords": self.normalize_text_list([str(x) for x in (style.get("tone_tags") or [])], 10),
+            "avoid_patterns": [],
+            "preferred_rhythm": self.clean_text(str("、".join([str(x) for x in (style.get("rhythm_tags") or []) if str(x).strip()]))),
+            "narrative_distance": self.clean_text(str(style.get("narrative_pov") or "")),
+            "dialogue_density": "中",
+        }
+
+    def _detemplate_content(self, content: str, style_requirements: Dict[str, Any], chapter_task: Dict[str, Any]) -> str:
+        text = str(content or "").strip()
+        if not text:
+            return ""
+        avoid_patterns = [str(x).strip() for x in ((style_requirements or {}).get("avoid_patterns") or []) if str(x).strip()]
+        defaults = ["与此同时", "下一刻", "不由得", "仿佛", "毫无疑问"]
+        for phrase in [*defaults, *avoid_patterns]:
+            text = text.replace(phrase, "")
+        style_bias = self.clean_text(str((chapter_task or {}).get("style_bias") or ""))
+        if style_bias and style_bias not in text[:100]:
+            text = f"{style_bias}。{text}"
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        return text
+
+    def _check_draft_integrity(self, structural_draft: Dict[str, Any], detemplated_draft: Dict[str, Any], chapter_task: Dict[str, Any]) -> Dict[str, Any]:
+        source = str(structural_draft.get("content") or "")
+        target = str(detemplated_draft.get("content") or "")
+        must_continue = [str(x) for x in ((chapter_task or {}).get("must_continue_points") or []) if str(x).strip()]
+        forbidden = [str(x) for x in ((chapter_task or {}).get("forbidden_jumps") or []) if str(x).strip()]
+        risk_notes: List[str] = []
+        if not target:
+            risk_notes.append("去模板化后正文为空")
+        event_integrity_ok = len(target) >= max(200, int(len(source) * 0.5)) if source else bool(target)
+        if not event_integrity_ok:
+            risk_notes.append("事件信息疑似丢失")
+        motivation_integrity_ok = True
+        if must_continue:
+            missing = [item for item in must_continue if item not in target]
+            motivation_integrity_ok = len(missing) <= max(1, len(must_continue) // 2)
+            if not motivation_integrity_ok:
+                risk_notes.append("关键承接点缺失过多")
+        foreshadowing_integrity_ok = True
+        if str(chapter_task.get("required_foreshadowing_action") or "") == "回收" and "伏笔" not in target:
+            foreshadowing_integrity_ok = False
+            risk_notes.append("要求回收伏笔但正文未体现")
+        hook_integrity_ok = str(chapter_task.get("required_hook_strength") or "中") != "强" or any(x in target[-60:] for x in ["？", "！", "……"])
+        if not hook_integrity_ok:
+            risk_notes.append("章节结尾钩子强度不足")
+        continuity_ok = True
+        violated = [item for item in forbidden if item and item in target]
+        if violated:
+            continuity_ok = False
+            risk_notes.append(f"触发禁跳项: {'、'.join(violated[:3])}")
+        return {
+            "chapter_number": int(structural_draft.get("chapter_number") or 0),
+            "event_integrity_ok": event_integrity_ok,
+            "motivation_integrity_ok": motivation_integrity_ok,
+            "foreshadowing_integrity_ok": foreshadowing_integrity_ok,
+            "hook_integrity_ok": hook_integrity_ok,
+            "continuity_ok": continuity_ok,
+            "risk_notes": risk_notes,
+        }
+
+    def _is_integrity_ok(self, check: Dict[str, Any]) -> bool:
+        return bool(
+            check.get("event_integrity_ok")
+            and check.get("motivation_integrity_ok")
+            and check.get("foreshadowing_integrity_ok")
+            and check.get("hook_integrity_ok")
+            and check.get("continuity_ok")
+        )
+
     def _to_project_memory_payload(self, project_id: str, memory: Dict[str, Any]) -> Dict[str, Any]:
         active_memory = self.v2_repo.find_active_project_memory(project_id) or {}
         version = int(active_memory.get("version") or 0) + 1
@@ -712,6 +958,14 @@ class V2WorkflowService:
             "current_state": memory.get("current_state") or {},
             "chapter_summaries": memory.get("chapter_summaries") or [],
             "continuity_flags": memory.get("continuity_flags") or [],
+            "global_constraints": memory.get("global_constraints") or {},
+            "chapter_analysis_memories": memory.get("chapter_analysis_memories") or [],
+            "chapter_continuation_memories": memory.get("chapter_continuation_memories") or [],
+            "chapter_tasks": memory.get("chapter_tasks") or [],
+            "structural_drafts": memory.get("structural_drafts") or [],
+            "detemplated_drafts": memory.get("detemplated_drafts") or [],
+            "draft_integrity_checks": memory.get("draft_integrity_checks") or [],
+            "style_requirements": memory.get("style_requirements") or {},
         }
 
     def _to_memory_view_payload(self, project_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -885,6 +1139,27 @@ class V2WorkflowService:
             "current_state": {"latest_chapter_number": 0, "latest_summary": "", "active_arc_ids": [], "recent_conflicts": [], "next_writing_focus": ""},
             "chapter_summaries": [],
             "continuity_flags": [],
+            "global_constraints": {
+                "main_plot": "",
+                "hidden_plot": "",
+                "core_selling_points": [],
+                "protagonist_core_traits": [],
+                "must_keep_threads": [],
+                "genre_guardrails": [],
+            },
+            "chapter_analysis_memories": [],
+            "chapter_continuation_memories": [],
+            "chapter_tasks": [],
+            "structural_drafts": [],
+            "detemplated_drafts": [],
+            "draft_integrity_checks": [],
+            "style_requirements": {
+                "author_voice_keywords": [],
+                "avoid_patterns": [],
+                "preferred_rhythm": "",
+                "narrative_distance": "",
+                "dialogue_density": "",
+            },
         }
 
     def _normalize_legacy_memory(self, memory: Dict[str, Any], outline_context: Dict[str, Any]) -> Dict[str, Any]:
@@ -928,6 +1203,11 @@ class V2WorkflowService:
             "events": memory.get("events") or [],
             "continuity_flags": memory.get("continuity_flags") or [],
             "outline_context": memory.get("outline_context") or {},
+            "global_constraints": memory.get("global_constraints") or {},
+            "style_requirements": memory.get("style_requirements") or {},
+            "chapter_analysis_memories": memory.get("chapter_analysis_memories") or [],
+            "chapter_continuation_memories": memory.get("chapter_continuation_memories") or [],
+            "chapter_tasks": memory.get("chapter_tasks") or [],
         }
         if self._is_legacy_memory(memory):
             world_parts: List[str] = []
@@ -956,7 +1236,15 @@ class V2WorkflowService:
             )
         return structured
 
-    def _merge_structured_memory(self, base: Dict[str, Any], analysis_payload: Dict[str, Any], chapter_title: str) -> Dict[str, Any]:
+    def _merge_structured_memory(
+        self,
+        base: Dict[str, Any],
+        analysis_payload: Dict[str, Any],
+        chapter_title: str,
+        chapter_number: int = 0,
+        chapter_id: str = "",
+        chapter_content: str = "",
+    ) -> Dict[str, Any]:
         merged = dict(base or {})
         characters = merged.get("characters") or []
         new_chars = analysis_payload.get("characters") or []
@@ -1038,4 +1326,63 @@ class V2WorkflowService:
         merged["current_state"] = current_state
         merged["outline_context"] = merged.get("outline_context") or {}
         merged["plot_arcs"] = merged.get("plot_arcs") or []
+        global_constraints = merged.get("global_constraints") if isinstance(merged.get("global_constraints"), dict) else {}
+        if not global_constraints:
+            global_constraints = self._build_global_constraints(merged)
+        merged["global_constraints"] = {
+            "main_plot": self.clean_text(str(global_constraints.get("main_plot") or "")),
+            "hidden_plot": self.clean_text(str(global_constraints.get("hidden_plot") or "")),
+            "core_selling_points": self.normalize_text_list([str(x) for x in (global_constraints.get("core_selling_points") or [])], 12),
+            "protagonist_core_traits": self.normalize_text_list([str(x) for x in (global_constraints.get("protagonist_core_traits") or [])], 12),
+            "must_keep_threads": self.normalize_text_list([str(x) for x in (global_constraints.get("must_keep_threads") or [])], 20),
+            "genre_guardrails": self.normalize_text_list([str(x) for x in (global_constraints.get("genre_guardrails") or [])], 12),
+        }
+        style_requirements = merged.get("style_requirements") if isinstance(merged.get("style_requirements"), dict) else {}
+        if not style_requirements:
+            style_requirements = self._build_style_requirements(merged.get("style_profile") or {})
+        merged["style_requirements"] = {
+            "author_voice_keywords": self.normalize_text_list([str(x) for x in (style_requirements.get("author_voice_keywords") or [])], 12),
+            "avoid_patterns": self.normalize_text_list([str(x) for x in (style_requirements.get("avoid_patterns") or [])], 12),
+            "preferred_rhythm": self.clean_text(str(style_requirements.get("preferred_rhythm") or "")),
+            "narrative_distance": self.clean_text(str(style_requirements.get("narrative_distance") or "")),
+            "dialogue_density": self.clean_text(str(style_requirements.get("dialogue_density") or "")),
+        }
+        if chapter_number > 0:
+            analysis_memory = {
+                "chapter_id": chapter_id,
+                "chapter_number": chapter_number,
+                "chapter_title": self.clean_text(chapter_title),
+                "summary": summary,
+                "events": self.normalize_text_list([str(x) for x in incoming_summaries], 12),
+                "plot_role": self.clean_text(str(analysis_payload.get("plot_role") or "推进主线")),
+                "conflict": self.clean_text(str(analysis_payload.get("conflict") or "")),
+                "foreshadowing": self.normalize_text_list([str(x) for x in (analysis_payload.get("foreshadowing") or [])], 12),
+                "hook": self.clean_text(str(analysis_payload.get("hook") or "")),
+                "problems": self.normalize_text_list([str(x) for x in (analysis_payload.get("problems") or [])], 12),
+            }
+            continuation_memory = {
+                "chapter_id": chapter_id,
+                "chapter_number": chapter_number,
+                "chapter_title": self.clean_text(chapter_title),
+                "scene_summary": summary,
+                "scene_state": {"time": "", "location": "", "environment": ""},
+                "protagonist_state": {"name": "", "physical_state": "", "emotion_state": "", "current_goal": "", "internal_tension": ""},
+                "active_characters": [],
+                "active_conflicts": self.normalize_text_list([str(x) for x in (current_state.get("recent_conflicts") or [])], 12),
+                "immediate_threads": self.normalize_text_list([str(x) for x in incoming_summaries], 8),
+                "long_term_threads": self.normalize_text_list([str(x) for x in (merged.get("chapter_summaries") or [])[-8:]], 8),
+                "recent_reveals": self.normalize_text_list([str(x) for x in (analysis_payload.get("reveals") or [])], 8),
+                "must_continue_points": self.normalize_text_list([str(x) for x in incoming_summaries], 8),
+                "forbidden_jumps": self.normalize_text_list([str(x) for x in (analysis_payload.get("forbidden_jumps") or [])], 8),
+                "tone_and_pacing": {"tone": "、".join(style.get("tone_tags") or []), "pace": "、".join(style.get("rhythm_tags") or [])},
+                "last_hook": self.clean_text(str(analysis_payload.get("hook") or current_state.get("next_writing_focus") or "")),
+            }
+            merged["chapter_analysis_memories"] = [
+                *(merged.get("chapter_analysis_memories") or []),
+                analysis_memory,
+            ][-300:]
+            merged["chapter_continuation_memories"] = [
+                *(merged.get("chapter_continuation_memories") or []),
+                continuation_memory,
+            ][-300:]
         return merged

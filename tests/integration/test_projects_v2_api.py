@@ -46,10 +46,25 @@ def test_projects_v2_import_and_query_chain():
         memory = client.get(f"/api/projects/{project_id}/memory")
         assert memory.status_code == 200
         assert memory.json()["project_id"] == project_id
+        payload = memory.json().get("memory") or {}
+        for key in [
+            "global_constraints",
+            "chapter_analysis_memories",
+            "chapter_continuation_memories",
+            "chapter_tasks",
+            "structural_drafts",
+            "detemplated_drafts",
+            "draft_integrity_checks",
+            "style_requirements",
+        ]:
+            assert key in payload
 
         view = client.get(f"/api/projects/{project_id}/memory-view")
         assert view.status_code == 200
         assert view.json()["project_id"] == project_id
+        style = client.get(f"/api/projects/{project_id}/style-requirements")
+        assert style.status_code == 200
+        assert style.json()["project_id"] == project_id
     finally:
         try:
             Path(novel_path).unlink(missing_ok=True)
@@ -129,6 +144,20 @@ def test_projects_v2_final_acceptance_chain():
     plan_payload = plan.json()
     plan_ids = [item["id"] for item in (plan_payload.get("plans") or [])]
     assert plan_ids
+    first_plan = (plan_payload.get("plans") or [])[0]
+    for key in [
+        "chapter_function",
+        "goals",
+        "must_continue_points",
+        "forbidden_jumps",
+        "required_foreshadowing_action",
+        "required_hook_strength",
+        "pace_target",
+        "opening_continuation",
+        "chapter_payoff",
+        "style_bias",
+    ]:
+        assert key in first_plan
     write = client.post(
         f"/api/projects/{project_id}/write",
         json={"plan_ids": plan_ids, "auto_commit": True},
@@ -136,6 +165,10 @@ def test_projects_v2_final_acceptance_chain():
     assert write.status_code == 200
     write_payload = write.json()
     assert write_payload.get("generated_chapter_ids")
+    assert "latest_structural_draft" in write_payload
+    assert "latest_detemplated_draft" in write_payload
+    assert "latest_draft_integrity_check" in write_payload
+    assert "used_structural_fallback" in write_payload
     refresh = client.post(
         f"/api/projects/{project_id}/refresh-memory",
         json={"from_chapter_number": 1, "to_chapter_number": 3},
@@ -361,3 +394,58 @@ def test_v2_write_appends_chapter_number_and_keeps_title():
     detail_after = client.get(f"/api/novels/{novel_id}").json()
     max_after = max(ch["number"] for ch in detail_after.get("chapters") or [])
     assert max_after >= max_before + 1
+
+
+def test_v2_write_fallbacks_to_structural_when_integrity_failed():
+    client = TestClient(app)
+    files = {
+        "novel_file": ("novel.txt", "第1章 起\n甲\n\n第2章 承\n乙", "text/plain"),
+    }
+    upload = client.post(
+        "/api/projects/import/upload",
+        data={"project_name": "续写校验回退测试", "author": "测试作者", "genre": "xuanhuan", "auto_organize": "false"},
+        files=files,
+    )
+    assert upload.status_code == 200
+    project_id = upload.json()["project_id"]
+    branches = client.post(
+        f"/api/projects/{project_id}/branches",
+        json={"direction_hint": "推进主线", "branch_count": 4},
+    )
+    assert branches.status_code == 200
+    branch_id = branches.json()["branches"][0]["id"]
+    plan = client.post(
+        f"/api/projects/{project_id}/chapter-plan",
+        json={"branch_id": branch_id, "chapter_count": 1, "target_words_per_chapter": 900},
+    )
+    assert plan.status_code == 200
+    plan_ids = [item["id"] for item in (plan.json().get("plans") or [])]
+    assert plan_ids
+
+    class _FakeContinueTool:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def execute_async(self, ctx, payload):
+            return type(
+                "R",
+                (),
+                {
+                    "status": "success",
+                    "payload": {
+                        "chapter_text": "很短",
+                        "new_events": [],
+                    },
+                },
+            )()
+
+    with patch("application.services.v2_workflow_service.ContinueWritingTool", _FakeContinueTool):
+        write = client.post(
+            f"/api/projects/{project_id}/write",
+            json={"plan_ids": plan_ids, "auto_commit": True},
+        )
+    assert write.status_code == 200
+    payload = write.json()
+    assert payload.get("used_structural_fallback") is True
+    check = payload.get("latest_draft_integrity_check") or {}
+    assert check.get("risk_notes")

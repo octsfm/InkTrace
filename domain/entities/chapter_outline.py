@@ -13,6 +13,7 @@ class ChapterOutline:
     events: List[str] = field(default_factory=list)
     character_progress: str = ""
     ending_hook: str = ""
+    opening_continuation: str = ""
     notes: str = ""
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
