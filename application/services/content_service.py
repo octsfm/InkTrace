@@ -11,8 +11,8 @@ import os
 from datetime import datetime
 from typing import List, Optional
 import uuid
-import logging
 
+from application.services.logging_service import build_log_context, get_logger
 from domain.entities.novel import Novel
 from domain.entities.chapter import Chapter
 from domain.entities.outline import Outline
@@ -50,7 +50,7 @@ class ContentService:
         self.txt_parser = txt_parser
         self.style_analyzer = StyleAnalyzer()
         self.plot_analyzer = PlotAnalyzer()
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
     def import_novel(self, request: ImportNovelRequest) -> NovelResponse:
         """
@@ -66,12 +66,72 @@ class ContentService:
 
         novel = self.novel_repo.find_by_id(NovelId(request.novel_id))
         if not novel:
+            self.logger.error(
+                "导入失败，小说不存在",
+                extra=build_log_context(event="import_failed", novel_id=request.novel_id, error="novel_not_found"),
+            )
             raise ValueError(f"小说不存在: {request.novel_id}")
+        incoming_author = str(getattr(request, "author", "") or "").strip()
+        if incoming_author and (not str(novel.author or "").strip() or str(novel.author).strip() == "未知"):
+            novel.author = incoming_author
         
-        if not os.path.exists(request.file_path):
-            raise FileNotFoundError(f"文件不存在: {request.file_path}")
-        
-        parsed = self.txt_parser.parse_novel_file(request.file_path)
+        import_mode = str(getattr(request, "import_mode", "full") or "full")
+        if import_mode not in {"full", "empty", "chapter_items"}:
+            import_mode = "full"
+        self.logger.info(
+            "导入开始",
+            extra=build_log_context(
+                event="import_started",
+                novel_id=request.novel_id,
+                author=incoming_author,
+                import_mode=import_mode,
+                file_path=request.file_path,
+                outline_present=bool(request.outline_path),
+            ),
+        )
+        chapter_items = getattr(request, "chapter_items", None) or []
+        parsed = {"chapters": []}
+        if import_mode == "chapter_items" and chapter_items:
+            rebuilt = self.txt_parser.rebuild_chapters_from_preview(chapter_items)
+            if isinstance(rebuilt, dict):
+                chapters = rebuilt.get("chapters")
+                parsed = rebuilt if isinstance(chapters, list) else {"chapters": []}
+            elif isinstance(rebuilt, list):
+                parsed = {"chapters": rebuilt}
+            else:
+                parsed = {"chapters": []}
+            if not parsed.get("chapters"):
+                parsed["chapters"] = [
+                    {
+                        "number": int(item.get("number") or index),
+                        "title": str(item.get("title") or f"第{index}章"),
+                        "content": str(item.get("content") or "").strip(),
+                        "word_count": len(str(item.get("content") or "").strip()),
+                    }
+                    for index, item in enumerate(chapter_items, 1)
+                    if isinstance(item, dict) and str(item.get("content") or "").strip()
+                ]
+        elif import_mode == "empty":
+            parsed["chapters"] = []
+        else:
+            if not os.path.exists(request.file_path):
+                self.logger.error(
+                    "导入失败，文件不存在",
+                    extra=build_log_context(event="import_failed", novel_id=request.novel_id, file_path=request.file_path, error="file_not_found"),
+                )
+                raise FileNotFoundError(f"文件不存在: {request.file_path}")
+            parsed = self.txt_parser.parse_novel_file(request.file_path)
+        self.logger.info(
+            "导入解析完成",
+            extra=build_log_context(
+                event="import_parsed",
+                novel_id=request.novel_id,
+                import_mode=import_mode,
+                chapter_count=len(parsed.get("chapters") or []),
+                outline_present=bool(request.outline_path),
+                file_path=request.file_path,
+            ),
+        )
         
         now = datetime.now()
         
@@ -91,7 +151,28 @@ class ContentService:
         
         self.novel_repo.save(novel)
         if request.outline_path and os.path.exists(request.outline_path):
-            outline_text = self.txt_parser.parse_outline_file(request.outline_path)
+            try:
+                outline_text = self.txt_parser.parse_outline_file(request.outline_path)
+            except Exception as exc:
+                self.logger.error(
+                    "导入失败，大纲解析异常",
+                    extra=build_log_context(
+                        event="import_failed",
+                        novel_id=request.novel_id,
+                        file_path=request.outline_path,
+                        error=str(exc),
+                    ),
+                )
+                raise
+            self.logger.info(
+                "导入大纲读取成功",
+                extra=build_log_context(
+                    event="import_outline_loaded",
+                    novel_id=request.novel_id,
+                    outline_present=True,
+                    file_path=request.outline_path,
+                ),
+            )
             if isinstance(outline_text, dict):
                 premise = str(outline_text.get("raw_content") or "")[:1200]
                 story_background = str(
@@ -121,6 +202,16 @@ class ContentService:
             self.outline_repo.save(outline)
             novel.set_outline(outline, now)
             self.novel_repo.save(novel)
+        self.logger.info(
+            "导入保存完成",
+            extra=build_log_context(
+                event="import_saved",
+                novel_id=request.novel_id,
+                chapter_count=len(parsed.get("chapters") or []),
+                import_mode=import_mode,
+                outline_present=bool(request.outline_path and os.path.exists(request.outline_path)),
+            ),
+        )
         
         return self._nov_to_response(novel)
 

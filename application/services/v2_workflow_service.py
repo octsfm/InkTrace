@@ -1,22 +1,20 @@
-﻿"""
-v2 閲嶆瀯涓绘祦绋嬫湇鍔°€?
-璇ユ湇鍔¤礋璐ｇ湡姝ｈ惤鍦板叚鏉′富閾撅細
-1) 瀵煎叆涓庨」鐩粦瀹?2) 绔犺妭浼樺厛鏁寸悊骞舵瀯寤?project_memory
-3) 鐢熸垚 memory_view
-4) 鐢熸垚鍒嗘敮
-5) 鐢熸垚澶氱珷璁″垝骞舵墽琛岀画鍐?6) 鍒锋柊 memory
+"""
+v2主流程服务。
+负责导入、整理、分支、计划、写作、刷新memory全链路。
 """
 
 from __future__ import annotations
 
 from datetime import datetime, UTC
+import json
 import re
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from application.agent_mvp import AnalysisTool, ContinueWritingTool, StoryBranchTool, TaskContext
 from application.dto.request_dto import ImportNovelRequest
 from application.services.content_service import ContentService
+from application.services.logging_service import build_log_context, get_logger
 from application.services.project_service import ProjectService
 from domain.entities.chapter import Chapter
 from domain.repositories.chapter_repository import IChapterRepository
@@ -24,6 +22,7 @@ from domain.repositories.novel_repository import INovelRepository
 from domain.repositories.outline_repository import IOutlineRepository
 from domain.types import ChapterId, ChapterStatus, NovelId, ProjectId
 from domain.types import GenreType
+from domain.utils import looks_garbled_text, repair_mojibake, sanitize_display_text
 from infrastructure.llm.llm_factory import LLMFactory
 from infrastructure.persistence.sqlite_v2_repo import SQLiteV2Repository
 
@@ -46,23 +45,80 @@ class V2WorkflowService:
         self.outline_repo = outline_repo
         self.llm_factory = llm_factory
         self.v2_repo = v2_repo
+        self.logger = get_logger(__name__)
+
+    def clean_text(self, value: str) -> str:
+        cleaned = sanitize_display_text(value)
+        if not cleaned:
+            return ""
+        cleaned = repair_mojibake(cleaned).strip()
+        cleaned = re.sub(r"chunk\s*=?\s*\d+", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\?{2,}", "", cleaned)
+        cleaned = cleaned.replace("分析完成", "").replace("组织完成", "")
+        cleaned = cleaned.replace(";", "；")
+        cleaned = cleaned.replace(",", "、")
+        cleaned = re.sub(r"[|/\\\\]+", "；", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip("；、-:： ")
+        return cleaned
+
+    def looks_garbled_text(self, value: str) -> bool:
+        if looks_garbled_text(value):
+            return True
+        if not isinstance(value, str):
+            return False
+        text = value.strip()
+        if not text:
+            return False
+        if text.count("?") >= max(3, len(text) // 4):
+            return True
+        return False
+
+    def normalize_text_list(self, items: List[str], limit: int) -> List[str]:
+        unique: List[str] = []
+        for item in items:
+            cleaned = self.clean_text(str(item or ""))
+            if not cleaned:
+                continue
+            if self.looks_garbled_text(cleaned):
+                continue
+            if cleaned not in unique:
+                unique.append(cleaned)
+            if len(unique) >= limit:
+                break
+        return unique[:limit]
 
     async def import_project(
         self,
         project_name: str,
         genre: str,
         novel_file_path: str,
+        author: str = "",
+        import_mode: str = "full",
+        chapter_items: Optional[List[Dict[str, Any]]] = None,
         outline_file_path: str = "",
         auto_organize: bool = True,
     ) -> Dict[str, Any]:
+        self.logger.info(
+            "导入项目开始",
+            extra=build_log_context(
+                event="workflow_import_started",
+                project_name=project_name,
+                import_mode=import_mode,
+                file_path=novel_file_path,
+                outline_present=bool(outline_file_path),
+            ),
+        )
         try:
             genre_enum = GenreType(genre) if genre else GenreType.XUANHUAN
         except ValueError:
             genre_enum = GenreType.XUANHUAN
-        project = self.project_service.create_project(name=project_name, genre=genre_enum)
+        project = self.project_service.create_project(name=project_name, genre=genre_enum, author=author)
         request = ImportNovelRequest(
             novel_id=str(project.novel_id),
             file_path=novel_file_path,
+            author=author,
+            import_mode=import_mode,
+            chapter_items=chapter_items or [],
             outline_path=outline_file_path or None,
         )
         self.content_service.import_novel(request)
@@ -70,6 +126,15 @@ class V2WorkflowService:
         if auto_organize:
             organized = await self.organize_project(project.id.value, mode="chapter_first", rebuild_memory=True)
             memory_view = organized.get("memory_view") or {}
+        self.logger.info(
+            "导入项目完成",
+            extra=build_log_context(
+                event="workflow_import_finished",
+                project_id=project.id.value,
+                novel_id=str(project.novel_id),
+                status="organized" if auto_organize else "imported",
+            ),
+        )
         return {
             "project_id": project.id.value,
             "novel_id": str(project.novel_id),
@@ -78,10 +143,56 @@ class V2WorkflowService:
             "memory_view": memory_view,
         }
 
-    async def organize_project(self, project_id: str, mode: str, rebuild_memory: bool) -> Dict[str, Any]:
+    async def organize_project(
+        self,
+        project_id: str,
+        mode: str,
+        rebuild_memory: bool,
+        progress_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+        resume_from: int = 0,
+        checkpoint_memory: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         project = self.project_service.get_project(ProjectId(project_id))
         if not project:
             raise ValueError("项目不存在")
+        self.logger.info(
+            "整理开始",
+            extra=build_log_context(
+                event="organize_started",
+                project_id=project_id,
+                novel_id=str(project.novel_id),
+                mode=mode,
+                rebuild_memory=bool(rebuild_memory),
+            ),
+        )
+        async def _emit_progress(
+            stage: str,
+            current: int,
+            total: int,
+            message: str,
+            current_chapter_title: str = "",
+            status: str = "running",
+            resumable: bool = False,
+            memory_snapshot: Optional[Dict[str, Any]] = None,
+        ) -> None:
+            if progress_callback is None:
+                return
+            safe_total = max(int(total), 0)
+            safe_current = max(0, min(int(current), safe_total)) if safe_total else 0
+            percent = 100 if safe_total and safe_current >= safe_total else int((safe_current / safe_total) * 100) if safe_total else 0
+            payload = {
+                "status": status,
+                "stage": stage,
+                "current": safe_current,
+                "total": safe_total,
+                "percent": percent,
+                "message": self.clean_text(message) or message,
+                "current_chapter_title": self.clean_text(current_chapter_title),
+                "resumable": resumable,
+            }
+            if isinstance(memory_snapshot, dict):
+                payload["memory_snapshot"] = memory_snapshot
+            await progress_callback(payload)
         job_id = self.v2_repo.start_workflow_job(
             project_id=project_id,
             workflow_type="organize_novel",
@@ -97,8 +208,36 @@ class V2WorkflowService:
             "summary": [outline.premise, outline.story_background] if outline else [],
         }
         chapters = self._build_chapter_units(project.novel_id, mode)
+        total_chapters = len(chapters)
+        self.logger.info(
+            "整理准备完成",
+            extra=build_log_context(event="organize_prepare_done", project_id=project_id, total_chapters=total_chapters),
+        )
+        resume_cursor = 0 if rebuild_memory else max(0, min(int(resume_from or 0), total_chapters))
         merged_memory: Dict[str, Any] = self._empty_structured_memory(outline_context)
-        for chapter in chapters:
+        if not rebuild_memory and resume_cursor > 0 and isinstance(checkpoint_memory, dict) and checkpoint_memory:
+            merged_memory = checkpoint_memory
+            merged_memory["outline_context"] = outline_context
+        await _emit_progress(
+            stage="prepare",
+            current=resume_cursor,
+            total=total_chapters,
+            message=f"准备整理章节（{resume_cursor}/{total_chapters}）",
+        )
+        for index, chapter in enumerate(chapters, 1):
+            if index <= resume_cursor:
+                continue
+            self.logger.info(
+                "章节分析开始",
+                extra=build_log_context(
+                    event="chapter_analysis_started",
+                    project_id=project_id,
+                    chapter_number=index,
+                    chapter_title=chapter.get("title") or f"第{index}章",
+                    current=index,
+                    total=total_chapters,
+                ),
+            )
             incremental = await analyzer.execute_async(
                 TaskContext(novel_id=novel_id, goal="v2_organize_incremental"),
                 {
@@ -108,26 +247,90 @@ class V2WorkflowService:
                 },
             )
             if incremental.status != "success":
-                self.v2_repo.finish_workflow_job(job_id, "failed", error_message="绔犺妭鍒嗘瀽澶辫触")
+                self.logger.error(
+                    "章节分析失败",
+                    extra=build_log_context(
+                        event="chapter_analysis_failed",
+                        project_id=project_id,
+                        chapter_number=index,
+                        chapter_title=chapter.get("title") or f"第{index}章",
+                        error="incremental_analysis_failed",
+                    ),
+                )
+                self.v2_repo.finish_workflow_job(job_id, "failed", error_message="章节分析失败")
                 raise ValueError("章节分析失败")
             merged_memory = self._merge_structured_memory(merged_memory, incremental.payload or {}, chapter.get("title") or "")
+            self.logger.info(
+                "章节分析完成",
+                extra=build_log_context(
+                    event="chapter_analysis_finished",
+                    project_id=project_id,
+                    chapter_number=index,
+                    chapter_title=chapter.get("title") or f"第{index}章",
+                ),
+            )
+            await _emit_progress(
+                stage="chapter_analysis",
+                current=index,
+                total=total_chapters,
+                message=f"正在分析第{index}/{total_chapters}章：{chapter.get('title') or f'第{index}章'}",
+                current_chapter_title=str(chapter.get("title") or f"第{index}章"),
+                resumable=index < total_chapters,
+                memory_snapshot=merged_memory,
+            )
+        await _emit_progress(
+            stage="memory_merge",
+            current=total_chapters,
+            total=total_chapters,
+            message="正在合并章节记忆",
+            resumable=False,
+        )
+        self.logger.info("开始合并记忆", extra=build_log_context(event="memory_merge_started", project_id=project_id))
         consolidate = await analyzer.execute_async(
             TaskContext(novel_id=novel_id, goal="v2_organize_consolidate"),
             {"mode": "consolidate_mode", "memory": self._to_tool_memory_context(merged_memory)},
         )
         if consolidate.status != "success":
-            self.v2_repo.finish_workflow_job(job_id, "failed", error_message="鍏ㄥ眬鏀舵暃澶辫触")
+            self.logger.error("记忆合并失败", extra=build_log_context(event="memory_merge_failed", project_id=project_id))
+            self.v2_repo.finish_workflow_job(job_id, "failed", error_message="全局收敛失败")
             raise ValueError("全局收敛失败")
-        memory = self._merge_structured_memory(merged_memory, consolidate.payload or {}, "鍏ㄥ眬鏀舵暃")
+        memory = self._merge_structured_memory(merged_memory, consolidate.payload or {}, "全局收敛")
+        self.logger.info("记忆合并完成", extra=build_log_context(event="memory_merge_finished", project_id=project_id))
+        await _emit_progress(
+            stage="memory_view_build",
+            current=total_chapters,
+            total=total_chapters,
+            message="正在生成结构摘要",
+            resumable=False,
+        )
+        self.logger.info("开始构建摘要视图", extra=build_log_context(event="memory_view_build_started", project_id=project_id))
         self.project_service.bind_memory_to_novel(NovelId(novel_id), memory)
         memory_payload = self._to_project_memory_payload(project_id, memory)
         self.v2_repo.save_project_memory(memory_payload)
         view_payload = self._to_memory_view_payload(project_id, memory_payload)
         self.v2_repo.save_memory_view(view_payload)
+        self.logger.info("摘要视图构建完成", extra=build_log_context(event="memory_view_build_finished", project_id=project_id))
         self.v2_repo.finish_workflow_job(
             job_id,
             "success",
             result_payload={"organized_chapter_count": len(chapters), "memory_id": memory_payload["id"]},
+        )
+        self.logger.info(
+            "整理完成",
+            extra=build_log_context(
+                event="organize_finished",
+                project_id=project_id,
+                organized_chapter_count=len(chapters),
+                memory_id=memory_payload["id"],
+            ),
+        )
+        await _emit_progress(
+            stage="done",
+            current=total_chapters,
+            total=total_chapters,
+            message=f"整理完成（{total_chapters}/{total_chapters}）",
+            status="done",
+            resumable=False,
         )
         return {
             "project_id": project_id,
@@ -141,6 +344,53 @@ class V2WorkflowService:
 
     def get_memory_view(self, project_id: str) -> Dict[str, Any]:
         return self.v2_repo.find_memory_view(project_id) or {}
+
+    def get_chapter_editor_context(self, project_id: str, chapter_number: int = 0, recent_limit: int = 5) -> Dict[str, Any]:
+        project = self.project_service.get_project(ProjectId(project_id))
+        if not project:
+            raise ValueError("项目不存在")
+        self.logger.info(
+            "加载章节编辑上下文",
+            extra=build_log_context(
+                event="chapter_context_loaded",
+                project_id=project_id,
+                chapter_number=chapter_number,
+                recent_limit=recent_limit,
+            ),
+        )
+        memory_view = self.get_memory_view(project_id) or {}
+        memory_payload = self.get_memory(project_id) or {}
+        chapters = sorted(self.chapter_repo.find_by_novel(project.novel_id), key=lambda x: x.number)
+        if chapter_number > 0:
+            history = [ch for ch in chapters if ch.number < chapter_number]
+        else:
+            history = chapters
+        recent = history[-max(1, int(recent_limit)) :]
+        recent_summaries = []
+        for item in recent:
+            summary = self.clean_text((item.content or "").strip().replace("\n", " ")[:120])
+            if summary:
+                recent_summaries.append(f"第{item.number}章 {item.title}：{summary}")
+        outline_summary = memory_view.get("outline_summary") or []
+        if not outline_summary:
+            outline_ctx = memory_payload.get("outline_context") or {}
+            outline_summary = [
+                str(x).strip()
+                for x in (outline_ctx.get("summary") or [])
+                if str(x).strip()
+            ]
+        global_memory_summary = "；".join([str(x).strip() for x in (memory_view.get("main_plot_lines") or []) if str(x).strip()])
+        if not global_memory_summary:
+            global_memory_summary = self.clean_text(str(memory_view.get("current_progress") or ""))
+        return {
+            "project_id": project_id,
+            "memory_view": memory_view,
+            "outline_summary": outline_summary[:6],
+            "recent_chapter_summaries": recent_summaries,
+            "current_progress": self.clean_text(str(memory_view.get("current_progress") or "")),
+            "global_memory_summary": global_memory_summary,
+            "global_outline_summary": "；".join([str(x).strip() for x in outline_summary[:6] if str(x).strip()]),
+        }
 
     def list_workflow_jobs(self, project_id: str, limit: int = 30) -> List[Dict[str, Any]]:
         return self.v2_repo.list_workflow_jobs(project_id, limit)
@@ -167,6 +417,10 @@ class V2WorkflowService:
         project = self.project_service.get_project(ProjectId(project_id))
         if not project:
             raise ValueError("项目不存在")
+        self.logger.info(
+            "分支生成开始",
+            extra=build_log_context(event="branches_started", project_id=project_id, branch_count=branch_count),
+        )
         outline_context = self._get_outline_context(project.novel_id)
         memory = self._load_structured_memory(project_id, project.novel_id, outline_context)
         chapters = self.chapter_repo.find_by_novel(project.novel_id)
@@ -182,6 +436,7 @@ class V2WorkflowService:
             },
         )
         if result.status != "success":
+            self.logger.error("分支生成失败", extra=build_log_context(event="branches_failed", project_id=project_id, branch_count=branch_count))
             raise ValueError("分支生成失败")
         branches = []
         for idx, item in enumerate((result.payload or {}).get("branches") or [], 1):
@@ -206,53 +461,63 @@ class V2WorkflowService:
                 }
             )
         self.v2_repo.replace_branches(project_id, branches)
+        self.logger.info("分支生成完成", extra=build_log_context(event="branches_finished", project_id=project_id, branch_count=len(branches)))
         return {"project_id": project_id, "branches": branches}
 
     def create_chapter_plan(self, project_id: str, branch_id: str, chapter_count: int, target_words_per_chapter: int) -> Dict[str, Any]:
         project = self.project_service.get_project(ProjectId(project_id))
         if not project:
             raise ValueError("项目不存在")
-        novel = self.novel_repo.find_by_id(project.novel_id)
-        start_no = (novel.chapter_count if novel else 0) + 1
+        self.logger.info(
+            "章节计划开始",
+            extra=build_log_context(event="chapter_plan_started", project_id=project_id, branch_id=branch_id, chapter_count=chapter_count),
+        )
+        chapters = self.chapter_repo.find_by_novel(project.novel_id)
+        start_no = max([int(ch.number) for ch in chapters], default=0) + 1
         branches = self.v2_repo.list_branches(project_id)
         branch = next((b for b in branches if b["id"] == branch_id), None)
         if not branch:
             raise ValueError("分支不存在")
         outline_context = self._get_outline_context(project.novel_id)
-        outline_summary = "?".join(
+        outline_summary = "；".join(
             [
                 str(outline_context.get("premise") or ""),
                 str(outline_context.get("story_background") or ""),
                 str(outline_context.get("world_setting") or ""),
             ]
-        ).strip("?")
+        ).strip("；")
         plans = []
         for i in range(chapter_count):
             no = start_no + i
-            outline_clause = f"???????{outline_summary[:120]}" if outline_summary else "??????????????"
+            outline_clause = f"并参考大纲约束：{outline_summary[:120]}" if outline_summary else "并保持与当前大纲和设定一致"
             plans.append(
                 {
                     "id": f"plan_{uuid.uuid4().hex[:10]}",
                     "project_id": project_id,
                     "branch_id": branch_id,
                     "chapter_number": no,
-                    "title": f"?{no}?",
-                    "goal": f"{branch['title']} ?{i + 1}??????{outline_clause}",
-                    "conflict": f"{branch['core_conflict'] or '??????'}??????????",
-                    "progression": f"鍥寸粫{branch['summary']}鎺ㄨ繘鍏抽敭浜嬩欢锛屽苟鏍￠獙涓庡ぇ绾蹭笉鍐茬獊",
-                    "ending_hook": f"{branch['title']} ???????",
+                    "title": f"第{no}章",
+                    "goal": f"围绕“{branch['title']}”推进第{i + 1}章情节，{outline_clause}",
+                    "conflict": f"{branch['core_conflict'] or '制造新的关键冲突'}，并推动人物关系或主线变化",
+                    "progression": f"承接分支摘要：{branch['summary']}，在本章内完成明确推进，并为下一章留下新的问题或压力。",
+                    "ending_hook": f"在“{branch['title']}”方向上留下新的悬念或转折",
                     "target_words": target_words_per_chapter,
                     "related_arc_ids": [],
                     "status": "ready",
                 }
             )
         self.v2_repo.replace_plans(project_id, plans)
+        self.logger.info(
+            "章节计划完成",
+            extra=build_log_context(event="chapter_plan_finished", project_id=project_id, branch_id=branch_id, chapter_count=len(plans)),
+        )
         return {"project_id": project_id, "branch_id": branch_id, "plans": plans}
 
     async def execute_writing(self, project_id: str, plan_ids: List[str], auto_commit: bool) -> Dict[str, Any]:
         project = self.project_service.get_project(ProjectId(project_id))
         if not project:
             raise ValueError("项目不存在")
+        self.logger.info("续写开始", extra=build_log_context(event="write_started", project_id=project_id, plan_ids=plan_ids))
         plans = self.v2_repo.find_plans(project_id, plan_ids)
         if not plans:
             raise ValueError("未找到可执行的章节计划")
@@ -262,10 +527,13 @@ class V2WorkflowService:
         tool = ContinueWritingTool(self.llm_factory.primary_client, self.llm_factory.backup_client)
         generated_ids: List[str] = []
         latest_content = ""
+        latest_title = ""
+        latest_chapter_number = 0
         chapters = self.chapter_repo.find_by_novel(project.novel_id)
+        next_number = max([int(ch.number) for ch in chapters], default=0) + 1 if auto_commit else 0
         memory["outline_context"] = outline_context
         for plan in plans:
-            direction = f"{plan['goal']}?{plan['conflict']}?{plan['progression']}"
+            direction = f"{plan['goal']}；{plan['conflict']}；{plan['progression']}"
             result = await tool.execute_async(
                 TaskContext(novel_id=str(project.novel_id), goal=direction, target_word_count=plan["target_words"]),
                 {
@@ -278,19 +546,28 @@ class V2WorkflowService:
                 },
             )
             if result.status != "success":
+                self.logger.error("续写失败", extra=build_log_context(event="write_failed", project_id=project_id, plan_ids=plan_ids))
                 self.v2_repo.finish_writing_session(session_id, "failed", generated_ids)
                 raise ValueError("续写失败")
             chapter_text = str((result.payload or {}).get("chapter_text") or "")
-            latest_content = chapter_text
+            normalized = self._normalize_generated_chapter_output(
+                chapter_text=chapter_text,
+                plan_title=str(plan.get("title") or ""),
+                chapter_number=int(plan.get("chapter_number") or 0),
+            )
+            latest_content = normalized["content"]
+            latest_title = normalized["title"]
+            latest_chapter_number = int(normalized["chapter_number"] or 0)
             if auto_commit:
-                no = int(plan["chapter_number"])
+                no = next_number
+                next_number += 1
                 now = datetime.now()
                 chapter = Chapter(
                     id=ChapterId(str(uuid.uuid4())),
                     novel_id=project.novel_id,
                     number=no,
-                    title=plan["title"] or f"?{no}?",
-                    content=chapter_text,
+                    title=self._ensure_chapter_title(normalized["title"], no),
+                    content=latest_content,
                     status=ChapterStatus.DRAFT,
                     created_at=now,
                     updated_at=now,
@@ -298,14 +575,16 @@ class V2WorkflowService:
                 self.chapter_repo.save(chapter)
                 chapters.append(chapter)
                 generated_ids.append(chapter.id.value)
+                latest_title = chapter.title
+                latest_chapter_number = no
             if auto_commit:
                 memory["events"] = [*(memory.get("events") or []), *((result.payload or {}).get("new_events") or [])][-120:]
-                memory["chapter_summaries"] = [*(memory.get("chapter_summaries") or []), chapter_text[:120]][-300:]
+                memory["chapter_summaries"] = [*(memory.get("chapter_summaries") or []), latest_content[:120]][-300:]
                 current_state = memory.get("current_state") or {}
                 current_state.update(
                     {
-                        "latest_chapter_number": int(plan["chapter_number"]),
-                        "latest_summary": chapter_text[:120],
+                        "latest_chapter_number": latest_chapter_number,
+                        "latest_summary": latest_content[:120],
                         "next_writing_focus": plan["ending_hook"],
                     }
                 )
@@ -323,10 +602,21 @@ class V2WorkflowService:
         else:
             view_payload = self.get_memory_view(project_id)
         self.v2_repo.finish_writing_session(session_id, "finished", generated_ids)
+        self.logger.info(
+            "续写完成",
+            extra=build_log_context(event="write_finished", project_id=project_id, plan_ids=plan_ids, generated_count=len(generated_ids)),
+        )
         return {
             "project_id": project_id,
             "generated_chapter_ids": generated_ids,
             "latest_content": latest_content,
+            "latest_title": latest_title,
+            "latest_chapter_number": latest_chapter_number,
+            "latest_chapter": {
+                "number": latest_chapter_number,
+                "title": latest_title,
+                "content": latest_content,
+            },
             "memory_view": view_payload,
         }
 
@@ -334,6 +624,15 @@ class V2WorkflowService:
         project = self.project_service.get_project(ProjectId(project_id))
         if not project:
             raise ValueError("项目不存在")
+        self.logger.info(
+            "刷新记忆开始",
+            extra=build_log_context(
+                event="refresh_memory_started",
+                project_id=project_id,
+                from_chapter_number=from_chapter_number,
+                to_chapter_number=to_chapter_number,
+            ),
+        )
         chapters = self.chapter_repo.find_by_novel(project.novel_id)
         selected = [c for c in chapters if from_chapter_number <= c.number <= to_chapter_number]
         outline_context = self._get_outline_context(project.novel_id)
@@ -350,19 +649,52 @@ class V2WorkflowService:
                 },
             )
             if incremental.status == "success":
-                memory = self._merge_structured_memory(memory, incremental.payload or {}, chapter.title or f"?{chapter.number}?")
+                memory = self._merge_structured_memory(memory, incremental.payload or {}, chapter.title or f"第{chapter.number}章")
         consolidate = await analyzer.execute_async(
             TaskContext(novel_id=str(project.novel_id), goal="v2_refresh_consolidate"),
             {"mode": "consolidate_mode", "memory": self._to_tool_memory_context(memory)},
         )
         if consolidate.status == "success":
-            memory = self._merge_structured_memory(memory, consolidate.payload or {}, "璁板繂鍒锋柊")
+            memory = self._merge_structured_memory(memory, consolidate.payload or {}, "增量汇总")
         self.project_service.bind_memory_to_novel(project.novel_id, memory)
         memory_payload = self._to_project_memory_payload(project_id, memory)
         self.v2_repo.save_project_memory(memory_payload)
         view_payload = self._to_memory_view_payload(project_id, memory_payload)
         self.v2_repo.save_memory_view(view_payload)
+        self.logger.info(
+            "刷新记忆完成",
+            extra=build_log_context(
+                event="refresh_memory_finished",
+                project_id=project_id,
+                from_chapter_number=from_chapter_number,
+                to_chapter_number=to_chapter_number,
+            ),
+        )
         return {"project_id": project_id, "memory_view": view_payload}
+
+    def _ensure_chapter_title(self, title: str, chapter_number: int) -> str:
+        text = self.clean_text(str(title or "")).strip()
+        return text or f"第{chapter_number}章"
+
+    def _normalize_generated_chapter_output(self, chapter_text: str, plan_title: str, chapter_number: int) -> Dict[str, Any]:
+        raw = str(chapter_text or "").strip()
+        title = self.clean_text(str(plan_title or "")).strip()
+        content = raw
+        if raw.startswith("{") and raw.endswith("}"):
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                payload = None
+            if isinstance(payload, dict):
+                title = self.clean_text(str(payload.get("title") or payload.get("chapter_title") or title)).strip()
+                extracted = payload.get("content") or payload.get("chapter_text") or payload.get("result_text") or ""
+                content = str(extracted or "").strip()
+        if not content:
+            content = raw
+        safe_no = int(chapter_number or 0)
+        if not title and safe_no > 0:
+            title = f"第{safe_no}章"
+        return {"chapter_number": safe_no, "title": title, "content": content}
 
     def _to_project_memory_payload(self, project_id: str, memory: Dict[str, Any]) -> Dict[str, Any]:
         active_memory = self.v2_repo.find_active_project_memory(project_id) or {}
@@ -387,21 +719,30 @@ class V2WorkflowService:
         main_characters = []
         for item in chars[:5]:
             if isinstance(item, dict):
+                name = self.clean_text(str(item.get("name") or ""))
+                role = self.clean_text(str(item.get("role") or "角色")) or "角色"
+                if not name or self.looks_garbled_text(name):
+                    continue
+                trait_items = self.normalize_text_list([str(x) for x in (item.get("traits") or [])], 3)
                 main_characters.append(
                     {
-                        "name": str(item.get("name") or ""),
-                        "role": str(item.get("role") or "瑙掕壊"),
-                        "traits": "?".join([str(x) for x in (item.get("traits") or [])[:3]]),
+                        "name": name,
+                        "role": role,
+                        "traits": "、".join(trait_items),
                     }
                 )
-        world_summary = self._build_world_summary(payload.get("world_facts") or {})
+        world_summary = self.normalize_text_list(self._build_world_summary(payload.get("world_facts") or {}), 8)
         style = payload.get("style_profile") or {}
-        style_tags = []
+        style_tags: List[str] = []
         if isinstance(style, dict):
-            style_tags = [str(style.get("tone") or ""), str(style.get("pacing") or ""), str(style.get("narrative_style") or "")]
-            style_tags = [x for x in style_tags if x]
+            style_tags = [
+                *[str(x) for x in (style.get("tone_tags") or [])],
+                *[str(x) for x in (style.get("rhythm_tags") or [])],
+                str(style.get("narrative_pov") or ""),
+            ]
         elif isinstance(style, str):
-            style_tags = [x for x in style.split("?") if x]
+            style_tags = [x for x in re.split(r"[；;]", style) if x]
+        style_tags = self.normalize_text_list(style_tags, 6)
         outline_context = payload.get("outline_context") or {}
         outline_summary = [str(x) for x in (outline_context.get("summary") or []) if str(x)]
         if not outline_summary:
@@ -411,16 +752,18 @@ class V2WorkflowService:
                 str(outline_context.get("world_setting") or ""),
             ]
             outline_summary = [x for x in outline_summary if x]
+        outline_summary = self.normalize_text_list(outline_summary, 5)
+        current_progress = self.clean_text(str((payload.get("current_state") or {}).get("latest_summary") or ""))
         return {
             "id": f"view_{uuid.uuid4().hex[:12]}",
             "project_id": project_id,
             "memory_id": payload["id"],
             "main_characters": main_characters,
-            "world_summary": [str(x) for x in world_summary if str(x)],
+            "world_summary": world_summary,
             "main_plot_lines": self._build_plot_lines(payload),
             "style_tags": style_tags,
-            "current_progress": str((payload.get("current_state") or {}).get("latest_summary") or ""),
-            "outline_summary": outline_summary[:5],
+            "current_progress": current_progress,
+            "outline_summary": outline_summary,
         }
 
     def _build_world_summary(self, world_facts: Dict[str, Any]) -> List[str]:
@@ -428,35 +771,28 @@ class V2WorkflowService:
             return []
         ordered: List[str] = []
         for key in ("background", "power_system", "organizations", "locations", "rules", "artifacts"):
-            ordered.extend([str(x).strip() for x in (world_facts.get(key) or []) if str(x).strip()])
-        unique: List[str] = []
-        for item in ordered:
-            if item not in unique:
-                unique.append(item)
-        return unique[:8]
+            ordered.extend([self.clean_text(str(x)) for x in (world_facts.get(key) or [])])
+        return self.normalize_text_list(ordered, 8)
 
     def _build_plot_lines(self, payload: Dict[str, Any]) -> List[str]:
         lines: List[str] = []
         for arc in (payload.get("plot_arcs") or []):
             if not isinstance(arc, dict):
                 continue
-            title = str(arc.get("title") or "").strip()
-            summary = str(arc.get("summary") or "").strip()
-            stage = str(arc.get("current_stage") or "").strip()
-            candidate = summary or (f"{title}: {stage}" if title and stage else title)
+            title = self.clean_text(str(arc.get("title") or ""))
+            summary = self.clean_text(str(arc.get("summary") or ""))
+            stage = self.clean_text(str(arc.get("current_stage") or ""))
+            candidate = summary or (f"{title}：{stage}" if title and stage else title)
             if candidate:
                 lines.append(candidate)
-        chapter_summaries = [str(x).strip() for x in (payload.get("chapter_summaries") or []) if str(x).strip()]
+        chapter_summaries = [self.clean_text(str(x)) for x in (payload.get("chapter_summaries") or []) if str(x).strip()]
         lines.extend(chapter_summaries[-6:])
         current_state = payload.get("current_state") or {}
-        latest_summary = str(current_state.get("latest_summary") or "").strip() if isinstance(current_state, dict) else ""
+        latest_summary = self.clean_text(str(current_state.get("latest_summary") or "")) if isinstance(current_state, dict) else ""
         if latest_summary:
             lines.append(latest_summary)
-        unique: List[str] = []
-        for item in lines:
-            if item not in unique:
-                unique.append(item)
-        return unique[-8:]
+        filtered = [line for line in lines if line and "chunk=" not in line and "分析完成" not in line]
+        return self.normalize_text_list(filtered, 8)
 
     def _get_outline_context(self, novel_id: NovelId) -> Dict[str, Any]:
         outline = self.outline_repo.find_by_novel(novel_id)
@@ -502,29 +838,29 @@ class V2WorkflowService:
         return False
 
     def _build_outline_consistency_note(self, branch: Dict[str, Any], outline_context: Dict[str, Any]) -> str:
-        premise = str(outline_context.get("premise") or "").strip()
-        summary = str(branch.get("summary") or "").strip()
+        premise = self.clean_text(str(outline_context.get("premise") or ""))
+        summary = self.clean_text(str(branch.get("summary") or ""))
         if not premise:
-            return "??? memory ??"
+            return "暂无大纲约束"
         if premise and premise[:10] in summary:
-            return "?????????"
-        return f"?????????{premise[:48]}"
+            return "与当前大纲方向基本一致"
+        return f"与当前大纲存在偏移风险，需留意设定：{premise[:48]}"
 
     def _build_outline_risk_note(self, branch: Dict[str, Any], outline_context: Dict[str, Any]) -> str:
-        premise = str(outline_context.get("premise") or "").strip()
-        summary = str(branch.get("summary") or "").strip()
+        premise = self.clean_text(str(outline_context.get("premise") or ""))
+        summary = self.clean_text(str(branch.get("summary") or ""))
         if not premise:
             return ""
         if premise and premise[:10] in summary:
             return ""
-        return "鍒嗘敮鍙兘鍋忕澶х翰鍓嶆彁锛屾墽琛屽墠闇€澶嶆牳"
+        return f"与当前大纲存在偏移风险，需留意设定：{premise[:48]}"
 
     def _build_chapter_units(self, novel_id: NovelId, mode: str) -> List[Dict[str, Any]]:
         chapters = self.chapter_repo.find_by_novel(novel_id)
         if mode == "chapter_first" and chapters:
             return [
                 {
-                    "title": chapter.title or f"?{chapter.number}?",
+                    "title": self.clean_text(chapter.title) or f"第{chapter.number}章",
                     "content": chapter.content or "",
                     "index": chapter.number,
                 }
@@ -535,7 +871,7 @@ class V2WorkflowService:
         chunks = []
         if novel_text.strip():
             for idx, part in enumerate([x for x in novel_text.split("\n\n") if x.strip()], 1):
-                chunks.append({"title": f"?{idx}?", "content": part, "index": idx})
+                chunks.append({"title": f"片段{idx}", "content": part, "index": idx})
         return chunks
 
     def _empty_structured_memory(self, outline_context: Dict[str, Any]) -> Dict[str, Any]:
@@ -544,7 +880,7 @@ class V2WorkflowService:
             "world_facts": {"background": [], "power_system": [], "organizations": [], "locations": [], "rules": [], "artifacts": []},
             "plot_arcs": [],
             "events": [],
-            "style_profile": {"narrative_pov": "绗笁浜虹О鏈夐檺瑙嗚", "tone_tags": [], "rhythm_tags": []},
+            "style_profile": {"narrative_pov": "第三人称有限视角", "tone_tags": [], "rhythm_tags": []},
             "outline_context": outline_context or {},
             "current_state": {"latest_chapter_number": 0, "latest_summary": "", "active_arc_ids": [], "recent_conflicts": [], "next_writing_focus": ""},
             "chapter_summaries": [],
@@ -555,12 +891,12 @@ class V2WorkflowService:
         base = self._empty_structured_memory(outline_context)
         chars = memory.get("characters") or []
         base["characters"] = [x for x in chars if isinstance(x, dict)]
-        world_settings = str(memory.get("world_settings") or "")
-        segments = [x.strip() for x in re.split(r"[;；?]", world_settings) if x.strip()]
+        world_settings = self.clean_text(str(memory.get("world_settings") or ""))
+        segments = [x.strip() for x in re.split(r"[；;]", world_settings) if x.strip()]
         base["world_facts"]["background"] = segments[:4]
         base["events"] = [x for x in (memory.get("events") or []) if isinstance(x, dict)]
-        writing_style = str(memory.get("writing_style") or "")
-        style_parts = [x.strip() for x in re.split(r"[;；?]", writing_style) if x.strip()]
+        writing_style = self.clean_text(str(memory.get("writing_style") or ""))
+        style_parts = [x.strip() for x in re.split(r"[；;]", writing_style) if x.strip()]
         if style_parts:
             base["style_profile"]["narrative_pov"] = style_parts[0]
             base["style_profile"]["tone_tags"] = style_parts[1:3]
@@ -575,10 +911,10 @@ class V2WorkflowService:
                 "next_writing_focus": str(current.get("latest_goal") or ""),
             }
         elif isinstance(current, str):
-            base["current_state"]["latest_summary"] = current
+            base["current_state"]["latest_summary"] = self.clean_text(current)
         outline = memory.get("plot_outline")
         if outline:
-            base["chapter_summaries"] = [x.strip() for x in re.split(r"[;；?]", str(outline)) if x.strip()][:20]
+            base["chapter_summaries"] = self.normalize_text_list([x.strip() for x in re.split(r"[；;]", str(outline)) if x.strip()], 20)
         return base
 
     def _to_tool_memory_context(self, memory: Dict[str, Any]) -> Dict[str, Any]:
@@ -596,20 +932,20 @@ class V2WorkflowService:
         if self._is_legacy_memory(memory):
             world_parts: List[str] = []
             for key in ("background", "power_system", "organizations", "locations", "rules", "artifacts"):
-                world_parts.extend([str(x) for x in ((memory.get("world_facts") or {}).get(key) or []) if str(x)])
+                world_parts.extend([self.clean_text(str(x)) for x in ((memory.get("world_facts") or {}).get(key) or []) if str(x)])
             style = memory.get("style_profile") or {}
-            style_text = "?".join(
+            style_text = "；".join(
                 [
-                    str(style.get("narrative_pov") or ""),
-                    "?".join([str(x) for x in (style.get("tone_tags") or []) if str(x)]),
-                    "?".join([str(x) for x in (style.get("rhythm_tags") or []) if str(x)]),
+                    self.clean_text(str(style.get("narrative_pov") or "")),
+                    "、".join(self.normalize_text_list([str(x) for x in (style.get("tone_tags") or []) if str(x)], 6)),
+                    "、".join(self.normalize_text_list([str(x) for x in (style.get("rhythm_tags") or []) if str(x)], 6)),
                 ]
-            ).strip("?")
+            ).strip("；")
             current = memory.get("current_state") or {}
             structured.update(
                 {
-                    "world_settings": "?".join(world_parts),
-                    "plot_outline": "?".join([str(x) for x in (memory.get("chapter_summaries") or [])[:20]]),
+                    "world_settings": "；".join([x for x in world_parts if x]),
+                    "plot_outline": "；".join(self.normalize_text_list([str(x) for x in (memory.get("chapter_summaries") or [])], 20)),
                     "writing_style": style_text,
                     "current_progress": {
                         "latest_chapter_number": int(current.get("latest_chapter_number") or 0),
@@ -642,13 +978,13 @@ class V2WorkflowService:
         world_facts = merged.get("world_facts") or {"background": [], "power_system": [], "organizations": [], "locations": [], "rules": [], "artifacts": []}
         incoming_world = analysis_payload.get("world_facts") if isinstance(analysis_payload.get("world_facts"), dict) else {}
         for key in ("background", "power_system", "organizations", "locations", "rules", "artifacts"):
-            items = [str(x).strip() for x in (incoming_world.get(key) or []) if str(x).strip()]
+            items = self.normalize_text_list([str(x).strip() for x in (incoming_world.get(key) or []) if str(x).strip()], 40)
             world_facts[key] = list(dict.fromkeys([*(world_facts.get(key) or []), *items]))[:40]
         merged["world_facts"] = world_facts
         events = merged.get("events") or []
         incoming_events = [x for x in (analysis_payload.get("events") or []) if isinstance(x, dict)]
         merged["events"] = [*events, *incoming_events][-160:]
-        style = merged.get("style_profile") or {"narrative_pov": "绗笁浜虹О鏈夐檺瑙嗚", "tone_tags": [], "rhythm_tags": []}
+        style = merged.get("style_profile") or {"narrative_pov": "第三人称有限视角", "tone_tags": [], "rhythm_tags": []}
         style_profile_payload = analysis_payload.get("style_profile") if isinstance(analysis_payload.get("style_profile"), dict) else {}
         if style_profile_payload:
             tone_tags = [str(x).strip() for x in (style_profile_payload.get("tone_tags") or []) if str(x).strip()]
@@ -664,8 +1000,11 @@ class V2WorkflowService:
         if style_tags:
             style["tone_tags"] = list(dict.fromkeys([*(style.get("tone_tags") or []), *style_tags[:3]]))
         merged["style_profile"] = style
-        incoming_summaries = [str(x).strip() for x in (analysis_payload.get("chapter_summaries") or []) if str(x).strip()]
-        summary = str(analysis_payload.get("chapter_summary") or chapter_title or "").strip()
+        incoming_summaries = self.normalize_text_list(
+            [str(x).strip() for x in (analysis_payload.get("chapter_summaries") or []) if str(x).strip()],
+            20,
+        )
+        summary = self.clean_text(str(analysis_payload.get("chapter_summary") or chapter_title or ""))
         if not incoming_summaries and summary:
             incoming_summaries = [summary]
         if incoming_summaries:
@@ -700,4 +1039,3 @@ class V2WorkflowService:
         merged["outline_context"] = merged.get("outline_context") or {}
         merged["plot_arcs"] = merged.get("plot_arcs") or []
         return merged
-

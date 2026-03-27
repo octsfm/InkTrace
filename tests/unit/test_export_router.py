@@ -42,6 +42,8 @@ class TestExportRouter:
     def test_export_novel_success(self, client, mock_export_service, tmp_path):
         """测试导出小说 - 成功"""
         mock_response = ExportResponse(
+            mode="file",
+            scope="full",
             file_path=str(tmp_path / "test.md"),
             format="markdown",
             word_count=1000,
@@ -60,6 +62,29 @@ class TestExportRouter:
         data = response.json()
         assert data["format"] == "markdown"
         assert data["word_count"] == 1000
+        assert data["mode"] == "file"
+
+    def test_export_novel_by_chapter_success(self, client, mock_export_service, tmp_path):
+        mock_response = ExportResponse(
+            mode="directory",
+            scope="by_chapter",
+            directory_path="chapter_exports",
+            file_count=12,
+            format="txt",
+            word_count=2000,
+            chapter_count=12
+        )
+        mock_export_service.export_novel.return_value = mock_response
+        response = client.post("/export/", json={
+            "novel_id": "novel_001",
+            "output_path": "chapter_exports",
+            "format": "txt",
+            "scope": "by_chapter"
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert data["mode"] == "directory"
+        assert data["file_count"] == 12
 
     def test_export_novel_validation_error(self, client, mock_export_service):
         """测试导出小说 - 验证错误"""

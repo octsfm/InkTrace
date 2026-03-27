@@ -73,12 +73,6 @@ class ProjectService:
     
     def get_project_by_novel(self, novel_id: NovelId) -> Optional[Project]:
         """根据小说ID获取项目"""
-# 文件：模块：project_service
-
-        return self.project_repo.find_by_novel_id(novel_id)
-    
-    def get_project_by_novel(self, novel_id: NovelId) -> Optional[Project]:
-        """根据小说ID获取项目"""
         return self.project_repo.find_by_novel_id(novel_id)
 
     def get_memory_by_novel(self, novel_id: NovelId) -> Dict[str, Any]:

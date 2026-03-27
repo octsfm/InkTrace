@@ -117,6 +117,7 @@
           </template>
 
           <div class="content-info">
+            <el-tag type="info">章节：第{{ generatedContent.chapter_number || '-' }}章 {{ generatedContent.title || '未命名章节' }}</el-tag>
             <el-tag>字数：{{ generatedContent.word_count }}</el-tag>
             <el-tag :type="isPersistedResult ? 'success' : 'warning'">
               {{ isPersistedResult ? '已保存到章节列表' : '预览内容，尚未落库' }}
@@ -175,7 +176,12 @@
           <el-scrollbar height="260px">
             <div v-for="chapter in recentChapters" :key="chapter.id" class="chapter-item">
               <span>第{{ chapter.number }}章 {{ chapter.title }}</span>
-              <span class="chapter-words">{{ chapter.word_count }}字</span>
+              <div class="chapter-actions">
+                <span class="chapter-words">{{ chapter.word_count }}字</span>
+                <el-button type="danger" link size="small" :loading="deletingChapterId === chapter.id" @click="deleteRecentChapter(chapter)">
+                  删除
+                </el-button>
+              </div>
             </div>
           </el-scrollbar>
         </el-card>
@@ -187,7 +193,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { novelApi, projectApi } from '@/api'
 
 const route = useRoute()
@@ -200,6 +206,7 @@ const continueHint = ref('')
 const branches = ref([])
 const selectedBranchId = ref('')
 const projectId = ref('')
+const deletingChapterId = ref('')
 
 const form = reactive({
   plot_direction: '',
@@ -286,8 +293,13 @@ const generatePreview = async () => {
       plan_ids: planIds,
       auto_commit: false
     })
-    const content = writeResult?.latest_content || ''
+    const chapter = writeResult?.latest_chapter || {}
+    const content = chapter.content || writeResult?.latest_content || ''
+    const title = chapter.title || writeResult?.latest_title || `第${chapter.number || (recentChapters.value[0]?.number || 0) + 1}章`
+    const chapterNumber = chapter.number || writeResult?.latest_chapter_number || ((recentChapters.value[0]?.number || 0) + 1)
     generatedContent.value = {
+      title,
+      chapter_number: chapterNumber,
       content,
       word_count: content.length,
       metadata: { route: 'v2_preview' }
@@ -315,35 +327,37 @@ const continueNextChapter = async () => {
       throw new Error('请先生成并选择剧情分支')
     }
 
-    const currentLatestChapter = recentChapters.value.length ? recentChapters.value[0].number : 0
-    const fromChapterNumber = currentLatestChapter + 1
-
     const planResult = await projectApi.chapterPlanV2(projectId.value, {
       branch_id: selectedBranchId.value,
       chapter_count: form.chapter_count,
       target_words_per_chapter: form.target_word_count
     })
     const planIds = (planResult.plans || []).map((plan) => plan.id)
-    await projectApi.writeV2(projectId.value, {
+    const writeResult = await projectApi.writeV2(projectId.value, {
       plan_ids: planIds,
       auto_commit: true
     })
+    const generatedIds = writeResult?.generated_chapter_ids || []
+    const latestChapterNumber = Number(writeResult?.latest_chapter_number || 0)
+    const fromChapterNumber = latestChapterNumber > 0 ? Math.max(1, latestChapterNumber - generatedIds.length + 1) : 1
+    const toChapterNumber = latestChapterNumber > 0 ? latestChapterNumber : (fromChapterNumber + Math.max(form.chapter_count, 1) - 1)
     await projectApi.refreshMemoryV2(projectId.value, {
       from_chapter_number: fromChapterNumber,
-      to_chapter_number: fromChapterNumber + form.chapter_count - 1
+      to_chapter_number: toChapterNumber
     })
 
     const latestNovel = await novelApi.get(route.params.id)
     const latest = latestNovel.chapters?.[latestNovel.chapters.length - 1]
     generatedContent.value = {
+      title: latest?.title || writeResult?.latest_title || `第${latest?.number || latestChapterNumber || 0}章`,
+      chapter_number: latest?.number || latestChapterNumber || 0,
       content: latest?.content || '',
       word_count: latest?.word_count || (latest?.content || '').length,
       metadata: { route: 'v2_write' }
     }
 
     await loadRecentChapters()
-    await generateBranches()
-    ElMessage.success('章节已生成并保存，分支也已基于最新内容刷新')
+    ElMessage.success('章节已生成并保存，可手动重新生成分支')
   } catch (error) {
     console.error('继续生成失败:', error)
   } finally {
@@ -359,13 +373,13 @@ const copyContent = () => {
 
 const downloadGeneratedChapter = () => {
   if (!generatedContent.value?.content) return
-  const chapterNumber = recentChapters.value.length ? recentChapters.value[0].number + (isPersistedResult.value ? 0 : 1) : 1
-  const title = `第${chapterNumber}章`
-  const blob = new Blob([`# ${title}\n\n${generatedContent.value.content}\n`], { type: 'text/markdown;charset=utf-8' })
+  const chapterNumber = generatedContent.value.chapter_number || (recentChapters.value.length ? recentChapters.value[0].number + (isPersistedResult.value ? 0 : 1) : 0)
+  const chapterTitle = generatedContent.value.title || (chapterNumber > 0 ? `第${chapterNumber}章` : '生成章节')
+  const blob = new Blob([`# ${chapterTitle}\n\n${generatedContent.value.content}\n`], { type: 'text/markdown;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `${title}.md`
+  link.download = `${chapterTitle}.md`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -388,6 +402,31 @@ const loadRecentChapters = async () => {
     }
   } catch (error) {
     console.error('加载最近章节失败:', error)
+  }
+}
+
+const deleteRecentChapter = async (chapter) => {
+  if (!chapter?.id) return
+  try {
+    await ElMessageBox.confirm(
+      `确认删除“第${chapter.number}章 ${chapter.title || ''}”？删除后无法恢复。`,
+      '删除章节',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消'
+      }
+    )
+    deletingChapterId.value = chapter.id
+    await novelApi.deleteChapter(route.params.id, chapter.id)
+    await loadRecentChapters()
+    ElMessage.success('章节已删除')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除章节失败:', error)
+    }
+  } finally {
+    deletingChapterId.value = ''
   }
 }
 
@@ -416,7 +455,6 @@ const initPage = async () => {
   }
 
   await loadRecentChapters()
-  await generateBranches()
 }
 
 onMounted(() => {
@@ -489,6 +527,12 @@ onMounted(() => {
 .chapter-words {
   color: #909399;
   font-size: 12px;
+}
+
+.chapter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .branch-panel {

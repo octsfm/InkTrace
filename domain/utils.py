@@ -6,7 +6,7 @@
 
 # 文件路径：domain/utils.py
 
-
+import re
 
 def repair_mojibake(text: str) -> str:
     """
@@ -29,6 +29,45 @@ def repair_mojibake(text: str) -> str:
     if repaired_cjk >= original_cjk:
         return repaired
     return text
+
+
+def looks_garbled_text(text: str) -> bool:
+    if not isinstance(text, str):
+        return False
+    value = text.strip()
+    if not value:
+        return False
+    suspicious_tokens = ("瑙", "锛", "€", "缁", "閸", "绔", "妭", "鍒", "辫", "璇", "湇", "鍔")
+    question_count = value.count("?") + value.count("？")
+    if question_count >= max(3, len(value) // 6):
+        return True
+    if any(token in value for token in suspicious_tokens):
+        return True
+    cjk_count = sum(1 for ch in value if "\u4e00" <= ch <= "\u9fff")
+    abnormal_count = sum(1 for ch in value if ch in {"�", "?", "？", "¤", "¢", "€"})
+    punctuation_count = sum(1 for ch in value if ch in "，。！？；：、,.!?;:")
+    if len(value) >= 6 and cjk_count <= 1 and (abnormal_count + punctuation_count) >= len(value) // 2:
+        return True
+    return False
+
+
+def sanitize_display_text(text: str) -> str:
+    if not isinstance(text, str):
+        return ""
+    value = repair_mojibake(text).strip()
+    if not value:
+        return ""
+    value = value.replace("|", "；").replace("/", "；").replace("\\", "；")
+    value = value.replace("，", "、")
+    value = value.replace(";;", "；").replace("；；", "；")
+    value = value.replace("???", "").replace("??", "").replace("？？？", "").replace("？？", "")
+    value = value.replace("?1?", "").replace("?2?", "").replace("?3?", "")
+    value = re.sub(r"chunk\s*=?\s*\d*", "", value, flags=re.IGNORECASE)
+    value = value.replace("分析完成", "").replace("Organize complete", "")
+    value = value.replace("？", "").replace("?", "")
+    value = " ".join(value.split())
+    value = value.strip("；、-:：")
+    return value
 
 
 def add_numbers(a: float, b: float) -> float:

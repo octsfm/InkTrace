@@ -162,6 +162,26 @@ class TxtParser:
             result["world_setting"] = content[:2400]
         return result
 
+    def rebuild_chapters_from_preview(self, chapter_items: List[Dict]) -> Dict:
+        chapters: List[Dict] = []
+        for index, item in enumerate(chapter_items or [], 1):
+            if not isinstance(item, dict):
+                continue
+            content = str(item.get("content") or "").strip()
+            if not content:
+                continue
+            title = str(item.get("title") or f"第{index}章").strip() or f"第{index}章"
+            number = int(item.get("number") or index)
+            chapters.append(
+                {
+                    "number": number,
+                    "title": title,
+                    "content": content,
+                    "word_count": self.count_words(content),
+                }
+            )
+        return {"intro": "", "chapters": chapters}
+
     def extract_sections(self, content: str) -> List[Dict]:
         sections: List[Dict] = []
         current_title = ""

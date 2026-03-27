@@ -155,3 +155,35 @@ dist/
 /data/inktrace.db
 /data/novel/修仙从逃出生天开始.txt
 /data/novel/大纲.txt
+/codeline_report_20260317_155941.txt
+/desktop/assets/icon1.ico
+/desktop/assets/icon1.png
+/desktop/assets/icon2.png
+/desktop/assets/icon3.png
+/desktop/assets/icon4.png
+/desktop/assets/icon5.png
+/desktop/assets/icon6.png
+/.trae/rules/ink-trace-rules.md
+/backend/src/infrastructure/persistence/sqlite/schema_v2.sql
+/.trae/skills/docx/SKILL.md
+/exports/修仙从逃出生天开始.md
+/exports/chapter_exports/0001_测试章节.md
+/exports/chapter_txt_exports/0001_测试章节.txt
+/exports/flow_dir_md/0001_起.md
+/exports/flow_dir_txt/0001_起.txt
+/exports/flow_dir_md/0002_承.md
+/exports/flow_dir_txt/0002_承.txt
+/exports/chapter_exports/0002_测试章节.md
+/exports/chapter_txt_exports/0002_测试章节.txt
+/exports/chapter_exports/0003_测试章节.md
+/exports/chapter_txt_exports/0003_测试章节.txt
+/data/novel/优化1.txt
+/exports/nested/章节_一_.md
+/exports/chapter_exports/第1章_第1章 测试章节.md
+/exports/chapter_txt_exports/第1章_第1章 测试章节.txt
+/exports/chapter_exports/第2章_第2章 测试章节.md
+/exports/chapter_txt_exports/第2章_第2章 测试章节.txt
+/exports/chapter_exports/第3章_第3章 测试章节.md
+/exports/chapter_txt_exports/第3章_第3章 测试章节.txt
+/exports/flow_full.md
+/exports/flow_full.txt

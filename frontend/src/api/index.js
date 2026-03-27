@@ -26,6 +26,20 @@ const api = axios.create({
   }
 })
 
+const buildRequestId = () => {
+  const ts = Math.floor(Date.now() / 1000)
+  const rand = Math.random().toString(36).slice(2, 8)
+  return `req_${ts}_${rand}`
+}
+
+api.interceptors.request.use((config) => {
+  const requestId = buildRequestId()
+  config.headers = config.headers || {}
+  config.headers['X-Request-Id'] = requestId
+  config.metadata = { ...(config.metadata || {}), requestId }
+  return config
+})
+
 const ERROR_MESSAGE_MAP = {
   NOVEL_NOT_FOUND: '未找到对应作品，请先创建或导入。',
   STRUCTURE_INPUT_INVALID: '故事结构整理失败，请检查内容后重试。',
@@ -79,7 +93,12 @@ const resolveErrorMessage = (error) => {
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    const responseRequestId = error?.response?.headers?.['x-request-id']
+    const requestId = responseRequestId || error?.config?.metadata?.requestId || ''
     const message = resolveErrorMessage(error)
+    if (requestId) {
+      console.error('请求失败 request_id:', requestId)
+    }
     ElMessage.error(message)
     return Promise.reject(error)
   }
@@ -90,8 +109,10 @@ export const novelApi = {
   get: (id) => api.get(`/novels/${id}`),
   create: (data) => api.post('/novels/', data),
   delete: (id) => api.delete(`/novels/${id}`),
+  createChapter: (novelId, data) => api.post(`/novels/${novelId}/chapters`, data),
   getChapter: (novelId, chapterId) => api.get(`/novels/${novelId}/chapters/${chapterId}`),
-  updateChapter: (novelId, chapterId, data) => api.put(`/novels/${novelId}/chapters/${chapterId}`, data)
+  updateChapter: (novelId, chapterId, data) => api.put(`/novels/${novelId}/chapters/${chapterId}`, data),
+  deleteChapter: (novelId, chapterId) => api.delete(`/novels/${novelId}/chapters/${chapterId}`)
 }
 
 export const contentApi = {
@@ -102,6 +123,10 @@ export const contentApi = {
   memory: (novelId) => api.get(`/content/memory/${novelId}`),
   organize: (novelId, forceRebuild = false) =>
     api.post(`/content/organize/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}`, {}, { timeout: 0 }),
+  startOrganize: (novelId, forceRebuild = false) =>
+    api.post(`/content/organize/start/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}`),
+  stopOrganize: (novelId) => api.post(`/content/organize/stop/${novelId}`),
+  resumeOrganize: (novelId) => api.post(`/content/organize/resume/${novelId}`),
   organizeProgress: (novelId) => api.get(`/content/organize/progress/${novelId}`),
   analyzeStyle: (novelId) => api.get(`/content/style/${novelId}`),
   analyzePlot: (novelId) => api.get(`/content/plot/${novelId}`)
@@ -147,11 +172,14 @@ export const projectApi = {
   delete: (id) => api.delete(`/projects/${id}`),
   activate: (id) => api.post(`/projects/${id}/activate`),
   archive: (id) => api.post(`/projects/${id}/archive`),
-  importV2: (data) => api.post('/projects/import', data, { timeout: 0 }),
+  importCreateEmpty: (data) => api.post('/projects/import', { ...data, import_mode: 'empty' }, { timeout: 0 }),
+  importV2: (data) => api.post('/projects/import', { ...data, import_mode: data?.import_mode || 'full' }, { timeout: 0 }),
+  importByChapterCompat: (data) => api.post('/projects/import', { ...data, import_mode: 'chapter_items' }, { timeout: 0 }),
   importV2Upload: (formData) => api.post('/projects/import/upload', formData, {
     timeout: 0,
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
+  importPreview: (data) => api.post('/content/import/preview', data),
   organizeV2: (projectId, data) => api.post(`/projects/${projectId}/organize`, data || { mode: 'chapter_first', rebuild_memory: true }, { timeout: 0 }),
   memoryV2: (projectId) => api.get(`/projects/${projectId}/memory`),
   memoryViewV2: (projectId) => api.get(`/projects/${projectId}/memory-view`),
@@ -186,6 +214,33 @@ export const worldviewApi = {
   addTechnique: (novelId, data) => api.post(`/worldview/${novelId}/techniques`, data),
   addFaction: (novelId, data) => api.post(`/worldview/${novelId}/factions`, data),
   addLocation: (novelId, data) => api.post(`/worldview/${novelId}/locations`, data)
+}
+
+const buildChapterAIRequest = (chapterId, action, data = {}) => ({
+  chapter_id: chapterId,
+  action,
+  content: '',
+  style: '',
+  target_word_count: 2200,
+  outline: {},
+  global_memory_summary: '',
+  global_outline_summary: '',
+  recent_chapter_summaries: [],
+  ...data
+})
+
+export const chapterEditorApi = {
+  get: (chapterId) => api.get(`/chapters/${chapterId}`),
+  getContext: (chapterId) => api.get(`/chapters/${chapterId}/context`),
+  save: (chapterId, data) => api.put(`/chapters/${chapterId}`, data),
+  getOutline: (chapterId) => api.get(`/chapters/${chapterId}/outline`),
+  saveOutline: (chapterId, data) => api.put(`/chapters/${chapterId}/outline`, { chapter_id: chapterId, ...data }),
+  importChapter: (chapterId, data) => api.post(`/chapters/${chapterId}/import`, buildChapterAIRequest(chapterId, 'import', data)),
+  optimize: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/optimize`, buildChapterAIRequest(chapterId, 'optimize', data), { timeout: 0 }),
+  continueWrite: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/continue`, buildChapterAIRequest(chapterId, 'continue', data), { timeout: 0 }),
+  rewriteStyle: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/rewrite-style`, buildChapterAIRequest(chapterId, 'rewrite-style', data), { timeout: 0 }),
+  analyze: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/analyze`, buildChapterAIRequest(chapterId, 'analyze', data), { timeout: 0 }),
+  generateFromOutline: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/generate-from-outline`, buildChapterAIRequest(chapterId, 'generate-from-outline', data), { timeout: 0 })
 }
 
 export default api

@@ -8,6 +8,7 @@ Markdown导出器模块
 
 
 import os
+import re
 from typing import List
 
 from domain.entities.chapter import Chapter
@@ -20,6 +21,11 @@ class MarkdownExporter:
     
     用于将章节和小说导出为Markdown格式。
     """
+
+    def _display_title(self, chapter: Chapter) -> str:
+        raw_title = (chapter.title or "").strip()
+        normalized = re.sub(r"^第[一二三四五六七八九十百千万零\d]+章\s*", "", raw_title).strip()
+        return f"第{chapter.number}章 {normalized or raw_title or f'章节{chapter.number}'}"
 
     def export_chapter(self, chapter: Chapter, output_path: str) -> None:
         """
@@ -51,7 +57,7 @@ class MarkdownExporter:
 # 文件：模块：markdown_exporter
 
         lines = [
-            f"# 第{chapter.number}章 {chapter.title}",
+            f"# {self._display_title(chapter)}",
             "",
             chapter.content,
             ""
@@ -85,7 +91,8 @@ class MarkdownExporter:
         ]
         
         for chapter in chapters:
-            lines.append(f"- [第{chapter.number}章 {chapter.title}](#第{chapter.number}章-{chapter.title})")
+            title = self._display_title(chapter)
+            lines.append(f"- [{title}](#{title})")
         
         lines.append("")
         lines.append("---")

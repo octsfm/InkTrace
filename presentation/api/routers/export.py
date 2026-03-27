@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
+from application.services.logging_service import build_log_context, get_logger
 from application.services.export_service import ExportService
 from application.dto.request_dto import ExportNovelRequest
 from application.dto.response_dto import ExportResponse
@@ -19,6 +20,7 @@ from presentation.api.dependencies import get_export_service
 
 
 router = APIRouter(prefix="/export", tags=["导出"])
+logger = get_logger(__name__)
 
 EXPORTS_DIR = Path("exports")
 
@@ -74,9 +76,30 @@ async def export_novel(
     """
 # 文件：模块：export
 
+    logger.info(
+        "导出请求已接收",
+        extra=build_log_context(
+            event="export_request_received",
+            novel_id=request.novel_id,
+            scope=request.scope,
+            format=request.format,
+            file_path=request.output_path,
+        ),
+    )
     try:
         return service.export_novel(request)
     except ValueError as e:
+        logger.error(
+            "导出请求失败",
+            extra=build_log_context(
+                event="export_request_failed",
+                novel_id=request.novel_id,
+                scope=request.scope,
+                format=request.format,
+                file_path=request.output_path,
+                error=str(e),
+            ),
+        )
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -93,7 +116,18 @@ async def download_file(file_path: str) -> FileResponse:
     """
 # 文件：模块：export
 
-    safe_path = _validate_file_path(file_path)
+    logger.info(
+        "导出下载请求",
+        extra=build_log_context(event="export_download_requested", file_path=file_path),
+    )
+    try:
+        safe_path = _validate_file_path(file_path)
+    except HTTPException as exc:
+        logger.error(
+            "导出下载失败",
+            extra=build_log_context(event="export_download_failed", file_path=file_path, error=str(exc.detail)),
+        )
+        raise
     
     return FileResponse(
         path=safe_path,

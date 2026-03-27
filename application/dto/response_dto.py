@@ -101,9 +101,22 @@ class ContinueWritingResponse(BaseResponse):
     metadata: Optional[Dict[str, Any]] = None
 
 
+class ChapterAIActionResponse(BaseResponse):
+    chapter_id: str
+    action: str
+    result_text: str
+    analysis: Optional[Dict[str, Any]] = None
+    outline_draft: Optional[Dict[str, Any]] = None
+    used_fallback: bool = False
+
+
 class ExportResponse(BaseResponse):
     """导出响应"""
-    file_path: str
+    mode: str = "file"
+    scope: str = "full"
+    file_path: str = ""
+    directory_path: str = ""
+    file_count: int = 0
     format: str
     word_count: int
     chapter_count: int

@@ -26,6 +26,11 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
                     source_hash TEXT,
                     total_chunks INTEGER DEFAULT 0,
                     completed_chunks INTEGER DEFAULT 0,
+                    percent INTEGER DEFAULT 0,
+                    stage TEXT DEFAULT 'idle',
+                    message TEXT DEFAULT '',
+                    current_chapter_title TEXT DEFAULT '',
+                    resumable INTEGER DEFAULT 0,
                     checkpoint_memory TEXT,
                     status TEXT DEFAULT 'idle',
                     last_error TEXT DEFAULT '',
@@ -34,7 +39,19 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
                 )
                 """
             )
+            self._ensure_column(conn, "organize_jobs", "percent", "INTEGER DEFAULT 0")
+            self._ensure_column(conn, "organize_jobs", "stage", "TEXT DEFAULT 'idle'")
+            self._ensure_column(conn, "organize_jobs", "message", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "organize_jobs", "current_chapter_title", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "organize_jobs", "resumable", "INTEGER DEFAULT 0")
             conn.commit()
+
+    def _ensure_column(self, conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        columns = {row[1] for row in rows}
+        if column_name in columns:
+            return
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
     def find_by_novel_id(self, novel_id: NovelId) -> Optional[OrganizeJob]:
         with sqlite3.connect(self.db_path) as conn:
@@ -53,14 +70,19 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
             conn.execute(
                 """
                 INSERT OR REPLACE INTO organize_jobs
-                (novel_id, source_hash, total_chunks, completed_chunks, checkpoint_memory, status, last_error, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (novel_id, source_hash, total_chunks, completed_chunks, percent, stage, message, current_chapter_title, resumable, checkpoint_memory, status, last_error, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(job.novel_id),
                     job.source_hash,
                     job.total_chunks,
                     job.completed_chunks,
+                    int(job.percent or 0),
+                    job.stage or "idle",
+                    job.message or "",
+                    job.current_chapter_title or "",
+                    1 if job.resumable else 0,
                     json.dumps(job.checkpoint_memory or {}, ensure_ascii=False),
                     job.status.value,
                     job.last_error,
@@ -91,6 +113,11 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
             completed_chunks=int(row["completed_chunks"] or 0),
             checkpoint_memory=checkpoint_memory if isinstance(checkpoint_memory, dict) else {},
             status=status,
+            percent=int(row["percent"] or 0),
+            stage=row["stage"] or "idle",
+            message=row["message"] or "",
+            current_chapter_title=row["current_chapter_title"] or "",
+            resumable=bool(int(row["resumable"] or 0)),
             last_error=row["last_error"] or "",
             created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
             updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else datetime.now(),

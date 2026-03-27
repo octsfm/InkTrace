@@ -8,7 +8,7 @@
 
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 
 
 class BaseRequest(BaseModel):
@@ -23,6 +23,8 @@ class CreateNovelRequest(BaseRequest):
     title: str = Field(..., min_length=1, max_length=100)
     author: str = Field(..., min_length=1, max_length=50)
     genre: str = Field(..., min_length=1)
+    summary: str = ""
+    tags: List[str] = Field(default_factory=list)
     target_word_count: int = Field(..., gt=0, le=50000000)
     options: Optional[Dict[str, Any]] = None
 
@@ -31,6 +33,9 @@ class ImportNovelRequest(BaseRequest):
     """导入小说请求"""
     novel_id: str = Field(..., min_length=1)
     file_path: str = Field(..., min_length=1)
+    author: Optional[str] = ""
+    import_mode: str = "full"
+    chapter_items: List[Dict[str, Any]] = Field(default_factory=list)
     outline_path: Optional[str] = None
     options: Optional[Dict[str, Any]] = None
 
@@ -84,7 +89,8 @@ class ExportNovelRequest(BaseRequest):
     """导出小说请求"""
     novel_id: str = Field(..., min_length=1)
     output_path: str = Field(..., min_length=1)
-    format: str = Field("markdown", min_length=1)
+    format: Literal["markdown", "txt"] = "markdown"
+    scope: Literal["full", "by_chapter"] = "full"
     options: Optional[Dict[str, Any]] = None
 
 
@@ -94,6 +100,28 @@ class UpdateChapterRequest(BaseRequest):
     content: Optional[str] = None
     title: Optional[str] = None
     options: Optional[Dict[str, Any]] = None
+
+
+class ChapterOutlineRequest(BaseRequest):
+    chapter_id: str = Field(..., min_length=1)
+    goal: str = ""
+    conflict: str = ""
+    events: List[str] = Field(default_factory=list)
+    character_progress: str = ""
+    ending_hook: str = ""
+    notes: str = ""
+
+
+class ChapterAIActionRequest(BaseRequest):
+    chapter_id: str = Field(..., min_length=1)
+    action: str = Field(..., min_length=1)
+    content: str = ""
+    outline: Optional[Dict[str, Any]] = None
+    style: str = ""
+    global_memory_summary: str = ""
+    global_outline_summary: str = ""
+    recent_chapter_summaries: List[str] = Field(default_factory=list)
+    target_word_count: int = Field(2000, ge=200, le=10000)
 
 
 class CreateCharacterRequest(BaseRequest):

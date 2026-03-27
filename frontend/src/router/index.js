@@ -31,6 +31,18 @@ const routes = [
         meta: { title: '续写小说' }
       },
       {
+        path: 'novel/:id/chapters/:chapterId/edit',
+        name: 'ChapterEditor',
+        component: () => import('@/views/novel/ChapterEditor.vue'),
+        meta: { title: '章节编辑' }
+      },
+      {
+        path: 'novel/:id/chapters/new',
+        name: 'ChapterEditorNew',
+        component: () => import('@/views/novel/ChapterEditor.vue'),
+        meta: { title: '新建章节' }
+      },
+      {
         path: 'novel/:id/characters',
         name: 'CharacterManage',
         component: () => import('@/views/character/CharacterManage.vue'),

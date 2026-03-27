@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -28,7 +29,41 @@ class _FakeProjectService:
 
 
 class _FakeV2Service:
-    async def organize_project(self, project_id: str, mode: str, rebuild_memory: bool):
+    async def organize_project(
+        self,
+        project_id: str,
+        mode: str,
+        rebuild_memory: bool,
+        progress_callback=None,
+        resume_from: int = 0,
+        checkpoint_memory=None,
+    ):
+        if callable(progress_callback):
+            await progress_callback(
+                {
+                    "status": "running",
+                    "stage": "chapter_analysis",
+                    "current": 1,
+                    "total": 2,
+                    "percent": 50,
+                    "message": "正在分析第1/2章：示例",
+                    "current_chapter_title": "示例",
+                    "resumable": True,
+                }
+            )
+            await progress_callback(
+                {
+                    "status": "done",
+                    "stage": "done",
+                    "current": 2,
+                    "total": 2,
+                    "percent": 100,
+                    "message": "整理完成（2/2）",
+                    "current_chapter_title": "",
+                    "resumable": False,
+                }
+            )
+        await asyncio.sleep(0.05)
         return {"memory_view": {"current_progress": "ok"}}
 
     def get_memory(self, project_id: str):
@@ -39,8 +74,14 @@ class _FakeV2Service:
 
 
 class _FakeOrganizeJobRepo:
+    def __init__(self):
+        self.job = None
+
     def find_by_novel_id(self, novel_id: NovelId):
-        return None
+        return self.job
+
+    def save(self, job):
+        self.job = job
 
 
 def test_content_import_proxy_to_v2():
@@ -87,5 +128,31 @@ def test_content_memory_compat_returns_v2_payload():
         assert data["compat_mode"] is True
         assert data["route"] == "content_compat_v2"
         assert "memory_view" in data
+        assert "?" not in "；".join(data["memory_view"].get("outline_summary") or [])
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_content_organize_start_stop_resume():
+    repo = _FakeOrganizeJobRepo()
+    app.dependency_overrides[get_project_service] = lambda: _FakeProjectService()
+    app.dependency_overrides[get_v2_workflow_service] = lambda: _FakeV2Service()
+    app.dependency_overrides[get_organize_job_repo] = lambda: repo
+    client = TestClient(app)
+    try:
+        started = client.post("/api/content/organize/start/novel_1?force_rebuild=true")
+        assert started.status_code == 200
+        assert started.json()["status"] in {"started", "running"}
+        progress = client.get("/api/content/organize/progress/novel_1")
+        assert progress.status_code == 200
+        payload = progress.json()
+        assert payload["current"] >= 0
+        assert "stage" in payload
+        stopped = client.post("/api/content/organize/stop/novel_1")
+        assert stopped.status_code == 200
+        assert stopped.json()["status"] == "stopped"
+        resumed = client.post("/api/content/organize/resume/novel_1")
+        assert resumed.status_code == 200
+        assert resumed.json()["status"] in {"resumed", "running"}
     finally:
         app.dependency_overrides.clear()

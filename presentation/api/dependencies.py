@@ -4,14 +4,15 @@ API dependency injection helpers.
 
 from functools import lru_cache
 import os
-import logging
 
+from application.services.logging_service import build_log_context, get_logger
 from domain.repositories.novel_repository import INovelRepository
 from domain.repositories.chapter_repository import IChapterRepository
 from domain.repositories.character_repository import ICharacterRepository
 from domain.repositories.outline_repository import IOutlineRepository
 from domain.repositories.project_repository import IProjectRepository
 from domain.repositories.organize_job_repository import IOrganizeJobRepository
+from domain.repositories.chapter_outline_repository import IChapterOutlineRepository
 from domain.repositories.template_repository import ITemplateRepository
 from domain.repositories.worldview_repository import IWorldviewRepository
 from domain.repositories.vector_repository import IVectorRepository
@@ -22,6 +23,7 @@ from infrastructure.persistence.sqlite_character_repo import SQLiteCharacterRepo
 from infrastructure.persistence.sqlite_outline_repo import SQLiteOutlineRepository
 from infrastructure.persistence.sqlite_project_repo import SQLiteProjectRepository
 from infrastructure.persistence.sqlite_organize_job_repo import SQLiteOrganizeJobRepository
+from infrastructure.persistence.sqlite_chapter_outline_repo import SQLiteChapterOutlineRepository
 from infrastructure.persistence.sqlite_template_repo import SQLiteTemplateRepository
 from infrastructure.persistence.sqlite_worldview_repo import SQLiteWorldviewRepository
 from infrastructure.persistence.chromadb_vector_repo import ChromaDBVectorRepository
@@ -41,6 +43,7 @@ from application.services.vector_index_service import VectorIndexService
 from application.services.rag_retrieval_service import RAGRetrievalService
 from application.services.config_service import ConfigService
 from application.services.v2_workflow_service import V2WorkflowService
+from application.services.chapter_ai_service import ChapterAIService
 from infrastructure.persistence.sqlite_v2_repo import SQLiteV2Repository
 
 
@@ -49,17 +52,20 @@ TEMPLATES_DIR = os.environ.get("INKTRACE_TEMPLATES_DIR", "infrastructure/templat
 CHROMA_DIR = os.environ.get("INKTRACE_CHROMA_DIR", "data/chroma")
 
 ENCRYPTION_KEY = b"inktrace_default_encryption_key_32bytes!"[:32]
+logger = get_logger(__name__)
 
 
 @lru_cache()
 def get_novel_repo() -> INovelRepository:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    logger.info("仓储初始化", extra=build_log_context(event="repo_initialized", repo="novel", db_path=DB_PATH))
     return SQLiteNovelRepository(DB_PATH)
 
 
 @lru_cache()
 def get_chapter_repo() -> IChapterRepository:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    logger.info("仓储初始化", extra=build_log_context(event="repo_initialized", repo="chapter", db_path=DB_PATH))
     return SQLiteChapterRepository(DB_PATH)
 
 
@@ -78,13 +84,21 @@ def get_outline_repo() -> IOutlineRepository:
 @lru_cache()
 def get_project_repo() -> IProjectRepository:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    logger.info("仓储初始化", extra=build_log_context(event="repo_initialized", repo="project", db_path=DB_PATH))
     return SQLiteProjectRepository(DB_PATH)
 
 
 @lru_cache()
 def get_organize_job_repo() -> IOrganizeJobRepository:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    logger.info("仓储初始化", extra=build_log_context(event="repo_initialized", repo="organize_job", db_path=DB_PATH))
     return SQLiteOrganizeJobRepository(DB_PATH)
+
+
+@lru_cache()
+def get_chapter_outline_repo() -> IChapterOutlineRepository:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    return SQLiteChapterOutlineRepository(DB_PATH)
 
 
 @lru_cache()
@@ -102,6 +116,7 @@ def get_worldview_repo() -> IWorldviewRepository:
 @lru_cache()
 def get_vector_repo() -> IVectorRepository:
     os.makedirs(CHROMA_DIR, exist_ok=True)
+    logger.info("向量仓储初始化", extra=build_log_context(event="repo_initialized", repo="vector", chroma_dir=CHROMA_DIR))
     return ChromaDBVectorRepository(CHROMA_DIR)
 
 
@@ -125,7 +140,6 @@ def _get_api_keys() -> tuple[str, str]:
     """
     Only read API credentials from the persisted database config.
     """
-    logger = logging.getLogger(__name__)
     config_service = get_config_service()
 
     try:
@@ -133,26 +147,36 @@ def _get_api_keys() -> tuple[str, str]:
         if decrypted:
             deepseek_key, kimi_key = decrypted
             logger.info(
-                "[API Keys] Loaded from database, DeepSeek prefix=%s, Kimi prefix=%s",
-                deepseek_key[:4] if deepseek_key else "N/A",
-                kimi_key[:4] if kimi_key else "N/A",
+                "LLM配置已加载",
+                extra=build_log_context(
+                    event="llm_config_loaded",
+                    has_deepseek_key=bool(deepseek_key),
+                    has_kimi_key=bool(kimi_key),
+                ),
             )
             return deepseek_key, kimi_key
     except Exception as exc:
-        logger.warning("[API Keys] Failed to load from database: %s", exc)
+        logger.warning(
+            "依赖初始化失败",
+            extra=build_log_context(event="dependency_init_failed", dependency="api_keys", error=str(exc)),
+        )
 
-    logger.info("[API Keys] No valid database config found, returning empty credentials")
+    logger.warning(
+        "LLM配置缺失",
+        extra=build_log_context(event="llm_config_missing", has_deepseek_key=False, has_kimi_key=False),
+    )
     return "", ""
 
 
 def get_llm_factory() -> LLMFactory:
-    logger = logging.getLogger(__name__)
     deepseek_key, kimi_key = _get_api_keys()
-
     logger.info(
-        "[LLM Factory] Creating factory, DeepSeek key length=%d, Kimi key length=%d",
-        len(deepseek_key),
-        len(kimi_key),
+        "创建LLM工厂",
+        extra=build_log_context(
+            event="llm_factory_created",
+            has_deepseek_key=bool(deepseek_key),
+            has_kimi_key=bool(kimi_key),
+        ),
     )
 
     config = LLMConfig(
@@ -237,6 +261,7 @@ def get_v2_repo() -> SQLiteV2Repository:
 
 
 def get_v2_workflow_service() -> V2WorkflowService:
+    logger.info("创建工作流服务", extra=build_log_context(event="dependency_initialized", dependency="v2_workflow_service"))
     return V2WorkflowService(
         project_service=get_project_service(),
         content_service=get_content_service(),
@@ -246,3 +271,8 @@ def get_v2_workflow_service() -> V2WorkflowService:
         llm_factory=get_llm_factory(),
         v2_repo=get_v2_repo(),
     )
+
+
+def get_chapter_ai_service() -> ChapterAIService:
+    logger.info("创建章节AI服务", extra=build_log_context(event="dependency_initialized", dependency="chapter_ai_service"))
+    return ChapterAIService(get_llm_factory())

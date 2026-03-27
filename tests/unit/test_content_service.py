@@ -206,6 +206,57 @@ class TestContentService:
             assert isinstance(result, NovelResponse)
             mock_chapter_repo.save.assert_not_called()
 
+    def test_import_novel_writes_author_when_unknown(self, content_service, mock_novel_repo, mock_txt_parser, sample_novel, tmp_path):
+        test_file = tmp_path / "author_novel.txt"
+        test_file.write_text("第1章\n内容", encoding='utf-8')
+        sample_novel.author = "未知"
+        mock_novel_repo.find_by_id.return_value = sample_novel
+        mock_txt_parser.parse_novel_file.return_value = {'chapters': []}
+        with patch.object(content_service, '_nov_to_response') as _:
+            request = ImportNovelRequest(
+                novel_id="novel_001",
+                file_path=str(test_file),
+                author="孔利群",
+            )
+            content_service.import_novel(request)
+            assert sample_novel.author == "孔利群"
+
+    def test_import_novel_supports_chapter_items_mode(self, content_service, mock_novel_repo, mock_chapter_repo, sample_novel):
+        mock_novel_repo.find_by_id.return_value = sample_novel
+        content_service.txt_parser.rebuild_chapters_from_preview.return_value = {
+            "chapters": [
+                {"number": 1, "title": "第1章", "content": "第一章内容", "word_count": 5},
+                {"number": 2, "title": "第2章", "content": "第二章内容", "word_count": 5},
+            ]
+        }
+        with patch.object(content_service, '_nov_to_response') as _:
+            request = ImportNovelRequest(
+                novel_id="novel_001",
+                file_path="placeholder.txt",
+                import_mode="chapter_items",
+                chapter_items=[
+                    {"number": 1, "title": "第1章", "content": "第一章内容"},
+                    {"number": 2, "title": "第2章", "content": "第二章内容"},
+                ],
+            )
+            content_service.import_novel(request)
+            assert mock_chapter_repo.save.call_count == 2
+
+    def test_import_novel_chapter_items_fallback_when_rebuild_invalid(self, content_service, mock_novel_repo, mock_chapter_repo, sample_novel):
+        mock_novel_repo.find_by_id.return_value = sample_novel
+        content_service.txt_parser.rebuild_chapters_from_preview.return_value = object()
+        with patch.object(content_service, '_nov_to_response') as _:
+            request = ImportNovelRequest(
+                novel_id="novel_001",
+                file_path="placeholder.txt",
+                import_mode="chapter_items",
+                chapter_items=[
+                    {"number": 1, "title": "第1章", "content": "第一章内容"},
+                ],
+            )
+            content_service.import_novel(request)
+            assert mock_chapter_repo.save.call_count == 1
+
     def test_analyze_style_success(self, content_service, mock_novel_repo, mock_chapter_repo, sample_novel, sample_chapters):
         """测试分析文风 - 成功"""
         mock_novel_repo.find_by_id.return_value = sample_novel

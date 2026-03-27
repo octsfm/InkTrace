@@ -25,8 +25,11 @@ router = APIRouter(prefix="/api/projects", tags=["projects-v2"])
 
 class ImportProjectRequest(BaseModel):
     project_name: str = Field(..., min_length=1)
+    author: str = ""
     genre: str = ""
     novel_file_path: str = Field(..., min_length=1)
+    import_mode: str = "full"
+    chapter_items: list[dict] = Field(default_factory=list)
     outline_file_path: str = ""
     auto_organize: bool = True
 
@@ -65,8 +68,11 @@ async def import_project(
     try:
         return await service.import_project(
             project_name=request.project_name,
+            author=request.author,
             genre=request.genre,
             novel_file_path=request.novel_file_path,
+            import_mode=request.import_mode,
+            chapter_items=request.chapter_items,
             outline_file_path=request.outline_file_path,
             auto_organize=request.auto_organize,
         )
@@ -77,7 +83,9 @@ async def import_project(
 @router.post("/import/upload")
 async def import_project_upload(
     project_name: str = Form(...),
+    author: str = Form(""),
     genre: str = Form(""),
+    import_mode: str = Form("full"),
     novel_file: UploadFile = File(...),
     outline_file: UploadFile | None = File(default=None),
     auto_organize: bool = Form(True),
@@ -95,8 +103,10 @@ async def import_project_upload(
                 f.write(await outline_file.read())
         return await service.import_project(
             project_name=project_name,
+            author=author,
             genre=genre,
             novel_file_path=novel_path,
+            import_mode=import_mode,
             outline_file_path=outline_path,
             auto_organize=auto_organize,
         )

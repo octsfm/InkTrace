@@ -5,7 +5,19 @@
     </div>
 
     <el-card class="import-card">
+      <el-alert
+        title="单章节导入请在小说详情页或章节编辑页执行"
+        type="info"
+        :closable="false"
+        style="margin-bottom: 12px;"
+      />
       <el-form ref="formRef" :model="form" label-width="100px" :rules="rules">
+        <el-form-item label="导入模式">
+          <el-radio-group v-model="form.import_mode">
+            <el-radio value="empty">创建空白小说</el-radio>
+            <el-radio value="full">整体导入</el-radio>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="小说标题" prop="title">
           <el-input v-model="form.title" placeholder="请输入小说标题" />
         </el-form-item>
@@ -31,7 +43,15 @@
           <el-input-number v-model="form.target_word_count" :min="10000" :max="50000000" :step="10000" />
         </el-form-item>
 
-        <el-form-item label="小说文件" prop="file_path">
+        <el-form-item label="简介">
+          <el-input v-model="form.intro" type="textarea" :rows="3" placeholder="可选，输入小说简介" />
+        </el-form-item>
+
+        <el-form-item label="标签">
+          <el-input v-model="form.tagsText" placeholder="可选，多个标签用逗号分隔" />
+        </el-form-item>
+
+        <el-form-item v-if="form.import_mode !== 'empty'" label="小说文件" prop="file_path">
           <el-input v-model="form.file_path" placeholder="请输入小说文件路径">
             <template #append>
               <el-button @click="selectFile">选择文件</el-button>
@@ -56,6 +76,20 @@
       </el-form>
     </el-card>
 
+    <el-card v-if="chapterPreview.length > 0" class="import-card">
+      <template #header>
+        <span>导入预览（共 {{ chapterPreview.length }} 章）</span>
+      </template>
+      <el-table :data="chapterPreview" size="small">
+        <el-table-column prop="number" label="章号" width="80" />
+        <el-table-column label="章节标题">
+          <template #default="{ row }">
+            <el-input v-model="row.title" />
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
     <el-card v-if="!novelCreated" class="tip-card">
       <template #header>
         <span>导入说明</span>
@@ -68,9 +102,9 @@
       </ul>
     </el-card>
 
-    <el-card v-if="importing" class="progress-card">
+    <el-card v-if="importing || createdNovelId" class="progress-card">
       <template #header>
-        <span>导入进度</span>
+        <span>导入与整理进度</span>
       </template>
       <el-steps :active="currentStep" finish-status="success">
         <el-step title="创建项目" />
@@ -78,15 +112,28 @@
         <el-step title="整理结构" />
         <el-step title="完成" />
       </el-steps>
+      <div v-if="organizeProgress.total > 0" class="organize-progress">
+        <div class="organize-progress-text">{{ organizeProgress.message }}</div>
+        <div class="organize-progress-meta">
+          <span>进度：{{ organizeProgress.current || 0 }} / {{ organizeProgress.total || 0 }}</span>
+          <span v-if="organizeProgress.current_chapter_title">当前章节：{{ organizeProgress.current_chapter_title }}</span>
+        </div>
+        <el-progress :percentage="organizeProgress.percent" :stroke-width="10" />
+      </div>
+      <div v-if="createdNovelId" class="progress-actions">
+        <el-button size="small" type="warning" @click="stopOrganize" :disabled="organizeProgress.status !== 'running'">停止整理</el-button>
+        <el-button size="small" type="primary" @click="resumeOrganize" :disabled="!organizeProgress.resumable || organizeProgress.status === 'running'">继续整理</el-button>
+        <el-button size="small" @click="goToDetail">查看小说详情</el-button>
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { novelApi, projectApi } from '@/api'
+import { contentApi, novelApi, projectApi } from '@/api'
 
 const router = useRouter()
 const formRef = ref(null)
@@ -96,23 +143,48 @@ const importing = ref(false)
 const novelCreated = ref(false)
 const createdNovelId = ref('')
 const currentStep = ref(0)
+const organizeProgress = ref({
+  current: 0,
+  total: 0,
+  percent: 0,
+  status: 'idle',
+  stage: 'idle',
+  message: '尚未开始整理',
+  current_chapter_title: '',
+  resumable: false
+})
+let organizePollTimer = null
 
 const form = reactive({
+  import_mode: 'full',
   title: '',
   author: '',
   genre: '',
+  intro: '',
+  tagsText: '',
   target_word_count: 800000,
   file_path: '',
   outline_path: '',
   selectedFile: null,
   selectedOutline: null
 })
+const chapterPreview = ref([])
 
 const rules = {
   title: [{ required: true, message: '请输入小说标题', trigger: 'blur' }],
   author: [{ required: true, message: '请输入作者名', trigger: 'blur' }],
   genre: [{ required: true, message: '请选择题材', trigger: 'change' }],
-  target_word_count: [{ required: true, message: '请输入目标字数', trigger: 'blur' }]
+  target_word_count: [{ required: true, message: '请输入目标字数', trigger: 'blur' }],
+  file_path: [
+    {
+      validator: (_, value, callback) => {
+        if (form.import_mode === 'empty') return callback()
+        if (!String(value || '').trim()) return callback(new Error('请输入小说文件路径'))
+        callback()
+      },
+      trigger: 'blur'
+    }
+  ]
 }
 
 const selectFile = async () => {
@@ -154,6 +226,46 @@ const handleFileSelect = (event) => {
   if (!file) return
   form.file_path = file.name
   form.selectedFile = file
+  previewChapters()
+}
+
+const parseChapterPreviewFromText = (text) => {
+  const blocks = String(text || '')
+    .split(/\n(?=第[一二三四五六七八九十百千万零\d]+章|Chapter\s+\d+)/i)
+    .map((x) => x.trim())
+    .filter(Boolean)
+  return blocks.map((item, index) => {
+    const lines = item.split('\n')
+    const first = (lines[0] || '').trim()
+    const content = lines.slice(1).join('\n').trim()
+    return {
+      number: index + 1,
+      title: first || `第${index + 1}章`,
+      content
+    }
+  })
+}
+
+const previewChapters = async () => {
+  if (form.import_mode === 'empty') {
+    chapterPreview.value = []
+    return
+  }
+  try {
+    if (!window.electronAPI && form.selectedFile) {
+      const text = await form.selectedFile.text()
+      chapterPreview.value = parseChapterPreviewFromText(text)
+      return
+    }
+    const result = await projectApi.importPreview({ file_path: form.file_path })
+    chapterPreview.value = (result.chapters || []).map((x) => ({
+      number: x.number,
+      title: x.title,
+      content: x.content || ''
+    }))
+  } catch (error) {
+    console.error('预览失败:', error)
+  }
 }
 
 const handleOutlineSelect = (event) => {
@@ -166,7 +278,7 @@ const handleOutlineSelect = (event) => {
 const handleImport = async () => {
   try {
     await formRef.value.validate()
-    if (!form.file_path) {
+    if (form.import_mode !== 'empty' && !form.file_path) {
       ElMessage.warning('请输入小说文件路径')
       return
     }
@@ -176,6 +288,19 @@ const handleImport = async () => {
 
     currentStep.value = 1
     let novel = null
+    if (form.import_mode === 'empty') {
+      const created = await novelApi.create({
+        title: form.title,
+        author: form.author,
+        genre: form.genre,
+        summary: form.intro || '',
+        tags: form.tagsText.split(',').map((x) => x.trim()).filter(Boolean),
+        target_word_count: form.target_word_count
+      })
+      ElMessage.success('空白小说创建成功')
+      router.push(`/novel/${created.id}`)
+      return
+    }
     if (!window.electronAPI && !form.selectedFile) {
       novel = await novelApi.create({
         title: form.title,
@@ -192,27 +317,34 @@ const handleImport = async () => {
     if (!window.electronAPI && form.selectedFile) {
       const formData = new FormData()
       formData.append('project_name', form.title)
+      formData.append('author', form.author || '')
       formData.append('genre', form.genre)
+      formData.append('import_mode', form.import_mode)
       formData.append('novel_file', form.selectedFile)
       if (form.selectedOutline) {
         formData.append('outline_file', form.selectedOutline)
       }
-      formData.append('auto_organize', 'true')
+      formData.append('auto_organize', 'false')
       const result = await projectApi.importV2Upload(formData)
-      novel = { id: result.novel_id }
+      novel = { id: result.novel_id, chapter_count: result.chapter_count || 0 }
     } else {
       const result = await projectApi.importV2({
         project_name: form.title,
+        author: form.author || '',
         genre: form.genre,
+        import_mode: form.import_mode,
         novel_file_path: form.file_path,
         outline_file_path: form.outline_path || '',
-        auto_organize: true
+        auto_organize: false
       })
-      novel = { id: result.novel_id }
+      novel = { id: result.novel_id, chapter_count: result.chapter_count || 0 }
     }
+    createdNovelId.value = novel.id
+    novelCreated.value = true
+    await startOrganize(true)
 
     currentStep.value = 3
-    ElMessage.success('导入完成')
+    ElMessage.success('导入完成，已开始整理结构')
     sessionStorage.setItem(
       'inktrace_continue_hint',
       JSON.stringify({
@@ -221,10 +353,6 @@ const handleImport = async () => {
         defaultGoal: '第2章：承接上一章推进主线'
       })
     )
-
-    setTimeout(() => {
-      router.push(`/novel/${novel.id}`)
-    }, 1000)
   } catch (error) {
     console.error('导入失败:', error)
     currentStep.value = 0
@@ -232,6 +360,71 @@ const handleImport = async () => {
     importing.value = false
   }
 }
+
+const fetchOrganizeProgress = async () => {
+  if (!createdNovelId.value) return
+  try {
+    const progress = await contentApi.organizeProgress(createdNovelId.value)
+    organizeProgress.value = progress || organizeProgress.value
+    if (organizeProgress.value.status === 'done') {
+      currentStep.value = 3
+      stopOrganizePolling()
+    } else if (organizeProgress.value.status === 'running') {
+      currentStep.value = 2
+    }
+  } catch (error) {
+    console.error('读取整理进度失败:', error)
+  }
+}
+
+const startOrganizePolling = () => {
+  stopOrganizePolling()
+  organizePollTimer = setInterval(async () => {
+    await fetchOrganizeProgress()
+    if (organizeProgress.value.status !== 'running') {
+      stopOrganizePolling()
+    }
+  }, 1200)
+}
+
+const stopOrganizePolling = () => {
+  if (organizePollTimer) {
+    clearInterval(organizePollTimer)
+    organizePollTimer = null
+  }
+}
+
+const startOrganize = async (forceRebuild = false) => {
+  if (!createdNovelId.value) return
+  await contentApi.startOrganize(createdNovelId.value, forceRebuild)
+  await fetchOrganizeProgress()
+  startOrganizePolling()
+}
+
+const stopOrganize = async () => {
+  if (!createdNovelId.value) return
+  await contentApi.stopOrganize(createdNovelId.value)
+  await fetchOrganizeProgress()
+  stopOrganizePolling()
+  ElMessage.success('已停止整理')
+}
+
+const resumeOrganize = async () => {
+  if (!createdNovelId.value) return
+  await contentApi.resumeOrganize(createdNovelId.value)
+  await fetchOrganizeProgress()
+  startOrganizePolling()
+  ElMessage.success('已继续整理')
+}
+
+const goToDetail = () => {
+  if (!createdNovelId.value) return
+  router.push(`/novel/${createdNovelId.value}`)
+}
+
+onBeforeUnmount(() => {
+  stopOrganizePolling()
+})
 </script>
 
 <style scoped>
@@ -268,5 +461,30 @@ const handleImport = async () => {
 .progress-card {
   max-width: 800px;
   margin-top: 20px;
+}
+
+.organize-progress {
+  margin-top: 16px;
+}
+
+.organize-progress-text {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.organize-progress-meta {
+  margin-bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.progress-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
 }
 </style>

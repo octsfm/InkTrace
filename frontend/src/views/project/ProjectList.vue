@@ -4,7 +4,10 @@
       <template #header>
         <div class="card-header">
           <span>项目管理</span>
-          <el-button type="primary" @click="showCreateDialog">新建项目</el-button>
+          <div class="header-actions">
+            <el-button @click="goImport">导入小说</el-button>
+            <el-button type="primary" @click="showCreateDialog">创建小说</el-button>
+          </div>
         </div>
       </template>
 
@@ -63,30 +66,11 @@
           <el-input-number v-model="createForm.target_words" :min="100000" :max="50000000" :step="100000" />
           <span style="margin-left: 10px;">{{ (createForm.target_words / 10000).toFixed(0) }}万字</span>
         </el-form-item>
-        <el-form-item label="风格" required>
-          <el-input v-model="createForm.style" placeholder="如：热血、悬疑、克制、轻松" />
-        </el-form-item>
-        <el-form-item label="主角设定" required>
-          <el-input
-            v-model="createForm.protagonist_setting"
-            type="textarea"
-            :rows="3"
-            placeholder="如：林渊，十七岁，冷静坚韧，背负家族秘密"
-          />
-        </el-form-item>
-        <el-form-item label="世界观">
-          <el-input
-            v-model="createForm.worldview"
-            type="textarea"
-            :rows="3"
-            placeholder="可选，如：灵气复苏后的多势力世界"
-          />
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="creating" @click="createProject">
-          {{ creating ? '正在创作...' : '创建并生成' }}
+          {{ creating ? '正在创建...' : '创建小说' }}
         </el-button>
       </template>
     </el-dialog>
@@ -138,36 +122,24 @@ const showCreateDialog = () => {
   createForm.value = {
     name: '',
     genre: 'xuanhuan',
-    target_words: 8000000,
-    style: '',
-    protagonist_setting: '',
-    worldview: ''
+    target_words: 8000000
   }
   createDialogVisible.value = true
 }
 
 const createProject = async () => {
-  if (!createForm.value.name || !createForm.value.style || !createForm.value.protagonist_setting) {
-    ElMessage.warning('请填写名称、风格和主角设定')
+  if (!createForm.value.name) {
+    ElMessage.warning('请填写项目名称')
     return
   }
   creating.value = true
   try {
     const res = await api.post('/projects', createForm.value)
     createDialogVisible.value = false
-    sessionStorage.setItem(
-      'inktrace_continue_hint',
-      JSON.stringify({
-        novelId: res?.project?.novel_id,
-        message: '已生成第一章，是否继续创作第二章？',
-        defaultGoal: '第2章：承接第一章并推进主线',
-        firstChapter: res?.first_chapter || null
-      })
-    )
-    ElMessage.success('创建完成，正在进入创作...')
+    ElMessage.success('创建完成')
     await loadProjects()
     if (res?.project?.novel_id) {
-      router.push(`/novel/${res.project.novel_id}/write?auto_continue=1&default_goal=${encodeURIComponent('第2章：承接第一章并推进主线')}`)
+      router.push(`/novel/${res.project.novel_id}`)
     }
   } catch (error) {
     console.error('创建项目失败:', error)
@@ -205,6 +177,10 @@ const formatDate = (dateStr) => {
   return date.toLocaleString('zh-CN')
 }
 
+const goImport = () => {
+  router.push('/import')
+}
+
 onMounted(() => {
   loadProjects()
 })
@@ -219,5 +195,10 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 </style>

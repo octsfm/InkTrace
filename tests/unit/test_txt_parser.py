@@ -68,6 +68,16 @@ class TestTxtParser(unittest.TestCase):
         pattern = self.parser.detect_chapter_pattern(filepath)
         self.assertIsNotNone(pattern)
 
+    def test_detect_chapter_pattern_english_chapter(self):
+        content = """Chapter 1 Start
+内容1
+
+Chapter 2 Continue
+内容2"""
+        filepath = self._create_temp_file(content)
+        pattern = self.parser.detect_chapter_pattern(filepath)
+        self.assertIsNotNone(pattern)
+
     def test_parse_chapters(self):
         """测试解析章节"""
         content = """作品相关
@@ -124,6 +134,25 @@ class TestTxtParser(unittest.TestCase):
         self.assertIn('chapters', result)
         self.assertEqual(len(result['chapters']), 2)
         self.assertIn("修仙小说", result['intro'])
+
+    def test_parse_novel_file_fallback_sections(self):
+        content = """开场
+主角醒来。
+
+转折
+冲突升级。"""
+        filepath = self._create_temp_file(content)
+        result = self.parser.parse_novel_file(filepath)
+        self.assertGreaterEqual(len(result['chapters']), 1)
+
+    def test_rebuild_chapters_from_preview(self):
+        result = self.parser.rebuild_chapters_from_preview([
+            {"number": 1, "title": "第1章 起", "content": "内容A"},
+            {"number": 2, "title": "第2章 承", "content": "内容B"},
+        ])
+        self.assertIn("chapters", result)
+        self.assertEqual(len(result["chapters"]), 2)
+        self.assertEqual(result["chapters"][0]["title"], "第1章 起")
 
     def test_parse_outline_file(self):
         """测试解析大纲文件"""
