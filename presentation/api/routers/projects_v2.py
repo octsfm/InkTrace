@@ -75,6 +75,10 @@ class StyleRequirementsRequest(BaseModel):
     dialogue_density: str = ""
 
 
+class ExtractStyleRequirementsRequest(BaseModel):
+    sample_chapter_count: int = Field(default=3, ge=1, le=10)
+
+
 @router.post("/import")
 async def import_project(
     request: ImportProjectRequest,
@@ -195,6 +199,18 @@ def update_style_requirements(
 ):
     try:
         return service.update_style_requirements(project_id, request.model_dump())
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{project_id}/style-requirements/extract", response_model=StyleRequirementsEnvelope)
+def extract_style_requirements(
+    project_id: str,
+    request: ExtractStyleRequirementsRequest,
+    service: V2WorkflowService = Depends(get_v2_workflow_service),
+):
+    try:
+        return service.extract_style_requirements_from_samples(project_id, request.sample_chapter_count)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

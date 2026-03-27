@@ -35,7 +35,10 @@
             <el-form-item label="剧情分支">
               <div class="branch-panel">
                 <div class="branch-toolbar">
-                  <el-button :loading="branchLoading" @click="generateBranches">生成分支</el-button>
+                  <div class="branch-toolbar-left">
+                    <el-button :loading="branchLoading" @click="generateBranches">生成分支</el-button>
+                    <el-button @click="openStyleDialog">风格要求</el-button>
+                  </div>
                   <span class="branch-hint">先选分支，再预览或正式写入章节。</span>
                 </div>
                 <div v-if="!branches.length" class="branch-empty">暂无分支，请先生成。</div>
@@ -134,6 +137,39 @@
             <el-button type="primary" disabled>{{ saveHintLabel }}</el-button>
             <el-button @click="regenerate">重新生成预览</el-button>
           </div>
+
+          <el-divider />
+
+          <div v-if="draftCompare.structural.content || draftCompare.detemplated.content" class="draft-compare">
+            <div class="compare-header">
+              <span>草稿对比</span>
+              <el-tag :type="draftCompare.usedStructuralFallback ? 'warning' : 'success'">
+                {{ draftCompare.usedStructuralFallback ? '已回退结构稿' : '去模板稿生效' }}
+              </el-tag>
+            </div>
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-card shadow="never">
+                  <template #header>结构稿</template>
+                  <div class="compare-title">{{ draftCompare.structural.title || '未命名' }}</div>
+                  <div class="compare-body">{{ draftCompare.structural.content || '暂无' }}</div>
+                </el-card>
+              </el-col>
+              <el-col :span="12">
+                <el-card shadow="never">
+                  <template #header>去模板稿</template>
+                  <div class="compare-title">{{ draftCompare.detemplated.title || '未命名' }}</div>
+                  <div class="compare-body">{{ draftCompare.detemplated.content || '暂无' }}</div>
+                </el-card>
+              </el-col>
+            </el-row>
+            <div v-if="draftCompare.integrity.risk_notes?.length" class="risk-notes">
+              <el-tag type="warning">校验风险</el-tag>
+              <ul>
+                <li v-for="(item, index) in draftCompare.integrity.risk_notes" :key="`risk-${index}`">{{ item }}</li>
+              </ul>
+            </div>
+          </div>
         </el-card>
       </el-col>
 
@@ -187,6 +223,31 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <el-dialog v-model="styleDialogVisible" title="风格要求" width="620px">
+      <el-form label-width="110px">
+        <el-form-item label="作者风格关键词">
+          <el-select v-model="styleForm.author_voice_keywords" multiple allow-create filterable default-first-option style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="避免表达模式">
+          <el-select v-model="styleForm.avoid_patterns" multiple allow-create filterable default-first-option style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="偏好节奏">
+          <el-input v-model="styleForm.preferred_rhythm" placeholder="例如：中速节奏、快节奏" />
+        </el-form-item>
+        <el-form-item label="叙事距离">
+          <el-input v-model="styleForm.narrative_distance" placeholder="例如：第一人称/第三人称有限视角" />
+        </el-form-item>
+        <el-form-item label="对话密度">
+          <el-input v-model="styleForm.dialogue_density" placeholder="高/中/低" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button :loading="styleLoading" @click="extractStyleRequirements">从最近样章提取</el-button>
+        <el-button @click="styleDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="styleSaving" @click="saveStyleRequirements">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -207,6 +268,22 @@ const branches = ref([])
 const selectedBranchId = ref('')
 const projectId = ref('')
 const deletingChapterId = ref('')
+const styleDialogVisible = ref(false)
+const styleLoading = ref(false)
+const styleSaving = ref(false)
+const draftCompare = ref({
+  structural: {},
+  detemplated: {},
+  integrity: {},
+  usedStructuralFallback: false
+})
+const styleForm = reactive({
+  author_voice_keywords: [],
+  avoid_patterns: [],
+  preferred_rhythm: '',
+  narrative_distance: '',
+  dialogue_density: ''
+})
 
 const form = reactive({
   plot_direction: '',
@@ -293,6 +370,12 @@ const generatePreview = async () => {
       plan_ids: planIds,
       auto_commit: false
     })
+    draftCompare.value = {
+      structural: writeResult?.latest_structural_draft || {},
+      detemplated: writeResult?.latest_detemplated_draft || {},
+      integrity: writeResult?.latest_draft_integrity_check || {},
+      usedStructuralFallback: !!writeResult?.used_structural_fallback
+    }
     const chapter = writeResult?.latest_chapter || {}
     const content = chapter.content || writeResult?.latest_content || ''
     const title = chapter.title || writeResult?.latest_title || `第${chapter.number || (recentChapters.value[0]?.number || 0) + 1}章`
@@ -337,6 +420,12 @@ const continueNextChapter = async () => {
       plan_ids: planIds,
       auto_commit: true
     })
+    draftCompare.value = {
+      structural: writeResult?.latest_structural_draft || {},
+      detemplated: writeResult?.latest_detemplated_draft || {},
+      integrity: writeResult?.latest_draft_integrity_check || {},
+      usedStructuralFallback: !!writeResult?.used_structural_fallback
+    }
     const generatedIds = writeResult?.generated_chapter_ids || []
     const latestChapterNumber = Number(writeResult?.latest_chapter_number || 0)
     const fromChapterNumber = latestChapterNumber > 0 ? Math.max(1, latestChapterNumber - generatedIds.length + 1) : 1
@@ -405,6 +494,65 @@ const loadRecentChapters = async () => {
   }
 }
 
+const loadStyleRequirements = async () => {
+  try {
+    await ensureProjectId()
+    const payload = await projectApi.getStyleRequirements(projectId.value)
+    const req = payload?.style_requirements || {}
+    styleForm.author_voice_keywords = req.author_voice_keywords || []
+    styleForm.avoid_patterns = req.avoid_patterns || []
+    styleForm.preferred_rhythm = req.preferred_rhythm || ''
+    styleForm.narrative_distance = req.narrative_distance || ''
+    styleForm.dialogue_density = req.dialogue_density || ''
+  } catch (error) {
+    console.error('加载风格要求失败:', error)
+  }
+}
+
+const openStyleDialog = async () => {
+  await loadStyleRequirements()
+  styleDialogVisible.value = true
+}
+
+const saveStyleRequirements = async () => {
+  try {
+    styleSaving.value = true
+    await ensureProjectId()
+    await projectApi.updateStyleRequirements(projectId.value, {
+      author_voice_keywords: styleForm.author_voice_keywords,
+      avoid_patterns: styleForm.avoid_patterns,
+      preferred_rhythm: styleForm.preferred_rhythm,
+      narrative_distance: styleForm.narrative_distance,
+      dialogue_density: styleForm.dialogue_density
+    })
+    styleDialogVisible.value = false
+    ElMessage.success('风格要求已保存')
+  } catch (error) {
+    console.error('保存风格要求失败:', error)
+  } finally {
+    styleSaving.value = false
+  }
+}
+
+const extractStyleRequirements = async () => {
+  try {
+    styleLoading.value = true
+    await ensureProjectId()
+    const payload = await projectApi.extractStyleRequirements(projectId.value, { sample_chapter_count: 3 })
+    const req = payload?.style_requirements || {}
+    styleForm.author_voice_keywords = req.author_voice_keywords || []
+    styleForm.avoid_patterns = req.avoid_patterns || []
+    styleForm.preferred_rhythm = req.preferred_rhythm || ''
+    styleForm.narrative_distance = req.narrative_distance || ''
+    styleForm.dialogue_density = req.dialogue_density || ''
+    ElMessage.success('已从最近样章提取风格要求')
+  } catch (error) {
+    console.error('提取风格要求失败:', error)
+  } finally {
+    styleLoading.value = false
+  }
+}
+
 const deleteRecentChapter = async (chapter) => {
   if (!chapter?.id) return
   try {
@@ -455,6 +603,7 @@ const initPage = async () => {
   }
 
   await loadRecentChapters()
+  await loadStyleRequirements()
 }
 
 onMounted(() => {
@@ -549,6 +698,11 @@ onMounted(() => {
   gap: 12px;
 }
 
+.branch-toolbar-left {
+  display: flex;
+  gap: 8px;
+}
+
 .branch-hint {
   font-size: 12px;
   color: #909399;
@@ -606,5 +760,31 @@ onMounted(() => {
 
 .branch-meta.risk {
   color: #c45656;
+}
+
+.draft-compare {
+  margin-top: 12px;
+}
+
+.compare-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.compare-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.compare-body {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.risk-notes {
+  margin-top: 10px;
 }
 </style>

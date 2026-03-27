@@ -65,6 +65,24 @@ def test_projects_v2_import_and_query_chain():
         style = client.get(f"/api/projects/{project_id}/style-requirements")
         assert style.status_code == 200
         assert style.json()["project_id"] == project_id
+        update_style = client.put(
+            f"/api/projects/{project_id}/style-requirements",
+            json={
+                "author_voice_keywords": ["紧张", "克制"],
+                "avoid_patterns": ["与此同时"],
+                "preferred_rhythm": "中速节奏",
+                "narrative_distance": "第三人称",
+                "dialogue_density": "中",
+            },
+        )
+        assert update_style.status_code == 200
+        assert "style_requirements" in update_style.json()
+        extract_style = client.post(
+            f"/api/projects/{project_id}/style-requirements/extract",
+            json={"sample_chapter_count": 2},
+        )
+        assert extract_style.status_code == 200
+        assert extract_style.json().get("style_requirements") is not None
     finally:
         try:
             Path(novel_path).unlink(missing_ok=True)

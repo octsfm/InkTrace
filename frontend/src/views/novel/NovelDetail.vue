@@ -125,6 +125,41 @@
               <div v-else class="style-tags">
                 <el-tag v-for="(tag, index) in styleTags" :key="`style-${index}`" type="success">{{ tag }}</el-tag>
               </div>
+              <el-divider />
+              <div class="style-req-toolbar">
+                <el-button size="small" @click="openStyleReqDialog">编辑风格要求</el-button>
+                <el-button size="small" :loading="styleReqLoading" @click="extractStyleReqFromSamples">样章提取</el-button>
+              </div>
+              <div class="style-req-block">
+                <div><strong>作者风格关键词：</strong>{{ styleReqView.author_voice_keywords.join('、') || '暂无' }}</div>
+                <div><strong>避免表达：</strong>{{ styleReqView.avoid_patterns.join('、') || '暂无' }}</div>
+                <div><strong>偏好节奏：</strong>{{ styleReqView.preferred_rhythm || '暂无' }}</div>
+                <div><strong>叙事距离：</strong>{{ styleReqView.narrative_distance || '暂无' }}</div>
+                <div><strong>对话密度：</strong>{{ styleReqView.dialogue_density || '暂无' }}</div>
+              </div>
+            </el-collapse-item>
+            <el-collapse-item title="最新草稿对比" name="drafts">
+              <div v-if="!latestStructuralDraft.content && !latestDetemplatedDraft.content" class="empty-text">暂无数据</div>
+              <el-row v-else :gutter="12">
+                <el-col :span="12">
+                  <el-card shadow="never">
+                    <template #header>结构稿</template>
+                    <div class="summary-text">{{ latestStructuralDraft.content || '暂无' }}</div>
+                  </el-card>
+                </el-col>
+                <el-col :span="12">
+                  <el-card shadow="never">
+                    <template #header>去模板稿</template>
+                    <div class="summary-text">{{ latestDetemplatedDraft.content || '暂无' }}</div>
+                  </el-card>
+                </el-col>
+              </el-row>
+              <div v-if="latestDraftCheck.risk_notes?.length" class="draft-risk">
+                <el-tag type="warning">校验风险</el-tag>
+                <ul>
+                  <li v-for="(item, index) in latestDraftCheck.risk_notes" :key="`detail-risk-${index}`">{{ item }}</li>
+                </ul>
+              </div>
             </el-collapse-item>
           </el-collapse>
         </el-card>
@@ -212,6 +247,30 @@
       </el-tabs>
     </el-dialog>
 
+    <el-dialog v-model="styleReqDialogVisible" title="风格要求" width="620px">
+      <el-form label-width="110px">
+        <el-form-item label="作者风格关键词">
+          <el-select v-model="styleReqForm.author_voice_keywords" multiple allow-create filterable default-first-option style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="避免表达模式">
+          <el-select v-model="styleReqForm.avoid_patterns" multiple allow-create filterable default-first-option style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="偏好节奏">
+          <el-input v-model="styleReqForm.preferred_rhythm" />
+        </el-form-item>
+        <el-form-item label="叙事距离">
+          <el-input v-model="styleReqForm.narrative_distance" />
+        </el-form-item>
+        <el-form-item label="对话密度">
+          <el-input v-model="styleReqForm.dialogue_density" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="styleReqDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="styleReqSaving" @click="saveStyleReq">保存</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="exportDialogVisible" title="导出小说" width="560px">
       <el-form label-width="100px">
         <el-form-item label="导出范围">
@@ -264,6 +323,23 @@ const memoryData = ref({})
 const projectId = ref('')
 const memoryLoading = ref(false)
 const memoryCollapse = ref(['outline', 'characters', 'world', 'plot', 'style'])
+const styleReqDialogVisible = ref(false)
+const styleReqLoading = ref(false)
+const styleReqSaving = ref(false)
+const styleReqView = ref({
+  author_voice_keywords: [],
+  avoid_patterns: [],
+  preferred_rhythm: '',
+  narrative_distance: '',
+  dialogue_density: ''
+})
+const styleReqForm = ref({
+  author_voice_keywords: [],
+  avoid_patterns: [],
+  preferred_rhythm: '',
+  narrative_distance: '',
+  dialogue_density: ''
+})
 const organizing = ref(false)
 const organizeProgress = ref({
   current: 0,
@@ -371,6 +447,21 @@ const outlineSummary = computed(() => {
   return asArray(summary).map((item) => String(item)).filter((item) => !isLowQualityText(item)).slice(0, 6)
 })
 
+const latestStructuralDraft = computed(() => {
+  const drafts = asArray(memoryData.value?.structural_drafts)
+  return drafts[drafts.length - 1] || {}
+})
+
+const latestDetemplatedDraft = computed(() => {
+  const drafts = asArray(memoryData.value?.detemplated_drafts)
+  return drafts[drafts.length - 1] || {}
+})
+
+const latestDraftCheck = computed(() => {
+  const checks = asArray(memoryData.value?.draft_integrity_checks)
+  return checks[checks.length - 1] || {}
+})
+
 const organizeActionLabel = computed(() => {
   if (progressRunning.value) return '正在整理故事结构'
   if (progressResumable.value) return '继续整理故事结构'
@@ -426,11 +517,69 @@ const loadMemory = async () => {
       current_progress: memoryView?.current_progress || memory?.current_progress || '',
       outline_summary: memoryView?.outline_summary || memory?.outline_context?.summary || []
     }
+    const req = memory?.style_requirements || {}
+    styleReqView.value = {
+      author_voice_keywords: req.author_voice_keywords || [],
+      avoid_patterns: req.avoid_patterns || [],
+      preferred_rhythm: req.preferred_rhythm || '',
+      narrative_distance: req.narrative_distance || '',
+      dialogue_density: req.dialogue_density || ''
+    }
   } catch (error) {
     memoryData.value = {}
     console.error('加载 memory 失败:', error)
   } finally {
     memoryLoading.value = false
+  }
+}
+
+const openStyleReqDialog = () => {
+  styleReqForm.value = {
+    author_voice_keywords: [...(styleReqView.value.author_voice_keywords || [])],
+    avoid_patterns: [...(styleReqView.value.avoid_patterns || [])],
+    preferred_rhythm: styleReqView.value.preferred_rhythm || '',
+    narrative_distance: styleReqView.value.narrative_distance || '',
+    dialogue_density: styleReqView.value.dialogue_density || ''
+  }
+  styleReqDialogVisible.value = true
+}
+
+const saveStyleReq = async () => {
+  try {
+    styleReqSaving.value = true
+    if (!projectId.value) {
+      const project = await projectApi.getByNovel(route.params.id)
+      projectId.value = project?.id || ''
+    }
+    if (!projectId.value) return
+    const res = await projectApi.updateStyleRequirements(projectId.value, styleReqForm.value)
+    styleReqView.value = res?.style_requirements || styleReqForm.value
+    styleReqDialogVisible.value = false
+    await loadMemory()
+    ElMessage.success('风格要求已保存')
+  } catch (error) {
+    console.error('保存风格要求失败:', error)
+  } finally {
+    styleReqSaving.value = false
+  }
+}
+
+const extractStyleReqFromSamples = async () => {
+  try {
+    styleReqLoading.value = true
+    if (!projectId.value) {
+      const project = await projectApi.getByNovel(route.params.id)
+      projectId.value = project?.id || ''
+    }
+    if (!projectId.value) return
+    const res = await projectApi.extractStyleRequirements(projectId.value, { sample_chapter_count: 3 })
+    styleReqView.value = res?.style_requirements || styleReqView.value
+    await loadMemory()
+    ElMessage.success('已从最近样章提取风格要求')
+  } catch (error) {
+    console.error('提取风格要求失败:', error)
+  } finally {
+    styleReqLoading.value = false
   }
 }
 
@@ -830,6 +979,23 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.style-req-toolbar {
+  margin: 10px 0;
+  display: flex;
+  gap: 8px;
+}
+
+.style-req-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  line-height: 1.6;
+}
+
+.draft-risk {
+  margin-top: 10px;
 }
 
 .empty-text {

@@ -396,6 +396,19 @@ class V2WorkflowService:
         self.v2_repo.save_memory_view(self._to_memory_view_payload(project_id, memory_payload))
         return {"project_id": project_id, "style_requirements": merged}
 
+    def extract_style_requirements_from_samples(self, project_id: str, sample_chapter_count: int = 3) -> Dict[str, Any]:
+        project = self.project_service.get_project(ProjectId(project_id))
+        if not project:
+            raise ValueError("项目不存在")
+        chapters = sorted(self.chapter_repo.find_by_novel(project.novel_id), key=lambda x: x.number)
+        sample_size = max(1, min(int(sample_chapter_count or 3), 10))
+        picked = chapters[-sample_size:]
+        texts = [str(item.content or "") for item in picked if str(item.content or "").strip()]
+        if not texts:
+            raise ValueError("样章内容为空，无法提取风格要求")
+        inferred = self._infer_style_requirements_from_samples(texts)
+        return self.update_style_requirements(project_id, inferred)
+
     def get_chapter_editor_context(self, project_id: str, chapter_number: int = 0, recent_limit: int = 5) -> Dict[str, Any]:
         project = self.project_service.get_project(ProjectId(project_id))
         if not project:
@@ -878,6 +891,48 @@ class V2WorkflowService:
             "preferred_rhythm": self.clean_text(str("、".join([str(x) for x in (style.get("rhythm_tags") or []) if str(x).strip()]))),
             "narrative_distance": self.clean_text(str(style.get("narrative_pov") or "")),
             "dialogue_density": "中",
+        }
+
+    def _infer_style_requirements_from_samples(self, sample_texts: List[str]) -> Dict[str, Any]:
+        full_text = "\n".join([str(x) for x in sample_texts if str(x).strip()])
+        lines = [line.strip() for line in full_text.splitlines() if line.strip()]
+        dialogue_lines = [line for line in lines if any(token in line for token in ["“", "”", "\""])]
+        dialogue_ratio = (len(dialogue_lines) / len(lines)) if lines else 0
+        if dialogue_ratio >= 0.45:
+            dialogue_density = "高"
+        elif dialogue_ratio >= 0.2:
+            dialogue_density = "中"
+        else:
+            dialogue_density = "低"
+        question_marks = full_text.count("？") + full_text.count("?")
+        exclamations = full_text.count("！") + full_text.count("!")
+        ellipsis = full_text.count("……") + full_text.count("...")
+        if exclamations + question_marks >= 12:
+            preferred_rhythm = "快节奏"
+        elif ellipsis >= 4:
+            preferred_rhythm = "慢节奏"
+        else:
+            preferred_rhythm = "中速节奏"
+        narrative_distance = "第三人称"
+        if full_text.count("我") >= 18 and full_text.count("他") < full_text.count("我"):
+            narrative_distance = "第一人称"
+        keyword_candidates = ["紧张", "压迫", "悬疑", "克制", "冷峻", "热血", "细腻", "肃杀", "诙谐", "悲怆"]
+        voice_keywords = [item for item in keyword_candidates if item in full_text][:5]
+        if not voice_keywords:
+            voice_keywords = ["紧凑", "画面感"]
+        avoid_patterns = []
+        if "与此同时" in full_text:
+            avoid_patterns.append("与此同时")
+        if "下一刻" in full_text:
+            avoid_patterns.append("下一刻")
+        if "不由得" in full_text:
+            avoid_patterns.append("不由得")
+        return {
+            "author_voice_keywords": voice_keywords,
+            "avoid_patterns": avoid_patterns,
+            "preferred_rhythm": preferred_rhythm,
+            "narrative_distance": narrative_distance,
+            "dialogue_density": dialogue_density,
         }
 
     def _detemplate_content(self, content: str, style_requirements: Dict[str, Any], chapter_task: Dict[str, Any]) -> str:
