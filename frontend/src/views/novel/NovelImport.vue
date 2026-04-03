@@ -294,8 +294,6 @@ const previewChapters = async () => {
       content: x.content || ''
     }))
   } catch (error) {
-    importing.value = false
-    stopOrganizePolling()
     console.error('预览失败:', error)
   }
 }
@@ -412,6 +410,8 @@ const fetchOrganizeProgress = async () => {
       stopOrganizePolling()
     }
   } catch (error) {
+    importing.value = false
+    stopOrganizePolling()
     console.error('读取整理进度失败:', error)
   }
 }
