@@ -1,790 +1,478 @@
 <template>
-  <div class="novel-write">
-    <div class="page-header">
-      <div class="header-left">
-        <el-button @click="$router.push(`/novel/${$route.params.id}`)">
-          <el-icon><ArrowLeft /></el-icon>
-          返回
-        </el-button>
-        <h2 class="page-title">续写小说</h2>
-      </div>
-    </div>
+  <div class="novel-write-page" v-loading="state.loading">
+    <el-page-header content="续写工作台" @back="goBack" />
 
-    <el-row :gutter="20">
-      <el-col :span="16">
-        <el-card class="write-card">
+    <el-alert v-if="state.errorMessage" :title="state.errorMessage" type="error" show-icon :closable="false" />
+
+    <el-row :gutter="16" class="section-grid">
+      <el-col :span="24">
+        <el-card shadow="never">
+          <template #header>
+            <span>当前小说概览区</span>
+          </template>
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="当前最新章节号">{{ latestChapterNumber }}</el-descriptions-item>
+            <el-descriptions-item label="最新章节标题">{{ latestChapterTitle }}</el-descriptions-item>
+            <el-descriptions-item label="当前主线摘要">{{ mainPlotSummary }}</el-descriptions-item>
+            <el-descriptions-item label="当前写作焦点">{{ writingFocus }}</el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+      </el-col>
+
+      <el-col :span="24">
+        <el-card shadow="never">
+          <template #header>
+            <div class="header-row">
+              <span>分支区</span>
+              <el-button type="primary" :loading="state.branchLoading" @click="generateBranches">生成分支</el-button>
+            </div>
+          </template>
+          <div v-if="!state.branches.length" class="empty-text">进入页面后不会自动生成分支，请手动点击“生成分支”。</div>
+          <el-radio-group v-else v-model="state.selectedBranchId" class="branch-list">
+            <el-radio
+              v-for="branch in state.branches"
+              :key="branch.id"
+              :label="branch.id"
+              border
+              class="branch-card"
+            >
+              <div class="branch-title">{{ branch.title || '未命名分支' }}</div>
+              <div class="branch-summary">{{ branch.summary || '暂无摘要' }}</div>
+              <div class="branch-conflict">{{ branch.core_conflict || branch.conflict || '暂无核心冲突' }}</div>
+              <div class="branch-conflict">{{ branch.style_tags || branch.style_hint || '暂无风格标签' }}</div>
+            </el-radio>
+          </el-radio-group>
+        </el-card>
+      </el-col>
+
+      <el-col :span="24">
+        <el-card shadow="never">
+          <template #header>
+            <span>计划区</span>
+          </template>
           <el-alert
-            v-if="continueHint"
-            :title="continueHint"
+            v-if="assistantPresetText"
+            :title="assistantPresetText"
             type="success"
             show-icon
             :closable="false"
-            style="margin-bottom: 16px;"
           />
-
-          <el-form :model="form" label-width="100px">
-            <el-form-item label="剧情方向">
-              <el-input
-                v-model="form.plot_direction"
-                type="textarea"
-                :rows="3"
-                placeholder="可以输入一句方向提示，例如：主角正式进入宗门外围试炼，并在新环境中暴露异常天赋。"
-              />
+          <el-form inline>
+            <PlanningModeToggle v-model="state.planningMode" />
+            <ArcListPanel v-model="state.targetArcId" :arcs="activeArcs" />
+            <el-form-item label="续写章节数">
+              <el-input-number v-model="state.chapterCount" :min="1" :max="10" />
             </el-form-item>
-
-            <el-form-item label="剧情分支">
-              <div class="branch-panel">
-                <div class="branch-toolbar">
-                  <div class="branch-toolbar-left">
-                    <el-button :loading="branchLoading" @click="generateBranches">生成分支</el-button>
-                    <el-button @click="openStyleDialog">风格要求</el-button>
-                  </div>
-                  <span class="branch-hint">先选分支，再预览或正式写入章节。</span>
-                </div>
-                <div v-if="!branches.length" class="branch-empty">暂无分支，请先生成。</div>
-                <div v-else class="branch-list">
-                  <div
-                    v-for="item in branches"
-                    :key="item.id"
-                    class="branch-card"
-                    :class="{ active: selectedBranchId === item.id }"
-                    @click="selectedBranchId = item.id"
-                  >
-                    <div class="branch-card-header">
-                      <el-radio :model-value="selectedBranchId" :label="item.id" @change="selectedBranchId = item.id">
-                        {{ item.title }}
-                      </el-radio>
-                      <el-tag size="small" type="success" v-if="item.style_tags?.[0]">{{ item.style_tags[0] }}</el-tag>
-                    </div>
-                    <div class="branch-summary">{{ item.summary }}</div>
-                    <div v-if="item.core_conflict" class="branch-meta">
-                      <strong>核心冲突：</strong>{{ item.core_conflict }}
-                    </div>
-                    <div v-if="item.consistency_note" class="branch-meta">
-                      <strong>大纲一致性：</strong>{{ item.consistency_note }}
-                    </div>
-                    <div v-if="item.risk_note" class="branch-meta risk">
-                      <strong>风险：</strong>{{ item.risk_note }}
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <el-form-item label="每章目标字数">
+              <el-input-number v-model="state.targetWords" :min="1000" :step="100" />
             </el-form-item>
-
-            <el-form-item label="生成章节数">
-              <el-input-number v-model="form.chapter_count" :min="1" :max="10" />
-            </el-form-item>
-
-            <el-form-item label="每章字数">
-              <el-input-number v-model="form.target_word_count" :min="1000" :max="5000" :step="100" />
-            </el-form-item>
-
-            <el-form-item label="文风模仿">
-              <el-switch v-model="form.enable_style_mimicry" />
-              <span class="switch-tip">开启后尽量贴近已有章节风格</span>
-            </el-form-item>
-
-            <el-form-item label="连贯性检查">
-              <el-switch v-model="form.enable_consistency_check" />
-              <span class="switch-tip">开启后更强调人物状态和设定一致性</span>
-            </el-form-item>
-
             <el-form-item>
-              <el-button type="primary" :loading="generating" @click="generatePreview">
-                <el-icon><Edit /></el-icon>
-                预览一章
-              </el-button>
-              <el-button type="success" :loading="generatingNext" @click="continueNextChapter">
-                <el-icon><Edit /></el-icon>
-                保存并继续生成
-              </el-button>
+              <el-button type="primary" :loading="state.planLoading" @click="generatePlans">生成章节计划</el-button>
             </el-form-item>
           </el-form>
-        </el-card>
-
-        <el-card v-if="generatedContent" class="result-card">
-          <template #header>
-            <div class="card-header">
-              <span>生成结果</span>
-              <div class="result-actions">
-                <el-button size="small" @click="copyContent">
-                  <el-icon><CopyDocument /></el-icon>
-                  复制
-                </el-button>
-                <el-button size="small" @click="downloadGeneratedChapter">
-                  <el-icon><Download /></el-icon>
-                  导出章节
-                </el-button>
-              </div>
-            </div>
-          </template>
-
-          <div class="content-info">
-            <el-tag type="info">章节：第{{ generatedContent.chapter_number || '-' }}章 {{ generatedContent.title || '未命名章节' }}</el-tag>
-            <el-tag>字数：{{ generatedContent.word_count }}</el-tag>
-            <el-tag :type="isPersistedResult ? 'success' : 'warning'">
-              {{ isPersistedResult ? '已保存到章节列表' : '预览内容，尚未落库' }}
-            </el-tag>
-          </div>
-
-          <el-divider />
-
-          <div class="content-body">{{ generatedContent.content }}</div>
-
-          <el-divider />
-
-          <div class="content-actions">
-            <el-button type="primary" disabled>{{ saveHintLabel }}</el-button>
-            <el-button @click="regenerate">重新生成预览</el-button>
-          </div>
-
-          <el-divider />
-
-          <div v-if="draftCompare.structural.content || draftCompare.detemplated.content" class="draft-compare">
-            <div class="compare-header">
-              <span>草稿对比</span>
-              <el-tag :type="draftCompare.usedStructuralFallback ? 'warning' : 'success'">
-                {{ draftCompare.usedStructuralFallback ? '已回退结构稿' : '去模板稿生效' }}
-              </el-tag>
-            </div>
-            <el-row :gutter="12">
-              <el-col :span="12">
-                <el-card shadow="never">
-                  <template #header>结构稿</template>
-                  <div class="compare-title">{{ draftCompare.structural.title || '未命名' }}</div>
-                  <div class="compare-body">{{ draftCompare.structural.content || '暂无' }}</div>
-                </el-card>
-              </el-col>
-              <el-col :span="12">
-                <el-card shadow="never">
-                  <template #header>去模板稿</template>
-                  <div class="compare-title">{{ draftCompare.detemplated.title || '未命名' }}</div>
-                  <div class="compare-body">{{ draftCompare.detemplated.content || '暂无' }}</div>
-                </el-card>
-              </el-col>
-            </el-row>
-            <div v-if="draftCompare.integrity.risk_notes?.length" class="risk-notes">
-              <el-tag type="warning">校验风险</el-tag>
-              <ul>
-                <li v-for="(item, index) in draftCompare.integrity.risk_notes" :key="`risk-${index}`">{{ item }}</li>
-              </ul>
-            </div>
-          </div>
+          <ArcSummaryCard
+            class="top-gap"
+            :planning-reason="planningReason"
+            :stage-before="arcStageBefore"
+            :stage-after-expected="arcStageAfterExpected"
+            :stage-after-actual="arcStageAfterActual"
+            :stage-advanced="arcStageAdvanced"
+          />
+          <el-table :data="state.plans" border style="width: 100%">
+            <el-table-column prop="chapter_number" label="章节号" width="90" />
+            <el-table-column prop="title" label="标题" min-width="160" />
+            <el-table-column prop="chapter_function_label" label="章节功能" min-width="120" />
+            <el-table-column prop="goal" label="本章目标" min-width="180" />
+            <el-table-column prop="ending_hook" label="结尾钩子" min-width="180" />
+          </el-table>
         </el-card>
       </el-col>
 
-      <el-col :span="8">
-        <el-card class="tips-card">
+      <el-col :span="24">
+        <el-card shadow="never">
           <template #header>
-            <span>写作提示</span>
-          </template>
-
-          <el-alert
-            title="“预览一章”只生成草稿，不写入章节列表；“保存并继续生成”会按计划正式落库。"
-            type="info"
-            :closable="false"
-            style="margin-bottom: 12px;"
-          />
-
-          <el-collapse>
-            <el-collapse-item title="如何描述剧情方向" name="1">
-              <ul>
-                <li>写清这几章想推进哪条主线。</li>
-                <li>可以指定人物关系、节奏和冲突。</li>
-                <li>如果不填，也可以直接选系统生成的分支。</li>
-              </ul>
-            </el-collapse-item>
-            <el-collapse-item title="为什么先选分支" name="2">
-              <ul>
-                <li>分支是后续剧情方案。</li>
-                <li>选中后再生成章节，能减少正文跑偏。</li>
-                <li>正式生成前先预览一章会更稳。</li>
-              </ul>
-            </el-collapse-item>
-          </el-collapse>
-        </el-card>
-
-        <el-card class="history-card">
-          <template #header>
-            <span>最近章节</span>
-          </template>
-
-          <el-scrollbar height="260px">
-            <div v-for="chapter in recentChapters" :key="chapter.id" class="chapter-item">
-              <span>第{{ chapter.number }}章 {{ chapter.title }}</span>
-              <div class="chapter-actions">
-                <span class="chapter-words">{{ chapter.word_count }}字</span>
-                <el-button type="danger" link size="small" :loading="deletingChapterId === chapter.id" @click="deleteRecentChapter(chapter)">
-                  删除
-                </el-button>
-              </div>
+            <div class="header-row">
+              <span>预览区</span>
+              <el-button type="primary" :loading="state.previewLoading" @click="previewFirstPlan">预览一章</el-button>
             </div>
-          </el-scrollbar>
+          </template>
+          <el-alert title="预览一章：仅生成草稿供查看，不会保存到章节列表。" type="info" show-icon :closable="false" />
+          <ChapterTaskCard :task="state.previewResult.chapterTask || {}" />
+          <ContextSourcePanel :context="previewContext" :task="state.previewResult.chapterTask || {}" class="top-gap" />
+          <DraftPreviewTabs
+            class="top-gap"
+            title="预览结果"
+            v-model:active-tab="previewDraftTab"
+            :structural-draft="state.previewResult.structuralDraft"
+            :detemplated-draft="state.previewResult.detemplatedDraft"
+            :integrity-check="state.previewResult.integrityCheck"
+            :revision-attempts="state.previewResult.revisionAttempts"
+            :used-structural-fallback="state.previewResult.usedStructuralFallback"
+            @apply="applyPreviewDraft"
+            @save-draft="applyPreviewDraft"
+            @discard="discardPreviewDraft"
+          />
+        </el-card>
+      </el-col>
+
+      <el-col :span="24">
+        <el-card shadow="never">
+          <template #header>
+            <div class="header-row">
+              <span>提交区</span>
+              <el-button type="primary" :loading="state.commitLoading" @click="commitBatch">保存并继续生成</el-button>
+            </div>
+          </template>
+          <el-alert title="保存并继续生成：按当前计划批量落库，生成后会更新详情页章节列表。" type="warning" show-icon :closable="false" />
+          <el-alert
+            v-if="batchStatusText"
+            :title="batchStatusText"
+            :type="state.generatedBatch.memoryRefreshed ? 'success' : 'warning'"
+            show-icon
+            :closable="false"
+          />
+          <GeneratedChapterList
+            class="top-gap"
+            :generated-chapters="normalizedGeneratedChapters"
+            @view="viewGeneratedChapter"
+            @edit="goToGeneratedChapter"
+          />
         </el-card>
       </el-col>
     </el-row>
-
-    <el-dialog v-model="styleDialogVisible" title="风格要求" width="620px">
-      <el-form label-width="110px">
-        <el-form-item label="作者风格关键词">
-          <el-select v-model="styleForm.author_voice_keywords" multiple allow-create filterable default-first-option style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="避免表达模式">
-          <el-select v-model="styleForm.avoid_patterns" multiple allow-create filterable default-first-option style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="偏好节奏">
-          <el-input v-model="styleForm.preferred_rhythm" placeholder="例如：中速节奏、快节奏" />
-        </el-form-item>
-        <el-form-item label="叙事距离">
-          <el-input v-model="styleForm.narrative_distance" placeholder="例如：第一人称/第三人称有限视角" />
-        </el-form-item>
-        <el-form-item label="对话密度">
-          <el-input v-model="styleForm.dialogue_density" placeholder="高/中/低" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button :loading="styleLoading" @click="extractStyleRequirements">从最近样章提取</el-button>
-        <el-button @click="styleDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="styleSaving" @click="saveStyleRequirements">保存</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+
 import { novelApi, projectApi } from '@/api'
+import ChapterTaskCard from '@/components/story/ChapterTaskCard.vue'
+import ContextSourcePanel from '@/components/story/ContextSourcePanel.vue'
+import DraftPreviewTabs from '@/components/story/DraftPreviewTabs.vue'
+import GeneratedChapterList from '@/components/story/GeneratedChapterList.vue'
+import ArcListPanel from '@/components/story/ArcListPanel.vue'
+import ArcSummaryCard from '@/components/story/ArcSummaryCard.vue'
+import PlanningModeToggle from '@/components/story/PlanningModeToggle.vue'
+import { useNovelWriteState } from '@/composables/useNovelWriteState'
+import { formatChapterFunction } from '@/constants/display'
 
 const route = useRoute()
-const generating = ref(false)
-const generatingNext = ref(false)
-const branchLoading = ref(false)
-const generatedContent = ref(null)
-const recentChapters = ref([])
-const continueHint = ref('')
-const branches = ref([])
-const selectedBranchId = ref('')
+const router = useRouter()
+const state = useNovelWriteState()
 const projectId = ref('')
-const deletingChapterId = ref('')
-const styleDialogVisible = ref(false)
-const styleLoading = ref(false)
-const styleSaving = ref(false)
-const draftCompare = ref({
-  structural: {},
-  detemplated: {},
-  integrity: {},
-  usedStructuralFallback: false
+const novel = ref(null)
+const memoryView = ref({})
+const activeArcs = ref([])
+const previewContext = ref({})
+const previewDraftTab = ref('structural')
+const branchStorageKey = computed(() => `inktrace:selected-branch:${projectId.value || route.params.id}`)
+
+const latestChapterNumber = computed(() => state.generatedBatch.latestChapter?.chapter_number || novel.value?.latest_chapter_number || 0)
+const latestChapterTitle = computed(() => state.generatedBatch.latestChapter?.title || novel.value?.latest_chapter_title || '暂无')
+const mainPlotSummary = computed(() => (memoryView.value?.main_plot_lines || []).join('；') || '暂无')
+const writingFocus = computed(() => memoryView.value?.current_progress || '暂无')
+const planningReason = computed(() => state.generatedBatch.planningReason || state.previewResult.planningReason || (state.plans[0]?.planning_reason || ''))
+const arcStageBefore = computed(() => state.generatedBatch.arcStageBefore || state.previewResult.arcStageBefore || (state.plans[0]?.arc_stage_before || ''))
+const arcStageAfterExpected = computed(() => state.generatedBatch.arcStageAfterExpected || state.previewResult.arcStageAfterExpected || (state.plans[0]?.arc_stage_after_expected || ''))
+const arcStageAfterActual = computed(() => state.generatedBatch.arcStageAfterActual || '')
+const arcStageAdvanced = computed(() => Boolean(state.generatedBatch.arcStageAdvanced))
+const batchStatusText = computed(() => {
+  if (!state.generatedBatch.generatedChapters.length) return ''
+  return state.generatedBatch.memoryRefreshed ? '保存成功，memory 已刷新' : '章节已保存，但全局摘要尚未刷新'
 })
-const styleForm = reactive({
-  author_voice_keywords: [],
-  avoid_patterns: [],
-  preferred_rhythm: '',
-  narrative_distance: '',
-  dialogue_density: ''
-})
-
-const form = reactive({
-  plot_direction: '',
-  chapter_count: 1,
-  target_word_count: 2100,
-  enable_style_mimicry: true,
-  enable_consistency_check: true
-})
-
-const selectedBranch = computed(() => branches.value.find((item) => item.id === selectedBranchId.value) || null)
-
-const isPersistedResult = computed(() => {
-  const routeName = generatedContent.value?.metadata?.route
-  return ['continue_tool', 'first_chapter', 'v2_write', 'v2_workflow'].includes(routeName)
-})
-
-const saveHintLabel = computed(() => (isPersistedResult.value ? '已保存到章节列表' : '预览内容，尚未保存'))
-
-const resolveDirection = () => {
-  if (selectedBranch.value) {
-    const pieces = [
-      selectedBranch.value.title,
-      selectedBranch.value.summary,
-      selectedBranch.value.core_conflict
-    ].filter(Boolean)
-    return pieces.join('；')
+const assistantPresetText = computed(() => {
+  const parts = []
+  if (state.targetArcId) {
+    const targetArc = (activeArcs.value || []).find((item) => item.arc_id === state.targetArcId)
+    if (targetArc) {
+      parts.push(`已按助手建议锁定目标弧：${targetArc.title || targetArc.arc_id}`)
+    }
   }
-  return form.plot_direction
+  if (String(route.query.planningMode || '').trim()) {
+    parts.push(`当前规划模式：${state.planningMode === 'deep_planning' ? '重规划' : '轻规划'}`)
+  }
+  return parts.join('；')
+})
+const normalizedGeneratedChapters = computed(() =>
+  (state.generatedBatch.generatedChapters || []).map((item) => ({
+    ...item,
+    saved: (state.generatedBatch.savedChapterIds || []).includes(item.chapter_id)
+  }))
+)
+
+const restoreSelectedBranch = () => {
+  const routeSelected = String(route.query.branchId || '').trim()
+  const cachedSelected = window.localStorage.getItem(branchStorageKey.value) || ''
+  const candidate = routeSelected || cachedSelected
+  state.selectedBranchId = candidate && state.branches.some((item) => item.id === candidate) ? candidate : (state.branches[0]?.id || '')
+  if (state.selectedBranchId) {
+    window.localStorage.setItem(branchStorageKey.value, state.selectedBranchId)
+  }
 }
 
-const ensureProjectId = async () => {
-  if (!projectId.value) {
+const applyRouteAssistantPreset = () => {
+  const queryTargetArcId = String(route.query.targetArcId || '').trim()
+  const queryPlanningMode = String(route.query.planningMode || '').trim()
+  if (queryTargetArcId && (activeArcs.value || []).some((item) => item.arc_id === queryTargetArcId)) {
+    state.targetArcId = queryTargetArcId
+  }
+  if (['light_planning', 'deep_planning'].includes(queryPlanningMode)) {
+    state.planningMode = queryPlanningMode
+  }
+}
+
+const loadBase = async () => {
+  state.loading = true
+  try {
+    novel.value = await novelApi.get(route.params.id)
     const project = await projectApi.getByNovel(route.params.id)
     projectId.value = project?.id || ''
-  }
-  if (!projectId.value) {
-    throw new Error('项目不存在，无法继续创作')
+    memoryView.value = projectId.value ? await projectApi.memoryViewV2(projectId.value) : {}
+    const arcResult = projectId.value ? await projectApi.activePlotArcsV2(projectId.value) : {}
+    activeArcs.value = arcResult?.plot_arcs || []
+    const branchResult = projectId.value ? await projectApi.listBranchesV2(projectId.value) : { branches: [] }
+    state.branches = branchResult?.branches || []
+    restoreSelectedBranch()
+    applyRouteAssistantPreset()
+    state.errorMessage = ''
+  } catch (error) {
+    state.errorMessage = error?.message || '加载续写页失败'
+  } finally {
+    state.loading = false
   }
 }
 
 const generateBranches = async () => {
+  if (!projectId.value) return
+  state.branchLoading = true
   try {
-    branchLoading.value = true
-    await ensureProjectId()
-    const result = await projectApi.branchesV2(projectId.value, {
-      direction_hint: form.plot_direction || '',
-      branch_count: 4
-    })
-    branches.value = result.branches || []
-    if (branches.value.length > 0) {
-      selectedBranchId.value = branches.value[0].id
-      if (!form.plot_direction) {
-        form.plot_direction = `${branches.value[0].title}：${branches.value[0].summary}`
-      }
-    }
-  } catch (error) {
-    console.error('生成分支失败:', error)
+    const result = await projectApi.branchesV2(projectId.value, { branch_count: 4 })
+    state.branches = result?.branches || []
+    restoreSelectedBranch()
+    ElMessage.success('分支生成完成')
   } finally {
-    branchLoading.value = false
+    state.branchLoading = false
   }
 }
 
-const generatePreview = async () => {
-  const direction = resolveDirection()
-  if (!direction) {
-    ElMessage.warning('请先生成并选择剧情分支，或手动填写剧情方向')
+const generatePlans = async () => {
+  if (!projectId.value || !state.selectedBranchId) {
+    ElMessage.warning('请先生成并选择一个分支')
     return
   }
-
+  state.planLoading = true
   try {
-    generating.value = true
-    ElMessage.info('正在生成预览章节...')
-    await ensureProjectId()
-    if (!selectedBranchId.value) {
-      throw new Error('请先生成并选择剧情分支')
-    }
-    const planResult = await projectApi.chapterPlanV2(projectId.value, {
-      branch_id: selectedBranchId.value,
-      chapter_count: 1,
-      target_words_per_chapter: form.target_word_count
+    const result = await projectApi.chapterPlanV2(projectId.value, {
+      branch_id: state.selectedBranchId,
+      chapter_count: state.chapterCount,
+      target_words_per_chapter: state.targetWords,
+      planning_mode: state.planningMode,
+      target_arc_id: state.targetArcId || '',
+      allow_deep_planning: state.planningMode === 'deep_planning'
     })
-    const planIds = (planResult.plans || []).map((plan) => plan.id)
-    const writeResult = await projectApi.writeV2(projectId.value, {
-      plan_ids: planIds,
-      auto_commit: false
-    })
-    draftCompare.value = {
-      structural: writeResult?.latest_structural_draft || {},
-      detemplated: writeResult?.latest_detemplated_draft || {},
-      integrity: writeResult?.latest_draft_integrity_check || {},
-      usedStructuralFallback: !!writeResult?.used_structural_fallback
-    }
-    const chapter = writeResult?.latest_chapter || {}
-    const content = chapter.content || writeResult?.latest_content || ''
-    const title = chapter.title || writeResult?.latest_title || `第${chapter.number || (recentChapters.value[0]?.number || 0) + 1}章`
-    const chapterNumber = chapter.number || writeResult?.latest_chapter_number || ((recentChapters.value[0]?.number || 0) + 1)
-    generatedContent.value = {
-      title,
-      chapter_number: chapterNumber,
-      content,
-      word_count: content.length,
-      metadata: { route: 'v2_preview' }
-    }
-    ElMessage.success('预览已生成，尚未保存到章节列表')
-  } catch (error) {
-    console.error('生成预览失败:', error)
+    state.plans = (result?.plans || []).map((item) => ({
+      ...item,
+      chapter_function_label: formatChapterFunction(item?.chapter_task_seed?.chapter_function || '')
+    }))
+    ElMessage.success('章节计划生成完成')
   } finally {
-    generating.value = false
+    state.planLoading = false
   }
 }
 
-const continueNextChapter = async () => {
-  const direction = resolveDirection()
-  if (!direction) {
-    ElMessage.warning('请先生成并选择剧情分支，或手动填写剧情方向')
+const previewFirstPlan = async () => {
+  if (!projectId.value || !state.plans.length) {
+    ElMessage.warning('请先生成章节计划')
     return
   }
-
+  state.previewLoading = true
   try {
-    generatingNext.value = true
-    ElMessage.info('正在按计划生成并保存章节...')
-    await ensureProjectId()
-    if (!selectedBranchId.value) {
-      throw new Error('请先生成并选择剧情分支')
-    }
-
-    const planResult = await projectApi.chapterPlanV2(projectId.value, {
-      branch_id: selectedBranchId.value,
-      chapter_count: form.chapter_count,
-      target_words_per_chapter: form.target_word_count
+    const firstPlan = state.plans[0]
+    const result = await projectApi.writePreviewV2(projectId.value, {
+      plan_id: firstPlan.id,
+      target_word_count: state.targetWords,
+      planning_mode: state.planningMode,
+      target_arc_id: state.targetArcId || ''
     })
-    const planIds = (planResult.plans || []).map((plan) => plan.id)
-    const writeResult = await projectApi.writeV2(projectId.value, {
+    state.previewResult = {
+      chapterTask: result.chapter_task || null,
+      structuralDraft: result.structural_draft || null,
+      detemplatedDraft: result.detemplated_draft || null,
+      integrityCheck: result.integrity_check || null,
+      revisionAttempts: result.revision_attempts || [],
+      usedStructuralFallback: Boolean(result.used_structural_fallback),
+      planningReason: result.planning_reason || '',
+      arcStageBefore: result.arc_stage_before || '',
+      arcStageAfterExpected: result.arc_stage_after_expected || ''
+    }
+    previewContext.value = await projectApi.continuationContextV2(projectId.value, { chapter_number: firstPlan.chapter_number })
+  } finally {
+    state.previewLoading = false
+  }
+}
+
+const commitBatch = async () => {
+  if (!projectId.value || !state.plans.length) {
+    ElMessage.warning('请先生成章节计划')
+    return
+  }
+  state.commitLoading = true
+  try {
+    const planIds = state.plans.map((item) => item.id).filter(Boolean)
+    if (!planIds.length) {
+      ElMessage.warning('计划已失效，请重新生成章节计划后再提交')
+      return
+    }
+    const result = await projectApi.writeCommitV2(projectId.value, {
       plan_ids: planIds,
-      auto_commit: true
+      chapter_count: state.chapterCount,
+      auto_commit: true,
+      planning_mode: state.planningMode,
+      target_arc_id: state.targetArcId || ''
     })
-    draftCompare.value = {
-      structural: writeResult?.latest_structural_draft || {},
-      detemplated: writeResult?.latest_detemplated_draft || {},
-      integrity: writeResult?.latest_draft_integrity_check || {},
-      usedStructuralFallback: !!writeResult?.used_structural_fallback
+    state.generatedBatch = {
+      generatedChapters: result.generated_chapters || [],
+      latestChapter: result.latest_chapter || null,
+      latestStructuralDraft: result.latest_structural_draft || null,
+      latestDetemplatedDraft: result.latest_detemplated_draft || null,
+      latestDraftIntegrityCheck: result.latest_draft_integrity_check || null,
+      usedStructuralFallback: Boolean(result.used_structural_fallback),
+      chapterSaved: Boolean(result.chapter_saved),
+      memoryRefreshed: Boolean(result.memory_refreshed),
+      savedChapterIds: result.saved_chapter_ids || [],
+      planningReason: result.planning_reason || '',
+      arcStageBefore: result.arc_stage_before || '',
+      arcStageAfterExpected: result.arc_stage_after_expected || '',
+      arcStageAfterActual: result.arc_stage_after_actual || '',
+      arcStageAdvanced: Boolean(result.arc_stage_advanced)
     }
-    const generatedIds = writeResult?.generated_chapter_ids || []
-    const latestChapterNumber = Number(writeResult?.latest_chapter_number || 0)
-    const fromChapterNumber = latestChapterNumber > 0 ? Math.max(1, latestChapterNumber - generatedIds.length + 1) : 1
-    const toChapterNumber = latestChapterNumber > 0 ? latestChapterNumber : (fromChapterNumber + Math.max(form.chapter_count, 1) - 1)
-    await projectApi.refreshMemoryV2(projectId.value, {
-      from_chapter_number: fromChapterNumber,
-      to_chapter_number: toChapterNumber
-    })
-
-    const latestNovel = await novelApi.get(route.params.id)
-    const latest = latestNovel.chapters?.[latestNovel.chapters.length - 1]
-    generatedContent.value = {
-      title: latest?.title || writeResult?.latest_title || `第${latest?.number || latestChapterNumber || 0}章`,
-      chapter_number: latest?.number || latestChapterNumber || 0,
-      content: latest?.content || '',
-      word_count: latest?.word_count || (latest?.content || '').length,
-      metadata: { route: 'v2_write' }
-    }
-
-    await loadRecentChapters()
-    ElMessage.success('章节已生成并保存，可手动重新生成分支')
+    memoryView.value = result.memory_view || memoryView.value
+    await loadBase()
+    ElMessage.success(state.generatedBatch.memoryRefreshed ? '保存成功，memory 已刷新' : '章节已保存，但全局摘要尚未刷新')
   } catch (error) {
-    console.error('继续生成失败:', error)
+    const message = error?.message || '提交失败，请先重新生成章节计划后再试'
+    state.errorMessage = message
+    ElMessage.warning(message)
   } finally {
-    generatingNext.value = false
+    state.commitLoading = false
   }
 }
 
-const copyContent = () => {
-  if (!generatedContent.value?.content) return
-  navigator.clipboard.writeText(generatedContent.value.content)
-  ElMessage.success('已复制到剪贴板')
+const applyPreviewDraft = ({ type, mode }) => {
+  const draft = type === 'detemplated' ? state.previewResult.detemplatedDraft : state.previewResult.structuralDraft
+  if (!draft?.content) {
+    ElMessage.warning('暂无可采纳结果')
+    return
+  }
+  ElMessage.success(mode === 'append' ? '已准备插入正文末尾，请到章节页继续处理' : '已准备覆盖正文，请到章节页继续处理')
 }
 
-const downloadGeneratedChapter = () => {
-  if (!generatedContent.value?.content) return
-  const chapterNumber = generatedContent.value.chapter_number || (recentChapters.value.length ? recentChapters.value[0].number + (isPersistedResult.value ? 0 : 1) : 0)
-  const chapterTitle = generatedContent.value.title || (chapterNumber > 0 ? `第${chapterNumber}章` : '生成章节')
-  const blob = new Blob([`# ${chapterTitle}\n\n${generatedContent.value.content}\n`], { type: 'text/markdown;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${chapterTitle}.md`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-  ElMessage.success('章节已导出')
-}
-
-const regenerate = () => {
-  generatedContent.value = null
-  generatePreview()
-}
-
-const loadRecentChapters = async () => {
-  try {
-    const novel = await novelApi.get(route.params.id)
-    recentChapters.value = novel.chapters?.slice(-5).reverse() || []
-    if (!form.plot_direction) {
-      const nextChapterNumber = (novel.chapter_count || 0) + 1
-      form.plot_direction = route.query.default_goal || `第${nextChapterNumber}章承接上一章主线继续推进`
-    }
-  } catch (error) {
-    console.error('加载最近章节失败:', error)
+const discardPreviewDraft = () => {
+  state.previewResult = {
+    chapterTask: null,
+    structuralDraft: null,
+    detemplatedDraft: null,
+    integrityCheck: null,
+    revisionAttempts: [],
+    usedStructuralFallback: false,
+    planningReason: '',
+    arcStageBefore: '',
+    arcStageAfterExpected: ''
   }
 }
 
-const loadStyleRequirements = async () => {
-  try {
-    await ensureProjectId()
-    const payload = await projectApi.getStyleRequirements(projectId.value)
-    const req = payload?.style_requirements || {}
-    styleForm.author_voice_keywords = req.author_voice_keywords || []
-    styleForm.avoid_patterns = req.avoid_patterns || []
-    styleForm.preferred_rhythm = req.preferred_rhythm || ''
-    styleForm.narrative_distance = req.narrative_distance || ''
-    styleForm.dialogue_density = req.dialogue_density || ''
-  } catch (error) {
-    console.error('加载风格要求失败:', error)
-  }
+const goToGeneratedChapter = (chapter) => {
+  if (!chapter?.chapter_id) return
+  router.push(`/novel/${route.params.id}/chapters/${chapter.chapter_id}/edit`)
 }
 
-const openStyleDialog = async () => {
-  await loadStyleRequirements()
-  styleDialogVisible.value = true
+const viewGeneratedChapter = (chapter) => {
+  if (!chapter?.structural_draft && !chapter?.detemplated_draft) {
+    ElMessage.info('当前章节缺少完整结果详情，请跳转章节编辑页查看')
+    return
+  }
+  state.previewResult = {
+    chapterTask: state.previewResult.chapterTask,
+    structuralDraft: chapter.structural_draft || null,
+    detemplatedDraft: chapter.detemplated_draft || null,
+    integrityCheck: chapter.integrity_check || null,
+    revisionAttempts: chapter.revision_attempts || [],
+    usedStructuralFallback: Boolean(chapter.used_structural_fallback),
+    planningReason: state.previewResult.planningReason,
+    arcStageBefore: state.previewResult.arcStageBefore,
+    arcStageAfterExpected: state.previewResult.arcStageAfterExpected
+  }
+  previewDraftTab.value = 'structural'
 }
 
-const saveStyleRequirements = async () => {
-  try {
-    styleSaving.value = true
-    await ensureProjectId()
-    await projectApi.updateStyleRequirements(projectId.value, {
-      author_voice_keywords: styleForm.author_voice_keywords,
-      avoid_patterns: styleForm.avoid_patterns,
-      preferred_rhythm: styleForm.preferred_rhythm,
-      narrative_distance: styleForm.narrative_distance,
-      dialogue_density: styleForm.dialogue_density
-    })
-    styleDialogVisible.value = false
-    ElMessage.success('风格要求已保存')
-  } catch (error) {
-    console.error('保存风格要求失败:', error)
-  } finally {
-    styleSaving.value = false
-  }
+const goBack = () => {
+  router.push(`/novel/${route.params.id}`)
 }
 
-const extractStyleRequirements = async () => {
-  try {
-    styleLoading.value = true
-    await ensureProjectId()
-    const payload = await projectApi.extractStyleRequirements(projectId.value, { sample_chapter_count: 3 })
-    const req = payload?.style_requirements || {}
-    styleForm.author_voice_keywords = req.author_voice_keywords || []
-    styleForm.avoid_patterns = req.avoid_patterns || []
-    styleForm.preferred_rhythm = req.preferred_rhythm || ''
-    styleForm.narrative_distance = req.narrative_distance || ''
-    styleForm.dialogue_density = req.dialogue_density || ''
-    ElMessage.success('已从最近样章提取风格要求')
-  } catch (error) {
-    console.error('提取风格要求失败:', error)
-  } finally {
-    styleLoading.value = false
-  }
-}
+onMounted(loadBase)
 
-const deleteRecentChapter = async (chapter) => {
-  if (!chapter?.id) return
-  try {
-    await ElMessageBox.confirm(
-      `确认删除“第${chapter.number}章 ${chapter.title || ''}”？删除后无法恢复。`,
-      '删除章节',
-      {
-        type: 'warning',
-        confirmButtonText: '确认删除',
-        cancelButtonText: '取消'
-      }
-    )
-    deletingChapterId.value = chapter.id
-    await novelApi.deleteChapter(route.params.id, chapter.id)
-    await loadRecentChapters()
-    ElMessage.success('章节已删除')
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('删除章节失败:', error)
-    }
-  } finally {
-    deletingChapterId.value = ''
-  }
-}
-
-const initPage = async () => {
-  if (route.query.auto_continue === '1') {
-    continueHint.value = '已生成第一章，是否继续创作下一章？'
-  }
-
-  const raw = sessionStorage.getItem('inktrace_continue_hint')
-  if (raw) {
-    try {
-      const hint = JSON.parse(raw)
-      if (hint?.novelId === route.params.id) {
-        continueHint.value = hint.message || continueHint.value
-        if (hint.firstChapter?.content) {
-          generatedContent.value = {
-            content: hint.firstChapter.content,
-            word_count: hint.firstChapter.word_count || hint.firstChapter.content.length,
-            metadata: { route: 'first_chapter' }
-          }
-        }
-      }
-    } finally {
-      sessionStorage.removeItem('inktrace_continue_hint')
+watch(
+  () => state.selectedBranchId,
+  (value) => {
+    if (value) {
+      window.localStorage.setItem(branchStorageKey.value, value)
     }
   }
-
-  await loadRecentChapters()
-  await loadStyleRequirements()
-}
-
-onMounted(() => {
-  initPage()
-})
+)
 </script>
 
 <style scoped>
-.novel-write {
+.novel-write-page {
   padding: 20px;
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 15px;
+.section-grid {
+  margin-top: 16px;
 }
 
-.write-card,
-.result-card,
-.tips-card,
-.history-card {
-  margin-bottom: 20px;
-}
-
-.switch-tip {
-  margin-left: 10px;
-  color: #909399;
-  font-size: 12px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.result-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.content-info {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.content-body {
-  white-space: pre-wrap;
-  line-height: 1.8;
-  max-height: 420px;
-  overflow-y: auto;
-}
-
-.content-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.chapter-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid #ebeef5;
-  font-size: 14px;
-}
-
-.chapter-words {
-  color: #909399;
-  font-size: 12px;
-}
-
-.chapter-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.branch-panel {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.branch-toolbar {
+.header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
 }
 
-.branch-toolbar-left {
-  display: flex;
-  gap: 8px;
-}
-
-.branch-hint {
-  font-size: 12px;
-  color: #909399;
-}
-
-.branch-empty {
-  color: #909399;
-  font-size: 13px;
+.empty-text,
+.branch-summary,
+.branch-conflict {
+  color: #606266;
 }
 
 .branch-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  width: 100%;
 }
 
 .branch-card {
-  border: 1px solid #e4e7ed;
-  border-radius: 10px;
-  padding: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  background: #fff;
-}
-
-.branch-card:hover {
-  border-color: #409eff;
-  box-shadow: 0 4px 14px rgba(64, 158, 255, 0.08);
-}
-
-.branch-card.active {
-  border-color: #409eff;
-  background: #f5f9ff;
-}
-
-.branch-card-header {
+  margin: 0;
+  height: 100%;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  align-items: stretch;
 }
 
-.branch-summary {
-  margin-top: 8px;
-  line-height: 1.7;
-  color: #303133;
-}
-
-.branch-meta {
-  margin-top: 6px;
-  line-height: 1.6;
-  color: #606266;
-  font-size: 13px;
-}
-
-.branch-meta.risk {
-  color: #c45656;
-}
-
-.draft-compare {
-  margin-top: 12px;
-}
-
-.compare-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.compare-title {
+.branch-title {
+  font-size: 16px;
   font-weight: 600;
   margin-bottom: 8px;
 }
 
-.compare-body {
-  white-space: pre-wrap;
-  line-height: 1.7;
-  max-height: 220px;
-  overflow-y: auto;
+:deep(.branch-card .el-radio__label) {
+  display: block;
+  white-space: normal;
+  width: 100%;
 }
 
-.risk-notes {
-  margin-top: 10px;
+.top-gap {
+  margin-top: 16px;
 }
 </style>

@@ -68,6 +68,7 @@ class ExportService:
         chapters = self.chapter_repo.find_by_novel(novel.id)
         export_scope = str(request.scope or "full").strip().lower()
         export_format = str(request.format or "markdown").strip().lower()
+        options = request.options if isinstance(request.options, dict) else {}
         if export_scope not in {"full", "by_chapter"}:
             self.logger.error(
                 "导出失败",
@@ -101,6 +102,8 @@ class ExportService:
             output_dir = os.path.dirname(output_path)
             if output_dir:
                 os.makedirs(output_dir, exist_ok=True)
+            if os.path.exists(output_path):
+                os.remove(output_path)
             if export_format == "markdown":
                 self.export_full_markdown(novel, chapters, output_path)
             else:
@@ -129,12 +132,15 @@ class ExportService:
             )
             return response
 
+        chapter_export_mode = str(options.get("chapter_export_mode") or "single").strip().lower()
+        if chapter_export_mode not in {"single", "every_10"}:
+            raise ValueError("按章节导出模式仅支持 single / every_10")
         directory_path, response_dir = self._resolve_output_directory(request.output_path, novel.title)
         os.makedirs(directory_path, exist_ok=True)
         if export_format == "markdown":
-            file_count = self.export_chapters_markdown(chapters, directory_path)
+            file_count = self.export_chapters_markdown(chapters, directory_path, chapter_export_mode)
         else:
-            file_count = self.export_chapters_txt(chapters, directory_path)
+            file_count = self.export_chapters_txt(chapters, directory_path, chapter_export_mode)
         response = ExportResponse(
             mode="directory",
             scope="by_chapter",
@@ -165,17 +171,47 @@ class ExportService:
     def export_full_txt(self, novel, chapters, output_path: str) -> None:
         self.txt_exporter.export_novel(novel, chapters, output_path)
 
-    def export_chapters_markdown(self, chapters, output_dir: str) -> int:
+    def export_chapters_markdown(self, chapters, output_dir: str, mode: str = "single") -> int:
+        if mode == "every_10":
+            return self._export_chapter_batches_markdown(chapters, output_dir, 10)
         for chapter in chapters:
             filename = f"{chapter.number:04d}_{self._sanitize_filename(self._chapter_filename_title(chapter), 'chapter')}.md"
             self.markdown_exporter.export_chapter(chapter, str(Path(output_dir) / filename))
         return len(chapters)
 
-    def export_chapters_txt(self, chapters, output_dir: str) -> int:
+    def export_chapters_txt(self, chapters, output_dir: str, mode: str = "single") -> int:
+        if mode == "every_10":
+            return self._export_chapter_batches_txt(chapters, output_dir, 10)
         for chapter in chapters:
             filename = f"{chapter.number:04d}_{self._sanitize_filename(self._chapter_filename_title(chapter), 'chapter')}.txt"
             self.txt_exporter.export_chapter(chapter, str(Path(output_dir) / filename))
         return len(chapters)
+
+    def _export_chapter_batches_markdown(self, chapters, output_dir: str, batch_size: int) -> int:
+        if not chapters:
+            return 0
+        count = 0
+        for start in range(0, len(chapters), batch_size):
+            chunk = chapters[start:start + batch_size]
+            first_no = int(chunk[0].number)
+            last_no = int(chunk[-1].number)
+            filename = f"{first_no:04d}_{last_no:04d}_chapters.md"
+            self.markdown_exporter.export_chapter_batch(chunk, str(Path(output_dir) / filename))
+            count += 1
+        return count
+
+    def _export_chapter_batches_txt(self, chapters, output_dir: str, batch_size: int) -> int:
+        if not chapters:
+            return 0
+        count = 0
+        for start in range(0, len(chapters), batch_size):
+            chunk = chapters[start:start + batch_size]
+            first_no = int(chunk[0].number)
+            last_no = int(chunk[-1].number)
+            filename = f"{first_no:04d}_{last_no:04d}_chapters.txt"
+            self.txt_exporter.export_chapter_batch(chunk, str(Path(output_dir) / filename))
+            count += 1
+        return count
 
     def _chapter_filename_title(self, chapter) -> str:
         raw_title = str(getattr(chapter, "title", "") or "").strip()

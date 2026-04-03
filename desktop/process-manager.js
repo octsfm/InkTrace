@@ -45,6 +45,7 @@ class ProcessManager {
             
             const env = {
                 ...process.env,
+                PYTHONUTF8: '1',
                 PYTHONIOENCODING: 'utf-8',
                 PORT: String(port),
                 INKTRACE_PORT: String(port),
@@ -72,11 +73,11 @@ class ProcessManager {
             });
 
             this.process.stdout.on('data', (data) => {
-                console.log(`[Backend] ${data.toString()}`);
+                console.log(`[Backend] ${data.toString('utf8')}`);
             });
 
             this.process.stderr.on('data', (data) => {
-                console.error(`[Backend Error] ${data.toString()}`);
+                console.error(`[Backend Error] ${data.toString('utf8')}`);
             });
 
             this.process.on('error', (error) => {

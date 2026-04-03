@@ -52,6 +52,7 @@ class SQLiteV2Repository:
             self._ensure_column(conn, "project_memories", "detemplated_drafts_json", "TEXT NOT NULL DEFAULT '[]'")
             self._ensure_column(conn, "project_memories", "draft_integrity_checks_json", "TEXT NOT NULL DEFAULT '[]'")
             self._ensure_column(conn, "project_memories", "style_requirements_json", "TEXT NOT NULL DEFAULT '{}'")
+            self._ensure_column(conn, "project_memories", "structured_story_migrated", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "chapter_plans", "chapter_id", "TEXT DEFAULT ''")
             self._ensure_column(conn, "chapter_plans", "chapter_function", "TEXT DEFAULT ''")
             self._ensure_column(conn, "chapter_plans", "goals_json", "TEXT NOT NULL DEFAULT '[]'")
@@ -77,8 +78,8 @@ class SQLiteV2Repository:
                   chapter_summaries_json, continuity_flags_json, global_constraints_json,
                   chapter_analysis_memories_json, chapter_continuation_memories_json, chapter_tasks_json,
                   structural_drafts_json, detemplated_drafts_json, draft_integrity_checks_json, style_requirements_json,
-                  is_active, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                  structured_story_migrated, is_active, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """,
                 (
                     payload["id"],
@@ -94,13 +95,14 @@ class SQLiteV2Repository:
                     json.dumps(payload.get("chapter_summaries") or [], ensure_ascii=False),
                     json.dumps(payload.get("continuity_flags") or [], ensure_ascii=False),
                     json.dumps(payload.get("global_constraints") or {}, ensure_ascii=False),
-                    json.dumps(payload.get("chapter_analysis_memories") or [], ensure_ascii=False),
-                    json.dumps(payload.get("chapter_continuation_memories") or [], ensure_ascii=False),
-                    json.dumps(payload.get("chapter_tasks") or [], ensure_ascii=False),
-                    json.dumps(payload.get("structural_drafts") or [], ensure_ascii=False),
-                    json.dumps(payload.get("detemplated_drafts") or [], ensure_ascii=False),
-                    json.dumps(payload.get("draft_integrity_checks") or [], ensure_ascii=False),
-                    json.dumps(payload.get("style_requirements") or {}, ensure_ascii=False),
+                    json.dumps(payload.get("chapter_analysis_memories_legacy") or [], ensure_ascii=False),
+                    json.dumps(payload.get("chapter_continuation_memories_legacy") or [], ensure_ascii=False),
+                    json.dumps(payload.get("chapter_tasks_legacy") or [], ensure_ascii=False),
+                    json.dumps(payload.get("structural_drafts_legacy") or [], ensure_ascii=False),
+                    json.dumps(payload.get("detemplated_drafts_legacy") or [], ensure_ascii=False),
+                    json.dumps(payload.get("draft_integrity_checks_legacy") or [], ensure_ascii=False),
+                    json.dumps(payload.get("style_requirements_legacy") or {}, ensure_ascii=False),
+                    int(payload.get("structured_story_migrated") or 0),
                     now,
                 ),
             )
@@ -128,14 +130,30 @@ class SQLiteV2Repository:
                 "chapter_summaries": json.loads(row["chapter_summaries_json"] or "[]"),
                 "continuity_flags": json.loads(row["continuity_flags_json"] or "[]"),
                 "global_constraints": json.loads(row["global_constraints_json"] or "{}"),
-                "chapter_analysis_memories": json.loads(row["chapter_analysis_memories_json"] or "[]"),
-                "chapter_continuation_memories": json.loads(row["chapter_continuation_memories_json"] or "[]"),
-                "chapter_tasks": json.loads(row["chapter_tasks_json"] or "[]"),
-                "structural_drafts": json.loads(row["structural_drafts_json"] or "[]"),
-                "detemplated_drafts": json.loads(row["detemplated_drafts_json"] or "[]"),
-                "draft_integrity_checks": json.loads(row["draft_integrity_checks_json"] or "[]"),
+                "chapter_analysis_memories": [],
+                "chapter_continuation_memories": [],
+                "chapter_tasks": [],
+                "structural_drafts": [],
+                "detemplated_drafts": [],
+                "draft_integrity_checks": [],
                 "style_requirements": json.loads(row["style_requirements_json"] or "{}"),
+                "chapter_analysis_memories_legacy": json.loads(row["chapter_analysis_memories_json"] or "[]"),
+                "chapter_continuation_memories_legacy": json.loads(row["chapter_continuation_memories_json"] or "[]"),
+                "chapter_tasks_legacy": json.loads(row["chapter_tasks_json"] or "[]"),
+                "structural_drafts_legacy": json.loads(row["structural_drafts_json"] or "[]"),
+                "detemplated_drafts_legacy": json.loads(row["detemplated_drafts_json"] or "[]"),
+                "draft_integrity_checks_legacy": json.loads(row["draft_integrity_checks_json"] or "[]"),
+                "style_requirements_legacy": json.loads(row["style_requirements_json"] or "{}"),
+                "structured_story_migrated": int(row["structured_story_migrated"] or 0),
             }
+
+    def mark_structured_story_migrated(self, project_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE project_memories SET structured_story_migrated=1 WHERE project_id=? AND is_active=1",
+                (project_id,),
+            )
+            conn.commit()
 
     def save_memory_view(self, payload: Dict[str, Any]) -> None:
         now = self._now()

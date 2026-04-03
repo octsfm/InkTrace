@@ -40,10 +40,10 @@ class TestExportService:
             updated_at=datetime.now()
         )
     
-    def create_test_chapters(self, novel_id):
+    def create_test_chapters(self, novel_id, count: int = 3):
         """创建测试用章节"""
         chapters = []
-        for i in range(1, 4):
+        for i in range(1, count + 1):
             chapter = Chapter(
                 id=ChapterId(f"chapter_{i:03d}"),
                 novel_id=novel_id,
@@ -238,6 +238,40 @@ class TestExportService:
         assert result.mode == "directory"
         assert result.format == "txt"
         assert result.file_count == 3
+
+    def test_export_by_chapter_every_10_groups_files(self):
+        novel = self.create_test_novel()
+        chapters = self.create_test_chapters(novel.id, count=12)
+        self.mock_novel_repo.find_by_id.return_value = novel
+        self.mock_chapter_repo.find_by_novel.return_value = chapters
+        request = ExportNovelRequest(
+            novel_id="novel_001",
+            output_path="chapter_group_exports",
+            format="markdown",
+            scope="by_chapter",
+            options={"chapter_export_mode": "every_10"},
+        )
+        result = self.service.export_novel(request)
+        assert result.mode == "directory"
+        assert result.file_count == 2
+
+    def test_export_full_overwrites_existing_file(self):
+        novel = self.create_test_novel()
+        chapters = self.create_test_chapters(novel.id)
+        self.mock_novel_repo.find_by_id.return_value = novel
+        self.mock_chapter_repo.find_by_novel.return_value = chapters
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "overwrite.md")
+            Path(output_path).write_text("OLD", encoding="utf-8")
+            request = ExportNovelRequest(
+                novel_id="novel_001",
+                output_path=output_path,
+                format="markdown",
+                scope="full",
+            )
+            self.service.export_novel(request)
+            content = Path(output_path).read_text(encoding="utf-8")
+            assert "OLD" not in content
 
     def test_export_author_fallback_unknown(self):
         novel = self.create_test_novel()

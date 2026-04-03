@@ -11,6 +11,13 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
+from domain.constants.story_constants import (
+    DEFAULT_FORESHADOWING_ACTION,
+    DEFAULT_HOOK_STRENGTH,
+    DEFAULT_TARGET_WORDS_PER_CHAPTER,
+)
+from domain.constants.story_enums import WRITING_STATUS_READY
+
 
 class GlobalConstraints(BaseModel):
     main_plot: str = ""
@@ -59,8 +66,8 @@ class ChapterTask(BaseModel):
     goals: List[str] = Field(default_factory=list)
     must_continue_points: List[str] = Field(default_factory=list)
     forbidden_jumps: List[str] = Field(default_factory=list)
-    required_foreshadowing_action: str = "推进"
-    required_hook_strength: str = "中"
+    required_foreshadowing_action: str = DEFAULT_FORESHADOWING_ACTION
+    required_hook_strength: str = DEFAULT_HOOK_STRENGTH
     pace_target: str = ""
     opening_continuation: str = ""
     chapter_payoff: str = ""
@@ -83,6 +90,9 @@ class DetemplatedDraft(BaseModel):
     content: str = ""
     based_on_structural_draft_id: str = ""
     style_requirements_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    used_fallback: bool = False
+    integrity_failed: bool = False
+    display_fallback_to_structural: bool = False
 
 
 class DraftIntegrityCheck(BaseModel):
@@ -91,7 +101,14 @@ class DraftIntegrityCheck(BaseModel):
     foreshadowing_integrity_ok: bool = True
     hook_integrity_ok: bool = True
     continuity_ok: bool = True
+    arc_consistency_ok: bool = True
+    title_alignment_ok: bool = True
+    progression_integrity_ok: bool = True
     risk_notes: List[str] = Field(default_factory=list)
+    issue_list: List[Dict[str, Any]] = Field(default_factory=list)
+    revision_suggestion: str = ""
+    revision_attempted: bool = False
+    revision_succeeded: bool = False
 
 
 class StyleRequirements(BaseModel):
@@ -100,6 +117,8 @@ class StyleRequirements(BaseModel):
     preferred_rhythm: str = ""
     narrative_distance: str = ""
     dialogue_density: str = ""
+    source_type: str = "manual"
+    version: int = 1
 
 
 class ProjectMemoryResponse(BaseModel):
@@ -110,6 +129,9 @@ class ProjectMemoryResponse(BaseModel):
     current_state: Dict[str, Any] = Field(default_factory=dict)
     continuity_flags: List[Dict[str, Any]] = Field(default_factory=list)
     global_constraints: GlobalConstraints = Field(default_factory=GlobalConstraints)
+    chapter_analysis_memory_refs: List[str] = Field(default_factory=list)
+    chapter_continuation_memory_refs: List[str] = Field(default_factory=list)
+    chapter_task_refs: List[str] = Field(default_factory=list)
     chapter_analysis_memories: List[ChapterAnalysisMemory] = Field(default_factory=list)
     chapter_continuation_memories: List[ChapterContinuationMemory] = Field(default_factory=list)
     chapter_tasks: List[ChapterTask] = Field(default_factory=list)
@@ -134,11 +156,36 @@ class MemoryViewResponse(BaseModel):
     style_tags: List[str] = Field(default_factory=list)
     current_progress: str = ""
     outline_summary: List[str] = Field(default_factory=list)
+    plot_arcs: List[Dict[str, Any]] = Field(default_factory=list)
+    active_arc_ids: List[str] = Field(default_factory=list)
+    chapter_arc_bindings: List[Dict[str, Any]] = Field(default_factory=list)
+    recent_arc_progress: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class ProjectMemoryViewEnvelope(BaseModel):
     project_id: str
     memory_view: MemoryViewResponse = Field(default_factory=MemoryViewResponse)
+
+
+class ChapterPlanResponse(BaseModel):
+    id: str = ""
+    project_id: str = ""
+    branch_id: str = ""
+    chapter_number: int = 0
+    title: str = ""
+    goal: str = ""
+    conflict: str = ""
+    progression: str = ""
+    ending_hook: str = ""
+    target_words: int = DEFAULT_TARGET_WORDS_PER_CHAPTER
+    related_arc_ids: List[str] = Field(default_factory=list)
+    target_arc_id: str = ""
+    planning_mode: str = "light_planning"
+    planning_reason: str = ""
+    arc_stage_before: str = ""
+    arc_stage_after_expected: str = ""
+    status: str = WRITING_STATUS_READY
+    chapter_task_seed: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ChapterTaskResponse(BaseModel):
@@ -147,30 +194,54 @@ class ChapterTaskResponse(BaseModel):
     branch_id: str = ""
     chapter_id: str = ""
     chapter_number: int = 0
-    title: str = ""
-    goal: str = ""
-    conflict: str = ""
-    progression: str = ""
-    ending_hook: str = ""
-    target_words: int = 2500
-    related_arc_ids: List[str] = Field(default_factory=list)
-    status: str = "ready"
     chapter_function: str = ""
     goals: List[str] = Field(default_factory=list)
     must_continue_points: List[str] = Field(default_factory=list)
     forbidden_jumps: List[str] = Field(default_factory=list)
-    required_foreshadowing_action: str = "推进"
-    required_hook_strength: str = "中"
+    required_foreshadowing_action: str = DEFAULT_FORESHADOWING_ACTION
+    required_hook_strength: str = DEFAULT_HOOK_STRENGTH
     pace_target: str = ""
     opening_continuation: str = ""
     chapter_payoff: str = ""
     style_bias: str = ""
+    target_arc_id: str = ""
+    secondary_arc_ids: List[str] = Field(default_factory=list)
+    arc_stage_before: str = ""
+    arc_stage_after_expected: str = ""
+    arc_push_goal: str = ""
+    arc_conflict_focus: str = ""
+    arc_payoff_expectation: str = ""
+    planning_mode: str = "light_planning"
 
 
 class ChapterPlanEnvelope(BaseModel):
     project_id: str
     branch_id: str
-    plans: List[ChapterTaskResponse] = Field(default_factory=list)
+    plans: List[ChapterPlanResponse] = Field(default_factory=list)
+    target_arc: Dict[str, Any] = Field(default_factory=dict)
+    planning_mode: str = "light_planning"
+    planning_reason: str = ""
+    arc_stage_before: str = ""
+    arc_stage_after_expected: str = ""
+
+
+class ContinuationContextResponse(BaseModel):
+    project_id: str = ""
+    chapter_id: str = ""
+    chapter_number: int = 0
+    recent_chapter_memories: List[Dict[str, Any]] = Field(default_factory=list)
+    last_chapter_tail: str = ""
+    relevant_characters: List[Dict[str, Any]] = Field(default_factory=list)
+    relevant_foreshadowing: List[str] = Field(default_factory=list)
+    global_constraints: Dict[str, Any] = Field(default_factory=dict)
+    chapter_outline: Dict[str, Any] = Field(default_factory=dict)
+    chapter_task_seed: Dict[str, Any] = Field(default_factory=dict)
+    active_arcs: List[Dict[str, Any]] = Field(default_factory=list)
+    target_arc: Dict[str, Any] = Field(default_factory=dict)
+    recent_arc_progress: List[Dict[str, Any]] = Field(default_factory=list)
+    arc_bindings: List[Dict[str, Any]] = Field(default_factory=list)
+    style_requirements: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""
 
 
 class WriteResultResponse(BaseModel):
@@ -185,6 +256,58 @@ class WriteResultResponse(BaseModel):
     latest_draft_integrity_check: Dict[str, Any] = Field(default_factory=dict)
     used_structural_fallback: bool = False
     memory_view: MemoryViewResponse = Field(default_factory=MemoryViewResponse)
+
+
+class GeneratedChapterResult(BaseModel):
+    chapter_id: str = ""
+    chapter_number: int = 0
+    title: str = ""
+    content: str = ""
+    structural_draft_id: str = ""
+    detemplated_draft_id: str = ""
+    integrity_check_id: str = ""
+    used_structural_fallback: bool = False
+    saved: bool = False
+    structural_draft: Dict[str, Any] = Field(default_factory=dict)
+    detemplated_draft: Dict[str, Any] = Field(default_factory=dict)
+    integrity_check: Dict[str, Any] = Field(default_factory=dict)
+    revision_attempts: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class WritePreviewResponse(BaseModel):
+    project_id: str = ""
+    chapter_task: Dict[str, Any] = Field(default_factory=dict)
+    structural_draft: Dict[str, Any] = Field(default_factory=dict)
+    detemplated_draft: Dict[str, Any] = Field(default_factory=dict)
+    integrity_check: Dict[str, Any] = Field(default_factory=dict)
+    revision_attempts: List[Dict[str, Any]] = Field(default_factory=list)
+    used_structural_fallback: bool = False
+    target_arc: Dict[str, Any] = Field(default_factory=dict)
+    planning_mode: str = "light_planning"
+    planning_reason: str = ""
+    arc_stage_before: str = ""
+    arc_stage_after_expected: str = ""
+
+
+class WriteBatchResultResponse(BaseModel):
+    project_id: str = ""
+    generated_chapters: List[GeneratedChapterResult] = Field(default_factory=list)
+    latest_chapter: Dict[str, Any] = Field(default_factory=dict)
+    latest_structural_draft: Dict[str, Any] = Field(default_factory=dict)
+    latest_detemplated_draft: Dict[str, Any] = Field(default_factory=dict)
+    latest_draft_integrity_check: Dict[str, Any] = Field(default_factory=dict)
+    used_structural_fallback: bool = False
+    memory_view: MemoryViewResponse = Field(default_factory=MemoryViewResponse)
+    chapter_saved: bool = False
+    memory_refreshed: bool = False
+    saved_chapter_ids: List[str] = Field(default_factory=list)
+    target_arc: Dict[str, Any] = Field(default_factory=dict)
+    planning_mode: str = "light_planning"
+    planning_reason: str = ""
+    arc_stage_before: str = ""
+    arc_stage_after_expected: str = ""
+    arc_stage_after_actual: str = ""
+    arc_stage_advanced: bool = False
 
 
 class StyleRequirementsEnvelope(BaseModel):

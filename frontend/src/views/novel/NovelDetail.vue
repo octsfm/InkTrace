@@ -1,1004 +1,687 @@
 <template>
-  <div class="novel-detail">
-    <div class="page-header">
-      <div class="header-left">
-        <el-button @click="$router.push('/novels')">
-          <el-icon><ArrowLeft /></el-icon>
-          返回
-        </el-button>
-        <h2 class="page-title">{{ novel?.title || '小说详情' }}</h2>
-      </div>
-      <div class="header-right">
-        <el-button type="primary" @click="$router.push(`/novel/${$route.params.id}/write`)">
-          <el-icon><Edit /></el-icon>
-          继续创作
-        </el-button>
-      </div>
-    </div>
+  <div class="novel-detail-page">
+    <el-page-header content="小说详情" @back="goBack" />
 
-    <el-row :gutter="20">
-      <el-col :span="16">
-        <el-card class="info-card">
+    <el-alert v-if="state.loading" title="正在加载小说详情与整理进度…" type="info" show-icon :closable="false" />
+    <el-alert v-if="state.errorMessage" :title="state.errorMessage" type="error" show-icon :closable="false" />
+
+    <el-row :gutter="16" class="detail-grid">
+      <el-col :span="24">
+        <el-card shadow="never">
           <template #header>
-            <span>基本信息</span>
+            <span>基础信息区</span>
           </template>
           <el-descriptions :column="2" border>
-            <el-descriptions-item label="作者">{{ novel?.author || '未知' }}</el-descriptions-item>
-            <el-descriptions-item label="题材">{{ formatGenre(novel?.genre) }}</el-descriptions-item>
-            <el-descriptions-item label="当前字数">{{ formatNumber(novel?.current_word_count) }}</el-descriptions-item>
-            <el-descriptions-item label="目标字数">{{ formatNumber(novel?.target_word_count) }}</el-descriptions-item>
-            <el-descriptions-item label="章节数">{{ novel?.chapter_count || 0 }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{ novel?.created_at?.substring(0, 10) }}</el-descriptions-item>
+            <el-descriptions-item label="标题">{{ state.novel?.title || '暂无' }}</el-descriptions-item>
+            <el-descriptions-item label="作者">{{ state.novel?.author || '暂无' }}</el-descriptions-item>
+            <el-descriptions-item label="题材">{{ formatGenre(state.novel?.genre) }}</el-descriptions-item>
+            <el-descriptions-item label="简介">{{ state.novel?.description || '暂无' }}</el-descriptions-item>
+            <el-descriptions-item label="章节数">{{ state.chapters.length }}</el-descriptions-item>
+            <el-descriptions-item label="最新章节号">{{ latestChapterNumber }}</el-descriptions-item>
+            <el-descriptions-item label="当前状态">{{ formatNovelStatus(state.novel?.status) }}</el-descriptions-item>
+            <el-descriptions-item label="当前写作焦点">{{ currentWritingFocus }}</el-descriptions-item>
           </el-descriptions>
-
-          <div class="progress-section">
-            <span>完成进度</span>
-            <el-progress
-              :percentage="getProgress()"
-              :stroke-width="12"
-              style="margin-top: 10px;"
-            />
-          </div>
-        </el-card>
-
-        <el-card class="analysis-card">
-          <template #header>
-            <div class="card-header">
-              <span>创作操作</span>
-            </div>
-          </template>
-
-          <el-row :gutter="20">
-            <el-col :span="8">
-              <el-card shadow="hover" class="tool-card" @click="triggerOrganize">
-                <el-icon class="tool-icon"><Reading /></el-icon>
-                <div class="tool-name">{{ organizeActionLabel }}</div>
-                <div class="tool-desc">{{ organizeActionDesc }}</div>
-              </el-card>
-            </el-col>
-            <el-col :span="8">
-              <el-card shadow="hover" class="tool-card" @click="$router.push(`/novel/${$route.params.id}/write`)">
-                <el-icon class="tool-icon"><Connection /></el-icon>
-                <div class="tool-name">继续创作</div>
-                <div class="tool-desc">基于最新章节继续生成后续剧情</div>
-              </el-card>
-            </el-col>
-            <el-col :span="8">
-              <el-card shadow="hover" class="tool-card" @click="exportNovel">
-                <el-icon class="tool-icon"><Download /></el-icon>
-                <div class="tool-name">导出小说</div>
-                <div class="tool-desc">导出弹窗支持范围、格式和输出路径</div>
-              </el-card>
-            </el-col>
-          </el-row>
-
-          <div class="organize-actions">
-            <el-button size="small" @click="startOrganize(true)" :loading="organizing">重新整理</el-button>
-            <el-button size="small" type="warning" @click="stopOrganize" :disabled="!progressRunning">停止整理</el-button>
-            <el-button size="small" type="primary" @click="resumeOrganize" :disabled="!progressResumable">继续整理</el-button>
-          </div>
-          <div v-if="organizing || organizeProgress.total > 0" class="organize-progress">
-            <div class="organize-progress-text">{{ organizeProgress.message }}</div>
-            <div class="organize-progress-meta">
-              <span>进度：{{ organizeProgress.current || 0 }} / {{ organizeProgress.total || 0 }}</span>
-              <span v-if="organizeProgress.current_chapter_title">当前章节：{{ organizeProgress.current_chapter_title }}</span>
-            </div>
-            <el-progress :percentage="organizeProgress.percent" :stroke-width="10" />
-          </div>
-        </el-card>
-
-        <el-card class="memory-card">
-          <template #header>
-            <span>小说结构摘要</span>
-          </template>
-          <div v-if="memoryLoading" class="loading">
-            <el-skeleton :rows="4" animated />
-          </div>
-          <el-collapse v-else v-model="memoryCollapse">
-            <el-collapse-item title="大纲摘要" name="outline">
-              <div v-if="outlineSummary.length === 0" class="empty-text">暂无数据</div>
-              <ul v-else class="plot-list">
-                <li v-for="(item, index) in outlineSummary" :key="`outline-${index}`">{{ item }}</li>
-              </ul>
-            </el-collapse-item>
-            <el-collapse-item title="人物（主角与关键配角）" name="characters">
-              <div v-if="memoryCharacters.length === 0" class="empty-text">暂无数据</div>
-              <div v-else class="memory-list">
-                <div v-for="(item, index) in memoryCharacters" :key="item.name || index" class="memory-item">
-                  <strong>{{ index === 0 ? '主角' : '配角' }}：{{ item.name || '未命名' }}</strong>
-                  <span> - {{ item.brief || '暂无描述' }}</span>
-                </div>
-              </div>
-            </el-collapse-item>
-            <el-collapse-item title="世界观（背景设定）" name="world">
-              <div v-if="!worldSettingSummary" class="empty-text">暂无数据</div>
-              <div v-else class="summary-text">{{ worldSettingSummary }}</div>
-            </el-collapse-item>
-            <el-collapse-item title="剧情主线" name="plot">
-              <div v-if="plotOutline.length === 0" class="empty-text">暂无数据</div>
-              <ul v-else class="plot-list">
-                <li v-for="(item, index) in plotOutline" :key="`plot-${index}`">{{ item }}</li>
-              </ul>
-            </el-collapse-item>
-            <el-collapse-item title="写作风格" name="style">
-              <div v-if="styleTags.length === 0" class="empty-text">暂无数据</div>
-              <div v-else class="style-tags">
-                <el-tag v-for="(tag, index) in styleTags" :key="`style-${index}`" type="success">{{ tag }}</el-tag>
-              </div>
-              <el-divider />
-              <div class="style-req-toolbar">
-                <el-button size="small" @click="openStyleReqDialog">编辑风格要求</el-button>
-                <el-button size="small" :loading="styleReqLoading" @click="extractStyleReqFromSamples">样章提取</el-button>
-              </div>
-              <div class="style-req-block">
-                <div><strong>作者风格关键词：</strong>{{ styleReqView.author_voice_keywords.join('、') || '暂无' }}</div>
-                <div><strong>避免表达：</strong>{{ styleReqView.avoid_patterns.join('、') || '暂无' }}</div>
-                <div><strong>偏好节奏：</strong>{{ styleReqView.preferred_rhythm || '暂无' }}</div>
-                <div><strong>叙事距离：</strong>{{ styleReqView.narrative_distance || '暂无' }}</div>
-                <div><strong>对话密度：</strong>{{ styleReqView.dialogue_density || '暂无' }}</div>
-              </div>
-            </el-collapse-item>
-            <el-collapse-item title="最新草稿对比" name="drafts">
-              <div v-if="!latestStructuralDraft.content && !latestDetemplatedDraft.content" class="empty-text">暂无数据</div>
-              <el-row v-else :gutter="12">
-                <el-col :span="12">
-                  <el-card shadow="never">
-                    <template #header>结构稿</template>
-                    <div class="summary-text">{{ latestStructuralDraft.content || '暂无' }}</div>
-                  </el-card>
-                </el-col>
-                <el-col :span="12">
-                  <el-card shadow="never">
-                    <template #header>去模板稿</template>
-                    <div class="summary-text">{{ latestDetemplatedDraft.content || '暂无' }}</div>
-                  </el-card>
-                </el-col>
-              </el-row>
-              <div v-if="latestDraftCheck.risk_notes?.length" class="draft-risk">
-                <el-tag type="warning">校验风险</el-tag>
-                <ul>
-                  <li v-for="(item, index) in latestDraftCheck.risk_notes" :key="`detail-risk-${index}`">{{ item }}</li>
-                </ul>
-              </div>
-            </el-collapse-item>
-          </el-collapse>
         </el-card>
       </el-col>
 
-      <el-col :span="8">
-        <el-card class="chapters-card">
+      <el-col :span="24">
+        <el-card shadow="never">
           <template #header>
-            <div class="chapters-header">
-              <span>章节列表</span>
-              <div class="chapters-toolbar">
-                <el-button type="primary" size="small" @click="createChapter">新建章节</el-button>
-                <el-button size="small" @click="importChapterToNew">导入章节</el-button>
+            <span>结构摘要区</span>
+          </template>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="主角/主要人物">{{ characterSummary }}</el-descriptions-item>
+            <el-descriptions-item label="世界观摘要">{{ worldviewSummary }}</el-descriptions-item>
+            <el-descriptions-item label="主线摘要">{{ mainPlotSummary }}</el-descriptions-item>
+            <el-descriptions-item label="当前进度">{{ progressSummary }}</el-descriptions-item>
+            <el-descriptions-item label="大纲摘要">{{ outlineSummary }}</el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+      </el-col>
+
+      <el-col :span="24">
+        <el-card shadow="never">
+          <template #header>
+            <span>当前活跃剧情弧</span>
+          </template>
+          <el-empty v-if="!activeArcs.length" description="暂无活跃剧情弧" />
+          <template v-else>
+            <el-radio-group v-model="arcTimelineType" class="top-gap">
+              <el-radio-button label="all">全部</el-radio-button>
+              <el-radio-button label="main_arc">主线弧</el-radio-button>
+              <el-radio-button label="character_arc">人物弧</el-radio-button>
+              <el-radio-button label="supporting_arc">支线弧</el-radio-button>
+            </el-radio-group>
+            <el-descriptions :column="1" border class="top-gap">
+            <el-descriptions-item v-for="arc in filteredActiveArcs" :key="arc.arc_id" :label="arc.title || '未命名剧情弧'">
+              <div>{{ formatArcType(arc.arc_type) }} · {{ formatArcStage(arc.current_stage) }}</div>
+              <div>优先级：{{ formatArcPriority(arc.priority) }}</div>
+              <div>{{ arc.latest_progress_summary || '暂无推进概况' }}</div>
+              <div>下一步：{{ arc.next_push_suggestion || '暂无建议' }}</div>
+              <div v-if="arc.latest_snapshot?.stage_before || arc.latest_snapshot?.stage_after">
+                最近迁移：{{ formatArcStage(arc.latest_snapshot?.stage_before) }} -> {{ formatArcStage(arc.latest_snapshot?.stage_after) }}
+              </div>
+              <div v-if="arc.latest_snapshot?.change_reason">迁移原因：{{ arc.latest_snapshot?.change_reason }}</div>
+                <div v-if="arc.latest_snapshot?.progress_summary">迁移证据：{{ arc.latest_snapshot?.progress_summary }}</div>
+              </el-descriptions-item>
+            </el-descriptions>
+            <el-collapse v-if="arcTimeline.length" class="top-gap">
+              <el-collapse-item title="最近迁移时间线（Active Arcs）" name="arc-timeline">
+                <el-descriptions :column="1" border>
+                  <el-descriptions-item v-for="item in arcTimeline" :key="item.key" :label="item.title">
+                    <div>{{ formatArcStage(item.stageBefore) }} -> {{ formatArcStage(item.stageAfter) }}</div>
+                    <div v-if="item.changeReason">原因：{{ item.changeReason }}</div>
+                    <div v-if="item.progressSummary">证据：{{ item.progressSummary }}</div>
+                    <div v-if="item.createdAt">时间：{{ item.createdAt }}</div>
+                  </el-descriptions-item>
+                </el-descriptions>
+              </el-collapse-item>
+            </el-collapse>
+          </template>
+        </el-card>
+      </el-col>
+
+      <el-col :span="24">
+        <el-card shadow="never">
+          <template #header>
+            <span>作者助手建议</span>
+          </template>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="当前建议">
+              {{ assistantSummary }}
+            </el-descriptions-item>
+            <el-descriptions-item label="推荐目标弧">
+              {{ recommendedArcLabel }}
+            </el-descriptions-item>
+            <el-descriptions-item label="推荐规划模式">
+              {{ recommendedPlanningModeLabel }}
+            </el-descriptions-item>
+            <el-descriptions-item label="建议原因">
+              {{ recommendationReason }}
+            </el-descriptions-item>
+            <el-descriptions-item label="执行前检查">
+              {{ readinessChecklist }}
+            </el-descriptions-item>
+          </el-descriptions>
+          <div class="action-grid top-gap">
+            <el-button type="success" @click="goToWriteWithAssistant">按助手建议进入续写</el-button>
+            <el-button @click="goToWrite">直接进入续写</el-button>
+          </div>
+        </el-card>
+      </el-col>
+
+      <el-col :span="24">
+        <el-card shadow="never">
+          <template #header>
+            <span>全局操作区</span>
+          </template>
+          <div class="action-grid">
+            <el-button @click="goToImport">导入整本小说</el-button>
+            <el-button @click="goToOutlineImport">导入大纲</el-button>
+            <el-button type="primary" :loading="state.organizeLoading" @click="organizeStory">整理故事结构</el-button>
+            <el-button :disabled="!canPause" @click="pauseOrganize">暂停</el-button>
+            <el-button :disabled="!canResume" @click="resumeOrganize">继续</el-button>
+            <el-button :disabled="!canCancel" @click="cancelOrganize">取消</el-button>
+            <el-button :disabled="!canRetry" @click="retryOrganize">重新整理</el-button>
+            <el-button :loading="state.branchLoading" @click="generateBranches">生成分支</el-button>
+            <el-button type="success" @click="goToWrite">进入续写</el-button>
+            <el-button @click="state.exportDialogVisible = true">导出</el-button>
+          </div>
+          <div v-if="organizeProgress.status !== 'idle'" class="top-gap">
+            <el-alert :title="organizeProgress.message || '整理任务进行中'" :type="organizeAlertType" show-icon :closable="false" />
+            <el-descriptions :column="3" border class="top-gap">
+              <el-descriptions-item label="状态">{{ formatOrganizeStatus(organizeProgress.status) }}</el-descriptions-item>
+              <el-descriptions-item label="阶段">{{ organizeProgress.stage || '暂无' }}</el-descriptions-item>
+              <el-descriptions-item label="进度">{{ organizeProgress.current || 0 }}/{{ organizeProgress.total || 0 }}</el-descriptions-item>
+              <el-descriptions-item label="百分比">{{ organizeProgress.percent || 0 }}%</el-descriptions-item>
+              <el-descriptions-item label="当前章节">{{ organizeProgress.current_chapter_title || '暂无' }}</el-descriptions-item>
+              <el-descriptions-item label="说明">{{ organizeProgress.message || '暂无' }}</el-descriptions-item>
+            </el-descriptions>
+            <el-progress class="top-gap" :percentage="Number(organizeProgress.percent || 0)" :status="organizeProgress.status === 'error' ? 'exception' : undefined" />
+          </div>
+          <div v-if="state.branches.length" class="top-gap">
+            <el-radio-group v-model="selectedBranchId" class="branch-list">
+              <el-radio v-for="branch in state.branches" :key="branch.id" :label="branch.id" border class="branch-item">
+                {{ branch.title || '未命名分支' }}
+              </el-radio>
+            </el-radio-group>
+          </div>
+        </el-card>
+      </el-col>
+
+      <el-col :span="24">
+        <el-card shadow="never">
+          <template #header>
+            <div class="header-row">
+              <span>章节列表区</span>
+              <div class="header-actions">
+                <el-select v-model="chapterSort" size="small" style="width: 180px">
+                  <el-option label="章节号从小到大" value="number_asc" />
+                  <el-option label="章节号从大到小" value="number_desc" />
+                  <el-option label="更新时间最新" value="updated_desc" />
+                  <el-option label="更新时间最早" value="updated_asc" />
+                </el-select>
+                <el-button type="primary" @click="createChapter">新建章节</el-button>
+                <el-button @click="importChapterEntry">导入章节</el-button>
               </div>
             </div>
           </template>
-
-          <div v-if="loading" class="loading">
-            <el-skeleton :rows="5" animated />
-          </div>
-
-          <el-scrollbar v-else height="400px">
-            <div
-              v-for="chapter in chapters"
-              :key="chapter.id"
-              class="chapter-item"
-            >
-              <span class="chapter-title" @click="openChapterEditor(chapter)">第{{ chapter.number }}章 {{ chapter.title }}</span>
-              <div class="chapter-actions">
-                <span class="chapter-words">{{ chapter.word_count }}字</span>
-                <el-button size="small" link @click.stop="openChapterEditor(chapter)">编辑</el-button>
-                <el-button size="small" link @click.stop="importChapterToCurrent(chapter)">导入本章内容</el-button>
-                <el-button type="danger" link size="small" @click.stop="deleteChapter(chapter)">
-                  删除
-                </el-button>
-              </div>
-            </div>
-
-            <el-empty v-if="chapters.length === 0" description="暂无章节" />
-          </el-scrollbar>
+          <el-table :data="pagedChapters" border style="width: 100%">
+            <el-table-column prop="number" label="章节号" width="90" />
+            <el-table-column prop="title" label="标题" min-width="180" />
+            <el-table-column prop="updated_at" label="更新时间" min-width="180" />
+            <el-table-column label="状态" width="120">
+              <template #default="{ row }">
+                {{ formatChapterStatus(row.status) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="240">
+              <template #default="{ row }">
+                <el-button type="primary" link @click="editChapter(row)">编辑</el-button>
+                <el-button type="primary" link @click="importChapter(row)">导入本章内容</el-button>
+                <el-button type="danger" link @click="deleteChapter(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-pagination
+            v-if="state.chapters.length > chapterPageSize"
+            class="top-gap"
+            layout="total, sizes, prev, pager, next"
+            :total="state.chapters.length"
+            :current-page="chapterPage"
+            :page-size="chapterPageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            @update:current-page="(value) => (chapterPage.value = value)"
+            @update:page-size="handlePageSizeChange"
+          />
         </el-card>
       </el-col>
     </el-row>
 
-    <el-dialog v-model="styleDialogVisible" title="文风分析结果" width="600px">
-      <el-descriptions v-if="styleResult" :column="1" border>
-        <el-descriptions-item label="叙述视角">{{ styleResult.narrative_voice }}</el-descriptions-item>
-        <el-descriptions-item label="对话风格">{{ styleResult.dialogue_style }}</el-descriptions-item>
-        <el-descriptions-item label="节奏特征">{{ styleResult.pacing }}</el-descriptions-item>
-        <el-descriptions-item label="修辞统计">
-          <el-tag v-for="(count, key) in styleResult.rhetoric_stats" :key="key" style="margin-right: 5px;">
-            {{ key }}: {{ count }}
-          </el-tag>
-        </el-descriptions-item>
-      </el-descriptions>
-    </el-dialog>
-
-    <el-dialog v-model="plotDialogVisible" title="剧情分析结果" width="700px">
-      <el-tabs v-if="plotResult">
-        <el-tab-pane label="人物">
-          <el-table :data="plotResult.characters" max-height="300">
-            <el-table-column prop="name" label="姓名" width="100" />
-            <el-table-column prop="appearance_count" label="出场次数" width="100" />
-            <el-table-column prop="first_appearance_chapter" label="首次出场" />
-          </el-table>
-        </el-tab-pane>
-        <el-tab-pane label="时间线">
-          <el-timeline>
-            <el-timeline-item
-              v-for="(event, index) in plotResult.timeline"
-              :key="index"
-              :timestamp="`第${event.chapter_number}章`"
-            >
-              {{ event.event_description }}
-            </el-timeline-item>
-          </el-timeline>
-        </el-tab-pane>
-        <el-tab-pane label="伏笔">
-          <el-table :data="plotResult.foreshadowings" max-height="300">
-            <el-table-column prop="description" label="描述" />
-            <el-table-column prop="chapter_number" label="章节" width="80" />
-            <el-table-column prop="status" label="状态" width="80" />
-          </el-table>
-        </el-tab-pane>
-      </el-tabs>
-    </el-dialog>
-
-    <el-dialog v-model="styleReqDialogVisible" title="风格要求" width="620px">
-      <el-form label-width="110px">
-        <el-form-item label="作者风格关键词">
-          <el-select v-model="styleReqForm.author_voice_keywords" multiple allow-create filterable default-first-option style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="避免表达模式">
-          <el-select v-model="styleReqForm.avoid_patterns" multiple allow-create filterable default-first-option style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="偏好节奏">
-          <el-input v-model="styleReqForm.preferred_rhythm" />
-        </el-form-item>
-        <el-form-item label="叙事距离">
-          <el-input v-model="styleReqForm.narrative_distance" />
-        </el-form-item>
-        <el-form-item label="对话密度">
-          <el-input v-model="styleReqForm.dialogue_density" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="styleReqDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="styleReqSaving" @click="saveStyleReq">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="exportDialogVisible" title="导出小说" width="560px">
-      <el-form label-width="100px">
-        <el-form-item label="导出范围">
-          <el-radio-group v-model="exportForm.scope">
-            <el-radio value="full">全部导出</el-radio>
-            <el-radio value="by_chapter">分章节导出</el-radio>
-          </el-radio-group>
-        </el-form-item>
+    <el-dialog v-model="state.exportDialogVisible" title="导出小说" width="520px">
+      <el-form label-position="top">
         <el-form-item label="导出格式">
           <el-radio-group v-model="exportForm.format">
-            <el-radio value="markdown">Markdown (.md)</el-radio>
-            <el-radio value="txt">TXT (.txt)</el-radio>
+            <el-radio label="markdown">Markdown</el-radio>
+            <el-radio label="txt">TXT</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item :label="exportForm.scope === 'full' ? '输出文件' : '输出目录'">
-          <el-input v-model="exportForm.output_path" :placeholder="exportForm.scope === 'full' ? '例如：my_novel.md' : '例如：my_novel_chapters'" />
-          <el-button
-            style="margin-top: 8px;"
-            :disabled="!window.electronAPI"
-            @click="selectExportPath"
-          >
-            选择路径
-          </el-button>
+        <el-form-item label="导出范围">
+          <el-radio-group v-model="exportForm.scope">
+            <el-radio label="full">全文导出</el-radio>
+            <el-radio label="by_chapter">按章节导出</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="exportForm.scope === 'by_chapter'" label="按章节导出模式">
+          <el-radio-group v-model="exportForm.chapterMode">
+            <el-radio label="single">单章一个文件</el-radio>
+            <el-radio label="every_10">每10章一个文件</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item :label="exportPathLabel">
+          <el-input v-model="exportForm.outputPath" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="exportDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="exporting" @click="submitExport">开始导出</el-button>
+        <el-button @click="state.exportDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="exporting" @click="exportNovel">开始导出</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+
 import { contentApi, exportApi, novelApi, projectApi } from '@/api'
+import { useNovelDetailState } from '@/composables/useNovelDetailState'
+import { formatGenre, formatNovelStatus, formatOrganizeStatus } from '@/constants/display'
+import { ARC_STAGE_LABELS, ARC_TYPE_LABELS } from '@/constants/storyLabels'
 
 const route = useRoute()
 const router = useRouter()
-const novel = ref(null)
-const chapters = ref([])
-const loading = ref(true)
-const styleDialogVisible = ref(false)
-const plotDialogVisible = ref(false)
-const styleResult = ref(null)
-const plotResult = ref(null)
-const memoryData = ref({})
+const state = useNovelDetailState()
 const projectId = ref('')
-const memoryLoading = ref(false)
-const memoryCollapse = ref(['outline', 'characters', 'world', 'plot', 'style'])
-const styleReqDialogVisible = ref(false)
-const styleReqLoading = ref(false)
-const styleReqSaving = ref(false)
-const styleReqView = ref({
-  author_voice_keywords: [],
-  avoid_patterns: [],
-  preferred_rhythm: '',
-  narrative_distance: '',
-  dialogue_density: ''
-})
-const styleReqForm = ref({
-  author_voice_keywords: [],
-  avoid_patterns: [],
-  preferred_rhythm: '',
-  narrative_distance: '',
-  dialogue_density: ''
-})
-const organizing = ref(false)
-const organizeProgress = ref({
-  current: 0,
-  total: 0,
-  percent: 0,
-  status: 'idle',
-  stage: 'idle',
-  message: '暂无整理任务',
-  current_chapter_title: '',
-  resumable: false
-})
-let organizePollTimer = null
-const deletingChapter = ref(false)
-const exportDialogVisible = ref(false)
+const selectedBranchId = ref('')
+const chapterSort = ref('number_asc')
+const chapterPage = ref(1)
+const chapterPageSize = ref(20)
+const activeArcs = ref([])
+const arcTimelineType = ref('all')
 const exporting = ref(false)
+const organizeProgress = ref({ status: 'idle', stage: 'idle', current: 0, total: 0, percent: 0, current_chapter_title: '', message: '' })
+let progressTimer = null
+let detailRefreshingAfterDone = false
 const exportForm = ref({
-  scope: 'full',
   format: 'markdown',
-  output_path: ''
+  scope: 'full',
+  chapterMode: 'single',
+  outputPath: 'novel-export.md'
 })
-const genreMap = {
-  xuanhuan: '玄幻',
-  xianxia: '仙侠',
-  dushi: '都市',
-  lishi: '历史',
-  kehuan: '科幻',
-  wuxia: '武侠',
-  qihuan: '奇幻',
-  other: '其他'
-}
+const exportPathLabel = computed(() => (exportForm.value.scope === 'by_chapter' ? '导出文件夹名' : '导出文件名'))
 
-const asArray = (value) => (Array.isArray(value) ? value : (value ? [value] : []))
-const isLowQualityText = (value) => {
-  const text = String(value || '').trim()
-  if (!text) return true
-  if (text.includes('chunk=') || text.includes('分析完成')) return true
-  if ((text.match(/\?/g) || []).length >= 3) return true
-  return /(瑙|锛|€|缁|閸|绗|绔|妭)/.test(text)
-}
-
-const memoryCharacters = computed(() => {
-  const source = asArray(memoryData.value?.characters)
-  return source
-    .slice(0, 8)
-    .map((item) => ({
-      name: String(item?.name || '').trim(),
-      brief: asArray(item?.traits).slice(0, 3).join('、') || String(item?.role || '').trim() || '暂无描述'
+const latestChapterNumber = computed(() => {
+  const latest = [...state.chapters].sort((a, b) => (b.number || 0) - (a.number || 0))[0]
+  return latest?.number || 0
+})
+const currentWritingFocus = computed(() => state.memoryView?.current_progress || '暂无')
+const characterSummary = computed(() => ((state.memoryView?.main_characters || []).map((item) => item.name).filter(Boolean).slice(0, 6).join('、') || '暂无'))
+const worldviewSummary = computed(() => (state.memoryView?.world_summary || []).join('；') || '暂无')
+const mainPlotSummary = computed(() => (state.memoryView?.main_plot_lines || []).join('；') || '暂无')
+const progressSummary = computed(() => state.memoryView?.current_progress || '暂无')
+const outlineSummary = computed(() => (state.memoryView?.outline_summary || []).join('；') || '暂无')
+const sortedChapters = computed(() => {
+  const chapters = [...state.chapters]
+  if (chapterSort.value === 'number_desc') {
+    return chapters.sort((a, b) => Number(b.number || 0) - Number(a.number || 0))
+  }
+  if (chapterSort.value === 'updated_desc') {
+    return chapters.sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
+  }
+  if (chapterSort.value === 'updated_asc') {
+    return chapters.sort((a, b) => new Date(a.updated_at || 0).getTime() - new Date(b.updated_at || 0).getTime())
+  }
+  return chapters.sort((a, b) => Number(a.number || 0) - Number(b.number || 0))
+})
+const pagedChapters = computed(() => {
+  const page = Math.max(1, Number(chapterPage.value || 1))
+  const size = Math.max(1, Number(chapterPageSize.value || 20))
+  const start = (page - 1) * size
+  return sortedChapters.value.slice(start, start + size)
+})
+const organizeAlertType = computed(() => {
+  if (organizeProgress.value.status === 'error' || organizeProgress.value.status === 'cancelled') return 'warning'
+  if (organizeProgress.value.status === 'done') return 'success'
+  return 'info'
+})
+const canPause = computed(() => ['running', 'resume_requested'].includes(organizeProgress.value.status))
+const canResume = computed(() => ['paused', 'pause_requested'].includes(organizeProgress.value.status))
+const canCancel = computed(() => ['running', 'pause_requested', 'paused', 'resume_requested'].includes(organizeProgress.value.status))
+const canRetry = computed(() => ['done', 'error', 'cancelled', 'paused'].includes(organizeProgress.value.status))
+const formatArcType = (value) => ARC_TYPE_LABELS[value] || value || '未知'
+const formatArcStage = (value) => ARC_STAGE_LABELS[value] || value || '未知'
+const formatArcPriority = (value) => ({ core: '核心', major: '重要', minor: '次要' }[value] || value || '未知')
+const filteredActiveArcs = computed(() => {
+  if (arcTimelineType.value === 'all') return activeArcs.value || []
+  return (activeArcs.value || []).filter((arc) => String(arc.arc_type || '') === arcTimelineType.value)
+})
+const recommendedArc = computed(() => {
+  const arcs = [...(activeArcs.value || [])]
+  const priorityRank = { core: 0, major: 1, minor: 2 }
+  const stageRank = { crisis: 0, turning_point: 1, payoff: 2, escalation: 3, early_push: 4, setup: 5, aftermath: 6 }
+  return arcs.sort((a, b) => {
+    const priorityDiff = (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9)
+    if (priorityDiff !== 0) return priorityDiff
+    return (stageRank[a.current_stage] ?? 9) - (stageRank[b.current_stage] ?? 9)
+  })[0] || null
+})
+const recommendedArcLabel = computed(() => {
+  if (!recommendedArc.value) return '暂无可推荐剧情弧'
+  return `${recommendedArc.value.title || recommendedArc.value.arc_id} · ${formatArcType(recommendedArc.value.arc_type)} · ${formatArcStage(recommendedArc.value.current_stage)}`
+})
+const recommendedPlanningMode = computed(() => {
+  const stage = String(recommendedArc.value?.current_stage || '')
+  return ['crisis', 'turning_point', 'payoff'].includes(stage) ? 'deep_planning' : 'light_planning'
+})
+const recommendedPlanningModeLabel = computed(() => (recommendedPlanningMode.value === 'deep_planning' ? '重规划' : '轻规划'))
+const recommendationReason = computed(() => {
+  if (!recommendedArc.value) {
+    return organizeProgress.value.status === 'done' ? '当前缺少活跃剧情弧，建议先重新整理或补充结构信息。' : '等待整理完成后再生成剧情弧建议。'
+  }
+  return recommendedArc.value.latest_snapshot?.change_reason || recommendedArc.value.stage_reason || recommendedArc.value.next_push_suggestion || '建议优先推进当前最关键的活跃剧情弧。'
+})
+const readinessChecklist = computed(() => {
+  const checks = []
+  checks.push(projectId.value ? '已绑定项目' : '缺少项目')
+  checks.push(activeArcs.value.length ? `活跃弧 ${activeArcs.value.length} 条` : '暂无活跃弧')
+  checks.push(state.branches.length ? `已生成分支 ${state.branches.length} 个` : '尚未生成分支')
+  return checks.join('；')
+})
+const assistantSummary = computed(() => {
+  if (!projectId.value) return '当前小说还没有绑定项目，建议先完成导入与整理。'
+  if (organizeProgress.value.status !== 'done') return '建议先完成全书整理，再根据剧情弧进入续写。'
+  if (!recommendedArc.value) return '剧情弧已接通，但当前没有明确推荐弧，建议重新整理或刷新记忆。'
+  return `优先推进“${recommendedArc.value.title || recommendedArc.value.arc_id}”，并使用${recommendedPlanningModeLabel.value}生成下一章计划。`
+})
+const arcTimeline = computed(() =>
+  (filteredActiveArcs.value || [])
+    .map((arc) => ({
+      key: `${arc.arc_id}:${arc.latest_snapshot?.snapshot_id || ''}`,
+      title: arc.title || arc.arc_id || '未命名剧情弧',
+      stageBefore: arc.latest_snapshot?.stage_before || '',
+      stageAfter: arc.latest_snapshot?.stage_after || '',
+      changeReason: arc.latest_snapshot?.change_reason || '',
+      progressSummary: arc.latest_snapshot?.progress_summary || '',
+      createdAt: arc.latest_snapshot?.created_at || ''
     }))
-    .filter((item) => !isLowQualityText(item.name) && !isLowQualityText(item.brief))
-    .slice(0, 6)
-})
+    .filter((item) => item.stageBefore || item.stageAfter || item.progressSummary)
+)
+const branchStorageKey = computed(() => `inktrace:selected-branch:${projectId.value || route.params.id}`)
+const arcTimelineTypeStorageKey = computed(() => `inktrace:arc-type:${route.params.id || projectId.value || 'unknown'}`)
+const chapterSortStorageKey = computed(() => `inktrace:chapter-sort:${route.params.id || projectId.value || 'unknown'}`)
+const chapterPageSizeStorageKey = computed(() => `inktrace:chapter-page-size:${route.params.id || projectId.value || 'unknown'}`)
 
-const worldSettingSummary = computed(() => {
-  const worldFacts = memoryData.value?.world_facts || {}
-  const items = [
-    ...asArray(worldFacts.background),
-    ...asArray(worldFacts.power_system),
-    ...asArray(worldFacts.organizations),
-    ...asArray(worldFacts.locations),
-    ...asArray(worldFacts.rules),
-    ...asArray(worldFacts.artifacts)
-  ]
-  const text = items.map((item) => String(item)).filter((item) => !isLowQualityText(item)).join('；')
-  return text ? text.slice(0, 320) : ''
-})
-
-const plotOutline = computed(() => {
-  const viewLines = asArray(memoryData.value?.plot_outline).map((item) => String(item)).filter((item) => !isLowQualityText(item))
-  if (viewLines.length) {
-    return viewLines.slice(-8)
+const stopProgressPolling = () => {
+  if (progressTimer) {
+    window.clearTimeout(progressTimer)
+    progressTimer = null
   }
-  const chapterSummaries = asArray(memoryData.value?.chapter_summaries).map((item) => String(item)).filter((item) => !isLowQualityText(item))
-  if (chapterSummaries.length) {
-    return chapterSummaries.slice(-8)
-  }
-  const threads = asArray(memoryData.value?.plot_threads)
-  return threads
-    .map((item) => {
-      if (typeof item === 'string') return item
-      const title = item?.title || ''
-      const points = asArray(item?.points)
-      const tail = points.length ? points[points.length - 1] : ''
-      return tail ? `${title}：${tail}` : title
-    })
-    .filter(Boolean)
-    .slice(-8)
-})
+}
 
-const styleTags = computed(() => {
-  const styleProfile = memoryData.value?.style_profile || {}
-  const tags = [
-    ...asArray(styleProfile?.tone_tags),
-    ...asArray(styleProfile?.rhythm_tags),
-    styleProfile?.narrative_pov
-  ].filter(Boolean)
-  if (tags.length) {
-    return tags.slice(0, 6)
-  }
-  const legacy = memoryData.value?.writing_style
-  return typeof legacy === 'string' ? legacy.split('；').filter(Boolean).slice(0, 6) : []
-})
-
-const outlineSummary = computed(() => {
-  const summary = memoryData.value?.outline_summary || memoryData.value?.outline_context?.summary || []
-  return asArray(summary).map((item) => String(item)).filter((item) => !isLowQualityText(item)).slice(0, 6)
-})
-
-const latestStructuralDraft = computed(() => {
-  const drafts = asArray(memoryData.value?.structural_drafts)
-  return drafts[drafts.length - 1] || {}
-})
-
-const latestDetemplatedDraft = computed(() => {
-  const drafts = asArray(memoryData.value?.detemplated_drafts)
-  return drafts[drafts.length - 1] || {}
-})
-
-const latestDraftCheck = computed(() => {
-  const checks = asArray(memoryData.value?.draft_integrity_checks)
-  return checks[checks.length - 1] || {}
-})
-
-const organizeActionLabel = computed(() => {
-  if (progressRunning.value) return '正在整理故事结构'
-  if (progressResumable.value) return '继续整理故事结构'
-  if (organizeProgress.value.status === 'done') return '再次整理故事结构'
-  return '整理故事结构'
-})
-
-const organizeActionDesc = computed(() => {
-  if (progressRunning.value) return '整理进行中，可在下方停止或等待完成'
-  if (progressResumable.value) return '从上次中断的位置继续分析'
-  if (organizeProgress.value.status === 'done') return '基于当前内容重新生成结构摘要'
-  return '按当前内容整理人物、设定与主线'
-})
-
-const progressRunning = computed(() => organizeProgress.value.status === 'running')
-const progressResumable = computed(() => !!organizeProgress.value.resumable && !progressRunning.value)
-const lastOrganizeStatus = ref('')
-
-const loadNovel = async () => {
+const withTimeout = async (promise, fallbackValue, timeoutMs = 8000) => {
+  let timer = null
   try {
-    novel.value = await novelApi.get(route.params.id)
-    chapters.value = novel.value.chapters || []
-  } catch (error) {
-    console.error('加载小说失败:', error)
+    return await Promise.race([
+      promise,
+      new Promise((resolve) => {
+        timer = window.setTimeout(() => resolve(fallbackValue), timeoutMs)
+      })
+    ])
   } finally {
-    loading.value = false
+    if (timer) window.clearTimeout(timer)
   }
 }
 
-const loadMemory = async () => {
-  memoryLoading.value = true
+const fetchOrganizeProgress = async () => {
+  if (!route.params.id) return
+  organizeProgress.value = await withTimeout(contentApi.organizeProgress(route.params.id), organizeProgress.value, 5000)
+  if (['running', 'pause_requested', 'resume_requested', 'cancelling'].includes(organizeProgress.value.status)) {
+    stopProgressPolling()
+    progressTimer = window.setTimeout(fetchOrganizeProgress, 1200)
+  } else {
+    stopProgressPolling()
+    if (organizeProgress.value.status === 'done' && projectId.value && !detailRefreshingAfterDone) {
+      detailRefreshingAfterDone = true
+      state.memoryView = await withTimeout(projectApi.memoryViewV2(projectId.value), state.memoryView || {}, 5000)
+      state.novel = await withTimeout(novelApi.get(route.params.id), state.novel || {}, 5000)
+      state.chapters = state.novel?.chapters || []
+      await loadActiveArcs()
+      await loadPersistedBranches()
+    }
+  }
+}
+
+const loadPersistedBranches = async () => {
+  if (!projectId.value) return
+  const result = await withTimeout(projectApi.listBranchesV2(projectId.value), { branches: [] }, 5000)
+  state.branches = result?.branches || []
+  const saved = window.localStorage.getItem(branchStorageKey.value)
+  selectedBranchId.value = saved && state.branches.some((item) => item.id === saved) ? saved : ''
+}
+
+const loadActiveArcs = async () => {
+  if (!projectId.value) {
+    activeArcs.value = []
+    return
+  }
+  const result = await withTimeout(projectApi.activePlotArcsV2(projectId.value), { plot_arcs: [] }, 5000)
+  activeArcs.value = result?.plot_arcs || []
+}
+
+const loadArcTimelineTypePreference = () => {
+  const saved =
+    window.localStorage.getItem(arcTimelineTypeStorageKey.value) ||
+    window.localStorage.getItem(`inktrace:arc-timeline-type:${projectId.value || route.params.id}`) ||
+    'all'
+  arcTimelineType.value = ['all', 'main_arc', 'character_arc', 'supporting_arc'].includes(saved) ? saved : 'all'
+}
+
+const loadChapterSortPreference = () => {
+  const saved = window.localStorage.getItem(chapterSortStorageKey.value) || 'number_asc'
+  chapterSort.value = ['number_asc', 'number_desc', 'updated_desc', 'updated_asc'].includes(saved) ? saved : 'number_asc'
+}
+
+const loadChapterPageSizePreference = () => {
+  const raw = Number(window.localStorage.getItem(chapterPageSizeStorageKey.value) || 20)
+  chapterPageSize.value = [10, 20, 50, 100].includes(raw) ? raw : 20
+}
+
+const handlePageSizeChange = (value) => {
+  chapterPageSize.value = Number(value || 20)
+  chapterPage.value = 1
+}
+
+const loadPage = async () => {
+  state.loading = true
   try {
-    if (!projectId.value) {
-      const project = await projectApi.getByNovel(route.params.id)
-      projectId.value = project?.id || ''
+    state.novel = await withTimeout(novelApi.get(route.params.id), state.novel || {}, 8000)
+    state.chapters = state.novel?.chapters || []
+    const project = await withTimeout(projectApi.getByNovel(route.params.id), {}, 6000)
+    projectId.value = project?.id || ''
+    state.memoryView = projectId.value ? await withTimeout(projectApi.memoryViewV2(projectId.value), state.memoryView || {}, 6000) : {}
+    await loadActiveArcs()
+    loadArcTimelineTypePreference()
+    loadChapterSortPreference()
+    loadChapterPageSizePreference()
+    await loadPersistedBranches()
+    fetchOrganizeProgress()
+    if (organizeProgress.value.status !== 'done') {
+      detailRefreshingAfterDone = false
     }
-    if (!projectId.value) {
-      memoryData.value = {}
-      return
-    }
-    const view = await projectApi.memoryViewV2(projectId.value)
-    const raw = await projectApi.memoryV2(projectId.value)
-    const memory = raw?.memory || {}
-    const memoryView = view?.memory_view || {}
-    memoryData.value = {
-      ...memory,
-      characters: memory?.characters || memoryView?.main_characters || [],
-      world_facts: memory?.world_facts || { background: memoryView?.world_summary || [] },
-      plot_outline: memoryView?.main_plot_lines || memory?.plot_outline || [],
-      chapter_summaries: memory?.chapter_summaries || [],
-      style_profile: memory?.style_profile || {},
-      writing_style: memory?.writing_style || (memoryView?.style_tags || []).join('；'),
-      current_progress: memoryView?.current_progress || memory?.current_progress || '',
-      outline_summary: memoryView?.outline_summary || memory?.outline_context?.summary || []
-    }
-    const req = memory?.style_requirements || {}
-    styleReqView.value = {
-      author_voice_keywords: req.author_voice_keywords || [],
-      avoid_patterns: req.avoid_patterns || [],
-      preferred_rhythm: req.preferred_rhythm || '',
-      narrative_distance: req.narrative_distance || '',
-      dialogue_density: req.dialogue_density || ''
-    }
+    state.errorMessage = ''
   } catch (error) {
-    memoryData.value = {}
-    console.error('加载 memory 失败:', error)
+    state.errorMessage = error?.message || '加载详情页失败'
   } finally {
-    memoryLoading.value = false
+    state.loading = false
   }
 }
 
-const openStyleReqDialog = () => {
-  styleReqForm.value = {
-    author_voice_keywords: [...(styleReqView.value.author_voice_keywords || [])],
-    avoid_patterns: [...(styleReqView.value.avoid_patterns || [])],
-    preferred_rhythm: styleReqView.value.preferred_rhythm || '',
-    narrative_distance: styleReqView.value.narrative_distance || '',
-    dialogue_density: styleReqView.value.dialogue_density || ''
-  }
-  styleReqDialogVisible.value = true
-}
-
-const saveStyleReq = async () => {
+const organizeStory = async () => {
+  if (!route.params.id) return
+  state.organizeLoading = true
   try {
-    styleReqSaving.value = true
-    if (!projectId.value) {
-      const project = await projectApi.getByNovel(route.params.id)
-      projectId.value = project?.id || ''
-    }
-    if (!projectId.value) return
-    const res = await projectApi.updateStyleRequirements(projectId.value, styleReqForm.value)
-    styleReqView.value = res?.style_requirements || styleReqForm.value
-    styleReqDialogVisible.value = false
-    await loadMemory()
-    ElMessage.success('风格要求已保存')
-  } catch (error) {
-    console.error('保存风格要求失败:', error)
+    await contentApi.startOrganize(route.params.id, false)
+    await fetchOrganizeProgress()
+    ElMessage.success('整理任务已启动')
   } finally {
-    styleReqSaving.value = false
+    state.organizeLoading = false
   }
 }
 
-const extractStyleReqFromSamples = async () => {
+const pauseOrganize = async () => {
+  await contentApi.pauseOrganize(route.params.id)
+  await fetchOrganizeProgress()
+  ElMessage.success('已请求暂停整理')
+}
+
+const resumeOrganize = async () => {
+  await contentApi.resumeOrganize(route.params.id)
+  await fetchOrganizeProgress()
+  ElMessage.success('已请求继续整理')
+}
+
+const cancelOrganize = async () => {
+  await contentApi.cancelOrganize(route.params.id)
+  await fetchOrganizeProgress()
+  ElMessage.success('已请求取消整理')
+}
+
+const retryOrganize = async () => {
+  await contentApi.retryOrganize(route.params.id)
+  await fetchOrganizeProgress()
+  ElMessage.success('已重新开始整理')
+}
+
+const generateBranches = async () => {
+  if (!projectId.value) return
+  state.branchLoading = true
   try {
-    styleReqLoading.value = true
-    if (!projectId.value) {
-      const project = await projectApi.getByNovel(route.params.id)
-      projectId.value = project?.id || ''
-    }
-    if (!projectId.value) return
-    const res = await projectApi.extractStyleRequirements(projectId.value, { sample_chapter_count: 3 })
-    styleReqView.value = res?.style_requirements || styleReqView.value
-    await loadMemory()
-    ElMessage.success('已从最近样章提取风格要求')
-  } catch (error) {
-    console.error('提取风格要求失败:', error)
+    const result = await projectApi.branchesV2(projectId.value, { branch_count: 4 })
+    state.branches = result?.branches || []
+    selectedBranchId.value = state.branches[0]?.id || ''
+    if (selectedBranchId.value) window.localStorage.setItem(branchStorageKey.value, selectedBranchId.value)
+    ElMessage.success('分支生成完成')
   } finally {
-    styleReqLoading.value = false
+    state.branchLoading = false
   }
 }
 
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) {
-    return `${(num / 10000).toFixed(1)}万`
-  }
-  return Number(num).toLocaleString()
+const createChapter = () => {
+  router.push(`/novel/${route.params.id}/chapters/new`)
 }
 
-const getProgress = () => {
-  if (!novel.value?.target_word_count) return 0
-  return Math.min(100, Math.round((novel.value.current_word_count / novel.value.target_word_count) * 100))
+const editChapter = (chapter) => {
+  router.push(`/novel/${route.params.id}/chapters/${chapter.id}/edit`)
 }
 
-const formatGenre = (genre) => genreMap[genre] || genre || '未知'
-
-const analyzeStyle = async () => {
-  try {
-    ElMessage.info('正在分析文风...')
-    styleResult.value = await contentApi.analyzeStyle(route.params.id)
-    styleDialogVisible.value = true
-  } catch (error) {
-    console.error('文风分析失败:', error)
-  }
+const importChapter = (chapter) => {
+  router.push(`/novel/${route.params.id}/chapters/${chapter.id}/edit`)
 }
 
-const analyzePlot = async () => {
-  try {
-    ElMessage.info('正在分析剧情...')
-    plotResult.value = await contentApi.analyzePlot(route.params.id)
-    plotDialogVisible.value = true
-  } catch (error) {
-    console.error('剧情分析失败:', error)
+const importChapterEntry = () => {
+  ElMessage.info('请进入章节编辑页后执行具体单章导入')
+}
+
+const deleteChapter = async (chapter) => {
+  await ElMessageBox.confirm(`确认删除《${chapter.title || `第${chapter.number}章`}》吗？`, '删除章节', { type: 'warning' })
+  await novelApi.deleteChapter(route.params.id, chapter.id)
+  ElMessage.success('章节已删除')
+  await loadPage()
+}
+
+const goToWrite = () => {
+  if (selectedBranchId.value) {
+    window.localStorage.setItem(branchStorageKey.value, selectedBranchId.value)
   }
+  router.push({ path: `/novel/${route.params.id}/write`, query: selectedBranchId.value ? { branchId: selectedBranchId.value } : {} })
+}
+
+const goToWriteWithAssistant = () => {
+  if (selectedBranchId.value) {
+    window.localStorage.setItem(branchStorageKey.value, selectedBranchId.value)
+  }
+  const query = {}
+  if (selectedBranchId.value) query.branchId = selectedBranchId.value
+  if (recommendedArc.value?.arc_id) query.targetArcId = recommendedArc.value.arc_id
+  if (recommendedPlanningMode.value) query.planningMode = recommendedPlanningMode.value
+  router.push({ path: `/novel/${route.params.id}/write`, query })
+}
+
+const goToImport = () => {
+  router.push('/import')
+}
+
+const goToOutlineImport = () => {
+  router.push('/import')
+  ElMessage.info('请在导入页填写大纲文件路径后继续导入')
 }
 
 const exportNovel = async () => {
-  exportForm.value = {
-    scope: 'full',
-    format: 'markdown',
-    output_path: `${novel.value?.title || 'novel'}.md`
-  }
-  exportDialogVisible.value = true
-}
-
-const selectExportPath = async () => {
-  if (!window.electronAPI) return
+  exporting.value = true
   try {
-    if (exportForm.value.scope === 'full') {
-      const result = await window.electronAPI.selectFile({
-        title: '选择导出文件',
-        filters: exportForm.value.format === 'markdown'
-          ? [{ name: 'Markdown', extensions: ['md'] }]
-          : [{ name: 'Text', extensions: ['txt'] }]
-      })
-      if (!result.canceled && result.filePaths?.[0]) {
-        exportForm.value.output_path = result.filePaths[0]
-      }
-      return
-    }
-    const result = await window.electronAPI.selectFolder({ title: '选择导出目录' })
-    if (!result.canceled && result.filePaths?.[0]) {
-      exportForm.value.output_path = result.filePaths[0]
-    }
-  } catch (error) {
-    console.error('选择导出路径失败:', error)
-  }
-}
-
-const submitExport = async () => {
-  try {
-    exporting.value = true
-    const fallbackName = exportForm.value.scope === 'full'
-      ? `${novel.value?.title || 'novel'}.${exportForm.value.format === 'markdown' ? 'md' : 'txt'}`
-      : `${novel.value?.title || 'novel'}_chapters`
     const result = await exportApi.export({
       novel_id: route.params.id,
-      scope: exportForm.value.scope,
+      output_path: exportForm.value.outputPath,
       format: exportForm.value.format,
-      output_path: exportForm.value.output_path || fallbackName
-    })
-    if (result.mode === 'file' && result.file_path) {
-      const isAbsolutePath = /^[a-zA-Z]:[\\/]/.test(result.file_path) || result.file_path.startsWith('/')
-      if (!isAbsolutePath) {
-        const link = document.createElement('a')
-        link.href = exportApi.download(result.file_path)
-        link.target = '_blank'
-        link.rel = 'noopener'
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
+      scope: exportForm.value.scope,
+      options: {
+        chapter_export_mode: exportForm.value.chapterMode
       }
-      ElMessage.success(`导出成功：已生成 1 个文件，共 ${result.chapter_count} 章，${result.word_count} 字`)
-    } else {
-      ElMessage.success(`导出成功：已生成 ${result.file_count || result.chapter_count || 0} 个章节文件，输出目录 ${result.directory_path || ''}`)
+    })
+    state.exportDialogVisible = false
+    if (result?.file_path) {
+      window.open(exportApi.download(result.file_path), '_blank')
     }
-    exportDialogVisible.value = false
-  } catch (error) {
-    console.error('导出失败:', error)
+    ElMessage.success('导出任务已完成')
   } finally {
     exporting.value = false
   }
 }
 
-const startOrganize = async (forceRebuild = false) => {
-  try {
-    organizing.value = true
-    organizeProgress.value = {
-      ...organizeProgress.value,
-      status: 'running',
-      message: forceRebuild ? '正在重新整理故事结构（0%）' : '正在整理故事结构（0%）',
-      resumable: false
-    }
-    ElMessage.info(
-      forceRebuild
-        ? '正在从头重新整理故事结构...'
-        : '正在整理故事结构...'
-    )
-    await contentApi.startOrganize(route.params.id, !!forceRebuild)
-    await fetchOrganizeProgress()
-    startOrganizeProgressPolling()
-  } catch (error) {
-    console.error('整理失败:', error)
-  } finally {
-    organizing.value = false
-  }
+const goBack = () => {
+  router.push('/projects')
 }
 
-const resumeOrganize = async () => {
-  try {
-    organizing.value = true
-    await contentApi.resumeOrganize(route.params.id)
-    await fetchOrganizeProgress()
-    startOrganizeProgressPolling()
-    ElMessage.success('已继续整理')
-  } catch (error) {
-    console.error('继续整理失败:', error)
-  } finally {
-    organizing.value = false
-  }
-}
-
-const stopOrganize = async () => {
-  try {
-    await contentApi.stopOrganize(route.params.id)
-    await fetchOrganizeProgress()
-    stopOrganizeProgressPolling()
-    ElMessage.success('已停止整理')
-  } catch (error) {
-    console.error('停止整理失败:', error)
-  }
-}
-
-const triggerOrganize = () => {
-  if (progressRunning.value) return
-  if (progressResumable.value) {
-    resumeOrganize()
+const refreshExportOutputPath = () => {
+  const novelTitle = state.novel?.title || 'novel-export'
+  if (exportForm.value.scope === 'by_chapter') {
+    exportForm.value.outputPath = novelTitle
     return
   }
-  startOrganize(false)
+  const suffix = exportForm.value.format === 'txt' ? 'txt' : 'md'
+  exportForm.value.outputPath = `${novelTitle}.${suffix}`
 }
 
-const fetchOrganizeProgress = async () => {
-  try {
-    const progress = await contentApi.organizeProgress(route.params.id)
-    const current = progress || organizeProgress.value
-    organizeProgress.value = current
-    if (current.status === 'done' && lastOrganizeStatus.value !== 'done') {
-      await Promise.all([loadNovel(), loadMemory()])
-      ElMessage.success('故事结构已更新')
-    }
-    lastOrganizeStatus.value = current.status || ''
-  } catch (error) {
-    console.error('加载整理进度失败:', error)
+onMounted(loadPage)
+onBeforeUnmount(stopProgressPolling)
+
+watch(selectedBranchId, (value) => {
+  if (value && branchStorageKey.value) {
+    window.localStorage.setItem(branchStorageKey.value, value)
   }
-}
-
-const startOrganizeProgressPolling = () => {
-  stopOrganizeProgressPolling()
-  organizePollTimer = setInterval(async () => {
-    await fetchOrganizeProgress()
-    if (organizeProgress.value.status !== 'running') {
-      stopOrganizeProgressPolling()
-    }
-  }, 1200)
-}
-
-const stopOrganizeProgressPolling = () => {
-  if (organizePollTimer) {
-    clearInterval(organizePollTimer)
-    organizePollTimer = null
-  }
-}
-
-const openChapterEditor = async (chapter) => {
-  if (!chapter?.id) return
-  router.push(`/novel/${route.params.id}/chapters/${chapter.id}/edit`)
-}
-
-const createChapter = async () => {
-  router.push(`/novel/${route.params.id}/chapters/new`)
-}
-
-const importChapterToNew = () => {
-  router.push(`/novel/${route.params.id}/chapters/new?import=1`)
-}
-
-const importChapterToCurrent = (chapter) => {
-  if (!chapter?.id) return
-  router.push(`/novel/${route.params.id}/chapters/${chapter.id}/edit?import=1`)
-}
-
-const deleteChapter = async (chapter) => {
-  if (!chapter?.id) return
-  try {
-    await ElMessageBox.confirm(
-      `确认删除“第${chapter.number || ''}章 ${chapter.title || ''}”？删除后无法恢复。`,
-      '删除章节',
-      {
-        type: 'warning',
-        confirmButtonText: '确认删除',
-        cancelButtonText: '取消'
-      }
-    )
-    deletingChapter.value = true
-    await novelApi.deleteChapter(route.params.id, chapter.id)
-    await loadNovel()
-    ElMessage.success('章节已删除')
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('删除章节失败:', error)
-    }
-  } finally {
-    deletingChapter.value = false
-  }
-}
-
-onMounted(() => {
-  loadNovel()
-  loadMemory()
-  fetchOrganizeProgress().then(() => {
-    if (organizeProgress.value.status === 'running') {
-      startOrganizeProgressPolling()
-    }
-  })
 })
 
-onBeforeUnmount(() => {
-  stopOrganizeProgressPolling()
+watch(arcTimelineType, (value) => {
+  if (arcTimelineTypeStorageKey.value) {
+    window.localStorage.setItem(arcTimelineTypeStorageKey.value, value || 'all')
+  }
 })
+
+watch(chapterSort, (value) => {
+  if (chapterSortStorageKey.value) {
+    window.localStorage.setItem(chapterSortStorageKey.value, value || 'number_asc')
+  }
+  chapterPage.value = 1
+})
+
+watch(chapterPageSize, (value) => {
+  if (chapterPageSizeStorageKey.value) {
+    window.localStorage.setItem(chapterPageSizeStorageKey.value, String(value || 20))
+  }
+})
+
+watch(
+  () => state.chapters.length,
+  (length) => {
+    const maxPage = Math.max(1, Math.ceil(Number(length || 0) / Number(chapterPageSize.value || 20)))
+    if (chapterPage.value > maxPage) {
+      chapterPage.value = maxPage
+    }
+  }
+)
+
+watch(
+  () => [exportForm.value.scope, exportForm.value.format, state.novel?.title],
+  refreshExportOutputPath,
+  { immediate: true }
+)
 </script>
 
 <style scoped>
-.novel-detail {
+.novel-detail-page {
   padding: 20px;
 }
 
-.header-left {
+.detail-grid {
+  margin-top: 16px;
+}
+
+.action-grid,
+.header-row,
+.header-actions {
   display: flex;
   align-items: center;
-  gap: 15px;
-}
-
-.info-card,
-.analysis-card,
-.memory-card,
-.chapters-card {
-  margin-bottom: 20px;
-}
-
-.progress-section {
-  margin-top: 20px;
-  padding-top: 15px;
-  border-top: 1px solid #ebeef5;
-}
-
-.tool-card {
-  text-align: center;
-  cursor: pointer;
-  transition: transform 0.2s;
-}
-
-.tool-card:hover {
-  transform: translateY(-4px);
-}
-
-.tool-icon {
-  font-size: 36px;
-  color: #409eff;
-  margin-bottom: 10px;
-}
-
-.tool-name {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 5px;
-}
-
-.tool-desc {
-  font-size: 12px;
-  color: #909399;
-  line-height: 1.5;
-}
-
-.organize-progress {
-  margin-top: 14px;
-  padding: 12px;
-  background: #f8fbff;
-  border: 1px solid #e6f0ff;
-  border-radius: 8px;
-}
-
-.organize-actions {
-  margin-top: 14px;
-}
-
-.organize-progress-text {
-  margin-bottom: 8px;
-  color: #606266;
-  font-size: 13px;
-}
-
-.organize-progress-meta {
-  margin-bottom: 8px;
-  display: flex;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
-  color: #909399;
-  font-size: 12px;
 }
 
-.chapter-item {
-  display: flex;
+.header-row {
   justify-content: space-between;
-  padding: 10px;
-  border-bottom: 1px solid #ebeef5;
-  cursor: pointer;
 }
 
-.chapters-header {
+.top-gap {
+  margin-top: 12px;
+}
+
+.branch-list {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.chapters-toolbar {
-  display: flex;
-  gap: 8px;
-}
-
-.chapter-item:hover {
-  background-color: #f5f7fa;
-}
-
-.chapter-title {
-  color: #303133;
-}
-
-.chapter-words {
-  color: #909399;
-  font-size: 12px;
-}
-
-.chapter-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.loading {
-  padding: 20px;
-}
-
-.memory-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.memory-item {
-  line-height: 1.6;
-}
-
-.summary-text {
-  line-height: 1.8;
-}
-
-.plot-list {
+.branch-item {
   margin: 0;
-  padding-left: 18px;
-  line-height: 1.8;
-}
-
-.style-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.style-req-toolbar {
-  margin: 10px 0;
-  display: flex;
-  gap: 8px;
-}
-
-.style-req-block {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  line-height: 1.6;
-}
-
-.draft-risk {
-  margin-top: 10px;
-}
-
-.empty-text {
-  color: #909399;
 }
 </style>

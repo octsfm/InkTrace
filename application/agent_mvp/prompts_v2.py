@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from typing import Any, Dict
 
+from application.prompts.prompt_input_builder import PromptInputBuilder
+from application.prompts.prompt_templates import build_structural_draft_prompt
+
 
 CHAPTER_ANALYSIS_SYSTEM_PROMPT = """你是章节结构分析器。只允许输出JSON对象，不允许解释文本。
 输出结构必须严格为：
@@ -107,13 +110,22 @@ def build_chapter_writing_prompt(
     target_word_count: int,
     ending_hook: str,
 ) -> str:
-    return (
-        f"{CHAPTER_WRITING_SYSTEM_PROMPT}\n\n"
-        f"当前memory: {json.dumps(memory or {}, ensure_ascii=False)[:5000]}\n"
-        f"章节方向: {direction or ''}\n"
-        f"章节数量: {chapter_count}\n"
-        f"目标字数: {target_word_count}\n"
-        f"结尾钩子: {ending_hook or ''}\n"
-        f"前文片段:\n{(chapters_text or '')[:6000]}\n\n"
-        "只返回JSON对象。"
+    # Compatibility wrapper: the legacy agent_mvp writing entry now delegates to
+    # the unified structural-draft prompt contract so Prompt C stays single-source.
+    payload = PromptInputBuilder.build_structural_draft_input(
+        chapter_task={"goals": [direction], "chapter_payoff": ending_hook, "pace_target": str(target_word_count)},
+        global_constraints=(memory or {}).get("global_constraints") or {},
+        continuation_context=type("PromptContext", (), {"recent_chapter_memories": (memory or {}).get("chapter_continuation_memories") or [], "last_chapter_tail": chapters_text[-800:]})(),
+        relevant_characters=(memory or {}).get("characters") or [],
+        relevant_foreshadowing=((memory or {}).get("global_constraints") or {}).get("must_keep_threads") or [],
     )
+    payload.update(
+        {
+            "direction": direction or "",
+            "chapter_count": chapter_count,
+            "target_word_count": target_word_count,
+            "ending_hook": ending_hook or "",
+            "history_excerpt": (chapters_text or "")[:6000],
+        }
+    )
+    return build_structural_draft_prompt(payload)

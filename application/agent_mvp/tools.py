@@ -16,6 +16,7 @@ from application.agent_mvp.prompts_v2 import (
 from application.agent_mvp.model_router import ModelRouter
 from application.agent_mvp.models import TaskContext, ToolResult
 from application.agent_mvp.recovery import RecoveryPipeline
+from application.prompts.prompt_parser import parse_json_array, parse_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -31,43 +32,11 @@ def _strip_code_fence(text: str) -> str:
 
 
 def _extract_json_object(text: str) -> Dict[str, Any]:
-    content = _strip_code_fence(text)
-    try:
-        value = json.loads(content)
-        return value if isinstance(value, dict) else {}
-    except Exception:
-        pass
-    start = content.find("{")
-    end = content.rfind("}")
-    if start >= 0 and end > start:
-        candidate = content[start:end + 1]
-        try:
-            value = json.loads(candidate)
-            return value if isinstance(value, dict) else {}
-        except Exception:
-            return {}
-    return {}
+    return parse_json_object(text) or {}
 
 
 def _extract_json_array(text: str) -> List[Dict[str, Any]]:
-    content = _strip_code_fence(text)
-    try:
-        value = json.loads(content)
-        if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)]
-    except Exception:
-        pass
-    start = content.find("[")
-    end = content.rfind("]")
-    if start >= 0 and end > start:
-        candidate = content[start:end + 1]
-        try:
-            value = json.loads(candidate)
-            if isinstance(value, list):
-                return [item for item in value if isinstance(item, dict)]
-        except Exception:
-            return []
-    return []
+    return parse_json_array(text)
 
 
 class AnalysisTool:

@@ -106,6 +106,14 @@ class MarkdownExporter:
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines))
 
+    def export_chapter_batch(self, chapters: List[Chapter], output_path: str) -> None:
+        lines = []
+        for chapter in chapters:
+            lines.append(self.export_chapter_content(chapter))
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
     def format_metadata(self, novel: Novel) -> str:
         """
         格式化小说元数据

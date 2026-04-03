@@ -251,6 +251,11 @@ class ProjectStatus(Enum):
 class OrganizeJobStatus(Enum):
     IDLE = "idle"
     RUNNING = "running"
+    PAUSE_REQUESTED = "pause_requested"
+    PAUSED = "paused"
+    RESUME_REQUESTED = "resume_requested"
+    CANCELLING = "cancelling"
+    CANCELLED = "cancelled"
     DONE = "done"
     ERROR = "error"
 

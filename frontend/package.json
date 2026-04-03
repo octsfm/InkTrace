@@ -1,6 +1,7 @@
 {
   "name": "inktrace-frontend",
   "version": "1.0.0",
+  "type": "module",
   "description": "InkTrace Novel AI 前端界面",
   "author": "孔利群",
   "scripts": {
@@ -10,12 +11,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "vue": "^3.4.0",
-    "vue-router": "^4.2.0",
-    "pinia": "^2.1.0",
+    "@element-plus/icons-vue": "^2.3.0",
     "axios": "^1.6.0",
     "element-plus": "^2.4.0",
-    "@element-plus/icons-vue": "^2.3.0"
+    "pinia": "^2.1.0",
+    "vue": "^3.4.0",
+    "vue-router": "^4.2.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",

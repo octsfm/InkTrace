@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -39,30 +40,11 @@ class _FakeV2Service:
         checkpoint_memory=None,
     ):
         if callable(progress_callback):
-            await progress_callback(
-                {
-                    "status": "running",
-                    "stage": "chapter_analysis",
-                    "current": 1,
-                    "total": 2,
-                    "percent": 50,
-                    "message": "正在分析第1/2章：示例",
-                    "current_chapter_title": "示例",
-                    "resumable": True,
-                }
-            )
-            await progress_callback(
-                {
-                    "status": "done",
-                    "stage": "done",
-                    "current": 2,
-                    "total": 2,
-                    "percent": 100,
-                    "message": "整理完成（2/2）",
-                    "current_chapter_title": "",
-                    "resumable": False,
-                }
-            )
+            await progress_callback({"status": "running", "stage": "chapter_analysis", "current": 1, "total": 2, "percent": 50, "message": "正在分析第1/2章：示例", "current_chapter_title": "示例", "resumable": True})
+            await asyncio.sleep(0.08)
+            await progress_callback({"status": "running", "stage": "chapter_analysis", "current": 2, "total": 2, "percent": 100, "message": "正在分析第2/2章：第二章", "current_chapter_title": "第二章", "resumable": True})
+            await asyncio.sleep(0.08)
+            await progress_callback({"status": "done", "stage": "done", "current": 2, "total": 2, "percent": 100, "message": "整理完成（2/2）", "current_chapter_title": "", "resumable": False})
         await asyncio.sleep(0.05)
         return {"memory_view": {"current_progress": "ok"}}
 
@@ -154,5 +136,57 @@ def test_content_organize_start_stop_resume():
         resumed = client.post("/api/content/organize/resume/novel_1")
         assert resumed.status_code == 200
         assert resumed.json()["status"] in {"resumed", "running"}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_content_organize_pause_resume_done():
+    repo = _FakeOrganizeJobRepo()
+    app.dependency_overrides[get_project_service] = lambda: _FakeProjectService()
+    app.dependency_overrides[get_v2_workflow_service] = lambda: _FakeV2Service()
+    app.dependency_overrides[get_organize_job_repo] = lambda: repo
+    client = TestClient(app)
+    try:
+        started = client.post("/api/content/organize/start/novel_pause?force_rebuild=true")
+        assert started.status_code == 200
+        paused = client.post("/api/content/organize/pause/novel_pause")
+        assert paused.status_code == 200
+        assert paused.json()["status"] in {"pause_requested", "paused"}
+        for _ in range(10):
+            progress = client.get("/api/content/organize/progress/novel_pause").json()
+            if progress["status"] == "paused":
+                break
+            time.sleep(0.05)
+        assert progress["status"] in {"paused", "done"}
+        resumed = client.post("/api/content/organize/resume/novel_pause")
+        assert resumed.status_code == 200
+        for _ in range(12):
+            progress = client.get("/api/content/organize/progress/novel_pause").json()
+            if progress["status"] == "done":
+                break
+            time.sleep(0.05)
+        assert progress["status"] in {"running", "done", "paused"}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_content_organize_cancelled():
+    repo = _FakeOrganizeJobRepo()
+    app.dependency_overrides[get_project_service] = lambda: _FakeProjectService()
+    app.dependency_overrides[get_v2_workflow_service] = lambda: _FakeV2Service()
+    app.dependency_overrides[get_organize_job_repo] = lambda: repo
+    client = TestClient(app)
+    try:
+        started = client.post("/api/content/organize/start/novel_cancel?force_rebuild=true")
+        assert started.status_code == 200
+        cancelled = client.post("/api/content/organize/cancel/novel_cancel")
+        assert cancelled.status_code == 200
+        assert cancelled.json()["status"] in {"cancelling", "cancelled"}
+        for _ in range(10):
+            progress = client.get("/api/content/organize/progress/novel_cancel").json()
+            if progress["status"] == "cancelled":
+                break
+            time.sleep(0.05)
+        assert progress["status"] in {"cancelled", "done"}
     finally:
         app.dependency_overrides.clear()

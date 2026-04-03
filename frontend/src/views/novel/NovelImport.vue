@@ -115,14 +115,26 @@
       <div v-if="organizeProgress.total > 0" class="organize-progress">
         <div class="organize-progress-text">{{ organizeProgress.message }}</div>
         <div class="organize-progress-meta">
+          <span>状态：{{ formatOrganizeStatus(organizeProgress.status) }}</span>
+          <span>阶段：{{ organizeProgress.stage || '暂无' }}</span>
           <span>进度：{{ organizeProgress.current || 0 }} / {{ organizeProgress.total || 0 }}</span>
+          <span>百分比：{{ organizeProgress.percent || 0 }}%</span>
           <span v-if="organizeProgress.current_chapter_title">当前章节：{{ organizeProgress.current_chapter_title }}</span>
         </div>
         <el-progress :percentage="organizeProgress.percent" :stroke-width="10" />
+        <el-alert
+          v-if="terminalOrganizeStatuses.includes(organizeProgress.status) && organizeTerminalMessage"
+          class="status-alert"
+          :type="organizeTerminalAlertType"
+          :closable="false"
+          :title="organizeTerminalMessage"
+        />
       </div>
       <div v-if="createdNovelId" class="progress-actions">
-        <el-button size="small" type="warning" @click="stopOrganize" :disabled="organizeProgress.status !== 'running'">停止整理</el-button>
-        <el-button size="small" type="primary" @click="resumeOrganize" :disabled="!organizeProgress.resumable || organizeProgress.status === 'running'">继续整理</el-button>
+        <el-button size="small" type="warning" @click="pauseOrganize" :disabled="!['running', 'resume_requested'].includes(organizeProgress.status)">暂停整理</el-button>
+        <el-button size="small" type="primary" @click="resumeOrganize" :disabled="!['paused', 'pause_requested'].includes(organizeProgress.status)">继续整理</el-button>
+        <el-button size="small" type="danger" @click="cancelOrganize" :disabled="!['running', 'paused', 'pause_requested', 'resume_requested'].includes(organizeProgress.status)">取消整理</el-button>
+        <el-button size="small" @click="retryOrganize" :disabled="!['done', 'error', 'cancelled', 'paused'].includes(organizeProgress.status)">重新整理</el-button>
         <el-button size="small" @click="goToDetail">查看小说详情</el-button>
       </div>
     </el-card>
@@ -130,10 +142,11 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { contentApi, novelApi, projectApi } from '@/api'
+import { formatOrganizeStatus } from '@/constants/display'
 
 const router = useRouter()
 const formRef = ref(null)
@@ -151,9 +164,26 @@ const organizeProgress = ref({
   stage: 'idle',
   message: '尚未开始整理',
   current_chapter_title: '',
-  resumable: false
+  resumable: false,
+  last_error: ''
 })
 let organizePollTimer = null
+const activeOrganizeStatuses = ['running', 'pause_requested', 'resume_requested', 'cancelling']
+const terminalOrganizeStatuses = ['paused', 'cancelled', 'error', 'done']
+const organizeTerminalAlertType = computed(() => {
+  if (organizeProgress.value.status === 'error') {
+    return 'error'
+  }
+  if (organizeProgress.value.status === 'done') {
+    return 'success'
+  }
+  return 'warning'
+})
+const organizeTerminalMessage = computed(() => (
+  organizeProgress.value.last_error ||
+  organizeProgress.value.message ||
+  ''
+))
 
 const form = reactive({
   import_mode: 'full',
@@ -162,7 +192,7 @@ const form = reactive({
   genre: '',
   intro: '',
   tagsText: '',
-  target_word_count: 800000,
+  target_word_count: 8000000,
   file_path: '',
   outline_path: '',
   selectedFile: null,
@@ -264,6 +294,8 @@ const previewChapters = async () => {
       content: x.content || ''
     }))
   } catch (error) {
+    importing.value = false
+    stopOrganizePolling()
     console.error('预览失败:', error)
   }
 }
@@ -324,6 +356,7 @@ const handleImport = async () => {
       if (form.selectedOutline) {
         formData.append('outline_file', form.selectedOutline)
       }
+      formData.append('target_word_count', String(form.target_word_count || 8000000))
       formData.append('auto_organize', 'false')
       const result = await projectApi.importV2Upload(formData)
       novel = { id: result.novel_id, chapter_count: result.chapter_count || 0 }
@@ -332,6 +365,7 @@ const handleImport = async () => {
         project_name: form.title,
         author: form.author || '',
         genre: form.genre,
+        target_word_count: Number(form.target_word_count || 8000000),
         import_mode: form.import_mode,
         novel_file_path: form.file_path,
         outline_file_path: form.outline_path || '',
@@ -368,9 +402,14 @@ const fetchOrganizeProgress = async () => {
     organizeProgress.value = progress || organizeProgress.value
     if (organizeProgress.value.status === 'done') {
       currentStep.value = 3
+      importing.value = false
       stopOrganizePolling()
-    } else if (organizeProgress.value.status === 'running') {
+    } else if (activeOrganizeStatuses.includes(organizeProgress.value.status)) {
       currentStep.value = 2
+    } else if (terminalOrganizeStatuses.includes(organizeProgress.value.status)) {
+      currentStep.value = 2
+      importing.value = false
+      stopOrganizePolling()
     }
   } catch (error) {
     console.error('读取整理进度失败:', error)
@@ -381,7 +420,7 @@ const startOrganizePolling = () => {
   stopOrganizePolling()
   organizePollTimer = setInterval(async () => {
     await fetchOrganizeProgress()
-    if (organizeProgress.value.status !== 'running') {
+    if (!activeOrganizeStatuses.includes(organizeProgress.value.status)) {
       stopOrganizePolling()
     }
   }, 1200)
@@ -401,12 +440,12 @@ const startOrganize = async (forceRebuild = false) => {
   startOrganizePolling()
 }
 
-const stopOrganize = async () => {
+const pauseOrganize = async () => {
   if (!createdNovelId.value) return
-  await contentApi.stopOrganize(createdNovelId.value)
+  await contentApi.pauseOrganize(createdNovelId.value)
   await fetchOrganizeProgress()
-  stopOrganizePolling()
-  ElMessage.success('已停止整理')
+  startOrganizePolling()
+  ElMessage.success('已请求暂停整理')
 }
 
 const resumeOrganize = async () => {
@@ -415,6 +454,22 @@ const resumeOrganize = async () => {
   await fetchOrganizeProgress()
   startOrganizePolling()
   ElMessage.success('已继续整理')
+}
+
+const cancelOrganize = async () => {
+  if (!createdNovelId.value) return
+  await contentApi.cancelOrganize(createdNovelId.value)
+  await fetchOrganizeProgress()
+  startOrganizePolling()
+  ElMessage.success('已请求取消整理')
+}
+
+const retryOrganize = async () => {
+  if (!createdNovelId.value) return
+  await contentApi.retryOrganize(createdNovelId.value)
+  await fetchOrganizeProgress()
+  startOrganizePolling()
+  ElMessage.success('已重新开始整理')
 }
 
 const goToDetail = () => {
@@ -486,5 +541,9 @@ onBeforeUnmount(() => {
   margin-top: 14px;
   display: flex;
   gap: 8px;
+}
+
+.status-alert {
+  margin-top: 12px;
 }
 </style>

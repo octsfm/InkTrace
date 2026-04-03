@@ -8,23 +8,22 @@ InkTrace后端服务入口
 
 
 import os
-import logging
+import sys
+
 import uvicorn
+
+from application.services.logging_service import get_logger
 from config import config
 
-LOG_DIR = "logs"
-os.makedirs(LOG_DIR, exist_ok=True)
+os.environ.setdefault("PYTHONUTF8", "1")
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(os.path.join(LOG_DIR, 'app.log'), encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 logger.info("InkTrace后端服务启动中...")
 
 
@@ -33,5 +32,6 @@ if __name__ == "__main__":
         "presentation.api.app:app",
         host=config.host,
         port=config.port,
-        reload=config.debug
+        reload=config.debug,
+        use_colors=False,
     )

@@ -38,8 +38,17 @@ class RAGWritingService:
         self.novel_repo = novel_repo
         self.rag_retrieval = rag_retrieval
         self.llm_factory = llm_factory
+
+    def _get_deepseek_client(self):
+        client_getter = getattr(self.llm_factory, "get_client_for_provider", None)
+        if callable(client_getter):
+            return client_getter("deepseek")
+        client = getattr(self.llm_factory, "deepseek_client", None)
+        if client is not None:
+            return client
+        return getattr(self.llm_factory, "primary_client")
     
-    def write_chapter(
+    async def write_chapter(
         self,
         novel_id: NovelId,
         prompt: str,
@@ -67,8 +76,12 @@ class RAGWritingService:
             target_words=target_words
         )
         
-        llm_client = self.llm_factory.get_primary_client()
-        new_content = llm_client.generate(full_prompt, max_tokens=target_words * 2)
+        llm_client = self._get_deepseek_client()
+        result = await llm_client.generate(full_prompt, max_tokens=target_words * 2)
+        if isinstance(result, dict):
+            new_content = str(result.get("text") or "")
+        else:
+            new_content = str(result or "")
         
         now = datetime.now()
         chapter = Chapter(
@@ -77,7 +90,6 @@ class RAGWritingService:
             number=(last_chapter.number + 1) if last_chapter else 1,
             title=f"第{(last_chapter.number + 1) if last_chapter else 1}章",
             content=new_content,
-            word_count=len(new_content),
             status=ChapterStatus.DRAFT,
             created_at=now,
             updated_at=now

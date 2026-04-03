@@ -48,6 +48,15 @@ class WritingService:
 
         self._style_profiles: dict = {}
 
+    def _get_deepseek_client(self):
+        client_getter = getattr(self.llm_factory, "get_client_for_provider", None)
+        if callable(client_getter):
+            return client_getter("deepseek")
+        client = getattr(self.llm_factory, "deepseek_client", None)
+        if client is not None:
+            return client
+        return getattr(self.llm_factory, "primary_client")
+
     def plan_plot(self, request: PlanPlotRequest) -> List[dict]:
         """
         规划剧情
@@ -67,7 +76,7 @@ class WritingService:
         if not novel.outline:
             raise ValueError("小说没有大纲")
         
-        llm_client = self.llm_factory.primary_client
+        llm_client = self._get_deepseek_client()
         print(">>> client type:", type(llm_client))
         
         engine = WritingEngine(llm_client, self._get_style_profile(novel.id.value))
@@ -105,7 +114,7 @@ class WritingService:
         if not novel:
             raise ValueError(f"小说不存在: {request.novel_id}")
         
-        llm_client = self.llm_factory.primary_client
+        llm_client = self._get_deepseek_client()
         print(">>> client type:", type(llm_client))
         
         style_profile = self._get_style_profile(novel.id.value)
@@ -187,7 +196,7 @@ class WritingService:
         novel = self.novel_repo.find_by_id(NovelId(novel_id))
         if not novel:
             raise ValueError(f"小说不存在: {novel_id}")
-        llm_client = self.llm_factory.primary_client
+        llm_client = self._get_deepseek_client()
         print(">>> client type:", type(llm_client))
         style_profile = self._get_style_profile(novel.id.value)
         engine = WritingEngine(llm_client, style_profile)

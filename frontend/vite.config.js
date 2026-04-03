@@ -22,6 +22,20 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    emptyOutDir: true
+    emptyOutDir: true,
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('element-plus')) return 'ui-element-plus'
+          if (id.includes('@element-plus/icons-vue')) return 'ui-element-icons'
+          if (id.includes('vue-router')) return 'vendor-vue-router'
+          if (id.includes('pinia')) return 'vendor-pinia'
+          if (id.includes('axios')) return 'vendor-axios'
+          if (id.includes('/vue/')) return 'vendor-vue-core'
+        }
+      }
+    }
   }
 })

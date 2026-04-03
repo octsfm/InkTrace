@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextvars
 import logging
 import os
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict
@@ -61,6 +62,12 @@ def setup_logging() -> None:
     global _logging_inited
     if _logging_inited:
         return
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     logs_dir = Path("logs")
     logs_dir.mkdir(parents=True, exist_ok=True)
 

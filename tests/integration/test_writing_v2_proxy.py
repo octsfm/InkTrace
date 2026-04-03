@@ -36,7 +36,16 @@ class _FakeV2Service:
     def get_memory(self, project_id: str):
         return {"chapter_summaries": ["第1章摘要"]}
 
-    def create_chapter_plan(self, project_id: str, branch_id: str, chapter_count: int, target_words_per_chapter: int):
+    def create_chapter_plan(
+        self,
+        project_id: str,
+        branch_id: str,
+        chapter_count: int,
+        target_words_per_chapter: int,
+        planning_mode: str = "light_planning",
+        target_arc_id: str = "",
+        allow_deep_planning: bool = False,
+    ):
         return {"plans": [{"id": "plan_001"}]}
 
     async def execute_writing(self, project_id: str, plan_ids, auto_commit: bool):
@@ -75,6 +84,8 @@ def test_writing_branches_proxy_to_v2():
         assert resp.status_code == 200
         data = resp.json()
         assert data["branches"][0]["id"] == "branch_001"
+        assert data["metadata"]["task_role"] == "CHAPTER_PLANNING"
+        assert data["metadata"]["routed_model"] == "kimi"
     finally:
         app.dependency_overrides.clear()
 
@@ -95,6 +106,8 @@ def test_writing_continue_proxy_to_v2():
         data = resp.json()
         assert data["content"] == "这是v2生成内容"
         assert data["metadata"]["route"] == "v2_workflow"
+        assert data["metadata"]["task_role"] == "CHAPTER_WRITING"
+        assert data["metadata"]["routed_model"] == "deepseek"
     finally:
         app.dependency_overrides.clear()
 
@@ -133,5 +146,7 @@ def test_writing_generate_proxy_to_v2():
         assert resp.status_code == 200
         data = resp.json()
         assert data["metadata"]["route"] == "v2_preview"
+        assert data["metadata"]["task_role"] == "CHAPTER_WRITING"
+        assert data["metadata"]["routed_model"] == "deepseek"
     finally:
         app.dependency_overrides.clear()

@@ -1,4 +1,8 @@
 import axios from 'axios'
+import {
+  DEFAULT_CHAPTER_COUNT,
+  DEFAULT_TARGET_WORDS
+} from '@/constants/uiDefaults'
 import { ElMessage } from 'element-plus'
 
 const isElectron = window.electronAPI !== undefined
@@ -125,8 +129,11 @@ export const contentApi = {
     api.post(`/content/organize/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}`, {}, { timeout: 0 }),
   startOrganize: (novelId, forceRebuild = false) =>
     api.post(`/content/organize/start/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}`),
+  pauseOrganize: (novelId) => api.post(`/content/organize/pause/${novelId}`),
   stopOrganize: (novelId) => api.post(`/content/organize/stop/${novelId}`),
   resumeOrganize: (novelId) => api.post(`/content/organize/resume/${novelId}`),
+  cancelOrganize: (novelId) => api.post(`/content/organize/cancel/${novelId}`),
+  retryOrganize: (novelId) => api.post(`/content/organize/retry/${novelId}`),
   organizeProgress: (novelId) => api.get(`/content/organize/progress/${novelId}`),
   analyzeStyle: (novelId) => api.get(`/content/style/${novelId}`),
   analyzePlot: (novelId) => api.get(`/content/plot/${novelId}`)
@@ -183,11 +190,19 @@ export const projectApi = {
   organizeV2: (projectId, data) => api.post(`/projects/${projectId}/organize`, data || { mode: 'chapter_first', rebuild_memory: true }, { timeout: 0 }),
   memoryV2: (projectId) => api.get(`/projects/${projectId}/memory`),
   memoryViewV2: (projectId) => api.get(`/projects/${projectId}/memory-view`),
+  continuationContextV2: (projectId, params) => api.get(`/projects/${projectId}/continuation-context`, { params }),
+  listBranchesV2: (projectId) => api.get(`/projects/${projectId}/branches`),
   getStyleRequirements: (projectId) => api.get(`/projects/${projectId}/style-requirements`),
   updateStyleRequirements: (projectId, data) => api.put(`/projects/${projectId}/style-requirements`, data),
-  extractStyleRequirements: (projectId, data) => api.post(`/projects/${projectId}/style-requirements/extract`, data || { sample_chapter_count: 3 }),
+  extractStyleRequirements: (projectId, data) => api.post(`/projects/${projectId}/style-requirements/extract`, data || { sample_chapter_count: DEFAULT_CHAPTER_COUNT }),
   branchesV2: (projectId, data) => api.post(`/projects/${projectId}/branches`, data),
   chapterPlanV2: (projectId, data) => api.post(`/projects/${projectId}/chapter-plan`, data),
+  chapterTasksV2: (projectId) => api.get(`/projects/${projectId}/chapter-tasks`),
+  plotArcsV2: (projectId) => api.get(`/projects/${projectId}/plot-arcs`),
+  activePlotArcsV2: (projectId) => api.get(`/projects/${projectId}/plot-arcs/active`),
+  chapterArcsV2: (chapterId) => api.get(`/projects/chapters/${chapterId}/arcs`),
+  writePreviewV2: (projectId, data) => api.post(`/projects/${projectId}/write/preview`, data, { timeout: 0 }),
+  writeCommitV2: (projectId, data) => api.post(`/projects/${projectId}/write/commit`, data, { timeout: 0 }),
   writeV2: (projectId, data) => api.post(`/projects/${projectId}/write`, data, { timeout: 0 }),
   refreshMemoryV2: (projectId, data) => api.post(`/projects/${projectId}/refresh-memory`, data)
 }
@@ -224,7 +239,7 @@ const buildChapterAIRequest = (chapterId, action, data = {}) => ({
   action,
   content: '',
   style: '',
-  target_word_count: 2200,
+  target_word_count: DEFAULT_TARGET_WORDS,
   outline: {},
   global_memory_summary: '',
   global_outline_summary: '',
@@ -234,7 +249,7 @@ const buildChapterAIRequest = (chapterId, action, data = {}) => ({
 
 export const chapterEditorApi = {
   get: (chapterId) => api.get(`/chapters/${chapterId}`),
-  getContext: (chapterId) => api.get(`/chapters/${chapterId}/context`),
+  getContext: (chapterId) => api.get(`/chapters/${chapterId}/continuation-context`),
   save: (chapterId, data) => api.put(`/chapters/${chapterId}`, data),
   getOutline: (chapterId) => api.get(`/chapters/${chapterId}/outline`),
   saveOutline: (chapterId, data) => api.put(`/chapters/${chapterId}/outline`, { chapter_id: chapterId, ...data }),

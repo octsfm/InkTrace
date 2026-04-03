@@ -1,0 +1,13 @@
+WORKFLOW_IMPORT = "import"
+WORKFLOW_ORGANIZE = "organize"
+WORKFLOW_BRANCHES = "branches"
+WORKFLOW_CHAPTER_PLAN = "chapter_plan"
+WORKFLOW_WRITE = "write"
+WORKFLOW_REFRESH_MEMORY = "refresh_memory"
+WORKFLOW_EXTRACT_STYLE = "extract_style"
+WORKFLOW_GENERATE_TASK = "generate_task"
+WORKFLOW_DETEMPLATE = "detemplate"
+
+EVENT_ORGANIZE_STARTED = "organize_started"
+EVENT_CHAPTER_AI_STARTED = "chapter_ai_started"
+EVENT_DETEMPLATE_FINISHED = "detemplate_finished"

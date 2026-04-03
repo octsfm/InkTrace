@@ -24,6 +24,8 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
                 CREATE TABLE IF NOT EXISTS organize_jobs (
                     novel_id TEXT PRIMARY KEY,
                     source_hash TEXT,
+                    total_chapters INTEGER DEFAULT 0,
+                    completed_chapters INTEGER DEFAULT 0,
                     total_chunks INTEGER DEFAULT 0,
                     completed_chunks INTEGER DEFAULT 0,
                     percent INTEGER DEFAULT 0,
@@ -44,6 +46,8 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
             self._ensure_column(conn, "organize_jobs", "message", "TEXT DEFAULT ''")
             self._ensure_column(conn, "organize_jobs", "current_chapter_title", "TEXT DEFAULT ''")
             self._ensure_column(conn, "organize_jobs", "resumable", "INTEGER DEFAULT 0")
+            self._ensure_column(conn, "organize_jobs", "total_chapters", "INTEGER DEFAULT 0")
+            self._ensure_column(conn, "organize_jobs", "completed_chapters", "INTEGER DEFAULT 0")
             conn.commit()
 
     def _ensure_column(self, conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
@@ -70,12 +74,14 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
             conn.execute(
                 """
                 INSERT OR REPLACE INTO organize_jobs
-                (novel_id, source_hash, total_chunks, completed_chunks, percent, stage, message, current_chapter_title, resumable, checkpoint_memory, status, last_error, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (novel_id, source_hash, total_chapters, completed_chapters, total_chunks, completed_chunks, percent, stage, message, current_chapter_title, resumable, checkpoint_memory, status, last_error, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(job.novel_id),
                     job.source_hash,
+                    job.total_chapters,
+                    job.completed_chapters,
                     job.total_chunks,
                     job.completed_chunks,
                     int(job.percent or 0),
@@ -109,8 +115,8 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
         return OrganizeJob(
             novel_id=NovelId(row["novel_id"]),
             source_hash=row["source_hash"] or "",
-            total_chunks=int(row["total_chunks"] or 0),
-            completed_chunks=int(row["completed_chunks"] or 0),
+            total_chapters=int(row["total_chapters"] or row["total_chunks"] or 0),
+            completed_chapters=int(row["completed_chapters"] or row["completed_chunks"] or 0),
             checkpoint_memory=checkpoint_memory if isinstance(checkpoint_memory, dict) else {},
             status=status,
             percent=int(row["percent"] or 0),

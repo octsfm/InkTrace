@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from application.dto.request_dto import ChapterAIActionRequest, ChapterOutlineRequest, UpdateChapterRequest
-from application.dto.response_dto import ChapterAIActionResponse
+from application.dto.response_dto import ChapterAIActionResponse, ContinuationContextResponse
 from application.services.chapter_ai_service import ChapterAIService
+from application.services.chapter_import_workflow_service import ChapterImportWorkflowService
 from application.services.logging_service import build_log_context, get_logger
 from application.services.project_service import ProjectService
 from application.services.v2_workflow_service import V2WorkflowService
@@ -16,6 +17,7 @@ from domain.repositories.chapter_repository import IChapterRepository
 from domain.types import ChapterId
 from presentation.api.dependencies import (
     get_chapter_ai_service,
+    get_chapter_import_workflow_service,
     get_chapter_outline_repo,
     get_chapter_repo,
     get_project_service,
@@ -68,6 +70,34 @@ async def get_chapter(chapter_id: str, chapter_repo: IChapterRepository = Depend
         "status": chapter.status.value,
         "word_count": chapter.word_count,
         "updated_at": chapter.updated_at.isoformat(),
+    }
+
+
+@router.get("/{chapter_id}/continuation-context", response_model=ContinuationContextResponse)
+async def get_chapter_continuation_context(
+    chapter_id: str,
+    chapter_repo: IChapterRepository = Depends(get_chapter_repo),
+    project_service: ProjectService = Depends(get_project_service),
+    v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
+):
+    chapter = _load_chapter(chapter_id, chapter_repo)
+    project = project_service.get_project_by_novel(chapter.novel_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    context = v2_service.build_continuation_context(str(project.id.value), chapter_id, int(chapter.number or 0))
+    return {
+        "project_id": context.project_id,
+        "chapter_id": context.chapter_id,
+        "chapter_number": context.chapter_number,
+        "recent_chapter_memories": context.recent_chapter_memories,
+        "last_chapter_tail": context.last_chapter_tail,
+        "relevant_characters": context.relevant_characters,
+        "relevant_foreshadowing": context.relevant_foreshadowing,
+        "global_constraints": context.global_constraints,
+        "chapter_outline": context.chapter_outline,
+        "chapter_task_seed": context.chapter_task_seed,
+        "style_requirements": context.style_requirements,
+        "created_at": context.created_at.isoformat(),
     }
 
 
@@ -232,28 +262,43 @@ async def import_chapter_content(
     request: ChapterImportPayload,
     chapter_repo: IChapterRepository = Depends(get_chapter_repo),
     outline_repo: IChapterOutlineRepository = Depends(get_chapter_outline_repo),
-    service: ChapterAIService = Depends(get_chapter_ai_service),
+    import_workflow: ChapterImportWorkflowService = Depends(get_chapter_import_workflow_service),
+    project_service: ProjectService = Depends(get_project_service),
+    v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     chapter = _load_chapter(chapter_id, chapter_repo)
-    logger.info(
-        "导入章节开始",
-        extra=build_log_context(
-            event="chapter_import_started",
-            chapter_id=chapter.id.value,
-            chapter_number=chapter.number,
-            novel_id=chapter.novel_id.value,
-        ),
-    )
     try:
         raw_text = request.raw_text or request.content
-        parsed = service.parse_imported_chapter(raw_text, request.title or chapter.title or f"第{chapter.number}章")
-        outline_result = await service.analyze_to_outline(
-            parsed.get("title") or chapter.title or "",
-            parsed.get("content") or "",
-            request.global_memory_summary or "；".join(request.recent_chapter_summaries or []),
-            request.global_outline_summary,
-            request.recent_chapter_summaries,
+        project = project_service.get_project_by_novel(chapter.novel_id)
+        memory = v2_service.get_memory(str(project.id.value)) if project else {}
+        global_constraints = memory.get("global_constraints") if isinstance(memory.get("global_constraints"), dict) else {}
+        global_constraints = {
+            "main_plot": str(global_constraints.get("main_plot") or ""),
+            "must_keep_threads": list(global_constraints.get("must_keep_threads") or []),
+            "genre_guardrails": list(global_constraints.get("genre_guardrails") or []),
+        }
+        imported = await import_workflow.execute(
+            chapter=chapter,
+            raw_text=raw_text,
+            fallback_title=request.title or chapter.title or f"第{chapter.number}章",
+            outline_repo=outline_repo,
+            global_memory_summary=request.global_memory_summary or "；".join(request.recent_chapter_summaries or []),
+            global_outline_summary=request.global_outline_summary,
+            recent_chapter_summaries=request.recent_chapter_summaries,
+            relevant_characters=[item for item in (memory.get("characters") or []) if isinstance(item, dict)],
+            global_constraints=global_constraints,
         )
+        if project:
+            artifacts = v2_service.upsert_imported_chapter_artifacts(
+                project_id=str(project.id.value),
+                chapter=chapter,
+                outline_draft=imported.get("outline_draft") or {},
+                continuation_memory=imported.get("continuation_memory") or {},
+            )
+            imported["chapter_task_seed"] = artifacts.get("chapter_task_seed") or {}
+            imported["chapter_analysis_summary"] = artifacts.get("chapter_analysis_summary") or {}
+            imported["continuation_summary"] = artifacts.get("continuation_summary") or {}
+        return imported
     except Exception as exc:
         logger.error(
             "导入章节失败",
@@ -266,51 +311,6 @@ async def import_chapter_content(
             ),
         )
         raise
-    outline_draft = outline_result.get("outline_draft") or {}
-    used_fallback = bool(outline_result.get("used_fallback"))
-    now = datetime.now()
-    existed = outline_repo.find_by_chapter_id(chapter.id)
-    outline = ChapterOutline(
-        chapter_id=chapter.id,
-        goal=outline_draft.get("goal") or "",
-        conflict=outline_draft.get("conflict") or "",
-        events=[str(x) for x in (outline_draft.get("events") or [])],
-        character_progress=outline_draft.get("character_progress") or "",
-        ending_hook=outline_draft.get("ending_hook") or "",
-        opening_continuation=outline_draft.get("opening_continuation") or "",
-        notes=outline_draft.get("notes") or "",
-        created_at=existed.created_at if existed else now,
-        updated_at=now,
-    )
-    outline_repo.save(outline)
-    payload = {
-        "chapter_id": chapter_id,
-        "action": "import",
-        "title": parsed.get("title") or "",
-        "content": parsed.get("content") or "",
-        "memory_refresh_required": False,
-        "used_fallback": used_fallback,
-        "outline_draft": {
-            "goal": outline.goal,
-            "conflict": outline.conflict,
-            "events": outline.events,
-            "character_progress": outline.character_progress,
-            "ending_hook": outline.ending_hook,
-            "opening_continuation": outline.opening_continuation,
-            "notes": outline.notes,
-        },
-    }
-    logger.info(
-        "导入章节完成",
-        extra=build_log_context(
-            event="chapter_import_finished",
-            chapter_id=chapter.id.value,
-            chapter_number=chapter.number,
-            novel_id=chapter.novel_id.value,
-            used_fallback=used_fallback,
-        ),
-    )
-    return payload
 
 
 @router.post("/{chapter_id}/ai/optimize", response_model=ChapterAIActionResponse)

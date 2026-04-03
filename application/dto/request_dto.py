@@ -10,6 +10,12 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any, Literal
 
+from domain.constants.story_constants import (
+    DEFAULT_BRANCH_COUNT,
+    DEFAULT_GENERATE_CHAPTER_COUNT,
+    DEFAULT_TARGET_WORDS_PER_CHAPTER,
+)
+
 
 class BaseRequest(BaseModel):
     """基础请求DTO，包含上下文信息"""
@@ -122,7 +128,106 @@ class ChapterAIActionRequest(BaseRequest):
     global_memory_summary: str = ""
     global_outline_summary: str = ""
     recent_chapter_summaries: List[str] = Field(default_factory=list)
+    last_chapter_tail: str = ""
+    relevant_characters: List[Dict[str, Any]] = Field(default_factory=list)
+    relevant_foreshadowing: List[str] = Field(default_factory=list)
+    chapter_task: Optional[Dict[str, Any]] = None
+    style_requirements: Optional[Dict[str, Any]] = None
     target_word_count: int = Field(2000, ge=200, le=10000)
+
+
+class ContinuationContextRequest(BaseRequest):
+    project_id: str = Field(..., min_length=1)
+    chapter_id: str = Field(..., min_length=1)
+    branch_id: str = ""
+    chapter_plan_id: str = ""
+
+
+class ChapterTaskRequest(BaseRequest):
+    chapter_id: str = Field(..., min_length=1)
+    continuation_context: Dict[str, Any] = Field(default_factory=dict)
+    plan_id: str = ""
+
+
+class DetemplatingRewriteRequest(BaseRequest):
+    chapter_id: str = Field(..., min_length=1)
+    structural_draft_id: str = Field(..., min_length=1)
+    chapter_task: Dict[str, Any] = Field(default_factory=dict)
+    global_constraints: Dict[str, Any] = Field(default_factory=dict)
+    style_requirements: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ImportProjectRequest(BaseRequest):
+    project_name: str = Field(..., min_length=1)
+    author: str = ""
+    genre: str = ""
+    target_word_count: int = Field(default=8000000, ge=10000, le=50000000)
+    novel_file_path: str = Field(..., min_length=1)
+    import_mode: str = "full"
+    chapter_items: List[Dict[str, Any]] = Field(default_factory=list)
+    outline_file_path: str = ""
+    auto_organize: bool = True
+
+
+class OrganizeRequest(BaseRequest):
+    mode: str = "chapter_first"
+    rebuild_memory: bool = True
+
+
+class BranchesRequest(BaseRequest):
+    direction_hint: str = ""
+    branch_count: int = Field(default=DEFAULT_BRANCH_COUNT, ge=3, le=5)
+
+
+class ChapterPlanRequest(BaseRequest):
+    branch_id: str = Field(..., min_length=1)
+    chapter_count: int = Field(default=DEFAULT_GENERATE_CHAPTER_COUNT, ge=1, le=10)
+    target_words_per_chapter: int = Field(default=DEFAULT_TARGET_WORDS_PER_CHAPTER, ge=500, le=10000)
+    planning_mode: str = "light_planning"
+    target_arc_id: str = ""
+    allow_deep_planning: bool = False
+
+
+class WriteRequest(BaseRequest):
+    plan_ids: List[str] = Field(default_factory=list)
+    auto_commit: bool = True
+    planning_mode: str = "light_planning"
+    target_arc_id: str = ""
+
+
+class WritePreviewRequest(BaseRequest):
+    plan_id: str = Field(..., min_length=1)
+    target_word_count: int = Field(default=DEFAULT_TARGET_WORDS_PER_CHAPTER, ge=500, le=10000)
+    style_requirements: Dict[str, Any] = Field(default_factory=dict)
+    planning_mode: str = "light_planning"
+    target_arc_id: str = ""
+
+
+class WriteCommitRequest(BaseRequest):
+    plan_ids: List[str] = Field(default_factory=list)
+    chapter_count: int = Field(default=DEFAULT_GENERATE_CHAPTER_COUNT, ge=1, le=10)
+    auto_commit: bool = True
+    planning_mode: str = "light_planning"
+    target_arc_id: str = ""
+
+
+class RefreshMemoryRequest(BaseRequest):
+    from_chapter_number: int = Field(..., ge=1)
+    to_chapter_number: int = Field(..., ge=1)
+
+
+class StyleRequirementsRequest(BaseRequest):
+    author_voice_keywords: List[str] = Field(default_factory=list)
+    avoid_patterns: List[str] = Field(default_factory=list)
+    preferred_rhythm: str = ""
+    narrative_distance: str = ""
+    dialogue_density: str = ""
+    source_type: str = "manual"
+    version: int = Field(default=1, ge=1)
+
+
+class ExtractStyleRequirementsRequest(BaseRequest):
+    sample_chapter_count: int = Field(default=3, ge=1, le=10)
 
 
 class CreateCharacterRequest(BaseRequest):

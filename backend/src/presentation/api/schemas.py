@@ -7,6 +7,11 @@ from __future__ import annotations
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
+from domain.constants.story_constants import (
+    DEFAULT_BRANCH_COUNT,
+    DEFAULT_GENERATE_CHAPTER_COUNT,
+    DEFAULT_TARGET_WORDS_PER_CHAPTER,
+)
 
 
 class ImportProjectRequest(BaseModel):
@@ -24,13 +29,13 @@ class OrganizeProjectRequest(BaseModel):
 
 class GenerateBranchesRequest(BaseModel):
     direction_hint: str = ""
-    branch_count: int = Field(default=4, ge=3, le=4)
+    branch_count: int = Field(default=DEFAULT_BRANCH_COUNT, ge=3, le=4)
 
 
 class CreateChapterPlanRequest(BaseModel):
     branch_id: str
-    chapter_count: int = Field(default=3, ge=1, le=10)
-    target_words_per_chapter: int = Field(default=2500, ge=500, le=10000)
+    chapter_count: int = Field(default=DEFAULT_GENERATE_CHAPTER_COUNT, ge=1, le=10)
+    target_words_per_chapter: int = Field(default=DEFAULT_TARGET_WORDS_PER_CHAPTER, ge=500, le=10000)
 
 
 class ExecuteWritingRequest(BaseModel):

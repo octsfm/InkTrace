@@ -38,6 +38,17 @@ class TxtExporter:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write("\n".join(self.export_chapter_lines(chapter)))
 
+    def export_chapter_batch(self, chapters: List[Chapter], output_path: str) -> None:
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        lines: List[str] = []
+        for chapter in chapters:
+            lines.extend(self.export_chapter_lines(chapter))
+            lines.append("")
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
     def export_chapter_lines(self, chapter: Chapter) -> List[str]:
         return [
             self._display_title(chapter),

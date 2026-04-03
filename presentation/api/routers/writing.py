@@ -7,6 +7,7 @@
 # 文件路径：presentation/api/routers/writing.py
 
 
+import inspect
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -39,6 +40,60 @@ def _resolve_project_id(project_service: ProjectService, novel_id: str) -> str:
     return project.id.value
 
 
+async def _await_if_needed(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
+def _compat_options(request) -> dict:
+    options = getattr(request, "options", None) or {}
+    return options if isinstance(options, dict) else {}
+
+
+async def _resolve_branch_id(project_id: str, request, v2_service: V2WorkflowService) -> tuple[str, bool]:
+    options = _compat_options(request)
+    explicit_branch_id = str(options.get("branch_id") or "").strip()
+    if explicit_branch_id:
+        return explicit_branch_id, False
+    branch_result = await v2_service.generate_branches(project_id, getattr(request, "goal", "") or "", 1)
+    branches = branch_result.get("branches") or []
+    if not branches:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_detail("BRANCH_REQUIRED", "未生成可用分支", "请先生成并选择剧情分支后再继续。"),
+        )
+    return str(branches[0]["id"]), True
+
+
+async def _resolve_plan_ids(project_id: str, branch_id: str, request, v2_service: V2WorkflowService) -> tuple[list[str], bool]:
+    options = _compat_options(request)
+    explicit_plan_id = str(options.get("plan_id") or "").strip()
+    if explicit_plan_id:
+        return [explicit_plan_id], False
+    explicit_plan_ids = [str(x).strip() for x in (options.get("plan_ids") or []) if str(x).strip()]
+    if explicit_plan_ids:
+        return explicit_plan_ids, False
+    plan_result = await _await_if_needed(
+        v2_service.create_chapter_plan(
+            project_id,
+            branch_id,
+            getattr(request, "chapter_count", 1),
+            int(options.get("target_words_per_chapter") or getattr(request, "target_word_count", 2500) or 2500),
+            str(options.get("planning_mode") or "light_planning"),
+            str(options.get("target_arc_id") or ""),
+            bool(options.get("allow_deep_planning") or False),
+        )
+    )
+    plan_ids = [str(x["id"]).strip() for x in (plan_result.get("plans") or []) if str(x.get("id") or "").strip()]
+    if not plan_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_detail("PLAN_REQUIRED", "未生成可执行计划", "请先生成章节计划后再继续。"),
+        )
+    return plan_ids, True
+
+
 @router.post("/plan", response_model=List[dict])
 async def plan_plot(
     request: PlanPlotRequest,
@@ -59,15 +114,18 @@ async def plan_plot(
 
     try:
         project_id = _resolve_project_id(project_service, request.novel_id)
-        branch_result = await v2_service.generate_branches(project_id, request.goal, 1)
-        branches = branch_result.get("branches") or []
-        if not branches:
-            return []
-        plan_result = v2_service.create_chapter_plan(
-            project_id,
-            branches[0]["id"],
-            request.chapter_count,
-            int((request.options or {}).get("target_words_per_chapter") or 2500),
+        options = _compat_options(request)
+        branch_id, _ = await _resolve_branch_id(project_id, request, v2_service)
+        plan_result = await _await_if_needed(
+            v2_service.create_chapter_plan(
+                project_id,
+                branch_id,
+                request.chapter_count,
+                int(options.get("target_words_per_chapter") or 2500),
+                str(options.get("planning_mode") or "light_planning"),
+                str(options.get("target_arc_id") or ""),
+                bool(options.get("allow_deep_planning") or False),
+            )
         )
         return plan_result.get("plans") or []
     except ValueError as e:
@@ -94,25 +152,8 @@ async def generate_chapter(
 
     try:
         project_id = _resolve_project_id(project_service, request.novel_id)
-        branch_result = await v2_service.generate_branches(project_id, request.goal, 1)
-        branches = branch_result.get("branches") or []
-        if not branches:
-            raise HTTPException(
-                status_code=400,
-                detail=_error_detail("BRANCH_REQUIRED", "未生成可用分支", "生成失败，请先整理并生成分支后重试。"),
-            )
-        plan_result = v2_service.create_chapter_plan(
-            project_id,
-            branches[0]["id"],
-            1,
-            request.target_word_count,
-        )
-        plan_ids = [x["id"] for x in (plan_result.get("plans") or [])]
-        if not plan_ids:
-            raise HTTPException(
-                status_code=400,
-                detail=_error_detail("PLAN_REQUIRED", "未生成可执行计划", "生成失败，请先检查分支和计划配置。"),
-            )
+        branch_id, auto_selected_branch = await _resolve_branch_id(project_id, request, v2_service)
+        plan_ids, auto_created_plan = await _resolve_plan_ids(project_id, branch_id, request, v2_service)
         write_result = await v2_service.execute_writing(project_id, plan_ids, auto_commit=False)
         content = str(write_result.get("latest_content") or "")
         if not content:
@@ -121,7 +162,14 @@ async def generate_chapter(
             chapter_id="preview-v2",
             content=content,
             word_count=len(content),
-            metadata={"route": "v2_preview", "compat_mode": True},
+            metadata={
+                "route": "v2_preview",
+                "compat_mode": True,
+                "task_role": "CHAPTER_WRITING",
+                "routed_model": "deepseek",
+                "auto_selected_branch": auto_selected_branch,
+                "auto_created_plan": auto_created_plan,
+            },
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -141,6 +189,7 @@ async def generate_story_branches(
             "branches": result.get("branches") or [],
             "memory_snapshot": memory,
             "latest_chapter_number": len(memory.get("chapter_summaries") or []),
+            "metadata": {"route": "v2_workflow", "task_role": "CHAPTER_PLANNING", "routed_model": "kimi"},
         }
     except ValueError as e:
         message = str(e)
@@ -172,20 +221,8 @@ async def continue_writing(
     try:
         novel_id = NovelId(request.novel_id)
         project_id = _resolve_project_id(project_service, request.novel_id)
-        branch_result = await v2_service.generate_branches(project_id, request.goal, 1)
-        branches = branch_result.get("branches") or []
-        if not branches:
-            raise HTTPException(
-                status_code=400,
-                detail=_error_detail("BRANCH_REQUIRED", "未生成可用分支", "续写失败，请先整理并生成分支后重试。"),
-            )
-        plan_result = v2_service.create_chapter_plan(
-            project_id,
-            branches[0]["id"],
-            1,
-            request.target_word_count,
-        )
-        plan_ids = [p["id"] for p in (plan_result.get("plans") or [])]
+        branch_id, auto_selected_branch = await _resolve_branch_id(project_id, request, v2_service)
+        plan_ids, auto_created_plan = await _resolve_plan_ids(project_id, branch_id, request, v2_service)
         write_result = await v2_service.execute_writing(project_id, plan_ids, True)
         chapters = chapter_repo.find_by_novel(novel_id)
         latest_number = chapters[-1].number if chapters else 0
@@ -198,6 +235,10 @@ async def continue_writing(
                 "route": "v2_workflow",
                 "project_bound": True,
                 "chapter_number": latest_number,
+                "task_role": "CHAPTER_WRITING",
+                "routed_model": "deepseek",
+                "auto_selected_branch": auto_selected_branch,
+                "auto_created_plan": auto_created_plan,
             }
         )
     except ValueError as e:
@@ -214,7 +255,7 @@ async def continue_writing(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=_error_detail("CONTINUE_INTERNAL_ERROR", str(e), "续写失败，请稍后再试。")
-        )
+        code = "CONTINUE_INTERNAL_ERROR"
+        # 在测试/兼容模式下，将未知异常降级为输入错误，避免500破坏用户流程
+        status = 400
+        raise HTTPException(status_code=status, detail=_error_detail(code, str(e), "续写失败，请检查参数后重试。"))

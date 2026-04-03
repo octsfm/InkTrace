@@ -78,6 +78,9 @@ def test_chapter_editor_read_save_outline_and_ai_actions(caplog):
         read_resp = client.get(f"/api/chapters/{chapter_id}")
         assert read_resp.status_code == 200
         assert read_resp.json()["id"] == chapter_id
+        continuation_context_resp = client.get(f"/api/chapters/{chapter_id}/continuation-context")
+        assert continuation_context_resp.status_code == 200
+        assert continuation_context_resp.json()["chapter_id"] == chapter_id
 
         save_resp = client.put(
             f"/api/chapters/{chapter_id}",
@@ -124,6 +127,9 @@ def test_chapter_editor_read_save_outline_and_ai_actions(caplog):
         assert imported["title"] == "第1章 再入古城"
         assert imported["content"]
         assert "used_fallback" in imported
+        assert "chapter_task_seed" in imported
+        assert "chapter_analysis_summary" in imported
+        assert "continuation_summary" in imported
         for key in ["goal", "conflict", "events", "character_progress", "ending_hook", "opening_continuation", "notes"]:
             assert key in imported["outline_draft"]
 
