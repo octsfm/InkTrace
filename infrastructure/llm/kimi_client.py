@@ -156,6 +156,9 @@ class KimiClient(LLMClient):
             "temperature": temperature
         }
 
+        total_chars = sum(len(str(item.get("content", "") or "")) for item in messages or [])
+        self.logger.info(f"[Kimi] 请求消息数={len(messages or [])}, 总字符数={total_chars}")
+
         # 重试机制
         last_error = None
         for attempt in range(self.max_retries):
@@ -165,6 +168,12 @@ class KimiClient(LLMClient):
                 response = await self._client.post(url, json=payload, headers=headers)
                 
                 # 错误处理
+                if response.status_code == 400:
+                    error_body = self._extract_error_body(response)
+                    self.logger.error(f"Kimi API 400 响应: {error_body}")
+                    if "context" in error_body.lower() or "token" in error_body.lower():
+                        raise TokenLimitError("Kimi", f"请求超过上下文限制: {error_body}")
+                    raise LLMClientError(f"Kimi API 请求无效: {error_body}")
                 if response.status_code == 401:
                     raise APIKeyError("Kimi", "API密钥无效")
                 elif response.status_code == 429:
@@ -196,6 +205,22 @@ class KimiClient(LLMClient):
         
         # 所有重试都失败
         raise last_error or LLMClientError("Kimi请求失败")
+
+    def _extract_error_body(self, response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                error_obj = payload.get("error")
+                if isinstance(error_obj, dict):
+                    message = error_obj.get("message") or error_obj.get("type") or error_obj.get("code")
+                    if message:
+                        return str(message)
+                message = payload.get("message") or payload.get("detail")
+                if message:
+                    return str(message)
+            return str(payload)
+        except Exception:
+            return (response.text or "").strip()[:500]
 
     def _truncate_input(self, text: str, max_chars: int = 50000) -> str:
         """

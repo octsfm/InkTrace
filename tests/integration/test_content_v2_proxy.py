@@ -6,7 +6,10 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+from domain.entities.organize_job import OrganizeJob
+from domain.exceptions import APIKeyError
 from domain.types import NovelId
+from domain.types import OrganizeJobStatus
 from presentation.api.app import app
 from presentation.api.dependencies import (
     get_content_service,
@@ -30,6 +33,9 @@ class _FakeProjectService:
 
 
 class _FakeV2Service:
+    def __init__(self):
+        self.calls = []
+
     async def organize_project(
         self,
         project_id: str,
@@ -39,6 +45,7 @@ class _FakeV2Service:
         resume_from: int = 0,
         checkpoint_memory=None,
     ):
+        self.calls.append({"project_id": project_id, "mode": mode, "rebuild_memory": rebuild_memory})
         if callable(progress_callback):
             await progress_callback({"status": "running", "stage": "chapter_analysis", "current": 1, "total": 2, "percent": 50, "message": "正在分析第1/2章：示例", "current_chapter_title": "示例", "resumable": True})
             await asyncio.sleep(0.08)
@@ -66,6 +73,22 @@ class _FakeOrganizeJobRepo:
         self.job = job
 
 
+class _FailingV2Service:
+    async def organize_project(
+        self,
+        project_id: str,
+        mode: str,
+        rebuild_memory: bool,
+        progress_callback=None,
+        resume_from: int = 0,
+        checkpoint_memory=None,
+    ):
+        raise APIKeyError("Kimi", "API密钥无效")
+
+    def get_memory(self, project_id: str):
+        return {}
+
+
 def test_content_import_proxy_to_v2():
     app.dependency_overrides[get_content_service] = lambda: _FakeContentService()
     app.dependency_overrides[get_project_service] = lambda: _FakeProjectService()
@@ -84,7 +107,8 @@ def test_content_import_proxy_to_v2():
 
 def test_content_organize_proxy_to_v2():
     app.dependency_overrides[get_project_service] = lambda: _FakeProjectService()
-    app.dependency_overrides[get_v2_workflow_service] = lambda: _FakeV2Service()
+    service = _FakeV2Service()
+    app.dependency_overrides[get_v2_workflow_service] = lambda: service
     app.dependency_overrides[get_organize_job_repo] = lambda: _FakeOrganizeJobRepo()
     client = TestClient(app)
     try:
@@ -93,6 +117,25 @@ def test_content_organize_proxy_to_v2():
         data = resp.json()
         assert data["project_id"] == "proj_v2"
         assert data["status"] == "done"
+        assert service.calls[-1]["mode"] == "full_reanalyze"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_content_retry_defaults_to_rebuild_global():
+    repo = _FakeOrganizeJobRepo()
+    service = _FakeV2Service()
+    app.dependency_overrides[get_project_service] = lambda: _FakeProjectService()
+    app.dependency_overrides[get_v2_workflow_service] = lambda: service
+    app.dependency_overrides[get_organize_job_repo] = lambda: repo
+    client = TestClient(app)
+    try:
+        started = client.post("/api/content/organize/retry/novel_retry")
+        assert started.status_code == 200
+        assert started.json()["status"] in {"started", "running"}
+        time.sleep(0.25)
+        assert service.calls[-1]["mode"] == "rebuild_global"
+        assert service.calls[-1]["rebuild_memory"] is True
     finally:
         app.dependency_overrides.clear()
 
@@ -188,5 +231,52 @@ def test_content_organize_cancelled():
                 break
             time.sleep(0.05)
         assert progress["status"] in {"cancelled", "done"}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_content_organize_progress_recovers_stale_running_job():
+    repo = _FakeOrganizeJobRepo()
+    repo.job = OrganizeJob(
+        novel_id=NovelId("novel_stale"),
+        total_chapters=12,
+        completed_chapters=5,
+        status=OrganizeJobStatus.RUNNING,
+        stage="chapter_analysis",
+        message="正在分析第5章",
+        current_chapter_title="第5章",
+    )
+    app.dependency_overrides[get_project_service] = lambda: _FakeProjectService()
+    app.dependency_overrides[get_v2_workflow_service] = lambda: _FakeV2Service()
+    app.dependency_overrides[get_organize_job_repo] = lambda: repo
+    client = TestClient(app)
+    try:
+        progress = client.get("/api/content/organize/progress/novel_stale")
+        assert progress.status_code == 200
+        payload = progress.json()
+        assert payload["status"] == "paused"
+        assert payload["resumable"] is True
+        assert "继续整理" in payload["message"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_content_organize_progress_surfaces_kimi_api_key_error():
+    repo = _FakeOrganizeJobRepo()
+    app.dependency_overrides[get_project_service] = lambda: _FakeProjectService()
+    app.dependency_overrides[get_v2_workflow_service] = lambda: _FailingV2Service()
+    app.dependency_overrides[get_organize_job_repo] = lambda: repo
+    client = TestClient(app)
+    try:
+        started = client.post("/api/content/organize/start/novel_bad_key?force_rebuild=true")
+        assert started.status_code == 200
+        for _ in range(20):
+            progress = client.get("/api/content/organize/progress/novel_bad_key").json()
+            if progress["status"] == "error":
+                break
+            time.sleep(0.05)
+        assert progress["status"] == "error"
+        assert "Kimi API Key" in progress["message"]
+        assert "更新后重新整理" in progress["message"]
     finally:
         app.dependency_overrides.clear()

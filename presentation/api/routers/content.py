@@ -18,6 +18,7 @@ from application.services.logging_service import build_log_context
 from application.services.project_service import ProjectService
 from application.services.v2_workflow_service import V2WorkflowService
 from domain.entities.organize_job import OrganizeJob
+from domain.exceptions import APIKeyError, LLMClientError, NetworkError, RateLimitError, TokenLimitError
 from domain.repositories.organize_job_repository import IOrganizeJobRepository
 from domain.types import NovelId, OrganizeJobStatus
 from presentation.api.dependencies import (
@@ -246,8 +247,130 @@ def _requested_control(job: Optional[OrganizeJob]) -> str:
     return ""
 
 
+def _has_live_organize_task(novel_id: str) -> bool:
+    return _get_active_task(novel_id) is not None
+
+
+def _is_transient_organize_status(status: OrganizeJobStatus) -> bool:
+    return status in {
+        OrganizeJobStatus.RUNNING,
+        OrganizeJobStatus.PAUSE_REQUESTED,
+        OrganizeJobStatus.RESUME_REQUESTED,
+        OrganizeJobStatus.CANCELLING,
+    }
+
+
+def _normalize_organize_mode(mode: str, force_rebuild: bool) -> str:
+    normalized = str(mode or "").strip().lower()
+    if normalized in {"", "chapter_first"}:
+        return "full_reanalyze" if force_rebuild else "rebuild_global"
+    if normalized in {"full", "full_rebuild", "full_reanalyze"}:
+        return "full_reanalyze"
+    if normalized in {"global", "rebuild", "rebuild_global"}:
+        return "rebuild_global"
+    if normalized in {"refresh", "refresh_view", "view"}:
+        return "refresh_view"
+    return "full_reanalyze" if force_rebuild else "rebuild_global"
+
+
+def _organize_mode_from_job(job: Optional[OrganizeJob]) -> str:
+    checkpoint = job.checkpoint_memory if job and isinstance(job.checkpoint_memory, dict) else {}
+    organize_meta = checkpoint.get("organize_meta") if isinstance(checkpoint.get("organize_meta"), dict) else {}
+    return str(organize_meta.get("mode") or "")
+
+
+def _validate_organize_model_capacity(
+    novel_id: str,
+    mode: str,
+    content_service: ContentService,
+    llm_factory,
+    organize_job_repo: IOrganizeJobRepository,
+) -> None:
+    if str(mode or "").strip().lower() != "full_reanalyze":
+        return
+    kimi_client_getter = getattr(llm_factory, "get_client_for_provider", None)
+    kimi_client = kimi_client_getter("kimi") if callable(kimi_client_getter) else getattr(llm_factory, "kimi_client", None)
+    if not kimi_client:
+        return
+
+    model_name = str(getattr(kimi_client, "model_name", "") or getattr(getattr(llm_factory, "config", None), "kimi_model", "") or "")
+    max_context_tokens = int(getattr(kimi_client, "max_context_tokens", 0) or 0)
+    if max_context_tokens <= 0:
+        return
+
+    try:
+        novel_text = content_service.get_novel_text(novel_id)
+    except Exception:
+        return
+    text_length = len(novel_text or "")
+    if text_length <= 0:
+        return
+
+    # Full-book organize still needs a large global-analysis window.
+    # We fail fast before starting the background job when the configured Kimi model
+    # is clearly too small for the source corpus.
+    safe_char_budget = max(max_context_tokens * 8, 60000)
+    if text_length <= safe_char_budget:
+        return
+
+    message = (
+        f"当前 Kimi 模型 {model_name or 'unknown'} 上下文仅约 {max_context_tokens} tokens，"
+        f"当前小说正文约 {text_length} 个字符，无法稳定执行整本整理。"
+        "请切换到更大上下文的 Kimi 模型后再重试。"
+    )
+    job = organize_job_repo.find_by_novel_id(NovelId(novel_id)) or OrganizeJob(novel_id=NovelId(novel_id))
+    job.mark_error(message)
+    organize_job_repo.save(job)
+    _cache_progress(
+        novel_id,
+        _build_progress_payload(
+            current=int(job.completed_chunks or 0),
+            total=int(job.total_chunks or 0),
+            status=OrganizeJobStatus.ERROR.value,
+            stage="error",
+            message=message,
+            current_chapter_title=str(job.current_chapter_title or ""),
+            resumable=True,
+            source_hash=str(job.source_hash or ""),
+            last_error=message,
+        ),
+    )
+    raise HTTPException(status_code=400, detail=message)
+
+
+def _humanize_organize_error(error: Exception) -> str:
+    raw_message = str(error or "").strip()
+    lowered = raw_message.lower()
+
+    if isinstance(error, APIKeyError) or "api密钥" in raw_message or "api key" in lowered or "unauthorized" in lowered or "401" in lowered:
+        if "kimi" in lowered:
+            return "Kimi API Key 无效或未配置，请在模型配置页更新后重新整理。"
+        if "deepseek" in lowered:
+            return "DeepSeek API Key 无效或未配置，请在模型配置页更新后重新整理。"
+        return "模型 API Key 无效或未配置，请在模型配置页更新后重新整理。"
+
+    if isinstance(error, RateLimitError) or "限流" in raw_message or "rate limit" in lowered or "429" in lowered:
+        if "kimi" in lowered:
+            return "Kimi 当前触发限流，整理已停止，请稍后重试。"
+        if "deepseek" in lowered:
+            return "DeepSeek 当前触发限流，整理已停止，请稍后重试。"
+        return "模型调用触发限流，整理已停止，请稍后重试。"
+
+    if isinstance(error, TokenLimitError) or "token" in lowered:
+        return "整理内容过长，已超过模型上下文限制，请拆分内容或调整后重试。"
+
+    if isinstance(error, NetworkError) or "超时" in raw_message or "network" in lowered or "timeout" in lowered:
+        return "模型连接失败，整理已停止，请检查网络或稍后重试。"
+
+    if isinstance(error, LLMClientError):
+        return raw_message or "模型调用失败，整理已停止，请检查模型配置后重试。"
+
+    return raw_message or "整理失败，请稍后重试。"
+
+
 async def _run_v2_organize_task(
     novel_id: str,
+    mode: str,
     force_rebuild: bool,
     project_service: ProjectService,
     organize_job_repo: IOrganizeJobRepository,
@@ -270,6 +393,7 @@ async def _run_v2_organize_task(
             "整理任务开始",
             extra=build_log_context(event="organize_task_started", novel_id=novel_id, project_id=project.id.value, current=job.completed_chapters, total=job.total_chapters, chapter_title=str(job.current_chapter_title or "")),
         )
+        organize_mode = _normalize_organize_mode(mode, force_rebuild)
         if force_rebuild:
             job.reset(source_hash=f"v2:{int(time.time())}", total_chapters=0)
             job.update_checkpoint(0, 0, {})
@@ -296,13 +420,17 @@ async def _run_v2_organize_task(
                 raise OrganizePauseRequested()
             job.apply_progress(progress)
             snapshot = progress.get("memory_snapshot") if isinstance(progress.get("memory_snapshot"), dict) else checkpoint_memory
-            job.checkpoint_memory = {"memory": snapshot or {}, "progress": {k: v for k, v in progress.items() if k != "memory_snapshot"}}
+            job.checkpoint_memory = {
+                "memory": snapshot or {},
+                "progress": {k: v for k, v in progress.items() if k != "memory_snapshot"},
+                "organize_meta": {"mode": organize_mode},
+            }
             organize_job_repo.save(job)
             _cache_progress(novel_id, {k: v for k, v in progress.items() if k != "memory_snapshot"})
             _raise_if_control_requested()
         await v2_service.organize_project(
             project.id.value,
-            "chapter_first",
+            organize_mode,
             force_rebuild,
             progress_callback=_on_progress,
             resume_from=resume_from,
@@ -318,7 +446,11 @@ async def _run_v2_organize_task(
             current_chapter_title="",
             resumable=False,
         )
-        job.update_checkpoint(job.total_chapters, job.total_chapters, {"memory": memory, "progress": final_progress})
+        job.update_checkpoint(
+            job.total_chapters,
+            job.total_chapters,
+            {"memory": memory, "progress": final_progress, "organize_meta": {"mode": organize_mode}},
+        )
         job.mark_done()
         organize_job_repo.save(job)
         _cache_progress(novel_id, final_progress)
@@ -374,7 +506,7 @@ async def _run_v2_organize_task(
         )
         raise
     except Exception as e:
-        message = str(e)
+        message = _humanize_organize_error(e)
         job.mark_error(message)
         organize_job_repo.save(job)
         _cache_progress(
@@ -391,7 +523,7 @@ async def _run_v2_organize_task(
         )
         logger.error(
             "整理任务失败",
-            extra=build_log_context(event="organize_task_error", novel_id=novel_id, project_id=project.id.value if 'project' in locals() else "", current=job.completed_chapters, total=job.total_chapters, chapter_title=str(job.current_chapter_title or ""), last_error=message),
+            extra=build_log_context(event="organize_task_error", novel_id=novel_id, project_id=project.id.value if 'project' in locals() else "", current=job.completed_chapters, total=job.total_chapters, chapter_title=str(job.current_chapter_title or ""), last_error=message, raw_error=str(e)),
         )
     finally:
         current = ACTIVE_ORGANIZE_TASKS.get(novel_id)
@@ -567,7 +699,7 @@ async def import_novel(
     try:
         novel = service.import_novel(request)
         project = project_service.ensure_project_for_novel(NovelId(request.novel_id))
-        organize_result = await v2_service.organize_project(project.id.value, "chapter_first", True)
+        organize_result = await v2_service.organize_project(project.id.value, "full_reanalyze", True)
         return {
             "novel": _to_dict(novel),
             "project_id": project.id.value,
@@ -643,7 +775,7 @@ async def import_novel_upload(
         request = ImportNovelRequest(novel_id=novel_id, file_path=novel_path, outline_path=outline_path)
         novel = service.import_novel(request)
         project = project_service.ensure_project_for_novel(NovelId(novel_id))
-        organize_result = await v2_service.organize_project(project.id.value, "chapter_first", True)
+        organize_result = await v2_service.organize_project(project.id.value, "full_reanalyze", True)
         return {
             "novel": _to_dict(novel),
             "project_id": project.id.value,
@@ -723,6 +855,7 @@ async def get_memory_by_novel(
 async def organize_story_structure(
     novel_id: str,
     force_rebuild: bool = Query(False),
+    mode: str = Query("full_reanalyze"),
     content_service: ContentService = Depends(get_content_service),
     project_service: ProjectService = Depends(get_project_service),
     llm_factory=Depends(get_llm_factory),
@@ -730,7 +863,8 @@ async def organize_story_structure(
     v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     try:
-        logger.info("[StructureAPI] request novel_id=%s force_rebuild=%s", novel_id, force_rebuild)
+        organize_mode = _normalize_organize_mode(mode, force_rebuild)
+        logger.info("[StructureAPI] request novel_id=%s force_rebuild=%s mode=%s", novel_id, force_rebuild, organize_mode)
         project = project_service.ensure_project_for_novel(NovelId(novel_id))
         async def _on_progress(progress: Dict[str, Any]) -> None:
             _cache_progress(novel_id, {k: v for k, v in progress.items() if k != "memory_snapshot"})
@@ -754,7 +888,7 @@ async def organize_story_structure(
             }
         v2_result = await v2_service.organize_project(
             project.id.value,
-            "chapter_first",
+            organize_mode,
             force_rebuild,
             progress_callback=_on_progress,
         )
@@ -779,7 +913,7 @@ async def organize_story_structure(
             "metadata": {"task_role": "GLOBAL_ANALYSIS", "routed_model": "kimi", "route": "v2_organize"},
         }
     except ValueError as e:
-        message = str(e)
+        message = _humanize_organize_error(e)
         job = organize_job_repo.find_by_novel_id(NovelId(novel_id))
         if job:
             job.mark_error(message)
@@ -800,7 +934,7 @@ async def organize_story_structure(
             detail=_error_detail("STRUCTURE_INPUT_INVALID", message, "Story organize failed. Please review the content and try again."),
         )
     except Exception as e:
-        message = str(e)
+        message = _humanize_organize_error(e)
         job = organize_job_repo.find_by_novel_id(NovelId(novel_id))
         if job:
             job.mark_error(message)
@@ -822,12 +956,17 @@ async def organize_story_structure(
 async def start_organize_story_structure(
     novel_id: str,
     force_rebuild: bool = Query(False),
+    mode: str = Query("full_reanalyze"),
+    content_service: ContentService = Depends(get_content_service),
+    llm_factory=Depends(get_llm_factory),
     project_service: ProjectService = Depends(get_project_service),
     organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
     v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     lock = _get_lock(novel_id)
     async with lock:
+        organize_mode = _normalize_organize_mode(mode, force_rebuild)
+        _validate_organize_model_capacity(novel_id, organize_mode, content_service, llm_factory, organize_job_repo)
         running = _get_active_task(novel_id)
         if running:
             job = organize_job_repo.find_by_novel_id(NovelId(novel_id))
@@ -849,7 +988,7 @@ async def start_organize_story_structure(
             total=int(existed.total_chunks or 0) if existed else 0,
         )
         task = asyncio.create_task(
-            _run_v2_organize_task(novel_id, force_rebuild, project_service, organize_job_repo, v2_service)
+            _run_v2_organize_task(novel_id, organize_mode, force_rebuild, project_service, organize_job_repo, v2_service)
         )
         ACTIVE_ORGANIZE_TASKS[novel_id] = task
         return {"status": "started", "progress": PROGRESS_CACHE[novel_id]}
@@ -901,19 +1040,24 @@ async def stop_organize_story_structure(
 @router.post("/organize/resume/{novel_id}")
 async def resume_organize_story_structure(
     novel_id: str,
+    mode: str = Query(""),
+    content_service: ContentService = Depends(get_content_service),
+    llm_factory=Depends(get_llm_factory),
     project_service: ProjectService = Depends(get_project_service),
     organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
     v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     lock = _get_lock(novel_id)
     async with lock:
+        existed = organize_job_repo.find_by_novel_id(NovelId(novel_id))
+        organize_mode = _normalize_organize_mode(mode or _organize_mode_from_job(existed), False)
+        _validate_organize_model_capacity(novel_id, organize_mode, content_service, llm_factory, organize_job_repo)
         running = _get_active_task(novel_id)
         if running:
             progress = PROGRESS_CACHE.get(novel_id) or _build_progress_payload(
                 0, 0, OrganizeJobStatus.RUNNING.value, "整理任务运行中", stage="prepare"
             )
             return {"status": "running", "progress": progress}
-        existed = organize_job_repo.find_by_novel_id(NovelId(novel_id))
         if existed:
             existed.mark_resume_requested()
             organize_job_repo.save(existed)
@@ -929,7 +1073,7 @@ async def resume_organize_story_structure(
             total=int(existed.total_chunks or 0) if existed else 0,
         )
         task = asyncio.create_task(
-            _run_v2_organize_task(novel_id, False, project_service, organize_job_repo, v2_service)
+            _run_v2_organize_task(novel_id, organize_mode, False, project_service, organize_job_repo, v2_service)
         )
         ACTIVE_ORGANIZE_TASKS[novel_id] = task
         return {"status": "resumed", "progress": PROGRESS_CACHE[novel_id]}
@@ -979,6 +1123,9 @@ async def cancel_organize_story_structure(
 @router.post("/organize/retry/{novel_id}")
 async def retry_organize_story_structure(
     novel_id: str,
+    mode: str = Query("rebuild_global"),
+    content_service: ContentService = Depends(get_content_service),
+    llm_factory=Depends(get_llm_factory),
     project_service: ProjectService = Depends(get_project_service),
     organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
     v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
@@ -987,7 +1134,7 @@ async def retry_organize_story_structure(
         "整理任务重新开始",
         extra=build_log_context(event="organize_task_restarted", novel_id=novel_id, project_id="", current=0, total=0, chapter_title=""),
     )
-    return await start_organize_story_structure(novel_id, True, project_service, organize_job_repo, v2_service)
+    return await start_organize_story_structure(novel_id, True, mode, content_service, llm_factory, project_service, organize_job_repo, v2_service)
 
 
 @router.get("/organize/progress/{novel_id}")
@@ -995,10 +1142,29 @@ async def get_organize_progress(
     novel_id: str,
     organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
 ):
+    job = organize_job_repo.find_by_novel_id(NovelId(novel_id))
+    if job and _is_transient_organize_status(job.status) and not _has_live_organize_task(novel_id):
+        if job.status == OrganizeJobStatus.CANCELLING:
+            job.mark_cancelled()
+            organize_job_repo.save(job)
+            return _cancelled_progress(
+                novel_id,
+                current=int(job.completed_chunks or 0),
+                total=int(job.total_chunks or 0),
+                current_chapter_title=str(job.current_chapter_title or ""),
+            )
+        job.mark_paused("整理任务未在运行，可继续整理")
+        organize_job_repo.save(job)
+        return _paused_progress(
+            novel_id,
+            "整理任务未在运行，可继续整理",
+            current=int(job.completed_chunks or 0),
+            total=int(job.total_chunks or 0),
+            current_chapter_title=str(job.current_chapter_title or ""),
+        )
     cached = PROGRESS_CACHE.get(novel_id)
     if cached:
         return cached
-    job = organize_job_repo.find_by_novel_id(NovelId(novel_id))
     progress = _job_to_progress(job)
     if job:
         PROGRESS_CACHE[novel_id] = progress

@@ -4,9 +4,12 @@ import os
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from application.agent_mvp.model_role_router import ModelRoleRouter
 from application.services.chapter_ai_service import ChapterAIService
 from domain.entities.model_role import ModelRole
+from domain.exceptions import LLMClientError
 
 
 class _RecordingClient:
@@ -254,6 +257,47 @@ def test_degraded_mode_does_not_cross_role_boundary():
     assert result["ok"] is False
     assert result["provider"] == "kimi"
     assert result["degraded_mode"] is True
+    assert len(factory.kimi_client.calls) == 1
+    assert factory.deepseek_client.calls == []
+
+
+def test_global_analysis_requires_kimi_success_when_strict_requested():
+    factory = _FakeFactory(kimi_responses=[RuntimeError("kimi failed")])
+    service = ChapterAIService(factory)
+
+    with pytest.raises(LLMClientError):
+        asyncio.run(
+            service.analyze_global_story(
+                {
+                    "project_id": "p1",
+                    "project_name": "Novel",
+                    "outline_context": {},
+                    "chapters": [{"title": "Chapter 1", "content_preview": "text"}],
+                    "require_model_success": True,
+                }
+            )
+        )
+
+    assert len(factory.kimi_client.calls) == 1
+    assert factory.deepseek_client.calls == []
+
+
+def test_plot_arc_extraction_requires_kimi_success_when_strict_requested():
+    factory = _FakeFactory(kimi_responses=[RuntimeError("kimi failed")])
+    service = ChapterAIService(factory)
+
+    with pytest.raises(LLMClientError):
+        asyncio.run(
+            service.extract_plot_arcs(
+                {
+                    "project_id": "p1",
+                    "global_analysis": {"main_plot_lines": ["main"]},
+                    "chapter_artifacts": [{"chapter_id": "ch1", "chapter_number": 1}],
+                    "require_model_success": True,
+                }
+            )
+        )
+
     assert len(factory.kimi_client.calls) == 1
     assert factory.deepseek_client.calls == []
 

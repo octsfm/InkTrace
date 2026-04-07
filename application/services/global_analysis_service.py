@@ -11,17 +11,40 @@ class GlobalAnalysisService:
         self.chapter_ai_service = chapter_ai_service
         self.memory_provider = memory_provider
 
-    async def analyze_story(self, project_id: str, project_name: str, outline_context: Dict[str, Any], chapters: List[Dict[str, Any]]) -> Dict[str, object]:
-        payload = PromptInputBuilder.build_global_analysis_input(project_name, outline_context or {}, chapters or [])
+    async def analyze_story(
+        self,
+        project_id: str,
+        project_name: str,
+        outline_context: Dict[str, Any],
+        chapters: List[Dict[str, Any]],
+        require_model_success: bool = False,
+        chapter_artifacts: List[Dict[str, Any]] | None = None,
+    ) -> Dict[str, object]:
+        payload = PromptInputBuilder.build_global_analysis_input(
+            project_name,
+            outline_context or {},
+            chapters or [],
+            chapter_artifacts=chapter_artifacts or [],
+        )
         payload["project_id"] = project_id
+        payload["require_model_success"] = bool(require_model_success)
         if hasattr(self.chapter_ai_service, "analyze_global_story"):
             return await self.chapter_ai_service.analyze_global_story(payload)
+        if require_model_success:
+            raise RuntimeError("kimi 全书分析失败，已停止整理，请检查模型配置后重试")
         summaries = []
-        for item in chapters or []:
+        source_items = chapter_artifacts or chapters or []
+        for item in source_items:
             if not isinstance(item, dict):
                 continue
-            title = str(item.get("title") or "").strip()
-            content = str(item.get("content") or "").strip().replace("\n", " ")
+            title = str(item.get("chapter_title") or item.get("title") or "").strip()
+            content = str(
+                item.get("analysis_summary")
+                or item.get("scene_summary")
+                or item.get("content_preview")
+                or item.get("content")
+                or ""
+            ).strip().replace("\n", " ")
             summaries.append(f"{title}:{content[:80]}".strip(":"))
         premise = str((outline_context or {}).get("premise") or "").strip()
         background = str((outline_context or {}).get("story_background") or "").strip()

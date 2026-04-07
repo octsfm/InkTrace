@@ -31,6 +31,7 @@ from domain.constants.story_constants import (
 )
 from domain.constants.story_enums import CHAPTER_FUNCTION_ADVANCE_INVESTIGATION
 from domain.entities.model_role import ModelRole
+from domain.exceptions import LLMClientError
 from infrastructure.llm.llm_factory import LLMFactory
 
 
@@ -56,6 +57,26 @@ class ChapterAIService:
         )
         self.model_role_router = ModelRoleRouter(llm_factory) if llm_factory else None
         self.logger = get_logger(__name__)
+
+    def _raise_required_model_failure(self, role: ModelRole, step_label: str) -> None:
+        provider = "模型"
+        if self.model_role_router is not None:
+            try:
+                provider = str(self.model_role_router.provider_for_role(role) or provider)
+            except Exception:
+                provider = "模型"
+        elif role in {
+            ModelRole.GLOBAL_ANALYSIS,
+            ModelRole.CHAPTER_ANALYSIS,
+            ModelRole.CONTINUATION_MEMORY_EXTRACTION,
+            ModelRole.PLOT_ARC_EXTRACTION,
+            ModelRole.ARC_STATE_UPDATE,
+            ModelRole.ARC_SELECTION,
+            ModelRole.CHAPTER_PLANNING,
+            ModelRole.CONSISTENCY_VALIDATION,
+        }:
+            provider = "kimi"
+        raise LLMClientError(f"{provider} {step_label}失败，已停止整理，请检查模型配置后重试")
 
     def _parse_json_from_text(self, text: str) -> Optional[Dict[str, Any]]:
         return parse_json_object(text)
@@ -317,6 +338,7 @@ class ChapterAIService:
         global_memory_summary: str = "",
         global_outline_summary: str = "",
         recent_chapter_summaries: Optional[List[str]] = None,
+        require_model_success: bool = False,
     ) -> Dict[str, Any]:
         model_result = await self._call_llm_outline(
             chapter_title,
@@ -327,6 +349,8 @@ class ChapterAIService:
         )
         if model_result:
             return {"outline_draft": model_result, "used_fallback": False}
+        if require_model_success:
+            self._raise_required_model_failure(ModelRole.CHAPTER_ANALYSIS, "章节分析")
         self.logger.warning("章节AI使用兜底", extra=build_log_context(event="chapter_ai_fallback_used", action="outline"))
         return {
             "outline_draft": self._rule_outline_draft(
@@ -543,13 +567,15 @@ class ChapterAIService:
         self.logger.info("章节AI完成", extra=build_log_context(event="chapter_ai_finished", action="generate-from-outline", used_fallback=True))
         return {"result_text": self._fallback_generate(chapter, outline, target_word_count), "analysis": {}, "outline_draft": None, "used_fallback": True}
 
-    async def extract_continuation_memory(self, chapter_title: str, chapter_content: str, relevant_characters: List[Dict[str, Any]], global_constraints: Dict[str, Any]) -> Dict[str, Any]:
+    async def extract_continuation_memory(self, chapter_title: str, chapter_content: str, relevant_characters: List[Dict[str, Any]], global_constraints: Dict[str, Any], require_model_success: bool = False) -> Dict[str, Any]:
         payload = PromptInputBuilder.build_continuation_memory_input(chapter_title, chapter_content, relevant_characters, global_constraints)
         model_result = await self._call_prompt_json("continuation_memory_extracted", build_continuation_memory_prompt(payload), ModelRole.CONTINUATION_MEMORY_EXTRACTION, max_tokens=1400, temperature=0.25, sent_event="continuation_memory_prompt_sent", metadata={"chapter_id": "", "chapter_number": 0})
         if model_result:
             model_result["used_fallback"] = bool(model_result.get("used_fallback"))
             self.logger.info("续写型memory提取完成", extra=build_log_context(event="continuation_memory_extracted", prompt_type="continuation_memory", used_fallback=bool(model_result.get("used_fallback"))))
             return self._normalize_continuation_memory(model_result)
+        if require_model_success:
+            self._raise_required_model_failure(ModelRole.CONTINUATION_MEMORY_EXTRACTION, "续写记忆提取")
         return self._fallback_continuation_memory(chapter_title, chapter_content, global_constraints)
 
     async def generate_chapter_task(self, continuation_context, chapter_plan: Dict[str, Any]) -> Dict[str, Any]:
@@ -791,6 +817,7 @@ class ChapterAIService:
         }
 
     async def analyze_global_story(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        require_model_success = bool(payload.get("require_model_success"))
         model_result = await self._call_prompt_json(
             "global_analysis",
             build_global_analysis_prompt(payload),
@@ -804,9 +831,12 @@ class ChapterAIService:
             normalized = self._normalize_global_analysis(model_result, payload)
             normalized["used_fallback"] = bool(model_result.get("used_fallback"))
             return normalized
+        if require_model_success:
+            self._raise_required_model_failure(ModelRole.GLOBAL_ANALYSIS, "全书分析")
         return self._fallback_global_analysis(payload)
 
     async def extract_plot_arcs(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        require_model_success = bool(payload.get("require_model_success"))
         model_result = await self._call_prompt_json(
             "plot_arc_extraction",
             build_plot_arc_extraction_prompt(payload),
@@ -820,6 +850,8 @@ class ChapterAIService:
             normalized = self._normalize_plot_arc_payload(model_result, payload)
             normalized["used_fallback"] = bool(model_result.get("used_fallback"))
             return normalized
+        if require_model_success:
+            self._raise_required_model_failure(ModelRole.PLOT_ARC_EXTRACTION, "剧情弧抽取")
         return self._fallback_plot_arc_payload(payload)
 
     def _normalize_global_analysis(self, result: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -973,6 +1005,39 @@ class ChapterAIService:
     def _priority_rank(self, priority: str) -> int:
         return {"core": 0, "major": 1, "minor": 2}.get(str(priority or "").strip().lower(), 3)
 
+    def _compact_arc_text(self, value: Any, fallback: str = "") -> str:
+        text = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not text:
+            return fallback
+        if len(text) <= 80:
+            return text
+        return f"{text[:80].rstrip('，；。,. ')}..."
+
+    def _collect_recent_arc_lines(self, payload: Dict[str, Any], limit: int = 6) -> List[str]:
+        global_analysis = payload.get("global_analysis") if isinstance(payload.get("global_analysis"), dict) else {}
+        chapter_artifacts = [item for item in (payload.get("chapter_artifacts") or []) if isinstance(item, dict)]
+        lines: List[str] = []
+        for item in chapter_artifacts[-8:]:
+            for candidate in (
+                item.get("scene_summary"),
+                item.get("analysis_summary"),
+                item.get("goal"),
+                item.get("conflict"),
+                *(item.get("must_continue_points") or []),
+            ):
+                compact = self._compact_arc_text(candidate)
+                if compact and compact not in lines:
+                    lines.append(compact)
+                if len(lines) >= limit:
+                    return lines
+        for candidate in (global_analysis.get("main_plot_lines") or []):
+            compact = self._compact_arc_text(candidate)
+            if compact and compact not in lines and "Story Arc" not in compact:
+                lines.append(compact)
+            if len(lines) >= limit:
+                break
+        return lines[:limit]
+
     def _build_supplemental_arcs(self, payload: Dict[str, Any], existing_arc_ids: List[str]) -> List[Dict[str, Any]]:
         project_id = str(payload.get("project_id") or "")
         global_analysis = payload.get("global_analysis") if isinstance(payload.get("global_analysis"), dict) else {}
@@ -982,6 +1047,8 @@ class ChapterAIService:
         main_plot_lines = [str(x).strip() for x in (global_analysis.get("main_plot_lines") or []) if str(x).strip()]
         world_facts = global_analysis.get("world_facts") if isinstance(global_analysis.get("world_facts"), dict) else {}
         must_keep_threads = [str(x).strip() for x in ((global_analysis.get("global_constraints") or {}).get("must_keep_threads") or []) if str(x).strip()]
+        recent_story_lines = self._collect_recent_arc_lines(payload)
+        main_seed = recent_story_lines[0] if recent_story_lines else self._compact_arc_text(main_plot_lines[0] if main_plot_lines else "", "继续推进当前主线冲突")
         supplemental: List[Dict[str, Any]] = []
 
         if "arc_main_auto" not in existing_arc_ids and main_plot_lines:
@@ -989,18 +1056,18 @@ class ChapterAIService:
                 {
                     "arc_id": "arc_main_auto",
                     "project_id": project_id,
-                    "title": "Main Story Arc",
+                    "title": "主线推进弧",
                     "arc_type": "main_arc",
                     "priority": "core",
                     "status": "active",
-                    "goal": main_plot_lines[0],
-                    "core_conflict": main_plot_lines[1] if len(main_plot_lines) > 1 else main_plot_lines[0],
+                    "goal": self._compact_arc_text(main_plot_lines[0]),
+                    "core_conflict": self._compact_arc_text(main_plot_lines[1] if len(main_plot_lines) > 1 else main_seed, main_seed),
                     "current_stage": self._infer_arc_stage("", len(covered_chapter_ids), "active"),
                     "stage_reason": "supplemented_from_main_plot_lines",
                     "stage_confidence": 0.58,
                     "covered_chapter_ids": covered_chapter_ids[:5],
-                    "latest_progress_summary": main_plot_lines[0],
-                    "next_push_suggestion": must_keep_threads[0] if must_keep_threads else main_plot_lines[0],
+                    "latest_progress_summary": main_seed,
+                    "next_push_suggestion": self._compact_arc_text(must_keep_threads[0] if must_keep_threads else main_seed, "继续推进当前主线冲突"),
                 }
             )
             existing_arc_ids.append("arc_main_auto")
@@ -1013,7 +1080,7 @@ class ChapterAIService:
                 {
                     "arc_id": "arc_character_auto",
                     "project_id": project_id,
-                    "title": f"{name} Character Arc",
+                    "title": f"{name}人物弧",
                     "arc_type": "character_arc",
                     "priority": "major",
                     "status": "active",
@@ -1040,19 +1107,19 @@ class ChapterAIService:
                 {
                     "arc_id": "arc_supporting_auto",
                     "project_id": project_id,
-                    "title": "Supporting Pressure Arc",
+                    "title": "支线压力弧",
                     "arc_type": "supporting_arc",
                     "priority": "minor",
                     "status": "active",
-                    "goal": supporting_seed[0],
-                    "core_conflict": supporting_seed[1] if len(supporting_seed) > 1 else supporting_seed[0],
+                    "goal": self._compact_arc_text(supporting_seed[0]),
+                    "core_conflict": self._compact_arc_text(supporting_seed[1] if len(supporting_seed) > 1 else supporting_seed[0]),
                     "current_stage": self._infer_arc_stage("", max(1, len(covered_chapter_ids) // 3), "active"),
                     "stage_reason": "supplemented_from_world_and_threads",
                     "stage_confidence": 0.52,
                     "related_world_rules": supporting_seed[:4],
                     "covered_chapter_ids": covered_chapter_ids[:3],
-                    "latest_progress_summary": supporting_seed[0],
-                    "next_push_suggestion": supporting_seed[0],
+                    "latest_progress_summary": self._compact_arc_text(supporting_seed[0]),
+                    "next_push_suggestion": self._compact_arc_text(supporting_seed[0], "让支线因素重新影响主线"),
                 }
             )
         return supplemental
@@ -1181,6 +1248,8 @@ class ChapterAIService:
         global_analysis = payload.get("global_analysis") if isinstance(payload.get("global_analysis"), dict) else {}
         chapter_artifacts = [item for item in (payload.get("chapter_artifacts") or []) if isinstance(item, dict)]
         main_plot_lines = [str(x).strip() for x in (global_analysis.get("main_plot_lines") or []) if str(x).strip()]
+        recent_story_lines = self._collect_recent_arc_lines(payload)
+        main_seed = recent_story_lines[0] if recent_story_lines else self._compact_arc_text(main_plot_lines[0] if main_plot_lines else "", "继续推进当前主线冲突")
         chapter_bindings = []
         plot_arcs = []
         if main_plot_lines:
@@ -1189,12 +1258,12 @@ class ChapterAIService:
                 {
                     "arc_id": arc_id,
                     "project_id": str(payload.get("project_id") or ""),
-                    "title": "Main Story Arc",
+                    "title": "主线推进弧",
                     "arc_type": "main_arc",
                     "priority": "core",
                     "status": "active",
-                    "goal": main_plot_lines[0],
-                    "core_conflict": main_plot_lines[1] if len(main_plot_lines) > 1 else main_plot_lines[0],
+                    "goal": self._compact_arc_text(main_plot_lines[0]),
+                    "core_conflict": self._compact_arc_text(main_plot_lines[1] if len(main_plot_lines) > 1 else main_seed, main_seed),
                     "stakes": "",
                     "start_chapter_number": 1,
                     "end_chapter_number": 0,
@@ -1207,9 +1276,9 @@ class ChapterAIService:
                     "related_items": [],
                     "related_world_rules": [str(x).strip() for x in ((global_analysis.get("world_facts") or {}).get("rules") or []) if str(x).strip()][:4],
                     "covered_chapter_ids": [str(item.get("chapter_id") or "") for item in chapter_artifacts[:5] if str(item.get("chapter_id") or "").strip()],
-                    "latest_progress_summary": main_plot_lines[0],
+                    "latest_progress_summary": main_seed,
                     "latest_result": "",
-                    "next_push_suggestion": main_plot_lines[0],
+                    "next_push_suggestion": main_seed,
                 }
             )
             for item in chapter_artifacts[: min(len(chapter_artifacts), 5)]:

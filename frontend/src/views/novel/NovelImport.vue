@@ -168,6 +168,7 @@ const organizeProgress = ref({
   last_error: ''
 })
 let organizePollTimer = null
+const lastOrganizeNoticeKey = ref('')
 const activeOrganizeStatuses = ['running', 'pause_requested', 'resume_requested', 'cancelling']
 const terminalOrganizeStatuses = ['paused', 'cancelled', 'error', 'done']
 const organizeTerminalAlertType = computed(() => {
@@ -184,6 +185,21 @@ const organizeTerminalMessage = computed(() => (
   organizeProgress.value.message ||
   ''
 ))
+
+const notifyOrganizeTerminalStatus = () => {
+  const status = String(organizeProgress.value.status || '')
+  const message = organizeTerminalMessage.value
+  if (!terminalOrganizeStatuses.includes(status) || !message) return
+  const noticeKey = `${status}:${message}`
+  if (lastOrganizeNoticeKey.value === noticeKey) return
+  lastOrganizeNoticeKey.value = noticeKey
+  if (status === 'error') {
+    ElMessage.error(message)
+    return
+  }
+  if (status === 'done') return
+  ElMessage.warning(message)
+}
 
 const form = reactive({
   import_mode: 'full',
@@ -403,11 +419,13 @@ const fetchOrganizeProgress = async () => {
       importing.value = false
       stopOrganizePolling()
     } else if (activeOrganizeStatuses.includes(organizeProgress.value.status)) {
+      lastOrganizeNoticeKey.value = ''
       currentStep.value = 2
     } else if (terminalOrganizeStatuses.includes(organizeProgress.value.status)) {
       currentStep.value = 2
       importing.value = false
       stopOrganizePolling()
+      notifyOrganizeTerminalStatus()
     }
   } catch (error) {
     importing.value = false
@@ -435,7 +453,7 @@ const stopOrganizePolling = () => {
 
 const startOrganize = async (forceRebuild = false) => {
   if (!createdNovelId.value) return
-  await contentApi.startOrganize(createdNovelId.value, forceRebuild)
+  await contentApi.startOrganize(createdNovelId.value, forceRebuild, 'full_reanalyze')
   await fetchOrganizeProgress()
   startOrganizePolling()
 }
@@ -466,7 +484,7 @@ const cancelOrganize = async () => {
 
 const retryOrganize = async () => {
   if (!createdNovelId.value) return
-  await contentApi.retryOrganize(createdNovelId.value)
+  await contentApi.retryOrganize(createdNovelId.value, 'full_reanalyze')
   await fetchOrganizeProgress()
   startOrganizePolling()
   ElMessage.success('已重新开始整理')

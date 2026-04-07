@@ -35,7 +35,12 @@ class PromptInputBuilder:
         }
 
     @staticmethod
-    def build_global_analysis_input(project_name: str, outline_context: Dict[str, Any], chapters: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def build_global_analysis_input(
+        project_name: str,
+        outline_context: Dict[str, Any],
+        chapters: List[Dict[str, Any]],
+        chapter_artifacts: List[Dict[str, Any]] | None = None,
+    ) -> Dict[str, Any]:
         normalized_chapters = []
         for item in chapters or []:
             if not isinstance(item, dict):
@@ -48,10 +53,28 @@ class PromptInputBuilder:
                     "content_preview": str(item.get("content") or "").strip()[:900],
                 }
             )
+        normalized_artifacts = []
+        for item in chapter_artifacts or []:
+            if not isinstance(item, dict):
+                continue
+            normalized_artifacts.append(
+                {
+                    "chapter_id": str(item.get("chapter_id") or "").strip(),
+                    "chapter_number": int(item.get("chapter_number") or 0),
+                    "chapter_title": str(item.get("chapter_title") or "").strip(),
+                    "analysis_summary": str(item.get("analysis_summary") or "").strip(),
+                    "scene_summary": str(item.get("scene_summary") or "").strip(),
+                    "goal": str(item.get("goal") or "").strip(),
+                    "conflict": str(item.get("conflict") or "").strip(),
+                    "ending_hook": str(item.get("ending_hook") or "").strip(),
+                    "must_continue_points": [str(x).strip() for x in (item.get("must_continue_points") or []) if str(x).strip()][:6],
+                }
+            )
         return {
             "project_name": project_name or "",
             "outline_context": outline_context or {},
             "chapters": normalized_chapters[:60],
+            "chapter_artifacts": normalized_artifacts[:120],
         }
 
     @staticmethod

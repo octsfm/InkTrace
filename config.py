@@ -24,8 +24,6 @@ class AppConfig:
     db_path: str = "data/inktrace.db"
     
     # API密钥
-    deepseek_api_key: str = ""
-    kimi_api_key: str = ""
     
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -37,8 +35,6 @@ class AppConfig:
             port=int(os.environ.get("INKTRACE_PORT", "9527")),
             debug=os.environ.get("INKTRACE_DEBUG", "false").lower() == "true",
             db_path=os.environ.get("INKTRACE_DB_PATH", "data/inktrace.db"),
-            deepseek_api_key=os.environ.get("DEEPSEEK_API_KEY", ""),
-            kimi_api_key=os.environ.get("KIMI_API_KEY", "")
         )
 
 

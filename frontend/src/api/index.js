@@ -30,6 +30,12 @@ const api = axios.create({
   }
 })
 
+const isCanceledError = (error) => (
+  axios.isCancel?.(error) ||
+  error?.code === 'ERR_CANCELED' ||
+  error?.name === 'CanceledError'
+)
+
 const buildRequestId = () => {
   const ts = Math.floor(Date.now() / 1000)
   const rand = Math.random().toString(36).slice(2, 8)
@@ -97,6 +103,9 @@ const resolveErrorMessage = (error) => {
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    if (isCanceledError(error)) {
+      return Promise.reject(error)
+    }
     const responseRequestId = error?.response?.headers?.['x-request-id']
     const requestId = responseRequestId || error?.config?.metadata?.requestId || ''
     const message = resolveErrorMessage(error)
@@ -110,7 +119,14 @@ api.interceptors.response.use(
 
 export const novelApi = {
   list: () => api.get('/novels/'),
-  get: (id) => api.get(`/novels/${id}`),
+  get: (id, config = {}) => api.get(`/novels/${id}`, {
+    ...config,
+    params: {
+      include_chapters: false,
+      ...(config?.params || {})
+    }
+  }),
+  listChapters: (id, config = {}) => api.get(`/novels/${id}/chapters`, config).then((data) => data?.chapters ?? []),
   create: (data) => api.post('/novels/', data),
   delete: (id) => api.delete(`/novels/${id}`),
   createChapter: (novelId, data) => api.post(`/novels/${novelId}/chapters`, data),
@@ -125,16 +141,16 @@ export const contentApi = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   memory: (novelId) => api.get(`/content/memory/${novelId}`),
-  organize: (novelId, forceRebuild = false) =>
-    api.post(`/content/organize/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}`, {}, { timeout: 0 }),
-  startOrganize: (novelId, forceRebuild = false) =>
-    api.post(`/content/organize/start/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}`),
+  organize: (novelId, forceRebuild = false, mode = 'full_reanalyze') =>
+    api.post(`/content/organize/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}&mode=${encodeURIComponent(mode)}`, {}, { timeout: 0 }),
+  startOrganize: (novelId, forceRebuild = false, mode = 'full_reanalyze') =>
+    api.post(`/content/organize/start/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}&mode=${encodeURIComponent(mode)}`),
   pauseOrganize: (novelId) => api.post(`/content/organize/pause/${novelId}`),
   stopOrganize: (novelId) => api.post(`/content/organize/stop/${novelId}`),
-  resumeOrganize: (novelId) => api.post(`/content/organize/resume/${novelId}`),
+  resumeOrganize: (novelId, mode = '') => api.post(`/content/organize/resume/${novelId}${mode ? `?mode=${encodeURIComponent(mode)}` : ''}`),
   cancelOrganize: (novelId) => api.post(`/content/organize/cancel/${novelId}`),
-  retryOrganize: (novelId) => api.post(`/content/organize/retry/${novelId}`),
-  organizeProgress: (novelId) => api.get(`/content/organize/progress/${novelId}`),
+  retryOrganize: (novelId, mode = 'rebuild_global') => api.post(`/content/organize/retry/${novelId}?mode=${encodeURIComponent(mode)}`),
+  organizeProgress: (novelId, config = {}) => api.get(`/content/organize/progress/${novelId}`, config),
   analyzeStyle: (novelId) => api.get(`/content/style/${novelId}`),
   analyzePlot: (novelId) => api.get(`/content/plot/${novelId}`)
 }
@@ -173,7 +189,7 @@ export const ragApi = {
 export const projectApi = {
   list: () => api.get('/projects/'),
   get: (id) => api.get(`/projects/${id}`),
-  getByNovel: (novelId) => api.get(`/projects/by-novel/${novelId}`),
+  getByNovel: (novelId, config = {}) => api.get(`/projects/by-novel/${novelId}`, config),
   create: (data) => api.post('/projects/', data),
   update: (id, data) => api.put(`/projects/${id}`, data),
   delete: (id) => api.delete(`/projects/${id}`),
@@ -187,11 +203,11 @@ export const projectApi = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   importPreview: (data) => api.post('/content/import/preview', data),
-  organizeV2: (projectId, data) => api.post(`/projects/${projectId}/organize`, data || { mode: 'chapter_first', rebuild_memory: true }, { timeout: 0 }),
-  memoryV2: (projectId) => api.get(`/projects/${projectId}/memory`),
-  memoryViewV2: (projectId) => api.get(`/projects/${projectId}/memory-view`),
+  organizeV2: (projectId, data) => api.post(`/projects/${projectId}/organize`, data || { mode: 'full_reanalyze', rebuild_memory: true }, { timeout: 0 }),
+  memoryV2: (projectId, config = {}) => api.get(`/projects/${projectId}/memory`, config).then((data) => data?.memory ?? data ?? {}),
+  memoryViewV2: (projectId, config = {}) => api.get(`/projects/${projectId}/memory-view`, config).then((data) => data?.memory_view ?? data ?? {}),
   continuationContextV2: (projectId, params) => api.get(`/projects/${projectId}/continuation-context`, { params }),
-  listBranchesV2: (projectId) => api.get(`/projects/${projectId}/branches`),
+  listBranchesV2: (projectId, config = {}) => api.get(`/projects/${projectId}/branches`, config),
   getStyleRequirements: (projectId) => api.get(`/projects/${projectId}/style-requirements`),
   updateStyleRequirements: (projectId, data) => api.put(`/projects/${projectId}/style-requirements`, data),
   extractStyleRequirements: (projectId, data) => api.post(`/projects/${projectId}/style-requirements/extract`, data || { sample_chapter_count: DEFAULT_CHAPTER_COUNT }),
@@ -199,7 +215,7 @@ export const projectApi = {
   chapterPlanV2: (projectId, data) => api.post(`/projects/${projectId}/chapter-plan`, data),
   chapterTasksV2: (projectId) => api.get(`/projects/${projectId}/chapter-tasks`),
   plotArcsV2: (projectId) => api.get(`/projects/${projectId}/plot-arcs`),
-  activePlotArcsV2: (projectId) => api.get(`/projects/${projectId}/plot-arcs/active`),
+  activePlotArcsV2: (projectId, config = {}) => api.get(`/projects/${projectId}/plot-arcs/active`, config),
   chapterArcsV2: (chapterId) => api.get(`/projects/chapters/${chapterId}/arcs`),
   writePreviewV2: (projectId, data) => api.post(`/projects/${projectId}/write/preview`, data, { timeout: 0 }),
   writeCommitV2: (projectId, data) => api.post(`/projects/${projectId}/write/commit`, data, { timeout: 0 }),

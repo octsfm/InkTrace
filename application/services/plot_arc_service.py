@@ -15,11 +15,56 @@ class PlotArcService:
         self.logger = get_logger(__name__)
 
     def list_arcs(self, project_id: str) -> List[PlotArc]:
-        return self.plot_arc_repo.find_by_project(project_id)
+        arcs = self.plot_arc_repo.find_by_project(project_id)
+        changed = False
+        for arc in arcs:
+            if self._repair_arc_for_display(arc):
+                self.plot_arc_repo.save(arc)
+                changed = True
+        return self.plot_arc_repo.find_by_project(project_id) if changed else arcs
 
     def list_active_arcs(self, project_id: str) -> List[PlotArc]:
-        arcs = self.plot_arc_repo.find_by_project(project_id)
+        arcs = self.list_arcs(project_id)
         return [arc for arc in arcs if arc.status == "active"]
+
+    def _compact_arc_text(self, value: str, fallback: str = "") -> str:
+        text = " ".join(str(value or "").split()).strip()
+        if not text:
+            return fallback
+        if len(text) <= 90:
+            return text
+        return f"{text[:90].rstrip('，；。,. ')}..."
+
+    def _repair_arc_for_display(self, arc: PlotArc) -> bool:
+        changed = False
+        title = str(arc.title or "").strip()
+        if title.lower() == "main story arc":
+            arc.title = "主线推进弧"
+            changed = True
+        elif title.lower().endswith(" character arc"):
+            arc.title = f"{title[:-14].strip()}人物弧" if title[:-14].strip() else "人物成长弧"
+            changed = True
+        elif title.lower() in {"supporting pressure arc", "supporting world arc"}:
+            arc.title = "支线压力弧"
+            changed = True
+
+        compact_summary = self._compact_arc_text(arc.latest_progress_summary or "")
+        if compact_summary and compact_summary != (arc.latest_progress_summary or ""):
+            arc.latest_progress_summary = compact_summary
+            changed = True
+
+        compact_push = self._compact_arc_text(arc.next_push_suggestion or "")
+        if not compact_push:
+            compact_push = {
+                "main_arc": "继续推进当前主线冲突。",
+                "character_arc": "继续施加人物选择与代价。",
+                "supporting_arc": "让支线因素重新影响主线。",
+            }.get(arc.arc_type, "继续推进当前剧情冲突。")
+        if compact_push != (arc.next_push_suggestion or ""):
+            arc.next_push_suggestion = compact_push
+            changed = True
+
+        return changed
 
     def clear_project_arcs(self, project_id: str) -> None:
         if hasattr(self.plot_arc_repo, "delete_by_project"):
@@ -144,7 +189,7 @@ class PlotArcService:
                 PlotArc(
                     arc_id=f"arc_{uuid.uuid4().hex[:10]}",
                     project_id=project_id,
-                    title="Main Story Arc",
+                    title="主线推进弧",
                     arc_type="main_arc",
                     priority="core",
                     status="active",
@@ -153,8 +198,8 @@ class PlotArcService:
                     current_stage="setup",
                     stage_reason="fallback_from_main_plot_lines",
                     covered_chapter_ids=chapter_ids[:5],
-                    latest_progress_summary=main_plot_lines[0],
-                    next_push_suggestion="Prioritize the core conflict of the main line.",
+                    latest_progress_summary=main_plot_lines[0][:80],
+                    next_push_suggestion="继续推进当前主线冲突。",
                 )
             )
         if characters:
@@ -162,7 +207,7 @@ class PlotArcService:
                 PlotArc(
                     arc_id=f"arc_{uuid.uuid4().hex[:10]}",
                     project_id=project_id,
-                    title=f"{characters[0]} Character Arc",
+                    title=f"{characters[0]}人物弧",
                     arc_type="character_arc",
                     priority="major",
                     status="active",
@@ -173,7 +218,7 @@ class PlotArcService:
                     related_characters=[characters[0]],
                     covered_chapter_ids=chapter_ids[:5],
                     latest_progress_summary="Character arc initialized.",
-                    next_push_suggestion="Escalate the character's pressure in the next chapter.",
+                    next_push_suggestion=f"在下一章让{characters[0]}承担新的代价。",
                 )
             )
         if world_lines:
@@ -181,7 +226,7 @@ class PlotArcService:
                 PlotArc(
                     arc_id=f"arc_{uuid.uuid4().hex[:10]}",
                     project_id=project_id,
-                    title="Supporting World Arc",
+                    title="支线压力弧",
                     arc_type="supporting_arc",
                     priority="minor",
                     status="dormant",
@@ -191,8 +236,8 @@ class PlotArcService:
                     stage_reason="fallback_from_world_summary",
                     related_world_rules=world_lines[:3],
                     covered_chapter_ids=chapter_ids[:3],
-                    latest_progress_summary=world_lines[0],
-                    next_push_suggestion="Recycle a world rule in a later key chapter.",
+                    latest_progress_summary=world_lines[0][:80],
+                    next_push_suggestion="让支线设定重新影响主线推进。",
                 )
             )
         for arc in arcs[:5]:

@@ -170,7 +170,7 @@ class ImportProjectRequest(BaseRequest):
 
 
 class OrganizeRequest(BaseRequest):
-    mode: str = "chapter_first"
+    mode: str = "full_reanalyze"
     rebuild_memory: bool = True
 
 

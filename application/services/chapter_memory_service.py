@@ -17,6 +17,7 @@ class ChapterMemoryService:
         global_memory_summary: str = "",
         global_outline_summary: str = "",
         recent_chapter_summaries: Optional[List[str]] = None,
+        require_model_success: bool = False,
     ) -> Dict[str, object]:
         analyze_to_outline = getattr(self.chapter_ai_service, "analyze_to_outline", None)
         if callable(analyze_to_outline):
@@ -26,8 +27,11 @@ class ChapterMemoryService:
                 global_memory_summary=global_memory_summary,
                 global_outline_summary=global_outline_summary,
                 recent_chapter_summaries=recent_chapter_summaries or [],
+                require_model_success=require_model_success,
             )
         else:
+            if require_model_success:
+                raise RuntimeError("kimi 章节分析失败，已停止整理，请检查模型配置后重试")
             outline_result = {"outline_draft": {}, "used_fallback": True}
 
         extract_continuation_memory = getattr(self.chapter_ai_service, "extract_continuation_memory", None)
@@ -37,8 +41,11 @@ class ChapterMemoryService:
                 chapter_content=chapter_content,
                 relevant_characters=[],
                 global_constraints=constraints or {},
+                require_model_success=require_model_success,
             )
         else:
+            if require_model_success:
+                raise RuntimeError("kimi 续写记忆提取失败，已停止整理，请检查模型配置后重试")
             text = str(chapter_content or "").strip()
             continuation = {
                 "scene_summary": text[:180],

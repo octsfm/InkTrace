@@ -12,6 +12,8 @@
 </template>
 
 <script setup>
+import { ARC_STAGE_LABELS, ARC_TYPE_LABELS } from '@/constants/storyLabels'
+
 const props = defineProps({
   modelValue: { type: String, default: '' },
   arcs: { type: Array, default: () => [] }
@@ -24,9 +26,18 @@ const handleChange = (value) => {
 }
 
 const formatArcLabel = (arc) => {
-  const title = arc?.title || arc?.arc_id || '未命名剧情弧'
-  const stage = arc?.current_stage ? ` · ${arc.current_stage}` : ''
-  const priority = arc?.priority ? ` · ${arc.priority}` : ''
-  return `${title}${stage}${priority}`
+  const rawTitle = String(arc?.title || '').trim()
+  const title = rawTitle && !/main story arc|character arc|supporting pressure arc|supporting world arc/i.test(rawTitle)
+    ? rawTitle
+    : ({
+        main_arc: '主线推进弧',
+        character_arc: '人物成长弧',
+        supporting_arc: '支线压力弧',
+      }[arc?.arc_type] || arc?.arc_id || '未命名剧情弧')
+  const stageLabel = ARC_STAGE_LABELS[arc?.current_stage] || ''
+  const typeLabel = ARC_TYPE_LABELS[arc?.arc_type] || ''
+  const stage = stageLabel ? ` · ${stageLabel}` : ''
+  const type = typeLabel ? ` · ${typeLabel}` : ''
+  return `${title}${type}${stage}`
 }
 </script>

@@ -375,6 +375,7 @@ def list_active_plot_arcs(
                     "current_stage": arc.current_stage,
                     "latest_progress_summary": arc.latest_progress_summary,
                     "next_push_suggestion": arc.next_push_suggestion,
+                    "covered_chapter_count": len(arc.covered_chapter_ids or []),
                     "latest_snapshot": _snapshot_to_dict((snapshot_repo.list_by_arc(arc.arc_id) or [None])[0]) if (snapshot_repo.list_by_arc(arc.arc_id) or []) else {},
                 }
                 for arc in arcs

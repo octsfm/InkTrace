@@ -1,5 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ElMessage } from 'element-plus'
 
 import NovelImport from '../NovelImport.vue'
 
@@ -106,5 +107,24 @@ describe('NovelImport 整理进度与控制', () => {
     expect(mockPauseOrganize).toHaveBeenCalledWith('novel_1')
     expect(mockResumeOrganize).toHaveBeenCalledWith('novel_1')
     expect(mockCancelOrganize).toHaveBeenCalledWith('novel_1')
+  })
+
+  it('鏁寸悊澶辫触鏃朵細寮瑰嚭閿欒鎻愮ず', async () => {
+    mockOrganizeProgress.mockResolvedValueOnce({
+      status: 'error',
+      stage: 'error',
+      current: 1,
+      total: 5,
+      percent: 20,
+      current_chapter_title: '绗?绔?',
+      message: 'Kimi API Key 无效或未配置，请在模型配置页更新后重新整理。',
+      last_error: 'Kimi API Key 无效或未配置，请在模型配置页更新后重新整理。'
+    })
+    const wrapper = await mountPage()
+    wrapper.vm.createdNovelId = 'novel_1'
+    await wrapper.vm.fetchOrganizeProgress()
+    await flushPromises()
+
+    expect(ElMessage.error).toHaveBeenCalledWith('Kimi API Key 无效或未配置，请在模型配置页更新后重新整理。')
   })
 })

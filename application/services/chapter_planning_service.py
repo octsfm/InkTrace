@@ -173,6 +173,9 @@ class ChapterPlanningService:
             payoff = workflow.clean_text(str(generated_task.get("chapter_payoff") or base_plan["ending_hook"]))
             continuation = workflow.clean_text(str(generated_task.get("opening_continuation") or base_plan["progression"]))
             generated_function = workflow.clean_text(str(generated_task.get("chapter_function") or chapter_function))
+            previous_function = str((plans[-1].get("chapter_task_seed") or {}).get("chapter_function") or "") if plans else ""
+            if previous_function and generated_function == previous_function and chapter_function != generated_function:
+                generated_function = chapter_function
             task_goal_text = "；".join(task_goals[:2])
             if task_goal_text:
                 base_plan["goal"] = f"{base_plan['goal']}；任务要求：{task_goal_text}"

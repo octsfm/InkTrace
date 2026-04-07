@@ -241,6 +241,18 @@ class V2WorkflowService:
             for attr in ("deepseek_client", "kimi_client")
         )
 
+    def _normalize_organize_mode(self, mode: str, rebuild_memory: bool) -> str:
+        normalized = str(mode or "").strip().lower()
+        if normalized in {"", "chapter_first"}:
+            return "full_reanalyze" if rebuild_memory else "rebuild_global"
+        if normalized in {"full", "full_rebuild", "full_reanalyze"}:
+            return "full_reanalyze"
+        if normalized in {"global", "rebuild", "rebuild_global"}:
+            return "rebuild_global"
+        if normalized in {"refresh", "refresh_view", "view"}:
+            return "refresh_view"
+        return "full_reanalyze" if rebuild_memory else "rebuild_global"
+
     def clean_text(self, value: str) -> str:
         cleaned = sanitize_display_text(value)
         if not cleaned:
@@ -356,7 +368,7 @@ class V2WorkflowService:
         self.content_service.import_novel(request)
         memory_view = {}
         if auto_organize:
-            organized = await self.organize_project(project.id.value, mode="chapter_first", rebuild_memory=True)
+            organized = await self.organize_project(project.id.value, mode="full_reanalyze", rebuild_memory=True)
             memory_view = organized.get("memory_view") or {}
         self.logger.info(
             "导入项目完成",
@@ -385,6 +397,7 @@ class V2WorkflowService:
         checkpoint_memory: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         project = self.project_service.get_project(ProjectId(project_id))
+        organize_mode = self._normalize_organize_mode(mode, rebuild_memory)
         if not project:
             raise ValueError("项目不存在")
         self.logger.info(
@@ -393,7 +406,7 @@ class V2WorkflowService:
                 event="organize_started",
                 project_id=project_id,
                 novel_id=str(project.novel_id),
-                mode=mode,
+                mode=organize_mode,
                 rebuild_memory=bool(rebuild_memory),
             ),
         )
@@ -428,7 +441,7 @@ class V2WorkflowService:
         job_id = self.v2_repo.start_workflow_job(
             project_id=project_id,
             workflow_type="organize_novel",
-            input_payload={"mode": mode, "rebuild_memory": rebuild_memory},
+            input_payload={"mode": organize_mode, "rebuild_memory": rebuild_memory},
         )
         novel_id = str(project.novel_id)
         outline = self.outline_repo.find_by_novel(project.novel_id)
@@ -438,29 +451,73 @@ class V2WorkflowService:
             "world_setting": outline.world_setting if outline else "",
             "summary": [outline.premise, outline.story_background] if outline else [],
         }
-        chapters = self._build_chapter_units(project.novel_id, mode)
+        chapters = self._build_chapter_units(project.novel_id, "chapter_first")
         total_chapters = len(chapters)
         self.logger.info(
             "整理准备完成",
             extra=build_log_context(event="organize_prepare_done", project_id=project_id, total_chapters=total_chapters),
         )
-        resume_cursor = 0 if rebuild_memory else max(0, min(int(resume_from or 0), total_chapters))
-        merged_memory: Dict[str, Any] = self._empty_structured_memory(outline_context)
-        if not rebuild_memory and resume_cursor > 0 and isinstance(checkpoint_memory, dict) and checkpoint_memory:
-            merged_memory = checkpoint_memory
-            merged_memory["outline_context"] = outline_context
+        resume_cursor = 0 if rebuild_memory or organize_mode != "full_reanalyze" else max(0, min(int(resume_from or 0), total_chapters))
         global_analysis_service = GlobalAnalysisService(self.prompt_ai_service)
         chapter_memory_service = ChapterMemoryService(self.prompt_ai_service)
         project_name = str(getattr(project, "name", "") or project_id)
-        global_analysis = await global_analysis_service.analyze_story(
-            project_id=project_id,
-            project_name=project_name,
-            outline_context=outline_context,
-            chapters=chapters,
-        )
-        merged_memory = self._merge_structured_memory(merged_memory, global_analysis, "global_analysis")
+        if organize_mode == "refresh_view":
+            memory = self._load_structured_memory(project_id, project.novel_id, outline_context)
+            await _emit_progress(
+                stage="memory_view_build",
+                current=total_chapters,
+                total=total_chapters,
+                message="正在重建结构视图",
+                resumable=False,
+            )
+            self.project_service.bind_memory_to_novel(NovelId(novel_id), memory)
+            memory_payload = self._to_project_memory_payload(project_id, memory)
+            self.v2_repo.save_project_memory(memory_payload)
+            self._sync_primary_repositories(project_id, memory_payload)
+            view_payload = self._to_memory_view_payload(project_id, memory_payload)
+            self.v2_repo.save_memory_view(view_payload)
+            self.v2_repo.finish_workflow_job(
+                job_id,
+                "success",
+                result_payload={"organized_chapter_count": len(chapters), "memory_id": memory_payload["id"]},
+            )
+            await _emit_progress(
+                stage="done",
+                current=total_chapters,
+                total=total_chapters,
+                message=f"结构视图已刷新（{total_chapters}/{total_chapters}）",
+                status="done",
+                resumable=False,
+            )
+            return {
+                "project_id": project_id,
+                "organized_chapter_count": len(chapters),
+                "memory_id": memory_payload["id"],
+                "memory_view": view_payload,
+            }
+        if organize_mode == "rebuild_global":
+            loaded_memory = self._load_structured_memory(project_id, project.novel_id, outline_context)
+            merged_memory = self._prepare_memory_for_global_rebuild(loaded_memory, outline_context)
+            chapter_artifacts: List[Dict[str, Any]] = self._build_chapter_artifacts_from_memory(loaded_memory, chapters)
+            if not chapter_artifacts:
+                raise ValueError("缺少可复用的章节分析结果，请先执行一次完整整理。")
+        else:
+            merged_memory = self._empty_structured_memory(outline_context)
+            if not rebuild_memory and resume_cursor > 0 and isinstance(checkpoint_memory, dict) and checkpoint_memory:
+                merged_memory = checkpoint_memory
+                merged_memory["outline_context"] = outline_context
+            chapter_artifacts = []
         legacy_analysis_tool = None
-        if self._should_use_legacy_analysis_tool():
+        prompt_service_is_custom = not isinstance(self.prompt_ai_service, ChapterAIService)
+        prompt_service_has_live_llm = prompt_service_is_custom or not self._should_use_legacy_analysis_tool()
+        has_prompt_chapter_analysis = (
+            callable(getattr(self.prompt_ai_service, "analyze_to_outline", None))
+            and callable(getattr(self.prompt_ai_service, "extract_continuation_memory", None))
+            and prompt_service_has_live_llm
+        )
+        has_prompt_global_analysis = callable(getattr(self.prompt_ai_service, "analyze_global_story", None)) and prompt_service_has_live_llm
+        has_prompt_plot_arc_extraction = callable(getattr(self.prompt_ai_service, "extract_plot_arcs", None)) and prompt_service_has_live_llm
+        if organize_mode == "full_reanalyze" and self._should_use_legacy_analysis_tool() and not has_prompt_chapter_analysis:
             legacy_analysis_tool = self.analysis_tool_cls(None, None)
         await _emit_progress(
             stage="prepare",
@@ -468,8 +525,9 @@ class V2WorkflowService:
             total=total_chapters,
             message=f"准备整理章节（{resume_cursor}/{total_chapters}）",
         )
-        chapter_artifacts: List[Dict[str, Any]] = []
         for index, chapter in enumerate(chapters, 1):
+            if organize_mode != "full_reanalyze":
+                break
             if index <= resume_cursor:
                 continue
             self.logger.info(
@@ -498,6 +556,7 @@ class V2WorkflowService:
                     global_memory_summary=self._build_outline_memory_summary(merged_memory),
                     global_outline_summary=self._build_outline_summary_text(outline_context, merged_memory),
                     recent_chapter_summaries=self._build_recent_outline_summaries(merged_memory),
+                    require_model_success=legacy_analysis_tool is None,
                 )
             except Exception as error:
                 self.logger.error(
@@ -552,6 +611,24 @@ class V2WorkflowService:
                 resumable=index < total_chapters,
                 memory_snapshot=merged_memory,
             )
+        await _emit_progress(
+            stage="global_analysis",
+            current=total_chapters,
+            total=total_chapters,
+            message="正在汇总章节工件并生成全书分析",
+            resumable=False,
+            memory_snapshot=merged_memory,
+        )
+        global_analysis = await global_analysis_service.analyze_story(
+            project_id=project_id,
+            project_name=project_name,
+            outline_context=outline_context,
+            chapters=[],
+            chapter_artifacts=chapter_artifacts,
+            require_model_success=has_prompt_global_analysis and (organize_mode != "full_reanalyze" or legacy_analysis_tool is None),
+        )
+        merged_memory = self._merge_structured_memory(merged_memory, global_analysis, "global_analysis")
+        merged_memory["chapter_summaries"] = list(dict.fromkeys(merged_memory.get("chapter_summaries") or []))[-300:]
         if self.plot_arc_service:
             if hasattr(self.prompt_ai_service, "extract_plot_arcs"):
                 plot_arc_payload = await self.prompt_ai_service.extract_plot_arcs(
@@ -559,6 +636,7 @@ class V2WorkflowService:
                         "project_id": project_id,
                         "global_analysis": global_analysis,
                         "chapter_artifacts": chapter_artifacts,
+                        "require_model_success": has_prompt_plot_arc_extraction and (organize_mode != "full_reanalyze" or legacy_analysis_tool is None),
                     }
                 )
             else:
@@ -639,7 +717,7 @@ class V2WorkflowService:
 
     def get_memory_view(self, project_id: str) -> Dict[str, Any]:
         cached = self.v2_repo.find_memory_view(project_id) or {}
-        if cached:
+        if cached and not self._memory_view_needs_rebuild(cached):
             return cached
         memory = self.get_memory(project_id) or {}
         if not memory:
@@ -648,6 +726,18 @@ class V2WorkflowService:
         view = self._to_memory_view_payload(project_id, payload)
         self.v2_repo.save_memory_view(view)
         return view
+
+    def _memory_view_needs_rebuild(self, payload: Dict[str, Any]) -> bool:
+        if not isinstance(payload, dict):
+            return True
+        main_plot_lines = [str(x).strip() for x in (payload.get("main_plot_lines") or []) if str(x).strip()]
+        if any(re.search(r"main story arc|character arc|supporting pressure arc|supporting world arc", item, re.IGNORECASE) for item in main_plot_lines):
+            return True
+        if main_plot_lines and all(len(item) > 120 for item in main_plot_lines[:2]):
+            return True
+        if not main_plot_lines and not str(payload.get("current_progress") or "").strip():
+            return True
+        return False
 
     def get_style_requirements(self, project_id: str) -> Dict[str, Any]:
         style_entity = self.style_requirements_repo.find_by_project_id(project_id)
@@ -1190,6 +1280,7 @@ class V2WorkflowService:
                 global_memory_summary=self._build_outline_memory_summary(memory),
                 global_outline_summary=self._build_outline_summary_text(outline_context, memory),
                 recent_chapter_summaries=self._build_recent_outline_summaries(memory),
+                require_model_success=True,
             )
             analysis_payload = self._chapter_bundle_to_analysis_payload(
                 bundle,
@@ -1235,6 +1326,7 @@ class V2WorkflowService:
                             "world_facts": memory.get("world_facts") or {},
                         },
                         "chapter_artifacts": chapter_artifacts,
+                        "require_model_success": True,
                     }
                 )
             else:
@@ -1590,9 +1682,12 @@ class V2WorkflowService:
             if not isinstance(arc, dict):
                 continue
             title = self.clean_text(str(arc.get("title") or ""))
-            summary = self.clean_text(str(arc.get("summary") or ""))
+            summary = self.clean_text(str(arc.get("summary") or arc.get("latest_progress_summary") or arc.get("next_push_suggestion") or ""))
             stage = self.clean_text(str(arc.get("current_stage") or ""))
-            candidate = summary or (f"{title}：{stage}" if title and stage else title)
+            if re.search(r"main story arc|character arc|supporting pressure arc|supporting world arc", title, re.IGNORECASE):
+                candidate = summary
+            else:
+                candidate = summary or (f"{title}：{stage}" if title and stage else title)
             if candidate:
                 lines.append(candidate)
         chapter_summaries = [self.clean_text(str(x)) for x in (payload.get("chapter_summaries") or []) if str(x).strip()]
@@ -1601,7 +1696,17 @@ class V2WorkflowService:
         latest_summary = self.clean_text(str(current_state.get("latest_summary") or "")) if isinstance(current_state, dict) else ""
         if latest_summary:
             lines.append(latest_summary)
-        filtered = [line for line in lines if line and "chunk=" not in line and "分析完成" not in line]
+        filtered = []
+        for line in lines:
+            if not line or "chunk=" in line or "分析完成" in line:
+                continue
+            if re.search(r"main story arc|character arc|supporting pressure arc|supporting world arc", line, re.IGNORECASE):
+                continue
+            compact = re.sub(r"\s+", " ", line).strip()
+            if len(compact) > 120:
+                compact = compact[:120].rsplit(" ", 1)[0].strip() or compact[:120]
+            if compact and compact not in filtered:
+                filtered.append(compact)
         return self.normalize_text_list(filtered, 8)
 
     def _global_constraints_to_dict(self, item: GlobalConstraints) -> Dict[str, Any]:
@@ -1883,6 +1988,94 @@ class V2WorkflowService:
             for idx, part in enumerate([x for x in novel_text.split("\n\n") if x.strip()], 1):
                 units.append({"title": f"单元{idx}", "content": part, "index": idx})
         return units
+
+    def _prepare_memory_for_global_rebuild(
+        self,
+        memory: Dict[str, Any],
+        outline_context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        payload = dict(memory or {})
+        return {
+            "id": str(payload.get("id") or ""),
+            "outline_context": outline_context or {},
+            "chapter_analysis_memories": list(payload.get("chapter_analysis_memories") or []),
+            "chapter_analysis_memory_refs": list(payload.get("chapter_analysis_memory_refs") or []),
+            "chapter_continuation_memories": list(payload.get("chapter_continuation_memories") or []),
+            "chapter_continuation_memory_refs": list(payload.get("chapter_continuation_memory_refs") or []),
+            "chapter_tasks": list(payload.get("chapter_tasks") or []),
+            "chapter_task_refs": list(payload.get("chapter_task_refs") or []),
+            "structural_drafts": list(payload.get("structural_drafts") or []),
+            "detemplated_drafts": list(payload.get("detemplated_drafts") or []),
+            "draft_integrity_checks": list(payload.get("draft_integrity_checks") or []),
+            "continuation_context_snapshots": list(payload.get("continuation_context_snapshots") or []),
+            "characters": [],
+            "world_facts": {
+                "background": [],
+                "power_system": [],
+                "organizations": [],
+                "locations": [],
+                "rules": [],
+                "artifacts": [],
+            },
+            "style_profile": {"narrative_pov": "", "tone_tags": [], "rhythm_tags": []},
+            "global_constraints": {},
+            "chapter_summaries": [],
+            "events": [],
+            "continuity_flags": [],
+            "plot_arcs": [],
+            "current_state": {},
+            "style_requirements": {},
+        }
+
+    def _build_chapter_artifacts_from_memory(
+        self,
+        memory: Dict[str, Any],
+        chapters: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        analysis_map: Dict[str, Dict[str, Any]] = {}
+        for item in (memory.get("chapter_analysis_memories") or []):
+            if not isinstance(item, dict):
+                continue
+            chapter_id = str(item.get("chapter_id") or "").strip()
+            if chapter_id:
+                analysis_map[chapter_id] = item
+        continuation_map: Dict[str, Dict[str, Any]] = {}
+        for item in (memory.get("chapter_continuation_memories") or []):
+            if not isinstance(item, dict):
+                continue
+            chapter_id = str(item.get("chapter_id") or "").strip()
+            if chapter_id:
+                continuation_map[chapter_id] = item
+        artifacts: List[Dict[str, Any]] = []
+        for chapter in chapters or []:
+            if not isinstance(chapter, dict):
+                continue
+            chapter_id = str(chapter.get("id") or "").strip()
+            if not chapter_id:
+                continue
+            analysis = analysis_map.get(chapter_id) or {}
+            continuation = continuation_map.get(chapter_id) or {}
+            outline = self._chapter_outline_to_dict(self._get_chapter_outline_entity(chapter_id))
+            artifact = {
+                "chapter_id": chapter_id,
+                "chapter_number": int(chapter.get("index") or chapter.get("chapter_number") or 0),
+                "chapter_title": self.clean_text(str(chapter.get("title") or analysis.get("chapter_title") or continuation.get("chapter_title") or "")),
+                "analysis_summary": self.clean_text(str(analysis.get("summary") or "")),
+                "scene_summary": self.clean_text(str(continuation.get("scene_summary") or "")),
+                "goal": self.clean_text(str(outline.get("goal") or analysis.get("plot_role") or "")),
+                "conflict": self.clean_text(str(outline.get("conflict") or analysis.get("conflict") or "")),
+                "ending_hook": self.clean_text(str(outline.get("ending_hook") or analysis.get("hook") or continuation.get("last_hook") or "")),
+                "must_continue_points": self.normalize_text_list(
+                    [str(x) for x in (continuation.get("must_continue_points") or analysis.get("foreshadowing") or [])],
+                    6,
+                ),
+            }
+            if any(
+                str(artifact.get(key) or "").strip()
+                for key in ("analysis_summary", "scene_summary", "goal", "conflict", "ending_hook")
+            ) or artifact["must_continue_points"]:
+                artifacts.append(artifact)
+        return artifacts
 
     def _build_outline_memory_summary(self, memory: Dict[str, Any]) -> str:
         lines: List[str] = []

@@ -2,11 +2,12 @@
   <div class="novel-detail-page">
     <el-page-header content="小说详情" @back="goBack" />
 
-    <el-alert v-if="state.loading" title="正在加载小说详情与整理进度…" type="info" show-icon :closable="false" />
+    <el-alert v-if="state.loading" title="正在加载小说详情…" type="info" show-icon :closable="false" />
+    <el-alert v-else-if="state.backgroundLoading" title="正在补充结构记忆与剧情弧信息…" type="info" show-icon :closable="false" />
     <el-alert v-if="state.errorMessage" :title="state.errorMessage" type="error" show-icon :closable="false" />
 
     <el-row :gutter="16" class="detail-grid">
-      <el-col :span="24">
+      <el-col :xs="24" :lg="15">
         <el-card shadow="never">
           <template #header>
             <span>基础信息区</span>
@@ -44,6 +45,17 @@
           <template #header>
             <span>当前活跃剧情弧</span>
           </template>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="全书总弧">
+              {{ wholeBookArcSummary }}
+            </el-descriptions-item>
+            <el-descriptions-item label="开局至今">
+              {{ openingToNowArcSummary }}
+            </el-descriptions-item>
+            <el-descriptions-item label="最近几章">
+              {{ recentChapterArcSummary }}
+            </el-descriptions-item>
+          </el-descriptions>
           <el-empty v-if="!activeArcs.length" description="暂无活跃剧情弧" />
           <template v-else>
             <el-radio-group v-model="arcTimelineType" class="top-gap">
@@ -53,11 +65,12 @@
               <el-radio-button label="supporting_arc">支线弧</el-radio-button>
             </el-radio-group>
             <el-descriptions :column="1" border class="top-gap">
-            <el-descriptions-item v-for="arc in filteredActiveArcs" :key="arc.arc_id" :label="arc.title || '未命名剧情弧'">
+            <el-descriptions-item v-for="arc in filteredActiveArcs" :key="arc.arc_id" :label="arc.display_title || arc.title || '未命名剧情弧'">
               <div>{{ formatArcType(arc.arc_type) }} · {{ formatArcStage(arc.current_stage) }}</div>
               <div>优先级：{{ formatArcPriority(arc.priority) }}</div>
-              <div>{{ arc.latest_progress_summary || '暂无推进概况' }}</div>
-              <div>下一步：{{ arc.next_push_suggestion || '暂无建议' }}</div>
+              <div v-if="arc.covered_chapter_count">覆盖章节：{{ arc.covered_chapter_count }} 章</div>
+              <div>{{ arc.display_summary || '暂无推进概况' }}</div>
+              <div>下一步：{{ arc.display_next_push || '暂无建议' }}</div>
               <div v-if="arc.latest_snapshot?.stage_before || arc.latest_snapshot?.stage_after">
                 最近迁移：{{ formatArcStage(arc.latest_snapshot?.stage_before) }} -> {{ formatArcStage(arc.latest_snapshot?.stage_after) }}
               </div>
@@ -81,7 +94,7 @@
         </el-card>
       </el-col>
 
-      <el-col :span="24">
+      <el-col :xs="24" :lg="9">
         <el-card shadow="never">
           <template #header>
             <span>作者助手建议</span>
@@ -122,7 +135,7 @@
             <el-button :disabled="!canPause" @click="pauseOrganize">暂停</el-button>
             <el-button :disabled="!canResume" @click="resumeOrganize">继续</el-button>
             <el-button :disabled="!canCancel" @click="cancelOrganize">取消</el-button>
-            <el-button :disabled="!canRetry" @click="retryOrganize">重新整理</el-button>
+            <el-button :disabled="!canRetry" :loading="state.organizeLoading" @click="retryOrganize">重新整理</el-button>
             <el-button :loading="state.branchLoading" @click="generateBranches">生成分支</el-button>
             <el-button type="success" @click="goToWrite">进入续写</el-button>
             <el-button @click="state.exportDialogVisible = true">导出</el-button>
@@ -232,7 +245,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { contentApi, exportApi, novelApi, projectApi } from '@/api'
@@ -251,9 +264,16 @@ const chapterPageSize = ref(20)
 const activeArcs = ref([])
 const arcTimelineType = ref('all')
 const exporting = ref(false)
-const organizeProgress = ref({ status: 'idle', stage: 'idle', current: 0, total: 0, percent: 0, current_chapter_title: '', message: '' })
+const organizeProgress = ref({ status: 'idle', stage: 'idle', current: 0, total: 0, percent: 0, current_chapter_title: '', message: '', last_error: '' })
 let progressTimer = null
+let supplementalLoadTimer = null
+let deepSupplementalLoadTimer = null
 let detailRefreshingAfterDone = false
+let latestLoadToken = 0
+const pendingRequestControllers = new Set()
+const lastOrganizeNoticeKey = ref('')
+const activeOrganizeStatuses = ['running', 'pause_requested', 'resume_requested', 'cancelling']
+const terminalOrganizeStatuses = ['paused', 'cancelled', 'error', 'done']
 const exportForm = ref({
   format: 'markdown',
   scope: 'full',
@@ -266,12 +286,79 @@ const latestChapterNumber = computed(() => {
   const latest = [...state.chapters].sort((a, b) => (b.number || 0) - (a.number || 0))[0]
   return latest?.number || 0
 })
+const FALLBACK_ARC_TITLE_RE = /main story arc|character arc|supporting pressure arc|supporting world arc/i
+const FALLBACK_REASON_RE = /fallback_|supplemented_|default_light_planning|default_deep_planning/i
+const splitStoryText = (value) => String(value || '')
+  .replace(/\s+/g, ' ')
+  .split(/[；;。！？!\n]/)
+  .map((item) => item.trim())
+  .filter(Boolean)
+const isOutlineEcho = (value) => String(value || '').trim().length > 120
+const isLowValueArcText = (value) => {
+  const text = String(value || '').trim()
+  if (!text) return true
+  if (FALLBACK_ARC_TITLE_RE.test(text)) return true
+  if (FALLBACK_REASON_RE.test(text)) return true
+  if (/^(题材|前期|后期|世界背景|故事背景|主人公的修仙背景|预计字数)/.test(text)) return true
+  if (/^(main_arc|character_arc|supporting_arc|light_planning|deep_planning)$/i.test(text)) return true
+  return false
+}
+const compactStoryText = (value, fallback = '暂无') => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text) return fallback
+  if (text.length <= 56) return text
+  return `${text.slice(0, 56)}...`
+}
+const parseChapterSummary = (value) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text) return null
+  const match = text.match(/^([^：:]+)[：:]\s*(.+)$/)
+  if (!match) {
+    return { title: '', summary: text }
+  }
+  return {
+    title: String(match[1] || '').trim(),
+    summary: String(match[2] || '').trim()
+  }
+}
+const pickMeaningfulStoryLines = (items, limit = 3) => {
+  const results = []
+  for (const item of items || []) {
+    for (const part of splitStoryText(item)) {
+      if (isLowValueArcText(part) || isOutlineEcho(part)) continue
+      if (!results.includes(part)) {
+        results.push(part)
+      }
+      if (results.length >= limit) {
+        return results
+      }
+    }
+  }
+  return results
+}
+const parsedChapterSummaries = computed(() =>
+  (state.memory?.chapter_summaries || [])
+    .map(parseChapterSummary)
+    .filter(Boolean)
+)
 const currentWritingFocus = computed(() => state.memoryView?.current_progress || '暂无')
 const characterSummary = computed(() => ((state.memoryView?.main_characters || []).map((item) => item.name).filter(Boolean).slice(0, 6).join('、') || '暂无'))
 const worldviewSummary = computed(() => (state.memoryView?.world_summary || []).join('；') || '暂无')
-const mainPlotSummary = computed(() => (state.memoryView?.main_plot_lines || []).join('；') || '暂无')
+const mainPlotSummary = computed(() => {
+  const lines = pickMeaningfulStoryLines(state.memoryView?.main_plot_lines || [], 3)
+  if (lines.length) {
+    return lines.join('；')
+  }
+  return compactStoryText(state.memoryView?.current_progress || '')
+})
 const progressSummary = computed(() => state.memoryView?.current_progress || '暂无')
-const outlineSummary = computed(() => (state.memoryView?.outline_summary || []).join('；') || '暂无')
+const outlineSummary = computed(() => {
+  const lines = pickMeaningfulStoryLines(state.memoryView?.outline_summary || [], 2)
+  if (lines.length) {
+    return lines.join('；')
+  }
+  return '暂无'
+})
 const sortedChapters = computed(() => {
   const chapters = [...state.chapters]
   if (chapterSort.value === 'number_desc') {
@@ -296,19 +383,84 @@ const organizeAlertType = computed(() => {
   if (organizeProgress.value.status === 'done') return 'success'
   return 'info'
 })
+const organizeTerminalMessage = computed(() => (
+  organizeProgress.value.last_error ||
+  organizeProgress.value.message ||
+  ''
+))
 const canPause = computed(() => ['running', 'resume_requested'].includes(organizeProgress.value.status))
 const canResume = computed(() => ['paused', 'pause_requested'].includes(organizeProgress.value.status))
 const canCancel = computed(() => ['running', 'pause_requested', 'paused', 'resume_requested'].includes(organizeProgress.value.status))
 const canRetry = computed(() => ['done', 'error', 'cancelled', 'paused'].includes(organizeProgress.value.status))
+const notifyOrganizeTerminalStatus = () => {
+  const status = String(organizeProgress.value.status || '')
+  const message = organizeTerminalMessage.value
+  if (!terminalOrganizeStatuses.includes(status) || !message) return
+  const noticeKey = `${status}:${message}`
+  if (lastOrganizeNoticeKey.value === noticeKey) return
+  lastOrganizeNoticeKey.value = noticeKey
+  if (status === 'error') {
+    ElMessage.error(message)
+    return
+  }
+  if (status === 'done') return
+  ElMessage.warning(message)
+}
 const formatArcType = (value) => ARC_TYPE_LABELS[value] || value || '未知'
 const formatArcStage = (value) => ARC_STAGE_LABELS[value] || value || '未知'
 const formatArcPriority = (value) => ({ core: '核心', major: '重要', minor: '次要' }[value] || value || '未知')
+const buildArcDisplayTitle = (arc) => {
+  const rawTitle = String(arc?.title || '').trim()
+  if (rawTitle && !FALLBACK_ARC_TITLE_RE.test(rawTitle)) {
+    return rawTitle
+  }
+  if (arc?.arc_type === 'main_arc') return '主线推进弧'
+  if (arc?.arc_type === 'character_arc') return '人物成长弧'
+  return '支线压力弧'
+}
+const buildArcDisplaySummary = (arc) => {
+  const candidates = [
+    arc?.latest_snapshot?.progress_summary,
+    arc?.latest_progress_summary,
+    state.memory?.current_state?.latest_summary,
+    arc?.arc_type === 'main_arc' ? wholeBookArcSummary.value : '',
+    arc?.arc_type === 'character_arc' ? openingToNowArcSummary.value : '',
+    arc?.arc_type === 'supporting_arc' ? recentChapterArcSummary.value : '',
+    state.memoryView?.current_progress,
+    ...(state.memoryView?.main_plot_lines || [])
+  ]
+  const picked = pickMeaningfulStoryLines(candidates, 1)[0]
+  return picked || compactStoryText(candidates.find((item) => String(item || '').trim()), '暂无推进概况')
+}
+const buildArcDisplayNextPush = (arc) => {
+  const candidates = [
+    arc?.latest_snapshot?.change_reason,
+    state.memory?.current_state?.next_writing_focus,
+    arc?.next_push_suggestion,
+    state.memoryView?.current_progress,
+    ...(state.memoryView?.main_plot_lines || [])
+  ]
+  const picked = pickMeaningfulStoryLines(candidates, 1)[0]
+  if (picked) {
+    return compactStoryText(picked, '暂无建议')
+  }
+  if (arc?.arc_type === 'main_arc') return '继续推进当前主线冲突'
+  if (arc?.arc_type === 'character_arc') return '继续施加人物选择与代价'
+  return '让支线因素重新影响主线'
+}
+const normalizeArcForDisplay = (arc) => ({
+  ...arc,
+  display_title: buildArcDisplayTitle(arc),
+  display_summary: buildArcDisplaySummary(arc),
+  display_next_push: buildArcDisplayNextPush(arc),
+})
 const filteredActiveArcs = computed(() => {
-  if (arcTimelineType.value === 'all') return activeArcs.value || []
-  return (activeArcs.value || []).filter((arc) => String(arc.arc_type || '') === arcTimelineType.value)
+  const arcs = (activeArcs.value || []).map(normalizeArcForDisplay)
+  if (arcTimelineType.value === 'all') return arcs
+  return arcs.filter((arc) => String(arc.arc_type || '') === arcTimelineType.value)
 })
 const recommendedArc = computed(() => {
-  const arcs = [...(activeArcs.value || [])]
+  const arcs = [...(activeArcs.value || []).map(normalizeArcForDisplay)]
   const priorityRank = { core: 0, major: 1, minor: 2 }
   const stageRank = { crisis: 0, turning_point: 1, payoff: 2, escalation: 3, early_push: 4, setup: 5, aftermath: 6 }
   return arcs.sort((a, b) => {
@@ -319,7 +471,7 @@ const recommendedArc = computed(() => {
 })
 const recommendedArcLabel = computed(() => {
   if (!recommendedArc.value) return '暂无可推荐剧情弧'
-  return `${recommendedArc.value.title || recommendedArc.value.arc_id} · ${formatArcType(recommendedArc.value.arc_type)} · ${formatArcStage(recommendedArc.value.current_stage)}`
+  return `${recommendedArc.value.display_title || recommendedArc.value.title || recommendedArc.value.arc_id} · ${formatArcType(recommendedArc.value.arc_type)} · ${formatArcStage(recommendedArc.value.current_stage)}`
 })
 const recommendedPlanningMode = computed(() => {
   const stage = String(recommendedArc.value?.current_stage || '')
@@ -330,7 +482,11 @@ const recommendationReason = computed(() => {
   if (!recommendedArc.value) {
     return organizeProgress.value.status === 'done' ? '当前缺少活跃剧情弧，建议先重新整理或补充结构信息。' : '等待整理完成后再生成剧情弧建议。'
   }
-  return recommendedArc.value.latest_snapshot?.change_reason || recommendedArc.value.stage_reason || recommendedArc.value.next_push_suggestion || '建议优先推进当前最关键的活跃剧情弧。'
+  const snapshotReason = compactStoryText(recommendedArc.value.latest_snapshot?.change_reason || '', '')
+  if (snapshotReason && !isLowValueArcText(snapshotReason)) {
+    return snapshotReason
+  }
+  return `当前最新推进集中在“${recommendedArc.value.display_summary || '该剧情弧'}”，这条弧优先级更高，适合先继续推进。`
 })
 const readinessChecklist = computed(() => {
   const checks = []
@@ -343,13 +499,81 @@ const assistantSummary = computed(() => {
   if (!projectId.value) return '当前小说还没有绑定项目，建议先完成导入与整理。'
   if (organizeProgress.value.status !== 'done') return '建议先完成全书整理，再根据剧情弧进入续写。'
   if (!recommendedArc.value) return '剧情弧已接通，但当前没有明确推荐弧，建议重新整理或刷新记忆。'
-  return `优先推进“${recommendedArc.value.title || recommendedArc.value.arc_id}”，并使用${recommendedPlanningModeLabel.value}生成下一章计划。`
+  return `优先推进“${recommendedArc.value.display_title || recommendedArc.value.title || recommendedArc.value.arc_id}”，下一章先处理“${recommendedArc.value.display_next_push || '当前冲突'}”，并使用${recommendedPlanningModeLabel.value}生成计划。`
+})
+const recentChapterArcSummary = computed(() => {
+  const recentAnalyses = (state.memory?.chapter_analysis_memories || [])
+    .filter((item) => item && (item.summary || item.chapter_title))
+    .slice(-3)
+  if (recentAnalyses.length) {
+    return recentAnalyses
+      .map((item) => {
+        const title = String(item.chapter_title || `第${item.chapter_number || '?'}章`).trim()
+        const summary = compactStoryText(item.summary || item.conflict || item.plot_role || '', '')
+        return summary ? `${title}：${summary}` : title
+      })
+      .join('；')
+  }
+  const recentSummaryItems = parsedChapterSummaries.value.slice(-3)
+  if (recentSummaryItems.length) {
+    return recentSummaryItems
+      .map((item, index) => {
+        const title = item.title || `最近第${index + 1}段`
+        const summary = compactStoryText(item.summary || '', '')
+        return summary ? `${title}：${summary}` : title
+      })
+      .join('；')
+  }
+  const recentChapters = [...(state.chapters || [])].sort((a, b) => Number(a.number || 0) - Number(b.number || 0)).slice(-3)
+  if (recentChapters.length) {
+    return recentChapters.map((item) => `第${item.number}章《${item.title || '未命名'}》`).join('；')
+  }
+  return '暂无'
+})
+const wholeBookArcSummary = computed(() => {
+  const firstSummary = compactStoryText(parsedChapterSummaries.value[0]?.summary || '', '')
+  const latestSummary = compactStoryText(state.memory?.current_state?.latest_summary || parsedChapterSummaries.value.at(-1)?.summary || '', '')
+  if (firstSummary && latestSummary && firstSummary !== latestSummary) {
+    return `从${firstSummary}起步，目前推进到${latestSummary}`
+  }
+  const candidates = [
+    state.memory?.global_constraints?.main_plot,
+    state.memory?.outline_context?.premise,
+    parsedChapterSummaries.value[0]?.summary,
+    parsedChapterSummaries.value[1]?.summary,
+    ...(state.memoryView?.outline_summary || []),
+    ...(state.memoryView?.main_plot_lines || []),
+  ]
+  const picked = pickMeaningfulStoryLines(candidates, 2)
+  if (picked.length) {
+    return picked.join('；')
+  }
+  return '暂无'
+})
+const openingToNowArcSummary = computed(() => {
+  const firstSummary = compactStoryText(parsedChapterSummaries.value[0]?.summary || '', '')
+  const latestSummary = compactStoryText(state.memory?.current_state?.latest_summary || state.memoryView?.current_progress || '', '')
+  if (firstSummary && latestSummary && firstSummary !== latestSummary) {
+    return `从开局的${firstSummary}，一路推进到现在的${latestSummary}`
+  }
+  const candidates = [
+    recommendedArc.value?.display_summary,
+    state.memory?.current_state?.latest_summary,
+    state.memory?.current_state?.next_writing_focus,
+    state.memoryView?.current_progress,
+    ...(state.memoryView?.main_plot_lines || []),
+  ]
+  const picked = pickMeaningfulStoryLines(candidates, 2)
+  if (picked.length) {
+    return picked.join('；')
+  }
+  return '暂无'
 })
 const arcTimeline = computed(() =>
   (filteredActiveArcs.value || [])
     .map((arc) => ({
       key: `${arc.arc_id}:${arc.latest_snapshot?.snapshot_id || ''}`,
-      title: arc.title || arc.arc_id || '未命名剧情弧',
+      title: arc.display_title || arc.title || arc.arc_id || '未命名剧情弧',
       stageBefore: arc.latest_snapshot?.stage_before || '',
       stageAfter: arc.latest_snapshot?.stage_after || '',
       changeReason: arc.latest_snapshot?.change_reason || '',
@@ -370,13 +594,48 @@ const stopProgressPolling = () => {
   }
 }
 
-const withTimeout = async (promise, fallbackValue, timeoutMs = 8000) => {
+const stopSupplementalLoad = () => {
+  if (supplementalLoadTimer) {
+    window.clearTimeout(supplementalLoadTimer)
+    supplementalLoadTimer = null
+  }
+}
+
+const stopDeepSupplementalLoad = () => {
+  if (deepSupplementalLoadTimer) {
+    window.clearTimeout(deepSupplementalLoadTimer)
+    deepSupplementalLoadTimer = null
+  }
+}
+
+const isCanceledError = (error) => (
+  error?.code === 'ERR_CANCELED' ||
+  error?.name === 'CanceledError'
+)
+
+const cancelPendingWork = () => {
+  latestLoadToken = Date.now()
+  stopProgressPolling()
+  stopSupplementalLoad()
+  stopDeepSupplementalLoad()
+  pendingRequestControllers.forEach((controller) => controller.abort())
+  pendingRequestControllers.clear()
+  state.loading = false
+  state.backgroundLoading = false
+}
+
+const ACTION_TIMEOUT_FALLBACK = Object.freeze({ __timeout: true })
+
+const withTimeout = async (promise, fallbackValue, timeoutMs = 8000, onTimeout = null) => {
   let timer = null
   try {
     return await Promise.race([
       promise,
       new Promise((resolve) => {
-        timer = window.setTimeout(() => resolve(fallbackValue), timeoutMs)
+        timer = window.setTimeout(() => {
+          if (typeof onTimeout === 'function') onTimeout()
+          resolve(fallbackValue)
+        }, timeoutMs)
       })
     ])
   } finally {
@@ -384,22 +643,85 @@ const withTimeout = async (promise, fallbackValue, timeoutMs = 8000) => {
   }
 }
 
-const fetchOrganizeProgress = async () => {
-  if (!route.params.id) return
-  organizeProgress.value = await withTimeout(contentApi.organizeProgress(route.params.id), organizeProgress.value, 5000)
-  if (['running', 'pause_requested', 'resume_requested', 'cancelling'].includes(organizeProgress.value.status)) {
+const runAbortableRequest = async (requestFactory, fallbackValue, timeoutMs = 8000) => {
+  const controller = new AbortController()
+  pendingRequestControllers.add(controller)
+  try {
+    return await withTimeout(requestFactory({ signal: controller.signal }), fallbackValue, timeoutMs, () => controller.abort())
+  } finally {
+    pendingRequestControllers.delete(controller)
+  }
+}
+
+const withActionTimeout = async (promise, timeoutMs = 8000, message = '操作超时，请稍后重试。') => {
+  const result = await withTimeout(promise, ACTION_TIMEOUT_FALLBACK, timeoutMs)
+  if (result === ACTION_TIMEOUT_FALLBACK) {
+    throw new Error(message)
+  }
+  return result
+}
+
+const unwrapSettledValue = (result, fallbackValue) => (
+  result?.status === 'fulfilled' ? result.value : fallbackValue
+)
+
+const collectSettledErrors = (results) => results
+  .filter((item) => item?.status === 'rejected' && !isCanceledError(item.reason))
+  .map((item) => item.reason)
+
+const applyOrganizeProgress = async (progress, options = {}) => {
+  const { refreshAfterDone = true, notifyTerminal = true } = options
+  organizeProgress.value = progress || organizeProgress.value
+  if (activeOrganizeStatuses.includes(organizeProgress.value.status)) {
+    lastOrganizeNoticeKey.value = ''
     stopProgressPolling()
     progressTimer = window.setTimeout(fetchOrganizeProgress, 1200)
-  } else {
-    stopProgressPolling()
-    if (organizeProgress.value.status === 'done' && projectId.value && !detailRefreshingAfterDone) {
-      detailRefreshingAfterDone = true
-      state.memoryView = await withTimeout(projectApi.memoryViewV2(projectId.value), state.memoryView || {}, 5000)
-      state.novel = await withTimeout(novelApi.get(route.params.id), state.novel || {}, 5000)
-      state.chapters = state.novel?.chapters || []
-      await loadActiveArcs()
-      await loadPersistedBranches()
+    return
+  }
+  stopProgressPolling()
+  if (notifyTerminal) {
+    notifyOrganizeTerminalStatus()
+  }
+  if (refreshAfterDone && organizeProgress.value.status === 'done' && projectId.value && !detailRefreshingAfterDone) {
+    detailRefreshingAfterDone = true
+    const results = await Promise.allSettled([
+      runAbortableRequest((config) => projectApi.memoryV2(projectId.value, config), state.memory || {}, 6000),
+      runAbortableRequest((config) => projectApi.memoryViewV2(projectId.value, config), state.memoryView || {}, 5000),
+      runAbortableRequest((config) => novelApi.get(route.params.id, config), state.novel || {}, 5000),
+      loadNovelChapters(),
+      runAbortableRequest((config) => projectApi.activePlotArcsV2(projectId.value, config), { plot_arcs: [] }, 5000),
+      runAbortableRequest((config) => projectApi.listBranchesV2(projectId.value, config), { branches: [] }, 5000)
+    ])
+    const [memoryResult, memoryViewResult, novelResult, chaptersResult, activeArcResult, branchesResult] = results
+    const errors = collectSettledErrors(results)
+    state.memory = unwrapSettledValue(memoryResult, state.memory || {}) || {}
+    state.memoryView = unwrapSettledValue(memoryViewResult, state.memoryView || {}) || {}
+    state.novel = unwrapSettledValue(novelResult, state.novel || {}) || {}
+    const chapters = unwrapSettledValue(chaptersResult, state.chapters || [])
+    state.chapters = Array.isArray(chapters) && chapters.length ? chapters : (Array.isArray(state.chapters) ? state.chapters : [])
+    activeArcs.value = unwrapSettledValue(activeArcResult, { plot_arcs: activeArcs.value || [] })?.plot_arcs || []
+    state.branches = unwrapSettledValue(branchesResult, { branches: state.branches || [] })?.branches || []
+    const saved = window.localStorage.getItem(branchStorageKey.value)
+    selectedBranchId.value = saved && state.branches.some((item) => item.id === saved) ? saved : ''
+    if (errors.length && !state.errorMessage) {
+      state.errorMessage = errors[0]?.message || '整理完成后的补充信息部分加载失败'
     }
+  }
+}
+
+const fetchOrganizeProgress = async () => {
+  if (!route.params.id) return
+  try {
+    const progress = await runAbortableRequest(
+      (config) => contentApi.organizeProgress(route.params.id, config),
+      organizeProgress.value,
+      5000
+    )
+    await applyOrganizeProgress(progress)
+  } catch (error) {
+    if (isCanceledError(error)) return
+    stopProgressPolling()
+    state.errorMessage = error?.message || '读取整理进度失败'
   }
 }
 
@@ -443,28 +765,119 @@ const handlePageSizeChange = (value) => {
   chapterPage.value = 1
 }
 
-const loadPage = async () => {
-  state.loading = true
+const loadNovelChapters = async () => {
   try {
-    state.novel = await withTimeout(novelApi.get(route.params.id), state.novel || {}, 8000)
-    state.chapters = state.novel?.chapters || []
-    const project = await withTimeout(projectApi.getByNovel(route.params.id), {}, 6000)
-    projectId.value = project?.id || ''
-    state.memoryView = projectId.value ? await withTimeout(projectApi.memoryViewV2(projectId.value), state.memoryView || {}, 6000) : {}
-    await loadActiveArcs()
-    loadArcTimelineTypePreference()
-    loadChapterSortPreference()
-    loadChapterPageSizePreference()
-    await loadPersistedBranches()
+    const chapters = await runAbortableRequest(
+      (config) => novelApi.listChapters(route.params.id, config),
+      state.chapters || [],
+      8000
+    )
+    return Array.isArray(chapters) ? chapters : []
+  } catch (error) {
+    if (isCanceledError(error)) return []
+    return Array.isArray(state.novel?.chapters) ? state.novel.chapters : (Array.isArray(state.chapters) ? state.chapters : [])
+  }
+}
+
+const loadDeepSupplementalData = async (token) => {
+  if (!projectId.value) return
+  try {
+    const results = await Promise.allSettled([
+      runAbortableRequest((config) => projectApi.memoryV2(projectId.value, config), state.memory || {}, 7000),
+      runAbortableRequest((config) => projectApi.listBranchesV2(projectId.value, config), { branches: [] }, 5000)
+    ])
+    if (token !== latestLoadToken) return
+    const [memoryResult, branchesResult] = results
+    state.memory = unwrapSettledValue(memoryResult, state.memory || {}) || {}
+    state.branches = unwrapSettledValue(branchesResult, { branches: state.branches || [] })?.branches || []
+    const saved = window.localStorage.getItem(branchStorageKey.value)
+    selectedBranchId.value = saved && state.branches.some((item) => item.id === saved) ? saved : ''
+  } catch (error) {
+    if (token !== latestLoadToken || isCanceledError(error)) return
+    if (!state.errorMessage) {
+      state.errorMessage = error?.message || '加载补充记忆信息失败'
+    }
+  }
+}
+
+const loadSupplementalData = async (token) => {
+  if (!projectId.value) {
+    state.memory = {}
+    state.memoryView = {}
+    activeArcs.value = []
+    state.branches = []
     fetchOrganizeProgress()
+    return
+  }
+
+  state.backgroundLoading = true
+  try {
+    const results = await Promise.allSettled([
+      runAbortableRequest((config) => projectApi.memoryViewV2(projectId.value, config), state.memoryView || {}, 6000),
+      runAbortableRequest((config) => projectApi.activePlotArcsV2(projectId.value, config), { plot_arcs: [] }, 5000),
+      runAbortableRequest((config) => contentApi.organizeProgress(route.params.id, config), organizeProgress.value, 5000)
+    ])
+    if (token !== latestLoadToken) return
+    const [memoryViewResult, activeArcResult, progressResult] = results
+    const errors = collectSettledErrors(results)
+    state.memoryView = unwrapSettledValue(memoryViewResult, state.memoryView || {}) || {}
+    activeArcs.value = unwrapSettledValue(activeArcResult, { plot_arcs: activeArcs.value || [] })?.plot_arcs || []
+    await applyOrganizeProgress(unwrapSettledValue(progressResult, organizeProgress.value), { refreshAfterDone: false, notifyTerminal: false })
     if (organizeProgress.value.status !== 'done') {
       detailRefreshingAfterDone = false
     }
-    state.errorMessage = ''
-  } catch (error) {
-    state.errorMessage = error?.message || '加载详情页失败'
+    if (errors.length && !state.errorMessage) {
+      state.errorMessage = errors[0]?.message || '加载结构信息失败'
+    }
   } finally {
-    state.loading = false
+    if (token === latestLoadToken) {
+      state.backgroundLoading = false
+    }
+  }
+}
+
+const loadPage = async () => {
+  const token = Date.now()
+  latestLoadToken = token
+  state.loading = true
+  state.backgroundLoading = false
+  try {
+    const results = await Promise.allSettled([
+      runAbortableRequest((config) => novelApi.get(route.params.id, config), state.novel || {}, 8000),
+      loadNovelChapters(),
+      runAbortableRequest((config) => projectApi.getByNovel(route.params.id, config), {}, 6000)
+    ])
+    if (token !== latestLoadToken) return
+    const [novelResult, chaptersResult, projectResult] = results
+    const errors = collectSettledErrors(results)
+    state.novel = unwrapSettledValue(novelResult, state.novel || {}) || {}
+    const chapters = unwrapSettledValue(chaptersResult, state.chapters || [])
+    state.chapters = Array.isArray(chapters) && chapters.length ? chapters : (Array.isArray(state.chapters) ? state.chapters : [])
+    projectId.value = unwrapSettledValue(projectResult, {})?.id || ''
+    loadArcTimelineTypePreference()
+    loadChapterSortPreference()
+    loadChapterPageSizePreference()
+    state.errorMessage = state.novel?.id || state.chapters.length ? '' : (errors[0]?.message || '加载详情页失败')
+  } finally {
+    if (token === latestLoadToken) {
+      state.loading = false
+    }
+  }
+  if (token === latestLoadToken) {
+    stopSupplementalLoad()
+    supplementalLoadTimer = window.setTimeout(() => {
+      supplementalLoadTimer = null
+      if (token === latestLoadToken) {
+        void loadSupplementalData(token)
+      }
+    }, 0)
+    stopDeepSupplementalLoad()
+    deepSupplementalLoadTimer = window.setTimeout(() => {
+      deepSupplementalLoadTimer = null
+      if (token === latestLoadToken) {
+        void loadDeepSupplementalData(token)
+      }
+    }, 400)
   }
 }
 
@@ -472,43 +885,54 @@ const organizeStory = async () => {
   if (!route.params.id) return
   state.organizeLoading = true
   try {
-    await contentApi.startOrganize(route.params.id, false)
+    await withActionTimeout(contentApi.startOrganize(route.params.id, false, 'full_reanalyze'), 8000, '启动整理超时，请稍后重试。')
     await fetchOrganizeProgress()
     ElMessage.success('整理任务已启动')
+  } catch (error) {
+    await fetchOrganizeProgress()
+    throw error
   } finally {
     state.organizeLoading = false
   }
 }
 
 const pauseOrganize = async () => {
-  await contentApi.pauseOrganize(route.params.id)
+  await withActionTimeout(contentApi.pauseOrganize(route.params.id), 8000, '暂停整理超时，请稍后重试。')
   await fetchOrganizeProgress()
   ElMessage.success('已请求暂停整理')
 }
 
 const resumeOrganize = async () => {
-  await contentApi.resumeOrganize(route.params.id)
+  await withActionTimeout(contentApi.resumeOrganize(route.params.id), 8000, '继续整理超时，请稍后重试。')
   await fetchOrganizeProgress()
   ElMessage.success('已请求继续整理')
 }
 
 const cancelOrganize = async () => {
-  await contentApi.cancelOrganize(route.params.id)
+  await withActionTimeout(contentApi.cancelOrganize(route.params.id), 8000, '取消整理超时，请稍后重试。')
   await fetchOrganizeProgress()
   ElMessage.success('已请求取消整理')
 }
 
 const retryOrganize = async () => {
-  await contentApi.retryOrganize(route.params.id)
-  await fetchOrganizeProgress()
-  ElMessage.success('已重新开始整理')
+  state.organizeLoading = true
+  try {
+    await withActionTimeout(contentApi.retryOrganize(route.params.id, 'rebuild_global'), 8000, '重新整理超时，请稍后重试。')
+    await fetchOrganizeProgress()
+    ElMessage.success('已重新开始整理')
+  } catch (error) {
+    await fetchOrganizeProgress()
+    throw error
+  } finally {
+    state.organizeLoading = false
+  }
 }
 
 const generateBranches = async () => {
   if (!projectId.value) return
   state.branchLoading = true
   try {
-    const result = await projectApi.branchesV2(projectId.value, { branch_count: 4 })
+    const result = await withActionTimeout(projectApi.branchesV2(projectId.value, { branch_count: 4 }), 12000, '生成分支超时，请稍后重试。')
     state.branches = result?.branches || []
     selectedBranchId.value = state.branches[0]?.id || ''
     if (selectedBranchId.value) window.localStorage.setItem(branchStorageKey.value, selectedBranchId.value)
@@ -519,14 +943,17 @@ const generateBranches = async () => {
 }
 
 const createChapter = () => {
+  cancelPendingWork()
   router.push(`/novel/${route.params.id}/chapters/new`)
 }
 
 const editChapter = (chapter) => {
+  cancelPendingWork()
   router.push(`/novel/${route.params.id}/chapters/${chapter.id}/edit`)
 }
 
 const importChapter = (chapter) => {
+  cancelPendingWork()
   router.push(`/novel/${route.params.id}/chapters/${chapter.id}/edit`)
 }
 
@@ -536,12 +963,13 @@ const importChapterEntry = () => {
 
 const deleteChapter = async (chapter) => {
   await ElMessageBox.confirm(`确认删除《${chapter.title || `第${chapter.number}章`}》吗？`, '删除章节', { type: 'warning' })
-  await novelApi.deleteChapter(route.params.id, chapter.id)
+  await withActionTimeout(novelApi.deleteChapter(route.params.id, chapter.id), 8000, '删除章节超时，请稍后重试。')
   ElMessage.success('章节已删除')
   await loadPage()
 }
 
 const goToWrite = () => {
+  cancelPendingWork()
   if (selectedBranchId.value) {
     window.localStorage.setItem(branchStorageKey.value, selectedBranchId.value)
   }
@@ -549,6 +977,7 @@ const goToWrite = () => {
 }
 
 const goToWriteWithAssistant = () => {
+  cancelPendingWork()
   if (selectedBranchId.value) {
     window.localStorage.setItem(branchStorageKey.value, selectedBranchId.value)
   }
@@ -560,10 +989,12 @@ const goToWriteWithAssistant = () => {
 }
 
 const goToImport = () => {
+  cancelPendingWork()
   router.push('/import')
 }
 
 const goToOutlineImport = () => {
+  cancelPendingWork()
   router.push('/import')
   ElMessage.info('请在导入页填写大纲文件路径后继续导入')
 }
@@ -571,7 +1002,7 @@ const goToOutlineImport = () => {
 const exportNovel = async () => {
   exporting.value = true
   try {
-    const result = await exportApi.export({
+    const result = await withActionTimeout(exportApi.export({
       novel_id: route.params.id,
       output_path: exportForm.value.outputPath,
       format: exportForm.value.format,
@@ -579,7 +1010,7 @@ const exportNovel = async () => {
       options: {
         chapter_export_mode: exportForm.value.chapterMode
       }
-    })
+    }), 12000, '导出超时，请稍后重试。')
     state.exportDialogVisible = false
     if (result?.file_path) {
       window.open(exportApi.download(result.file_path), '_blank')
@@ -591,6 +1022,7 @@ const exportNovel = async () => {
 }
 
 const goBack = () => {
+  cancelPendingWork()
   router.push('/projects')
 }
 
@@ -605,7 +1037,12 @@ const refreshExportOutputPath = () => {
 }
 
 onMounted(loadPage)
-onBeforeUnmount(stopProgressPolling)
+onBeforeRouteLeave(() => {
+  cancelPendingWork()
+})
+onBeforeUnmount(() => {
+  cancelPendingWork()
+})
 
 watch(selectedBranchId, (value) => {
   if (value && branchStorageKey.value) {
