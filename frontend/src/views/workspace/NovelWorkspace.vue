@@ -38,16 +38,24 @@
       </div>
     </nav>
 
+    <!-- 左二：目录与对象导航区 -->
+    <WorkspaceSidebar v-show="!workspaceStore.isZenMode" />
+
     <!-- 中间：核心内容区 (动态渲染不同视图) -->
     <main class="workspace-main-content">
       <component :is="activeComponent" />
     </main>
 
     <!-- 右侧：AI Copilot 区 -->
-    <aside class="workspace-copilot" :class="{ 'hidden-in-zen': workspaceStore.isZenMode }" v-if="workspaceStore.isCopilotOpen">
-      <!-- Copilot Component will be here -->
-      <div class="copilot-placeholder">Copilot Area</div>
-    </aside>
+    <WorkspaceCopilotPanel
+      v-show="workspaceStore.isCopilotOpen && !workspaceStore.isZenMode"
+      v-model="workspaceStore.activeCopilotTab"
+      :active-arcs="state.activeArcs"
+      :memory-view="state.memoryView"
+      :organize-progress="state.organizeProgress"
+      :suggested-actions="suggestedActions"
+      @trigger="openSection"
+    />
   </div>
 </template>
 
@@ -67,6 +75,8 @@ import WorkspaceWritingStudio from './WorkspaceWritingStudio.vue'
 import WorkspaceStructureStudio from './WorkspaceStructureStudio.vue'
 import WorkspaceChapterManager from './WorkspaceChapterManager.vue'
 import WorkspaceTasksAudit from './WorkspaceTasksAudit.vue'
+import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar.vue'
+import WorkspaceCopilotPanel from '@/components/workspace/WorkspaceCopilotPanel.vue'
 
 const router = useRouter()
 const route = useRoute()

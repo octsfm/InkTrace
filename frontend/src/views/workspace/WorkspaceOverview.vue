@@ -129,127 +129,143 @@ const formatDate = (value) => {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  padding: 32px;
+  background-color: #ffffff;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .hero-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr;
-  gap: 18px;
+  gap: 16px;
 }
 
 .hero-card,
 .workspace-section {
-  padding: 22px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 16px 34px rgba(93, 72, 37, 0.07);
+  padding: 24px;
+  border-radius: 16px;
+  background-color: #F9FAFB;
+  border: 1px solid #E5E7EB;
 }
 
 .hero-card.primary {
-  background:
-    radial-gradient(circle at top right, rgba(207, 122, 60, 0.14), transparent 28%),
-    linear-gradient(135deg, #fff8ee 0%, #fffdf9 100%);
+  background-color: #EFF6FF;
+  border-color: #DBEAFE;
 }
 
 .eyebrow {
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #a86c3b;
+  color: #6B7280;
+}
+
+.hero-card.primary .eyebrow {
+  color: #3B82F6;
 }
 
 .hero-card h2 {
-  margin-top: 10px;
-  font-size: 28px;
-  color: #342318;
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 600;
+  color: #111827;
 }
 
 .hero-card p,
 .section-header p,
 .suggestion-card p {
   margin-top: 8px;
-  line-height: 1.7;
-  color: #6f5641;
+  line-height: 1.6;
+  color: #4B5563;
+  font-size: 14px;
 }
 
 .hero-actions {
   display: flex;
   gap: 12px;
-  margin-top: 18px;
+  margin-top: 20px;
 }
 
 .stat-value {
-  margin-top: 16px;
-  font-size: 34px;
+  margin-top: 12px;
+  font-size: 32px;
   font-weight: 700;
-  color: #39271b;
+  color: #111827;
 }
 
 .stat-meta {
-  margin-top: 10px;
-  color: #8b6f54;
-  line-height: 1.6;
+  margin-top: 8px;
+  color: #6B7280;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .section-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .section-header h3 {
-  font-size: 20px;
-  color: #342318;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
 }
 
 .suggestion-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 
 .suggestion-card {
-  padding: 18px;
-  border-radius: 18px;
-  background: #fff9f1;
+  padding: 16px;
+  border-radius: 12px;
+  background-color: #ffffff;
+  border: 1px solid #E5E7EB;
 }
 
 .suggestion-card h4 {
-  font-size: 16px;
-  color: #3a291c;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
 }
 
 .recent-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .recent-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px 18px;
-  border: none;
-  border-radius: 18px;
-  background: #fff9f1;
-  font: inherit;
+  padding: 14px 16px;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  background-color: #ffffff;
   text-align: left;
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.recent-item:hover {
+  background-color: #F3F4F6;
 }
 
 .recent-title {
-  font-weight: 600;
-  color: #3a291c;
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
 }
 
 .recent-meta {
-  color: #8b6f54;
-  white-space: nowrap;
+  font-size: 13px;
+  color: #6B7280;
 }
 
 @media (max-width: 1200px) {

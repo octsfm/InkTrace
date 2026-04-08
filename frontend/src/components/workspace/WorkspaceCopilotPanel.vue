@@ -1,11 +1,11 @@
 <template>
   <aside class="copilot-panel">
     <div class="copilot-header">
-      <div>
-        <div class="eyebrow">AI Copilot</div>
-        <h3>作者助手</h3>
+      <div class="header-info">
+        <el-icon class="header-icon"><Cpu /></el-icon>
+        <h3>AI Copilot</h3>
       </div>
-      <el-tag size="small" type="success">工作中</el-tag>
+      <el-tag size="small" type="success" effect="plain">Ready</el-tag>
     </div>
 
     <div class="tab-switcher">
@@ -21,61 +21,65 @@
       </button>
     </div>
 
-    <div v-if="modelValue === 'chat'" class="panel-section">
-      <div class="panel-card">
-        <div class="panel-title">统一助手入口</div>
-        <p class="panel-text">
-          第一阶段先提供快捷动作和上下文面板。自由对话入口会在下一阶段接入统一的 AuthorAgent。
-        </p>
-      </div>
-      <div class="quick-actions">
-        <button
-          v-for="action in quickActions"
-          :key="action.key"
-          type="button"
-          class="quick-action"
-          @click="$emit('trigger', action.key)"
-        >
-          <span class="quick-action-title">{{ action.title }}</span>
-          <span class="quick-action-desc">{{ action.description }}</span>
-        </button>
+    <!-- Chat Tab -->
+    <div v-if="modelValue === 'chat'" class="panel-section chat-section">
+      <div class="chat-placeholder">
+        <el-icon class="placeholder-icon"><ChatDotRound /></el-icon>
+        <p>你可以直接问我：</p>
+        <ul class="suggestion-list">
+          <li>"上一次主角和反派冲突在哪一章？"</li>
+          <li>"下一章最适合推进哪条剧情弧？"</li>
+          <li>"这个角色最近的状态是什么？"</li>
+        </ul>
+        <p class="sub-text">（对话助手正在接入中）</p>
       </div>
     </div>
 
-    <div v-else-if="modelValue === 'context'" class="panel-section">
-      <div class="info-grid">
-        <div class="panel-card">
-          <div class="panel-title">当前状态</div>
-          <p class="panel-text">{{ progressText }}</p>
-        </div>
-        <div class="panel-card">
-          <div class="panel-title">当前进度</div>
-          <p class="panel-text">{{ currentProgress }}</p>
-        </div>
+    <!-- Context Tab -->
+    <div v-else-if="modelValue === 'context'" class="panel-section context-section">
+      <div class="context-card">
+        <div class="card-title">当前状态</div>
+        <p class="card-text">{{ progressText }}</p>
       </div>
-      <div class="panel-card">
-        <div class="panel-title">活跃剧情弧</div>
+      
+      <div class="context-card">
+        <div class="card-title">活跃剧情弧</div>
         <div v-if="activeArcs.length" class="arc-list">
           <div v-for="arc in activeArcs.slice(0, 4)" :key="arc.arc_id" class="arc-item">
             <div class="arc-title">{{ arc.title || arc.arc_id }}</div>
             <div class="arc-meta">{{ arc.stage || '未标注阶段' }} · {{ arc.priority || '未标注优先级' }}</div>
           </div>
         </div>
-        <p v-else class="panel-text">当前还没有可用的活跃剧情弧。</p>
+        <p v-else class="card-text empty-text">当前章节还没有可用的活跃剧情弧。</p>
+      </div>
+      
+      <div class="context-card">
+        <div class="card-title">最近引用设定</div>
+        <p class="card-text empty-text">写作过程中提及的人物/世界观设定会显示在这里。</p>
       </div>
     </div>
 
-    <div v-else class="panel-section">
+    <!-- Inspire Tab -->
+    <div v-else class="panel-section inspire-section">
+      <div class="inspire-placeholder">
+        <p class="sub-text">这里将主动展示为你生成的：</p>
+        <ul class="suggestion-list">
+          <li>三种可能的剧情分支</li>
+          <li>下一章的写作方案</li>
+          <li>当前段落的改写方向</li>
+        </ul>
+      </div>
+      
       <div
         v-for="suggestion in suggestedActions"
         :key="suggestion.key"
-        class="panel-card suggestion-card"
+        class="context-card suggestion-card"
       >
-        <div class="panel-title">{{ suggestion.title }}</div>
-        <p class="panel-text">{{ suggestion.description }}</p>
-        <button type="button" class="suggestion-button" @click="$emit('trigger', suggestion.key)">
+        <div class="card-title">{{ suggestion.title }}</div>
+        <p class="card-text">{{ suggestion.description }}</p>
+        <el-button type="primary" plain size="small" @click="$emit('trigger', suggestion.key)">
           {{ suggestion.cta }}
-        </button>
+        </el-button>
       </div>
     </div>
   </aside>
@@ -83,6 +87,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { Cpu, ChatDotRound } from '@element-plus/icons-vue'
 
 const props = defineProps({
   modelValue: {
@@ -111,32 +116,14 @@ defineEmits(['update:modelValue', 'trigger'])
 
 const tabs = ['chat', 'context', 'inspire']
 const tabLabelMap = {
-  chat: '助手',
+  chat: '对话',
   context: '上下文',
   inspire: '灵感'
 }
 
-const quickActions = [
-  {
-    key: 'writing',
-    title: '继续写作',
-    description: '回到当前章节，继续推进正文。'
-  },
-  {
-    key: 'structure',
-    title: '查看结构',
-    description: '打开 Story Model 和剧情弧的结构视图。'
-  },
-  {
-    key: 'tasks',
-    title: '查看任务',
-    description: '查看当前整理、重建或审查任务状态。'
-  }
-]
-
 const progressText = computed(() => {
   const status = String(props.organizeProgress?.status || '').trim()
-  if (!status) return '当前没有正在执行的后台整理任务。'
+  if (!status) return '系统待命中，可随时开始写作。'
   if (status === 'running') {
     return `正在整理中，进度 ${props.organizeProgress?.progress ?? 0}%`
   }
@@ -148,14 +135,6 @@ const progressText = computed(() => {
   }
   return `当前状态：${status}`
 })
-
-const currentProgress = computed(() => {
-  return (
-    props.memoryView?.current_progress ||
-    props.memoryView?.current_state ||
-    '系统正在等待你决定下一步。'
-  )
-})
 </script>
 
 <style scoped>
@@ -164,164 +143,164 @@ const currentProgress = computed(() => {
   flex-direction: column;
   gap: 16px;
   height: 100%;
-  padding: 20px 18px;
-  background:
-    radial-gradient(circle at top right, rgba(196, 115, 53, 0.12), transparent 32%),
-    linear-gradient(180deg, #fbf7f0 0%, #f4eee4 100%);
-  border-left: 1px solid rgba(76, 59, 40, 0.08);
+  width: 320px;
+  padding: 20px 16px;
+  background-color: #ffffff;
+  border-left: 1px solid #E5E7EB;
 }
 
 .copilot-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
 }
 
-.eyebrow {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #a66f3e;
-}
-
-.copilot-header h3 {
-  margin-top: 4px;
-  font-size: 20px;
-  color: #38281e;
-}
-
-.tab-switcher {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+.header-info {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-.tab-button,
-.quick-action,
-.suggestion-button {
-  border: none;
-  background: none;
-  font: inherit;
+.header-icon {
+  font-size: 18px;
+  color: #6366F1;
+}
+
+.copilot-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.tab-switcher {
+  display: flex;
+  background-color: #F3F4F6;
+  border-radius: 8px;
+  padding: 4px;
 }
 
 .tab-button {
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.8);
-  color: #72553a;
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6B7280;
   cursor: pointer;
+  transition: all 0.2s;
 }
 
 .tab-button.active {
-  background: #fffdf9;
-  color: #38281e;
-  box-shadow: 0 10px 26px rgba(109, 78, 38, 0.12);
+  background-color: #ffffff;
+  color: #111827;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .panel-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-  overflow: auto;
+  gap: 16px;
+  flex: 1;
+  overflow-y: auto;
 }
 
-.info-grid {
-  display: grid;
-  grid-template-columns: 1fr;
+.chat-placeholder, .inspire-placeholder {
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+  padding: 20px 16px;
+  background-color: #F9FAFB;
+  border-radius: 12px;
+  border: 1px dashed #E5E7EB;
+  color: #4B5563;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
-.panel-card {
+.placeholder-icon {
+  font-size: 24px;
+  color: #9CA3AF;
+  margin-bottom: 4px;
+}
+
+.suggestion-list {
+  padding-left: 20px;
+  margin: 0;
+  color: #6B7280;
+}
+
+.suggestion-list li {
+  margin-bottom: 6px;
+}
+
+.sub-text {
+  color: #9CA3AF;
+  font-size: 12px;
+}
+
+.context-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 12px 30px rgba(91, 62, 24, 0.08);
+  border-radius: 12px;
+  background-color: #F9FAFB;
+  border: 1px solid #F3F4F6;
 }
 
-.panel-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #38281e;
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
 }
 
-.panel-text {
-  margin-top: 8px;
-  color: #705946;
-  line-height: 1.65;
-}
-
-.quick-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.quick-action {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.86);
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.quick-action:hover,
-.suggestion-button:hover {
-  transform: translateY(-1px);
-}
-
-.quick-action-title {
-  font-weight: 700;
-  color: #3d2c1f;
-}
-
-.quick-action-desc {
-  color: #7e6650;
+.card-text {
+  font-size: 13px;
+  color: #4B5563;
   line-height: 1.5;
+}
+
+.empty-text {
+  color: #9CA3AF;
 }
 
 .arc-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 8px;
 }
 
 .arc-item {
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(244, 235, 222, 0.9);
+  padding: 10px;
+  border-radius: 8px;
+  background-color: #ffffff;
+  border: 1px solid #E5E7EB;
 }
 
 .arc-title {
-  font-weight: 600;
-  color: #3d2c1f;
+  font-size: 13px;
+  font-weight: 500;
+  color: #111827;
 }
 
 .arc-meta {
   margin-top: 4px;
-  font-size: 12px;
-  color: #8c6b50;
+  font-size: 11px;
+  color: #6B7280;
 }
 
 .suggestion-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  background-color: #EFF6FF;
+  border-color: #DBEAFE;
 }
 
-.suggestion-button {
-  align-self: flex-start;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: #b96429;
-  color: #fff8f0;
-  cursor: pointer;
+.suggestion-card .card-title {
+  color: #1E40AF;
+}
+
+.suggestion-card .card-text {
+  color: #1D4ED8;
 }
 </style>
