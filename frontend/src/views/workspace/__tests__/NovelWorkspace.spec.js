@@ -4,12 +4,20 @@ import { createTestingPinia } from '@pinia/testing'
 import { useWorkspaceStore } from '@/stores/workspace'
 import NovelWorkspace from '../NovelWorkspace.vue'
 
+// Mock vue-router
+vi.mock('vue-router', () => ({
+  useRoute: vi.fn(() => ({ params: { id: '1' }, query: {} })),
+  useRouter: vi.fn(() => ({ push: vi.fn() }))
+}))
+
 // Mock child components
 vi.mock('../WorkspaceOverview.vue', () => ({ default: { name: 'WorkspaceOverview', template: '<div class="workspace-overview-mock">Overview</div>' } }))
 vi.mock('../WorkspaceWritingStudio.vue', () => ({ default: { name: 'WorkspaceWritingStudio', template: '<div class="workspace-writing-mock">Writing</div>' } }))
 vi.mock('../WorkspaceStructureStudio.vue', () => ({ default: { name: 'WorkspaceStructureStudio', template: '<div class="workspace-structure-mock">Structure</div>' } }))
 vi.mock('../WorkspaceChapterManager.vue', () => ({ default: { name: 'WorkspaceChapterManager', template: '<div class="workspace-chapter-mock">Chapters</div>' } }))
 vi.mock('../WorkspaceTasksAudit.vue', () => ({ default: { name: 'WorkspaceTasksAudit', template: '<div class="workspace-tasks-mock">Tasks</div>' } }))
+vi.mock('@/components/workspace/WorkspaceSidebar.vue', () => ({ default: { name: 'WorkspaceSidebar', template: '<div class="workspace-sidebar-mock">Sidebar</div>' } }))
+vi.mock('@/components/workspace/WorkspaceCopilotPanel.vue', () => ({ default: { name: 'WorkspaceCopilotPanel', template: '<div class="workspace-copilot-mock">Copilot</div>' } }))
 
 describe('NovelWorkspace.vue', () => {
   let wrapper
@@ -68,7 +76,8 @@ describe('NovelWorkspace.vue', () => {
     store.isZenMode = true
     await wrapper.vm.$nextTick()
     
+    // In Vue Test Utils, elements with v-show=false still exist but are not visible
     expect(wrapper.find('.workspace-nav-bar').classes()).toContain('hidden-in-zen')
-    expect(wrapper.find('.workspace-copilot').classes()).toContain('hidden-in-zen')
+    expect(wrapper.find('.workspace-copilot-mock').isVisible()).toBe(false)
   })
 })

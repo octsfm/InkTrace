@@ -2,61 +2,84 @@
   <div class="workspace-page">
     <section class="workspace-section">
       <div class="section-header">
-        <div>
+        <div class="header-left">
           <h2>结构台</h2>
-          <p>第一阶段先把 Story Model 摘要、活跃剧情弧和当前进度集中起来展示。</p>
+          <p>从宏观视角掌控 Story Model、剧情弧、角色与世界观设定。</p>
         </div>
-        <el-button :loading="workspace.state.structureLoading" @click="workspace.refreshStructure">刷新结构</el-button>
+        <div class="header-actions">
+          <el-button :loading="workspace.state.structureLoading" @click="workspace.refreshStructure">
+            <el-icon><Refresh /></el-icon>刷新结构
+          </el-button>
+        </div>
       </div>
 
       <div class="summary-grid">
         <article class="summary-card">
-          <div class="card-title">主线摘要</div>
-          <p>{{ mainPlotText }}</p>
+          <div class="card-header">
+            <el-icon class="card-icon"><Document /></el-icon>
+            <h3 class="card-title">主线摘要 (Main Plot)</h3>
+          </div>
+          <p class="card-content">{{ mainPlotText }}</p>
         </article>
+        
         <article class="summary-card">
-          <div class="card-title">当前进度</div>
-          <p>{{ currentProgress }}</p>
+          <div class="card-header">
+            <el-icon class="card-icon"><DataLine /></el-icon>
+            <h3 class="card-title">当前进度 (Progress)</h3>
+          </div>
+          <p class="card-content">{{ currentProgress }}</p>
         </article>
+        
         <article class="summary-card">
-          <div class="card-title">当前状态</div>
-          <p>{{ currentState }}</p>
+          <div class="card-header">
+            <el-icon class="card-icon"><Connection /></el-icon>
+            <h3 class="card-title">当前状态 (State)</h3>
+          </div>
+          <p class="card-content">{{ currentState }}</p>
         </article>
       </div>
     </section>
 
     <section class="workspace-section">
       <div class="section-header">
-        <div>
-          <h3>活跃剧情弧</h3>
-          <p>第一阶段先用结构卡片承载，后续再升级为看板和可视化关系图。</p>
+        <div class="header-left">
+          <h3>活跃剧情弧 (Active Plot Arcs)</h3>
+          <p>当前阶段正在推进或需要关注的剧情分支。</p>
         </div>
       </div>
 
       <div v-if="workspace.state.activeArcs.length" class="arc-grid">
         <article v-for="arc in workspace.state.activeArcs" :key="arc.arc_id" class="arc-card">
           <div class="arc-top">
-            <div>
+            <div class="arc-title-area">
               <h4>{{ arc.title || arc.arc_id }}</h4>
-              <div class="arc-type">{{ arc.arc_type || '未标注类型' }}</div>
+              <span class="arc-type">{{ arc.arc_type || '未标注类型' }}</span>
             </div>
-            <el-tag size="small">{{ arc.status || 'unknown' }}</el-tag>
+            <el-tag size="small" :type="getArcStatusType(arc.status)" effect="plain">
+              {{ arc.status || 'unknown' }}
+            </el-tag>
           </div>
-          <p>{{ arc.summary || arc.reason || '当前没有更详细的剧情弧摘要。' }}</p>
+          <p class="arc-desc">{{ arc.summary || arc.reason || '当前没有更详细的剧情弧摘要。' }}</p>
           <div class="arc-meta">
-            <span>阶段：{{ arc.stage || '未标注阶段' }}</span>
-            <span>优先级：{{ arc.priority || '未标注' }}</span>
+            <div class="meta-item">
+              <span class="meta-label">阶段</span>
+              <span class="meta-value">{{ arc.stage || '未标注' }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">优先级</span>
+              <span class="meta-value">{{ arc.priority || '未标注' }}</span>
+            </div>
           </div>
         </article>
       </div>
-      <el-empty v-else description="当前还没有可用的剧情弧。" />
+      <el-empty v-else description="当前没有活跃的剧情弧。" />
     </section>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-
+import { Refresh, Document, DataLine, Connection } from '@element-plus/icons-vue'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 
 const workspace = useWorkspaceContext()
@@ -75,90 +98,92 @@ const currentProgress = computed(() => (
 const currentState = computed(() => (
   workspace.state.memoryView?.current_state || '当前还没有可展示的结构状态。'
 ))
+
+const getArcStatusType = (status) => {
+  switch (String(status).toLowerCase()) {
+    case 'active': return 'primary'
+    case 'dormant': return 'info'
+    case 'completed': return 'success'
+    case 'archived': return 'info'
+    default: return 'warning'
+  }
+}
 </script>
 
 <style scoped>
 .workspace-page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  padding: 32px;
+  background-color: #ffffff;
+  height: 100%;
+  overflow-y: auto;
+  gap: 32px;
 }
 
 .workspace-section {
-  padding: 24px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 16px 34px rgba(93, 72, 37, 0.07);
+  display: flex;
+  flex-direction: column;
 }
 
 .section-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
-.section-header h2,
-.section-header h3 {
-  color: #342318;
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.section-header p,
-.summary-card p,
-.arc-card p {
-  margin-top: 8px;
-  line-height: 1.7;
-  color: #6f5641;
+.header-left h2, .header-left h3 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
 }
 
-.summary-grid,
-.arc-grid {
+.header-left h3 {
+  font-size: 20px;
+}
+
+.header-left p {
+  font-size: 14px;
+  color: #6B7280;
+  margin: 0;
+}
+
+.summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
 }
 
-.summary-card,
-.arc-card {
-  padding: 18px;
-  border-radius: 18px;
-  background: #fff9f1;
+.summary-card {
+  padding: 20px;
+  border-radius: 12px;
+  background-color: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-icon {
+  font-size: 18px;
+  color: #6366F1;
 }
 
 .card-title {
-  font-weight: 700;
-  color: #3a291c;
-}
-
-.arc-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.arc-top h4 {
-  color: #3a291c;
-}
-
-.arc-type,
-.arc-meta {
-  margin-top: 8px;
-  color: #8b6f54;
-}
-
-.arc-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-size: 13px;
-}
-
-@media (max-width: 1200px) {
-  .summary-grid,
-  .arc-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
+  font-size: 16px;
+  font-weight: 600;
+  
