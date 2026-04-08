@@ -53,6 +53,10 @@
 24. [24 UI 工作区重构正式设计稿](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/24_ui_workspace_redesign_spec.md)
 25. [25 第一阶段实施计划](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/25_first_implementation_plan.md)
 26. [26 Workspace 页面级规格说明](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/26_workspace_page_specifications.md)
+27. [27 页面状态与导航规则](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/27_page_state_and_navigation.md)
+28. [28 核心组件规格说明](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/28_component_specifications.md)
+29. [29 交互与任务时序说明](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/29_interaction_and_task_sequence.md)
+30. [30 组件树与状态归属说明](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/30_component_tree_and_state_ownership.md)
 
 ## 4. 当前规则
 
