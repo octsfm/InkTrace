@@ -12,6 +12,9 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.0",
+    "@tiptap/extension-placeholder": "^3.22.2",
+    "@tiptap/starter-kit": "^3.22.2",
+    "@tiptap/vue-3": "^3.22.2",
     "axios": "^1.6.0",
     "element-plus": "^2.4.0",
     "pinia": "^2.1.0",

@@ -139,7 +139,7 @@ const createProject = async () => {
     ElMessage.success('创建完成')
     await loadProjects()
     if (res?.project?.novel_id) {
-      router.push(`/novel/${res.project.novel_id}`)
+      router.push(`/novel/${res.project.novel_id}/workspace/overview`)
     }
   } catch (error) {
     console.error('创建项目失败:', error)
@@ -150,7 +150,7 @@ const createProject = async () => {
 
 const enterProject = (project) => {
   if (!project) return
-  router.push(`/novel/${project.novel_id}`)
+  router.push(`/novel/${project.novel_id}/workspace/overview`)
 }
 
 const archiveProject = async (project) => {

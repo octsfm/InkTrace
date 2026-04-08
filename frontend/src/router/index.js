@@ -25,10 +25,47 @@ const routes = [
         meta: { title: '小说详情' }
       },
       {
+        path: 'novel/:id/workspace',
+        component: () => import('@/views/workspace/NovelWorkspace.vue'),
+        redirect: { name: 'WorkspaceOverview' },
+        children: [
+          {
+            path: 'overview',
+            name: 'WorkspaceOverview',
+            component: () => import('@/views/workspace/WorkspaceOverview.vue'),
+            meta: { title: '小说工作区 · 概览' }
+          },
+          {
+            path: 'structure',
+            name: 'WorkspaceStructure',
+            component: () => import('@/views/workspace/WorkspaceStructureStudio.vue'),
+            meta: { title: '小说工作区 · 结构台' }
+          },
+          {
+            path: 'chapters',
+            name: 'WorkspaceChapters',
+            component: () => import('@/views/workspace/WorkspaceChapterManager.vue'),
+            meta: { title: '小说工作区 · 章节台' }
+          },
+          {
+            path: 'writing',
+            name: 'WorkspaceWriting',
+            component: () => import('@/views/workspace/WorkspaceWritingStudio.vue'),
+            meta: { title: '小说工作区 · 写作台' }
+          },
+          {
+            path: 'tasks',
+            name: 'WorkspaceTasks',
+            component: () => import('@/views/workspace/WorkspaceTasksAudit.vue'),
+            meta: { title: '小说工作区 · 任务台' }
+          }
+        ]
+      },
+      {
         path: 'novel/:id/write',
         name: 'NovelWrite',
         component: () => import('@/views/novel/NovelWrite.vue'),
-        meta: { title: '续写小说' }
+        meta: { title: '继续写作' }
       },
       {
         path: 'novel/:id/chapters/:chapterId/edit',
@@ -64,7 +101,7 @@ const routes = [
         path: 'config',
         name: 'LLMConfig',
         component: () => import('@/views/config/LLMConfig.vue'),
-        meta: { title: '大模型配置' }
+        meta: { title: '模型配置' }
       }
     ]
   }
