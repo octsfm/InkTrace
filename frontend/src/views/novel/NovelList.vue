@@ -24,7 +24,7 @@
         :key="novel.id"
         class="novel-card"
         shadow="hover"
-        @click="$router.push(`/novel/${novel.id}/workspace/overview`)"
+        @click="$router.push(`/novel/${novel.id}`)"
       >
         <div class="novel-info">
           <h3 class="novel-title">{{ novel.title }}</h3>
@@ -57,9 +57,9 @@
         </div>
 
         <div class="novel-actions">
-          <el-button type="primary" size="small" @click.stop="$router.push(`/novel/${novel.id}/workspace/writing`)">
+          <el-button type="primary" size="small" @click.stop="$router.push(`/novel/${novel.id}`)">
             <el-icon><Edit /></el-icon>
-            续写
+            进入工作区
           </el-button>
           <el-button size="small" @click.stop="handleDelete(novel)">
             <el-icon><Delete /></el-icon>
