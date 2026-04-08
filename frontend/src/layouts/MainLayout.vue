@@ -6,9 +6,9 @@
         <span class="logo-text">InkTrace Novel AI</span>
       </div>
       <div class="header-right">
-        <el-button type="primary" @click="$router.push('/projects')">
+        <el-button type="primary" @click="$router.push('/import')">
           <el-icon><Plus /></el-icon>
-          新建项目
+          新建 / 导入小说
         </el-button>
       </div>
     </el-header>
@@ -16,13 +16,9 @@
     <el-container class="main-container">
       <el-aside width="220px" class="sidebar">
         <el-menu :default-active="$route.path" router class="sidebar-menu">
-          <el-menu-item index="/projects">
-            <el-icon><Folder /></el-icon>
-            <span>项目管理</span>
-          </el-menu-item>
           <el-menu-item index="/novels">
             <el-icon><Notebook /></el-icon>
-            <span>小说列表</span>
+            <span>小说工作台</span>
           </el-menu-item>
           <el-menu-item index="/import">
             <el-icon><Upload /></el-icon>
