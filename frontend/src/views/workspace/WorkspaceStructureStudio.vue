@@ -186,4 +186,90 @@ const getArcStatusType = (status) => {
 .card-title {
   font-size: 16px;
   font-weight: 600;
-  
+  color: #111827;
+  margin: 0;
+}
+
+.card-content {
+  font-size: 14px;
+  color: #4B5563;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.arc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.arc-card {
+  padding: 16px;
+  border-radius: 12px;
+  background-color: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.arc-card:hover {
+  border-color: #D1D5DB;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.arc-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.arc-title-area {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.arc-title-area h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.arc-type {
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.arc-desc {
+  font-size: 14px;
+  color: #4B5563;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.arc-meta {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-label {
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
+.meta-value {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 500;
+}
+</style>
