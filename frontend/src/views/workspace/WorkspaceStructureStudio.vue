@@ -1,15 +1,23 @@
 <template>
   <div class="workspace-page">
+    <section class="page-hero">
+      <div class="hero-copy">
+        <div class="hero-eyebrow">Structure</div>
+        <h1>结构与剧情弧工作台</h1>
+        <p>集中查看主线摘要、当前进度和活跃剧情弧，但不抢写作主流程的中心位置。</p>
+      </div>
+      <div class="hero-action">
+        <el-button :loading="workspace.state.structureLoading" @click="workspace.refreshStructure">
+          <el-icon><Refresh /></el-icon>刷新结构
+        </el-button>
+      </div>
+    </section>
+
     <section class="workspace-section">
       <div class="section-header">
         <div class="header-left">
           <h2>结构台</h2>
           <p>从宏观视角掌控 Story Model、剧情弧、角色与世界观设定。</p>
-        </div>
-        <div class="header-actions">
-          <el-button :loading="workspace.state.structureLoading" @click="workspace.refreshStructure">
-            <el-icon><Refresh /></el-icon>刷新结构
-          </el-button>
         </div>
       </div>
 
@@ -48,8 +56,20 @@
         </div>
       </div>
 
+      <div v-if="focusedArc" class="focus-banner">
+        当前聚焦：{{ focusedArc.title || focusedArc.arc_id }}
+      </div>
+
       <div v-if="workspace.state.activeArcs.length" class="arc-grid">
-        <article v-for="arc in workspace.state.activeArcs" :key="arc.arc_id" class="arc-card">
+        <article
+          v-for="arc in workspace.state.activeArcs"
+          :key="arc.arc_id"
+          :ref="(el) => setArcCardRef(arc.arc_id, el)"
+          class="arc-card"
+          :class="{ focused: focusedArcId === arc.arc_id }"
+          :data-arc-id="arc.arc_id"
+          @click="focusArc(arc)"
+        >
           <div class="arc-top">
             <div class="arc-title-area">
               <h4>{{ arc.title || arc.arc_id }}</h4>
@@ -78,11 +98,14 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { Refresh, Document, DataLine, Connection } from '@element-plus/icons-vue'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 const workspace = useWorkspaceContext()
+const workspaceStore = useWorkspaceStore()
+const arcCardRefs = ref({})
 
 const mainPlotText = computed(() => {
   const lines = Array.isArray(workspace.state.memoryView?.main_plot_lines)
@@ -99,6 +122,43 @@ const currentState = computed(() => (
   workspace.state.memoryView?.current_state || '当前还没有可展示的结构状态。'
 ))
 
+const focusedArcId = computed(() => (
+  workspaceStore.currentStructureSection === 'plot_arc' && workspaceStore.currentObject?.type === 'plot_arc'
+    ? String(workspaceStore.currentObject?.arcId || '')
+    : ''
+))
+
+const focusedArc = computed(() => (
+  (workspace.state.activeArcs || []).find((arc) => arc.arc_id === focusedArcId.value) || null
+))
+
+const setArcCardRef = (arcId, el) => {
+  if (!arcId) return
+  if (!el) {
+    delete arcCardRefs.value[arcId]
+    return
+  }
+  arcCardRefs.value[arcId] = el
+}
+
+const scrollToFocusedArc = async (arcId) => {
+  if (!arcId) return
+  await nextTick()
+  const element = arcCardRefs.value[arcId]
+  if (element?.scrollIntoView) {
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+}
+
+const focusArc = (arc) => {
+  workspaceStore.setStructureSection('plot_arc')
+  workspaceStore.setCurrentObject({
+    type: 'plot_arc',
+    arcId: arc?.arc_id || '',
+    title: arc?.title || arc?.arc_id || ''
+  })
+}
+
 const getArcStatusType = (status) => {
   switch (String(status).toLowerCase()) {
     case 'active': return 'primary'
@@ -108,6 +168,15 @@ const getArcStatusType = (status) => {
     default: return 'warning'
   }
 }
+
+watch(
+  () => focusedArcId.value,
+  (arcId) => {
+    if (!arcId) return
+    void scrollToFocusedArc(arcId)
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
@@ -115,15 +184,60 @@ const getArcStatusType = (status) => {
   display: flex;
   flex-direction: column;
   padding: 32px;
-  background-color: #ffffff;
+  background-color: #F8FAFC;
   height: 100%;
   overflow-y: auto;
   gap: 32px;
 }
 
+.page-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px;
+  border-radius: 24px;
+  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+}
+
+.hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hero-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.page-hero h1 {
+  font-size: 28px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.page-hero p {
+  margin: 0;
+  max-width: 760px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #4B5563;
+}
+
 .workspace-section {
   display: flex;
   flex-direction: column;
+  padding: 24px;
+  border-radius: 20px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
 }
 
 .section-header {
@@ -164,7 +278,7 @@ const getArcStatusType = (status) => {
 
 .summary-card {
   padding: 20px;
-  border-radius: 12px;
+  border-radius: 16px;
   background-color: #F9FAFB;
   border: 1px solid #E5E7EB;
   display: flex;
@@ -205,18 +319,37 @@ const getArcStatusType = (status) => {
 
 .arc-card {
   padding: 16px;
-  border-radius: 12px;
+  border-radius: 16px;
   background-color: #FFFFFF;
   border: 1px solid #E5E7EB;
   display: flex;
   flex-direction: column;
   gap: 12px;
   transition: all 0.2s ease;
+  cursor: pointer;
 }
 
 .arc-card:hover {
   border-color: #D1D5DB;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+}
+
+.arc-card.focused {
+  border-color: #C4B5FD;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F5F3FF 100%);
+  box-shadow: 0 16px 28px rgba(124, 58, 237, 0.10);
+}
+
+.focus-banner {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid #DDD6FE;
+  background-color: #F5F3FF;
+  color: #6D28D9;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .arc-top {
@@ -271,5 +404,16 @@ const getArcStatusType = (status) => {
   font-size: 14px;
   color: #111827;
   font-weight: 500;
+}
+
+@media (max-width: 1100px) {
+  .page-hero,
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-hero {
+    flex-direction: column;
+  }
 }
 </style>

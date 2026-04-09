@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
 
 import { chapterEditorApi, contentApi, novelApi, projectApi } from '@/api'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 const createEmptyEditorState = () => ({
   loading: false,
@@ -220,7 +221,26 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
   const runEditorAiAction = async (action) => {
     if (!editor.chapter.id) return null
 
+    const workspaceStore = useWorkspaceStore()
+    const taskMetaMap = {
+      continue: { type: 'writing', label: 'AI 续写', resultType: 'candidate' },
+      optimize: { type: 'rewrite', label: 'AI 去模板化', resultType: 'diff' },
+      rewrite: { type: 'rewrite', label: 'AI 风格改写', resultType: 'diff' },
+      generate: { type: 'writing', label: '根据大纲生成', resultType: 'candidate' },
+      analyze: { type: 'audit', label: 'AI 审查', resultType: 'issues' }
+    }
+    const taskMeta = taskMetaMap[action] || { type: action, label: action, resultType: 'none' }
+    const taskId = `editor-${action}-${Date.now()}`
+
     editor.aiRunning = true
+    workspaceStore.setCurrentTask({
+      id: taskId,
+      type: taskMeta.type,
+      label: taskMeta.label,
+      status: 'running',
+      chapterId: editor.chapter.id,
+      resultType: taskMeta.resultType
+    })
     try {
       const payload = buildEditorPayload()
       let result = null
@@ -268,7 +288,26 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
         editor.integrityCheck = integrityCheck
       }
 
+      workspaceStore.setCurrentTask({
+        id: taskId,
+        type: taskMeta.type,
+        label: taskMeta.label,
+        status: 'completed',
+        chapterId: editor.chapter.id,
+        resultType: taskMeta.resultType
+      })
       return result
+    } catch (error) {
+      workspaceStore.setCurrentTask({
+        id: taskId,
+        type: taskMeta.type,
+        label: taskMeta.label,
+        status: 'failed',
+        chapterId: editor.chapter.id,
+        resultType: taskMeta.resultType,
+        error: error?.message || 'AI 任务失败'
+      })
+      throw error
     } finally {
       editor.aiRunning = false
     }

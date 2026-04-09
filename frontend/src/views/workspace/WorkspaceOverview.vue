@@ -1,5 +1,23 @@
 <template>
   <div class="workspace-page">
+    <section class="page-hero">
+      <div class="hero-copy">
+        <div class="hero-eyebrow">Overview</div>
+        <h1>小说工作区概览</h1>
+        <p>这里不再是旧详情页，而是当前小说状态、最近进度和下一步动作的轻量总览。</p>
+      </div>
+      <div class="hero-chip-row">
+        <div class="hero-chip">
+          <span class="chip-label">当前章节</span>
+          <span class="chip-value">{{ currentChapterLabel }}</span>
+        </div>
+        <div class="hero-chip">
+          <span class="chip-label">活跃剧情弧</span>
+          <span class="chip-value">{{ activeArcCount }}</span>
+        </div>
+      </div>
+    </section>
+
     <section class="hero-grid">
       <article class="hero-card primary">
         <div class="eyebrow">当前状态</div>
@@ -82,6 +100,14 @@ const currentProgress = computed(() => {
   return workspace.state.memoryView?.current_progress || '当前还没有形成稳定的结构进度，适合先从章节或结构页开始。'
 })
 
+const currentChapterLabel = computed(() => {
+  const chapter = (workspace.state.chapters || []).find((item) => item.id === workspace.currentChapterId.value)
+  if (!chapter) return '尚未打开'
+  return chapter.title || `第 ${chapter.chapter_number || '?'} 章`
+})
+
+const activeArcCount = computed(() => String((workspace.state.activeArcs || []).length || 0))
+
 const recentChapters = computed(() => {
   return [...(workspace.state.chapters || [])]
     .sort((a, b) => (b.chapter_number || 0) - (a.chapter_number || 0))
@@ -130,9 +156,76 @@ const formatDate = (value) => {
   flex-direction: column;
   gap: 24px;
   padding: 32px;
-  background-color: #ffffff;
+  background-color: #F8FAFC;
   height: 100%;
   overflow-y: auto;
+}
+
+.page-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px;
+  border-radius: 24px;
+  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+}
+
+.hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hero-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.page-hero h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.page-hero p {
+  max-width: 760px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #4B5563;
+}
+
+.hero-chip-row {
+  display: flex;
+  gap: 12px;
+}
+
+.hero-chip {
+  min-width: 120px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+}
+
+.chip-label {
+  display: block;
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
+.chip-value {
+  display: block;
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
 }
 
 .hero-grid {
@@ -144,14 +237,15 @@ const formatDate = (value) => {
 .hero-card,
 .workspace-section {
   padding: 24px;
-  border-radius: 16px;
-  background-color: #F9FAFB;
+  border-radius: 20px;
+  background-color: #FFFFFF;
   border: 1px solid #E5E7EB;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
 }
 
 .hero-card.primary {
-  background-color: #EFF6FF;
-  border-color: #DBEAFE;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F7FAFF 100%);
+  border-color: #DCE7F8;
 }
 
 .eyebrow {
@@ -223,8 +317,8 @@ const formatDate = (value) => {
 
 .suggestion-card {
   padding: 16px;
-  border-radius: 12px;
-  background-color: #ffffff;
+  border-radius: 16px;
+  background-color: #F9FAFB;
   border: 1px solid #E5E7EB;
 }
 
@@ -246,15 +340,17 @@ const formatDate = (value) => {
   justify-content: space-between;
   padding: 14px 16px;
   border: 1px solid #E5E7EB;
-  border-radius: 12px;
-  background-color: #ffffff;
+  border-radius: 16px;
+  background-color: #FFFFFF;
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .recent-item:hover {
-  background-color: #F3F4F6;
+  transform: translateY(-1px);
+  border-color: #D1D5DB;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
 .recent-title {
@@ -269,9 +365,14 @@ const formatDate = (value) => {
 }
 
 @media (max-width: 1200px) {
+  .page-hero,
   .hero-grid,
   .suggestion-grid {
     grid-template-columns: 1fr;
+  }
+
+  .page-hero {
+    flex-direction: column;
   }
 }
 </style>

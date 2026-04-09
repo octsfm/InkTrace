@@ -1,7 +1,13 @@
 <template>
   <aside class="workspace-sidebar">
+    <div class="sidebar-intro">
+      <div class="sidebar-eyebrow">{{ sidebarEyebrow }}</div>
+      <div class="sidebar-title">{{ sidebarTitle }}</div>
+      <div class="sidebar-subtitle">{{ sidebarSubtitle }}</div>
+    </div>
+
     <!-- Writing View: Chapter Tree -->
-    <section v-if="workspaceStore.activeView === 'writing' || workspaceStore.activeView === 'chapters'" class="sidebar-section chapter-section">
+    <section v-if="workspaceStore.currentView === 'writing' || workspaceStore.currentView === 'chapters'" class="sidebar-section chapter-section">
       <div class="sidebar-heading-row">
         <div class="sidebar-heading">章节目录</div>
         <button type="button" class="ghost-action" @click="createChapter">
@@ -9,13 +15,21 @@
         </button>
       </div>
 
+      <el-input
+        v-model="chapterKeyword"
+        class="sidebar-search"
+        size="small"
+        placeholder="搜索章节"
+        clearable
+      />
+
       <div v-if="!state.chapters || !state.chapters.length" class="sidebar-empty">
         还没有章节，先从导入内容或新建章节开始。
       </div>
 
       <div v-else class="chapter-list">
         <button
-          v-for="chapter in state.chapters"
+          v-for="chapter in filteredChapters"
           :key="chapter.id"
           type="button"
           class="chapter-item"
@@ -32,40 +46,59 @@
     </section>
 
     <!-- Structure View: Object Navigation -->
-    <section v-else-if="workspaceStore.activeView === 'structure'" class="sidebar-section structure-section">
+    <section v-else-if="workspaceStore.currentView === 'structure'" class="sidebar-section structure-section">
       <div class="sidebar-heading-row">
         <div class="sidebar-heading">结构导航</div>
       </div>
       <div class="nav-list">
-        <button class="nav-item">Story Model</button>
-        <button class="nav-item">剧情弧 (PlotArcs)</button>
-        <button class="nav-item">角色 (Characters)</button>
-        <button class="nav-item">世界观 (Worldview)</button>
+        <button
+          v-for="item in structureItems"
+          :key="item.key"
+          class="nav-item"
+          :class="{ active: workspaceStore.currentStructureSection === item.key }"
+          @click="workspaceStore.setStructureSection(item.key)"
+        >
+          {{ item.label }}
+        </button>
       </div>
     </section>
 
     <!-- Tasks View: Task Filter Navigation -->
-    <section v-else-if="workspaceStore.activeView === 'tasks'" class="sidebar-section tasks-section">
+    <section v-else-if="workspaceStore.currentView === 'tasks'" class="sidebar-section tasks-section">
       <div class="sidebar-heading-row">
         <div class="sidebar-heading">任务视图</div>
       </div>
       <div class="nav-list">
-        <button class="nav-item active">所有任务</button>
-        <button class="nav-item">运行中</button>
-        <button class="nav-item">失败</button>
-        <button class="nav-item">已完成</button>
+        <button
+          v-for="item in taskFilters"
+          :key="item.key"
+          class="nav-item"
+          :class="{ active: workspaceStore.currentTaskFilter === item.key }"
+          @click="workspaceStore.setTaskFilter(item.key)"
+        >
+          {{ item.label }}
+        </button>
       </div>
     </section>
     
     <!-- Overview View: Outline/Info -->
-    <section v-else-if="workspaceStore.activeView === 'overview'" class="sidebar-section overview-section">
+    <section v-else-if="workspaceStore.currentView === 'overview'" class="sidebar-section overview-section">
       <div class="sidebar-heading-row">
         <div class="sidebar-heading">概览导航</div>
       </div>
       <div class="nav-list">
-        <button class="nav-item active">项目信息</button>
-        <button class="nav-item">近期动态</button>
-        <button class="nav-item">统计数据</button>
+        <div class="overview-card">
+          <div class="overview-label">当前小说</div>
+          <div class="overview-value">{{ state.novel?.title || '未命名小说' }}</div>
+        </div>
+        <div class="overview-card">
+          <div class="overview-label">最近章节</div>
+          <div class="overview-value">{{ latestChapterLabel }}</div>
+        </div>
+        <div class="overview-card">
+          <div class="overview-label">当前任务</div>
+          <div class="overview-value">{{ taskStatusLabel }}</div>
+        </div>
       </div>
     </section>
 
@@ -73,12 +106,97 @@
 </template>
 
 <script setup>
+import { computed, ref } from 'vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 import { Plus } from '@element-plus/icons-vue'
 
 const workspaceStore = useWorkspaceStore()
 const { state, currentChapterId, openChapter, createChapter } = useWorkspaceContext()
+const chapterKeyword = ref('')
+
+const structureItems = [
+  { key: 'story_model', label: 'Story Model' },
+  { key: 'plot_arc', label: '剧情弧 PlotArc' },
+  { key: 'character', label: '角色 Characters' },
+  { key: 'worldview', label: '世界观 Worldview' },
+  { key: 'risk', label: '风险点 Risks' }
+]
+
+const taskFilters = [
+  { key: 'all', label: '全部任务' },
+  { key: 'running', label: '运行中' },
+  { key: 'failed', label: '失败' },
+  { key: 'completed', label: '已完成' },
+  { key: 'audit', label: '审查' }
+]
+
+const filteredChapters = computed(() => {
+  const keyword = chapterKeyword.value.trim().toLowerCase()
+  const chapters = Array.isArray(state.chapters) ? [...state.chapters] : []
+  const sorted = chapters.sort((a, b) => (a.chapter_number || 0) - (b.chapter_number || 0))
+  if (!keyword) {
+    return sorted
+  }
+
+  return sorted.filter((chapter) => {
+    const title = String(chapter.title || '').toLowerCase()
+    const chapterNo = String(chapter.chapter_number || '')
+    return title.includes(keyword) || chapterNo.includes(keyword)
+  })
+})
+
+const latestChapterLabel = computed(() => {
+  const chapter = [...(state.chapters || [])].sort((a, b) => {
+    const aTs = a.updated_at ? new Date(a.updated_at).getTime() : 0
+    const bTs = b.updated_at ? new Date(b.updated_at).getTime() : 0
+    return bTs - aTs
+  })[0]
+  if (!chapter) return '暂无章节'
+  return chapter.title || `第 ${chapter.chapter_number || '?'} 章`
+})
+
+const taskStatusLabel = computed(() => {
+  const status = String(state.organizeProgress?.status || '').trim()
+  if (!status) return '暂无任务'
+  if (status === 'running') return '整理中'
+  if (status === 'failed' || status === 'error') return '最近失败'
+  if (status === 'success' || status === 'done') return '最近完成'
+  return status
+})
+
+const sidebarMetaMap = {
+  writing: {
+    eyebrow: 'Writing',
+    title: '章节与对象导航',
+    subtitle: '当前以章节为主对象，切换章节不会离开工作区。'
+  },
+  chapters: {
+    eyebrow: 'Chapters',
+    title: '章节导航',
+    subtitle: '统一查看章节对象，再按需进入写作或管理视图。'
+  },
+  structure: {
+    eyebrow: 'Structure',
+    title: '结构导航',
+    subtitle: '在剧情弧、角色与世界观对象之间切换。'
+  },
+  tasks: {
+    eyebrow: 'Tasks',
+    title: '任务筛选',
+    subtitle: '优先处理失败任务和审查结果。'
+  },
+  overview: {
+    eyebrow: 'Overview',
+    title: '项目摘要',
+    subtitle: '只展示最小必要信息，帮助你决定下一步。'
+  }
+}
+
+const sidebarMeta = computed(() => sidebarMetaMap[workspaceStore.currentView] || sidebarMetaMap.overview)
+const sidebarEyebrow = computed(() => sidebarMeta.value.eyebrow)
+const sidebarTitle = computed(() => sidebarMeta.value.title)
+const sidebarSubtitle = computed(() => sidebarMeta.value.subtitle)
 
 const formatDate = (value) => {
   if (!value) return ''
@@ -97,12 +215,42 @@ const formatDate = (value) => {
 .workspace-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
   height: 100%;
   width: 240px;
-  padding: 20px 16px;
-  background-color: #ffffff;
+  padding: 20px 16px 16px;
+  background-color: #F8FAFC;
   border-right: 1px solid #E5E7EB;
+}
+
+.sidebar-intro {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.sidebar-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sidebar-title {
+  margin-top: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.sidebar-subtitle {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6B7280;
 }
 
 .sidebar-section {
@@ -111,6 +259,15 @@ const formatDate = (value) => {
   gap: 12px;
   flex: 1;
   min-height: 0;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.sidebar-search {
+  margin-bottom: 4px;
 }
 
 .sidebar-heading-row {
@@ -129,16 +286,18 @@ const formatDate = (value) => {
 }
 
 .ghost-action {
-  border: none;
-  background: none;
+  border: 1px solid #E5E7EB;
+  background: #FFFFFF;
   color: #6B7280;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
+  padding: 6px;
+  border-radius: 10px;
+  transition: all 0.2s ease;
 }
 
 .ghost-action:hover {
-  background-color: #F3F4F6;
+  background-color: #F9FAFB;
+  border-color: #D1D5DB;
   color: #374151;
 }
 
@@ -156,13 +315,13 @@ const formatDate = (value) => {
   align-items: flex-start;
   gap: 4px;
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
   border: none;
-  background: transparent;
+  background: #FFFFFF;
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .nav-item {
@@ -174,12 +333,14 @@ const formatDate = (value) => {
 }
 
 .chapter-item:hover, .nav-item:hover {
-  background-color: #F3F4F6;
+  background-color: #F9FAFB;
+  transform: translateY(-1px);
 }
 
 .chapter-item.active, .nav-item.active {
   background-color: #EFF6FF;
   color: #1D4ED8;
+  box-shadow: inset 0 0 0 1px #DBEAFE;
 }
 
 .chapter-item.active .chapter-title {
@@ -213,7 +374,28 @@ const formatDate = (value) => {
   font-size: 13px;
   color: #6B7280;
   background-color: #F9FAFB;
-  border-radius: 8px;
+  border-radius: 14px;
   text-align: center;
+  border: 1px dashed #E5E7EB;
+}
+
+.overview-card {
+  padding: 14px;
+  border: 1px solid #E5E7EB;
+  border-radius: 14px;
+  background-color: #F9FAFB;
+}
+
+.overview-label {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-bottom: 6px;
+}
+
+.overview-value {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #111827;
+  font-weight: 500;
 }
 </style>

@@ -1,7 +1,10 @@
 <template>
   <el-card shadow="never" class="context-source-panel">
     <template #header>
-      <span>本次 AI 参考了</span>
+      <div>
+        <div class="eyebrow">Context</div>
+        <span class="panel-title">本次 AI 参考了</span>
+      </div>
     </template>
     <el-collapse>
       <el-collapse-item title="最近章节" name="recent">
@@ -49,8 +52,30 @@ const mainPlotText = computed(() => String((props.context.global_constraints || 
 </script>
 
 <style scoped>
+.context-source-panel {
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.eyebrow {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9CA3AF;
+}
+
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
 .meta-line {
   margin-bottom: 8px;
-  color: #606266;
+  color: #4B5563;
+  line-height: 1.6;
 }
 </style>

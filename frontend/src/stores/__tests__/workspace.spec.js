@@ -12,8 +12,9 @@ describe('Workspace Store (DDD + TDD)', () => {
     
     // Assert default state
     expect(store.novelId).toBeNull()
-    expect(store.activeView).toBe('overview') // Default view is usually overview or writing
-    expect(store.activeChapterId).toBeNull()
+    expect(store.currentView).toBe('writing')
+    expect(store.currentChapterId).toBeNull()
+    expect(store.currentCopilotTab).toBe('context')
     expect(store.isZenMode).toBe(false)
   })
 
@@ -22,7 +23,7 @@ describe('Workspace Store (DDD + TDD)', () => {
     
     // Switch view
     store.switchView('structure')
-    expect(store.activeView).toBe('structure')
+    expect(store.currentView).toBe('structure')
     
     // Test that zen mode is disabled when switching to a non-writing view
     store.isZenMode = true
@@ -33,11 +34,16 @@ describe('Workspace Store (DDD + TDD)', () => {
   it('should open chapter and automatically switch to writing view', () => {
     const store = useWorkspaceStore()
     
-    store.activeView = 'overview'
+    store.currentView = 'overview'
     store.openChapter('chapter-1')
     
-    expect(store.activeChapterId).toBe('chapter-1')
-    expect(store.activeView).toBe('writing')
+    expect(store.currentChapterId).toBe('chapter-1')
+    expect(store.currentView).toBe('writing')
+    expect(store.currentObject).toEqual({
+      type: 'chapter',
+      id: 'chapter-1',
+      title: ''
+    })
     expect(store.isZenMode).toBe(false) // Opening a chapter should exit zen mode to show context
   })
 })

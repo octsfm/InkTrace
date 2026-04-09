@@ -2,8 +2,13 @@
   <aside class="copilot-panel">
     <div class="copilot-header">
       <div class="header-info">
-        <el-icon class="header-icon"><Cpu /></el-icon>
-        <h3>AI Copilot</h3>
+        <div class="header-mark">
+          <el-icon class="header-icon"><Cpu /></el-icon>
+        </div>
+        <div>
+          <div class="header-eyebrow">Copilot</div>
+          <h3>AI Copilot</h3>
+        </div>
       </div>
       <el-tag size="small" type="success" effect="plain">Ready</el-tag>
     </div>
@@ -43,19 +48,31 @@
       </div>
       
       <div class="context-card">
-        <div class="card-title">活跃剧情弧</div>
+        <div class="card-header-row">
+          <div class="card-title">活跃剧情弧</div>
+          <button type="button" class="inline-link" @click="$emit('trigger', buildStructureAction())">
+            打开结构页
+          </button>
+        </div>
         <div v-if="activeArcs.length" class="arc-list">
-          <div v-for="arc in activeArcs.slice(0, 4)" :key="arc.arc_id" class="arc-item">
+          <button
+            v-for="arc in activeArcs.slice(0, 4)"
+            :key="arc.arc_id"
+            type="button"
+            class="arc-item"
+            @click="$emit('trigger', buildArcAction(arc))"
+          >
             <div class="arc-title">{{ arc.title || arc.arc_id }}</div>
-            <div class="arc-meta">{{ arc.stage || '未标注阶段' }} · {{ arc.priority || '未标注优先级' }}</div>
-          </div>
+            <div class="arc-meta">{{ arc.stage || arc.current_stage || '未标注阶段' }} · {{ arc.priority || '未标注优先级' }}</div>
+            <div class="arc-cta">查看该剧情弧</div>
+          </button>
         </div>
         <p v-else class="card-text empty-text">当前章节还没有可用的活跃剧情弧。</p>
       </div>
       
       <div class="context-card">
         <div class="card-title">最近引用设定</div>
-        <p class="card-text empty-text">写作过程中提及的人物/世界观设定会显示在这里。</p>
+        <p class="card-text">{{ memorySummaryText }}</p>
       </div>
     </div>
 
@@ -77,7 +94,7 @@
       >
         <div class="card-title">{{ suggestion.title }}</div>
         <p class="card-text">{{ suggestion.description }}</p>
-        <el-button type="primary" plain size="small" @click="$emit('trigger', suggestion.key)">
+        <el-button type="primary" plain size="small" @click="$emit('trigger', suggestion.action || suggestion.key)">
           {{ suggestion.cta }}
         </el-button>
       </div>
@@ -135,17 +152,45 @@ const progressText = computed(() => {
   }
   return `当前状态：${status}`
 })
+
+const memorySummaryText = computed(() => {
+  const summary = String(props.memoryView?.current_progress || '').trim()
+  if (summary) {
+    return summary
+  }
+
+  const stageCount = Array.isArray(props.activeArcs) ? props.activeArcs.length : 0
+  if (stageCount) {
+    return `当前有 ${stageCount} 条可推进剧情弧，可直接进入结构页查看。`
+  }
+
+  return '写作过程中提及的人物、世界观与主线约束会逐步汇总在这里。'
+})
+
+const buildStructureAction = () => ({
+  type: 'section',
+  section: 'structure',
+  object: {
+    type: 'plot_arc'
+  }
+})
+
+const buildArcAction = (arc) => ({
+  type: 'arc',
+  arcId: arc?.arc_id || '',
+  title: arc?.title || arc?.arc_id || '未命名剧情弧'
+})
 </script>
 
 <style scoped>
 .copilot-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   height: 100%;
   width: 320px;
-  padding: 20px 16px;
-  background-color: #ffffff;
+  padding: 20px 16px 16px;
+  background-color: #F8FAFC;
   border-left: 1px solid #E5E7EB;
 }
 
@@ -153,17 +198,41 @@ const progressText = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
 }
 
 .header-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+
+.header-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background-color: #111827;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-eyebrow {
+  margin-bottom: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9CA3AF;
 }
 
 .header-icon {
   font-size: 18px;
-  color: #6366F1;
 }
 
 .copilot-header h3 {
@@ -174,17 +243,19 @@ const progressText = computed(() => {
 
 .tab-switcher {
   display: flex;
-  background-color: #F3F4F6;
-  border-radius: 8px;
-  padding: 4px;
+  background-color: #FFFFFF;
+  border-radius: 16px;
+  padding: 6px;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.03);
 }
 
 .tab-button {
   flex: 1;
   border: none;
   background: transparent;
-  padding: 6px 0;
-  border-radius: 6px;
+  padding: 8px 0;
+  border-radius: 12px;
   font-size: 13px;
   font-weight: 500;
   color: #6B7280;
@@ -193,9 +264,9 @@ const progressText = computed(() => {
 }
 
 .tab-button.active {
-  background-color: #ffffff;
+  background-color: #F9FAFB;
   color: #111827;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: inset 0 0 0 1px #E5E7EB;
 }
 
 .panel-section {
@@ -211,9 +282,10 @@ const progressText = computed(() => {
   flex-direction: column;
   gap: 12px;
   padding: 20px 16px;
-  background-color: #F9FAFB;
-  border-radius: 12px;
+  background-color: #FFFFFF;
+  border-radius: 18px;
   border: 1px dashed #E5E7EB;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.03);
   color: #4B5563;
   font-size: 13px;
   line-height: 1.6;
@@ -245,9 +317,17 @@ const progressText = computed(() => {
   flex-direction: column;
   gap: 8px;
   padding: 16px;
-  border-radius: 12px;
-  background-color: #F9FAFB;
-  border: 1px solid #F3F4F6;
+  border-radius: 18px;
+  background-color: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.card-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .card-title {
@@ -273,10 +353,23 @@ const progressText = computed(() => {
 }
 
 .arc-item {
-  padding: 10px;
-  border-radius: 8px;
-  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 14px;
+  background-color: #F9FAFB;
   border: 1px solid #E5E7EB;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.arc-item:hover {
+  border-color: #D1D5DB;
+  transform: translateY(-1px);
 }
 
 .arc-title {
@@ -289,6 +382,20 @@ const progressText = computed(() => {
   margin-top: 4px;
   font-size: 11px;
   color: #6B7280;
+}
+
+.arc-cta,
+.inline-link {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4F46E5;
+}
+
+.inline-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
 }
 
 .suggestion-card {

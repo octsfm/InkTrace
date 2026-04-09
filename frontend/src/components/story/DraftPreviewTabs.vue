@@ -2,8 +2,11 @@
   <el-card shadow="never" class="draft-preview-tabs">
     <template #header>
       <div class="header-row">
-        <span>{{ title }}</span>
-        <el-tag v-if="usedStructuralFallback" type="warning">当前默认展示结构稿</el-tag>
+        <div>
+          <div class="eyebrow">Drafts</div>
+          <span class="panel-title">{{ title }}</span>
+        </div>
+        <el-tag v-if="usedStructuralFallback" type="warning" effect="plain">当前默认展示结构稿</el-tag>
       </div>
     </template>
     <el-tabs :model-value="activeTab" @update:model-value="$emit('update:activeTab', $event)">
@@ -146,10 +149,32 @@ const severityType = (severity) => {
   gap: 12px;
 }
 
+.eyebrow {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9CA3AF;
+}
+
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.draft-preview-tabs {
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
 .draft-title {
   margin-bottom: 12px;
   font-size: 16px;
   font-weight: 600;
+  color: #111827;
 }
 
 .draft-content {
@@ -157,20 +182,22 @@ const severityType = (severity) => {
   line-height: 1.75;
   max-height: 420px;
   overflow: auto;
-  padding: 16px;
-  background: #f8f9fb;
-  border-radius: 8px;
+  padding: 18px;
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 16px;
+  color: #374151;
 }
 
 .action-row {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .empty-text {
-  color: #909399;
+  color: #9CA3AF;
 }
 
 .issue-block {
@@ -181,6 +208,7 @@ const severityType = (severity) => {
   margin-bottom: 8px;
   font-size: 14px;
   font-weight: 600;
+  color: #111827;
 }
 
 .issue-list {

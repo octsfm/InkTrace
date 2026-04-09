@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { createTestingPinia } from '@pinia/testing'
+import { createPinia, setActivePinia } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import NovelWorkspace from '../NovelWorkspace.vue'
 
@@ -18,24 +18,50 @@ vi.mock('../WorkspaceChapterManager.vue', () => ({ default: { name: 'WorkspaceCh
 vi.mock('../WorkspaceTasksAudit.vue', () => ({ default: { name: 'WorkspaceTasksAudit', template: '<div class="workspace-tasks-mock">Tasks</div>' } }))
 vi.mock('@/components/workspace/WorkspaceSidebar.vue', () => ({ default: { name: 'WorkspaceSidebar', template: '<div class="workspace-sidebar-mock">Sidebar</div>' } }))
 vi.mock('@/components/workspace/WorkspaceCopilotPanel.vue', () => ({ default: { name: 'WorkspaceCopilotPanel', template: '<div class="workspace-copilot-mock">Copilot</div>' } }))
+vi.mock('@/components/workspace/WorkspaceTopBar.vue', () => ({ default: { name: 'WorkspaceTopBar', template: '<div class="workspace-topbar-mock">TopBar</div>' } }))
+vi.mock('@/stores/novelWorkspace', () => ({
+  useNovelWorkspaceStore: vi.fn(() => ({
+    novel: { title: '测试小说' },
+    chapters: [{ id: 'chapter-1', chapter_number: 1, title: '第一章', updated_at: '2026-04-09T00:00:00Z' }],
+    activeArcs: [],
+    memoryView: {},
+    organizeProgress: {},
+    loading: false,
+    editor: {
+      chapter: { id: 'chapter-1', title: '第一章', content: 'test content' },
+      saving: false,
+      dirty: false,
+      aiRunning: false,
+      contextMeta: {}
+    },
+    loadBase: vi.fn(),
+    loadStructure: vi.fn(),
+    syncChapterSnapshot: vi.fn(),
+    loadEditorChapter: vi.fn(),
+    saveEditorChapter: vi.fn(),
+    runEditorAiAction: vi.fn(),
+    applyDraftToEditor: vi.fn(),
+    saveDraftResult: vi.fn(),
+    discardDraft: vi.fn()
+  }))
+}))
 
 describe('NovelWorkspace.vue', () => {
   let wrapper
   let store
 
   const mountComponent = () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    store = useWorkspaceStore()
+    store.currentView = 'overview'
+    store.isZenMode = false
+    store.isCopilotOpen = true
+    store.currentCopilotTab = 'context'
+
     wrapper = mount(NovelWorkspace, {
       global: {
-        plugins: [createTestingPinia({
-          initialState: {
-            workspace: {
-              activeView: 'overview',
-              isZenMode: false,
-              isCopilotOpen: true
-            }
-          },
-          createSpy: vi.fn,
-        })],
+        plugins: [pinia],
         stubs: ['el-icon', 'el-tooltip', 'el-button', 'el-alert'],
         mocks: {
           $route: {
@@ -47,7 +73,6 @@ describe('NovelWorkspace.vue', () => {
         }
       }
     })
-    store = useWorkspaceStore()
   }
 
   beforeEach(() => {
@@ -57,6 +82,7 @@ describe('NovelWorkspace.vue', () => {
   it('renders the workspace layout with default overview view', () => {
     // Should have left nav
     expect(wrapper.find('.workspace-nav-bar').exists()).toBe(true)
+    expect(wrapper.find('.workspace-topbar-mock').exists()).toBe(true)
     
     // Should render Overview mock based on activeView
     expect(wrapper.find('.workspace-overview-mock').exists()).toBe(true)
@@ -64,7 +90,7 @@ describe('NovelWorkspace.vue', () => {
   })
 
   it('switches to writing view when store activeView changes', async () => {
-    store.activeView = 'writing'
+    store.currentView = 'writing'
     await wrapper.vm.$nextTick()
     
     expect(wrapper.find('.workspace-writing-mock').exists()).toBe(true)
@@ -72,7 +98,7 @@ describe('NovelWorkspace.vue', () => {
   })
 
   it('hides left nav when zen mode is enabled', async () => {
-    store.activeView = 'writing'
+    store.currentView = 'writing'
     store.isZenMode = true
     await wrapper.vm.$nextTick()
     

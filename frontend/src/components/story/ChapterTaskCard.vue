@@ -1,7 +1,10 @@
 <template>
   <el-card shadow="never" class="chapter-task-card">
     <template #header>
-      <span>{{ title }}</span>
+      <div>
+        <div class="eyebrow">Task</div>
+        <span class="panel-title">{{ title }}</span>
+      </div>
     </template>
     <div v-if="!hasTask" class="empty-text">暂无任务摘要</div>
     <el-descriptions v-else :column="1" border size="small">
@@ -42,7 +45,28 @@ const joinList = (value) => {
 </script>
 
 <style scoped>
+.chapter-task-card {
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.eyebrow {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9CA3AF;
+}
+
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
 .empty-text {
-  color: #909399;
+  color: #9CA3AF;
 }
 </style>
