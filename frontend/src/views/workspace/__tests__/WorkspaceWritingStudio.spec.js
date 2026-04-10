@@ -147,6 +147,8 @@ describe('WorkspaceWritingStudio.vue', () => {
     const text = wrapper.text()
     expect(text).toContain('写作状态')
     expect(text).toContain('本章剧情弧')
+    expect(text).toContain('回到概览')
+    expect(text).toContain('章节状态')
   })
 
   it('renders top-level writing object actions', () => {
@@ -221,5 +223,11 @@ describe('WorkspaceWritingStudio.vue', () => {
     expect(analyzeButton).toBeTruthy()
     await analyzeButton.trigger('click')
     expect(mockWorkspaceContext.runEditorAiAction).toHaveBeenCalledWith('analyze')
+  })
+
+  it('provides workspace-level action chips', async () => {
+    const tasksChip = wrapper.findAll('.workspace-action-chip').find((node) => node.text().includes('打开任务台'))
+    await tasksChip.trigger('click')
+    expect(mockWorkspaceContext.openSection).toHaveBeenCalledWith('tasks')
   })
 })

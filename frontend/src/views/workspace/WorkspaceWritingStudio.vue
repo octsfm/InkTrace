@@ -35,6 +35,40 @@
       </div>
     </header>
 
+    <div class="workspace-action-row">
+      <button type="button" class="workspace-action-chip primary" @click="workspace.openSection?.('overview')">
+        回到概览
+      </button>
+      <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('structure')">
+        查看结构
+      </button>
+      <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('chapters')">
+        查看章节
+      </button>
+      <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('tasks')">
+        打开任务台
+      </button>
+    </div>
+
+    <div class="workspace-summary-row">
+      <div class="workspace-summary-chip">
+        <span class="workspace-summary-label">章节状态</span>
+        <span class="workspace-summary-value">{{ chapterStatusText }}</span>
+      </div>
+      <div class="workspace-summary-chip">
+        <span class="workspace-summary-label">目标弧</span>
+        <span class="workspace-summary-value">{{ targetArcText }}</span>
+      </div>
+      <div class="workspace-summary-chip">
+        <span class="workspace-summary-label">任务状态</span>
+        <span class="workspace-summary-value">{{ currentTaskText }}</span>
+      </div>
+      <div class="workspace-summary-chip">
+        <span class="workspace-summary-label">问题单</span>
+        <span class="workspace-summary-value">{{ issueSummaryText }}</span>
+      </div>
+    </div>
+
     <div class="writing-body">
       <div class="editor-pane">
         <div class="editor-container" v-loading="editorState.loading">
@@ -845,6 +879,56 @@ onBeforeUnmount(() => {
 
 .action-cluster-compact {
   flex-wrap: nowrap;
+}
+
+.workspace-action-row,
+.workspace-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 32px 0;
+}
+
+.workspace-summary-row {
+  padding-top: 12px;
+}
+
+.workspace-action-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  color: #4B5563;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.workspace-action-chip.primary {
+  border-color: #BFDBFE;
+  background-color: #EFF6FF;
+  color: #1D4ED8;
+}
+
+.workspace-summary-chip {
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+}
+
+.workspace-summary-label {
+  display: block;
+  font-size: 11px;
+  color: #9CA3AF;
+}
+
+.workspace-summary-value {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
 }
 
 .writing-body {

@@ -82,6 +82,7 @@ describe('WorkspaceOverview.vue', () => {
     expect(wrapper.text()).toContain('检查活跃剧情弧')
     expect(wrapper.text()).toContain('任务快照')
     expect(wrapper.text()).toContain('先恢复：AI 审查')
+    expect(wrapper.text()).toContain('打开任务台')
 
     const firstDecision = wrapper.find('.decision-card')
     await firstDecision.trigger('click')
@@ -90,5 +91,9 @@ describe('WorkspaceOverview.vue', () => {
     const taskButton = wrapper.findAll('button').find((node) => node.text().includes('打开章节'))
     await taskButton.trigger('click')
     expect(mockWorkspaceContext.executeWorkspaceAction).toHaveBeenCalledWith({ type: 'chapter', chapterId: 'chapter-1' })
+
+    const tasksChip = wrapper.findAll('.workspace-action-chip').find((node) => node.text().includes('打开任务台'))
+    await tasksChip.trigger('click')
+    expect(mockWorkspaceContext.openSection).toHaveBeenCalledWith('tasks')
   })
 })

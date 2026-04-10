@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import WorkspaceStructureStudio from '../WorkspaceStructureStudio.vue'
 
 const mockScrollIntoView = vi.fn()
+const mockOpenSection = vi.fn()
 
 vi.mock('@/composables/useWorkspaceContext', () => ({
   useWorkspaceContext: vi.fn(() => ({
@@ -38,7 +39,8 @@ vi.mock('@/composables/useWorkspaceContext', () => ({
         }
       ]
     },
-    refreshStructure: vi.fn()
+    refreshStructure: vi.fn(),
+    openSection: mockOpenSection
   }))
 }))
 
@@ -48,6 +50,7 @@ describe('WorkspaceStructureStudio.vue', () => {
 
   beforeEach(() => {
     mockScrollIntoView.mockClear()
+    mockOpenSection.mockClear()
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: mockScrollIntoView
@@ -91,5 +94,11 @@ describe('WorkspaceStructureStudio.vue', () => {
     await chip.trigger('click')
     expect(workspaceStore.currentStructureSection).toBe('risk')
     expect(wrapper.text()).toContain('风险点视角')
+  })
+
+  it('provides cross-workspace actions', async () => {
+    const overviewChip = wrapper.findAll('.workspace-action-chip').find((node) => node.text().includes('回到概览'))
+    await overviewChip.trigger('click')
+    expect(mockOpenSection).toHaveBeenCalledWith('overview')
   })
 })

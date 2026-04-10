@@ -46,6 +46,18 @@
         </div>
       </div>
 
+      <div class="workspace-action-row">
+        <button type="button" class="workspace-action-chip primary" @click="workspace.openSection?.('overview')">
+          回到概览
+        </button>
+        <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('structure')">
+          查看结构
+        </button>
+        <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('chapters')">
+          查看章节
+        </button>
+      </div>
+
       <div v-if="focusBannerText" class="focus-banner">
         {{ focusBannerText }}
       </div>
@@ -548,6 +560,29 @@ watch(
   flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.workspace-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.workspace-action-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  color: #4B5563;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.workspace-action-chip.primary {
+  border-color: #BFDBFE;
+  background-color: #EFF6FF;
+  color: #1D4ED8;
 }
 
 .summary-chip {

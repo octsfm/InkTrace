@@ -80,6 +80,27 @@
         </button>
       </div>
 
+      <div class="workspace-action-row">
+        <button type="button" class="workspace-action-chip primary" @click="workspace.openSection?.('overview')">
+          回到概览
+        </button>
+        <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('structure')">
+          查看结构
+        </button>
+        <button
+          v-if="focusedChapterId"
+          type="button"
+          class="workspace-action-chip"
+          @click="workspace.openChapter?.(focusedChapterId)"
+        >
+          进入当前章节写作
+        </button>
+      </div>
+
+      <div class="filter-banner">
+        当前筛选：{{ currentFilterLabel }}
+      </div>
+
       <div v-if="focusedChapter" class="focus-banner">
         当前聚焦：{{ focusedChapter.title || `第 ${focusedChapter.chapter_number || '?'} 章` }}
       </div>
@@ -212,6 +233,10 @@ const filteredChapters = computed(() => {
   }
   return getChaptersByStatus(selectedStatusFilter.value)
 })
+
+const currentFilterLabel = computed(() => (
+  statusFilters.value.find((item) => item.key === selectedStatusFilter.value)?.label || '全部'
+))
 
 const getFilteredChaptersByStatus = (status) => (
   filteredChapters.value.filter((chapter) => (chapter.status || 'draft') === status)
@@ -490,6 +515,13 @@ watch(
   margin-bottom: 18px;
 }
 
+.workspace-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
 .quick-chapter-chip {
   padding: 8px 12px;
   border-radius: 999px;
@@ -520,6 +552,32 @@ watch(
   border-color: #BFDBFE;
   background-color: #EFF6FF;
   color: #1D4ED8;
+}
+
+.workspace-action-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  color: #4B5563;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.workspace-action-chip.primary {
+  border-color: #BFDBFE;
+  background-color: #EFF6FF;
+  color: #1D4ED8;
+}
+
+.filter-banner {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #E5E7EB;
+  background-color: #F9FAFB;
+  font-size: 13px;
+  color: #4B5563;
 }
 
 .section-header {

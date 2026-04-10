@@ -7,6 +7,8 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import WorkspaceChapterManager from '../WorkspaceChapterManager.vue'
 
 const mockScrollIntoView = vi.fn()
+const mockOpenSection = vi.fn()
+const mockOpenChapter = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(() => ({
@@ -24,7 +26,8 @@ vi.mock('@/composables/useWorkspaceContext', () => ({
       ]
     },
     createChapter: vi.fn(),
-    openChapter: vi.fn()
+    openChapter: mockOpenChapter,
+    openSection: mockOpenSection
   }))
 }))
 
@@ -34,6 +37,8 @@ describe('WorkspaceChapterManager.vue', () => {
 
   beforeEach(() => {
     mockScrollIntoView.mockClear()
+    mockOpenSection.mockClear()
+    mockOpenChapter.mockClear()
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: mockScrollIntoView
@@ -68,6 +73,7 @@ describe('WorkspaceChapterManager.vue', () => {
 
   it('shows the focused chapter banner', () => {
     expect(wrapper.text()).toContain('当前聚焦：风暴将至')
+    expect(wrapper.text()).toContain('当前筛选：全部 (2)')
     expect(wrapper.text()).toContain('最近更新')
     expect(wrapper.text()).toContain('风暴将至')
     expect(wrapper.text()).toContain('已校验 (1)')
@@ -89,5 +95,11 @@ describe('WorkspaceChapterManager.vue', () => {
     await nextTick()
     expect(wrapper.vm.filteredChapters).toHaveLength(1)
     expect(wrapper.vm.filteredChapters[0].id).toBe('ch-2')
+  })
+
+  it('provides cross-workspace actions', async () => {
+    const structureChip = wrapper.findAll('.workspace-action-chip').find((node) => node.text().includes('查看结构'))
+    await structureChip.trigger('click')
+    expect(mockOpenSection).toHaveBeenCalledWith('structure')
   })
 })

@@ -220,5 +220,12 @@ describe('WorkspaceTasksAudit.vue', () => {
     expect(wrapper.text()).toContain('先恢复：AI 审查')
     expect(wrapper.text()).toContain('优先恢复')
     expect(wrapper.text()).toContain('优先恢复 2')
+    expect(wrapper.text()).toContain('回到概览')
+  })
+
+  it('provides workspace-level action chips', async () => {
+    const overviewChip = wrapper.findAll('.workspace-action-chip').find((node) => node.text().includes('回到概览'))
+    await overviewChip.trigger('click')
+    expect(mockOpenSection).toHaveBeenCalledWith('overview')
   })
 })
