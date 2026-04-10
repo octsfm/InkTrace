@@ -57,6 +57,17 @@
                 <span class="context-pill-value">{{ issueCount }}</span>
               </div>
             </div>
+            <div v-if="writingObjectActions.length" class="editor-action-strip">
+              <button
+                v-for="item in writingObjectActions"
+                :key="item.label"
+                type="button"
+                class="editor-action-button"
+                @click="handleWritingAction(item.action)"
+              >
+                {{ item.label }}
+              </button>
+            </div>
             <div v-if="editorState.aiRunning" class="editor-banner banner-running">
               正在执行 {{ currentTaskLabel }}，任务完成后会以候选稿、diff 或问题单回流到右侧。
             </div>
@@ -76,7 +87,7 @@
         </div>
       </div>
 
-      <aside v-if="!workspaceStore.isZenMode" class="writing-inspector">
+      <aside v-if="!workspaceStore.isZenMode" ref="inspectorRef" class="writing-inspector">
         <div class="inspector-card">
           <div class="card-header-row">
             <h3>写作状态</h3>
@@ -125,28 +136,34 @@
 
         <ContextSourcePanel :context="editorState.contextMeta" :task="editorState.chapterTask" />
 
-        <IssuePanelCard
-          :issues="issueList"
-          :active-issue-index="focusedIssueIndex"
-          @locate="handleLocateIssue"
-          @preview="handlePreviewIssue"
-          @preview-leave="handlePreviewLeave"
-          @reanalyze="runAiAction('analyze')"
-        />
+        <div ref="issuePanelSectionRef">
+          <IssuePanelCard
+            :issues="issueList"
+            :object-actions="issueObjectActions"
+            :active-issue-index="focusedIssueIndex"
+            @locate="handleLocateIssue"
+            @action="handleObjectAction"
+            @preview="handlePreviewIssue"
+            @preview-leave="handlePreviewLeave"
+            @reanalyze="runAiAction('analyze')"
+          />
+        </div>
 
-        <DraftPreviewTabs
-          title="AI 回流区"
-          :active-tab="editorState.activeDraftTab"
-          :structural-draft="editorState.structuralDraft"
-          :detemplated-draft="editorState.detemplatedDraft"
-          :integrity-check="editorState.integrityCheck"
-          :revision-attempts="editorState.integrityCheck?.revision_attempts || []"
-          :used-structural-fallback="Boolean(editorState.detemplatedDraft?.display_fallback_to_structural)"
-          @update:active-tab="editorState.activeDraftTab = $event"
-          @apply="handleApplyDraft"
-          @save-draft="handleSaveDraft"
-          @discard="handleDiscardDraft"
-        />
+        <div ref="draftPreviewSectionRef">
+          <DraftPreviewTabs
+            title="AI 回流区"
+            :active-tab="editorState.activeDraftTab"
+            :structural-draft="editorState.structuralDraft"
+            :detemplated-draft="editorState.detemplatedDraft"
+            :integrity-check="editorState.integrityCheck"
+            :revision-attempts="editorState.integrityCheck?.revision_attempts || []"
+            :used-structural-fallback="Boolean(editorState.detemplatedDraft?.display_fallback_to_structural)"
+            @update:active-tab="editorState.activeDraftTab = $event"
+            @apply="handleApplyDraft"
+            @save-draft="handleSaveDraft"
+            @discard="handleDiscardDraft"
+          />
+        </div>
       </aside>
     </div>
 
@@ -164,7 +181,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
@@ -228,6 +245,9 @@ const route = useRoute()
 const workspace = useWorkspaceContext()
 const workspaceStore = useWorkspaceStore()
 const editorState = workspace.state.editor
+const inspectorRef = ref(null)
+const draftPreviewSectionRef = ref(null)
+const issuePanelSectionRef = ref(null)
 
 const selectedChapterId = computed(() => String(route.query.chapterId || workspace.currentChapterId.value || ''))
 
@@ -297,6 +317,96 @@ const chapterArcCountText = computed(() => {
   if (!chapterArcs.value.length) return '暂无绑定'
   return `${chapterArcs.value.length} 条`
 })
+const issueObjectActions = computed(() => {
+  const actions = []
+
+  if (editorState.chapter?.id) {
+    actions.push({
+      label: '章节管理',
+      action: {
+        type: 'chapter-manager',
+        chapterId: editorState.chapter.id,
+        title: editorState.chapter.title || ''
+      }
+    })
+  }
+
+  const taskArcId = String(editorState.chapterTask?.target_arc_id || '').trim()
+  const targetArc = chapterArcs.value.find((item) => item.arc_id === taskArcId)
+    || chapterArcs.value.find((item) => String(item.binding_role || '').toLowerCase() === 'primary')
+    || null
+
+  if (targetArc?.arc_id) {
+    actions.push({
+      label: '查看目标弧',
+      action: {
+        type: 'arc',
+        arcId: targetArc.arc_id,
+        title: targetArc.title || targetArc.arc_title || targetArc.arc_id
+      }
+    })
+  }
+
+  if (issueCount.value) {
+    actions.push({
+      label: '任务页',
+      action: {
+        type: 'task-filter',
+        filter: 'audit'
+      }
+    })
+  }
+
+  return actions
+})
+const writingObjectActions = computed(() => {
+  const actions = []
+
+  if (editorState.chapter?.id) {
+    actions.push({
+      label: '章节管理',
+      action: {
+        type: 'chapter-manager',
+        chapterId: editorState.chapter.id,
+        title: editorState.chapter.title || ''
+      }
+    })
+  }
+
+  const taskArcId = String(editorState.chapterTask?.target_arc_id || '').trim()
+  const targetArc = chapterArcs.value.find((item) => item.arc_id === taskArcId)
+    || chapterArcs.value.find((item) => String(item.binding_role || '').toLowerCase() === 'primary')
+    || null
+
+  if (targetArc?.arc_id) {
+    actions.push({
+      label: '查看目标弧',
+      action: {
+        type: 'arc',
+        arcId: targetArc.arc_id,
+        title: targetArc.title || targetArc.arc_title || targetArc.arc_id
+      }
+    })
+  }
+
+  if (issueCount.value) {
+    actions.push({
+      label: '重新审查',
+      action: {
+        type: 'reanalyze'
+      }
+    })
+    actions.push({
+      label: '任务页',
+      action: {
+        type: 'task-filter',
+        filter: 'audit'
+      }
+    })
+  }
+
+  return actions
+})
 
 const editor = useEditor({
   extensions: [
@@ -337,6 +447,7 @@ const saveChapter = async () => {
 
 const runAiAction = async (action) => {
   await workspace.runEditorAiAction(action)
+  await revealAiResult(action)
   const messageMap = {
     continue: 'AI 续写结果已回流到右侧候选区',
     generate: '生成结果已回流到右侧候选区',
@@ -345,6 +456,30 @@ const runAiAction = async (action) => {
     analyze: '审查结果已回流到右侧问题区'
   }
   ElMessage.success(messageMap[action] || 'AI 任务已提交')
+}
+
+const scrollInspectorTo = async (targetRef) => {
+  if (workspaceStore.isZenMode) {
+    workspaceStore.toggleZenMode(false)
+  }
+  await nextTick()
+  const target = targetRef?.value
+  if (target?.scrollIntoView) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    return
+  }
+  inspectorRef.value?.scrollTo?.({ top: 0, behavior: 'smooth' })
+}
+
+const revealAiResult = async (action) => {
+  if (action === 'analyze') {
+    await scrollInspectorTo(issuePanelSectionRef)
+    return
+  }
+
+  if (['continue', 'generate', 'optimize', 'rewrite'].includes(action)) {
+    await scrollInspectorTo(draftPreviewSectionRef)
+  }
 }
 
 const toggleZenMode = () => {
@@ -508,6 +643,48 @@ const handlePreviewLeave = () => {
   }
 
   syncHighlightForIssue(persistentIssue)
+}
+
+const handleObjectAction = async (payload) => {
+  if (!payload || typeof payload !== 'object') {
+    return
+  }
+
+  if (payload.type === 'chapter-manager' && payload.chapterId) {
+    workspaceStore.currentChapterId = payload.chapterId
+    workspaceStore.setCurrentObject({
+      type: 'chapter',
+      id: payload.chapterId,
+      title: payload.title || editorState.chapter.title || ''
+    })
+    workspace.openSection?.('chapters')
+    return
+  }
+
+  if (payload.type === 'arc') {
+    workspaceStore.setStructureSection('plot_arc')
+    workspaceStore.setCurrentObject({
+      type: 'plot_arc',
+      arcId: payload.arcId || '',
+      title: payload.title || ''
+    })
+    workspace.openSection?.('structure')
+    return
+  }
+
+  if (payload.type === 'task-filter') {
+    workspaceStore.setTaskFilter(payload.filter || 'all')
+    workspace.openSection?.('tasks')
+    return
+  }
+
+  if (payload.type === 'reanalyze') {
+    await runAiAction('analyze')
+  }
+}
+
+const handleWritingAction = async (payload) => {
+  await handleObjectAction(payload)
 }
 
 // Helpers
@@ -698,6 +875,32 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.editor-action-strip {
+  width: 100%;
+  max-width: 920px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.editor-action-button {
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  color: #374151;
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.editor-action-button:hover {
+  background-color: #F9FAFB;
+  border-color: #D1D5DB;
+  transform: translateY(-1px);
 }
 
 .context-pill {

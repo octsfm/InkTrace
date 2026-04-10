@@ -14,6 +14,12 @@
         <div v-if="!structuralDraft" class="empty-text">暂无结构稿</div>
         <template v-else>
           <div class="draft-title">{{ structuralDraft.title || '未命名章节' }}</div>
+          <div v-if="structuralDraft.preview_mode === 'delta'" class="draft-hint">
+            当前展示的是新增续写段，覆盖正文时会使用完整结果。
+          </div>
+          <div v-else-if="structuralDraft.preview_mode === 'full'" class="draft-hint">
+            当前展示的是完整结果稿，可直接覆盖正文或手动摘取片段。
+          </div>
           <pre class="draft-content">{{ structuralDraft.content || '暂无正文' }}</pre>
           <div class="action-row">
             <el-button type="primary" @click="$emit('apply', { type: 'structural', mode: 'replace' })">覆盖正文</el-button>
@@ -34,6 +40,9 @@
             title="当前默认展示结构稿，改写稿存在一致性风险，可查看但请谨慎采纳"
           />
           <div class="draft-title">{{ detemplatedDraft.title || '未命名章节' }}</div>
+          <div v-if="detemplatedDraft.preview_mode === 'full'" class="draft-hint">
+            当前展示的是整稿改写结果，覆盖正文时会使用完整结果。
+          </div>
           <pre class="draft-content">{{ detemplatedDraft.content || '暂无正文' }}</pre>
           <div class="action-row">
             <el-button type="primary" @click="$emit('apply', { type: 'detemplated', mode: 'replace' })">覆盖正文</el-button>
@@ -180,13 +189,21 @@ const severityType = (severity) => {
 .draft-content {
   white-space: pre-wrap;
   line-height: 1.75;
-  max-height: 420px;
+  min-height: 240px;
+  max-height: 560px;
   overflow: auto;
   padding: 18px;
   background: #F9FAFB;
   border: 1px solid #E5E7EB;
   border-radius: 16px;
   color: #374151;
+}
+
+.draft-hint {
+  margin-bottom: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6B7280;
 }
 
 .action-row {

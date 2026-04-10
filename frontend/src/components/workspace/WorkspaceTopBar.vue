@@ -16,8 +16,8 @@
         <p>{{ viewDescription }}</p>
       </div>
 
-      <div v-if="quickFacts.length" class="facts-row">
-        <div v-for="item in quickFacts" :key="item.label" class="fact-chip">
+      <div v-if="props.quickFacts.length" class="facts-row">
+        <div v-for="item in props.quickFacts" :key="item.label" class="fact-chip">
           <span class="fact-label">{{ item.label }}</span>
           <span class="fact-value">{{ item.value }}</span>
         </div>
@@ -27,7 +27,7 @@
     <div class="topbar-side">
       <div class="status-grid">
         <div
-          v-for="item in statusCards"
+          v-for="item in props.statusCards"
           :key="item.label"
           class="meta-pill"
           :class="item.tone ? `tone-${item.tone}` : ''"
@@ -39,6 +39,18 @@
       </div>
 
       <div class="action-row">
+        <button type="button" class="soft-button" @click="$emit('open-command-palette')">
+          命令面板
+        </button>
+        <button
+          v-for="item in props.objectActions"
+          :key="item.label"
+          type="button"
+          class="soft-button"
+          @click="$emit('action', item.action)"
+        >
+          {{ item.label }}
+        </button>
         <button type="button" class="ghost-button" @click="$emit('toggle-copilot')">
           {{ copilotOpen ? '收起 Copilot' : '打开 Copilot' }}
         </button>
@@ -48,8 +60,6 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-
 const props = defineProps({
   novelTitle: {
     type: String,
@@ -87,29 +97,17 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  objectActions: {
+    type: Array,
+    default: () => []
+  },
   copilotOpen: {
     type: Boolean,
     default: true
   }
 })
 
-defineEmits(['toggle-copilot'])
-
-const fallbackStatusCards = computed(() => ([
-  { label: '保存', value: props.saveStatusText },
-  { label: '字数', value: String(props.wordCount || 0) },
-  { label: '任务', value: props.taskStatusText }
-]))
-
-const statusCards = computed(() => (
-  Array.isArray(props.statusCards) && props.statusCards.length
-    ? props.statusCards
-    : fallbackStatusCards.value
-))
-
-const quickFacts = computed(() => (
-  Array.isArray(props.quickFacts) ? props.quickFacts.filter((item) => item?.label && item?.value !== undefined && item?.value !== '') : []
-))
+defineEmits(['toggle-copilot', 'action', 'open-command-palette'])
 </script>
 
 <style scoped>
@@ -263,9 +261,12 @@ const quickFacts = computed(() => (
 
 .action-row {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
 }
 
+.soft-button,
 .ghost-button {
   border: 1px solid #E5E7EB;
   border-radius: 12px;
@@ -278,6 +279,11 @@ const quickFacts = computed(() => (
   transition: all 0.2s ease;
 }
 
+.soft-button {
+  background-color: #F9FAFB;
+}
+
+.soft-button:hover,
 .ghost-button:hover {
   background-color: #F9FAFB;
   border-color: #D1D5DB;

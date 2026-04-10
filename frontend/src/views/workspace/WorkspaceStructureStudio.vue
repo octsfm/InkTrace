@@ -21,6 +21,34 @@
         </div>
       </div>
 
+      <div class="structure-switch-row">
+        <button
+          v-for="item in structureViews"
+          :key="item.key"
+          type="button"
+          class="structure-switch-chip"
+          :class="{ active: activeStructureKey === item.key }"
+          @click="switchStructureView(item.key)"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+
+      <div class="view-focus-banner">
+        <div>
+          <div class="view-focus-label">当前结构视角</div>
+          <div class="view-focus-title">{{ activeStructureMeta.title }}</div>
+          <div class="view-focus-desc">{{ activeStructureMeta.description }}</div>
+        </div>
+        <el-button
+          v-if="activeStructureKey !== 'plot_arc'"
+          plain
+          @click="switchStructureView('plot_arc')"
+        >
+          回到剧情弧
+        </el-button>
+      </div>
+
       <div class="summary-grid">
         <article class="summary-card">
           <div class="card-header">
@@ -54,6 +82,45 @@
           <h3>活跃剧情弧 (Active Plot Arcs)</h3>
           <p>当前阶段正在推进或需要关注的剧情分支。</p>
         </div>
+      </div>
+
+      <div v-if="priorityArc" class="priority-banner">
+        <div>
+          <div class="priority-label">优先推进弧</div>
+          <div class="priority-title">{{ priorityArc.title || priorityArc.arc_id }}</div>
+          <div class="priority-desc">{{ priorityArc.summary || priorityArc.reason || '当前最值得优先推进的结构对象。' }}</div>
+        </div>
+        <el-button type="primary" plain @click="focusArc(priorityArc)">
+          聚焦该剧情弧
+        </el-button>
+      </div>
+
+      <div class="arc-summary-row">
+        <div class="summary-chip">
+          <span class="summary-chip-label">活跃弧</span>
+          <span class="summary-chip-value">{{ workspace.state.activeArcs.length || 0 }}</span>
+        </div>
+        <div class="summary-chip">
+          <span class="summary-chip-label">主线弧</span>
+          <span class="summary-chip-value">{{ mainArcCount }}</span>
+        </div>
+        <div class="summary-chip">
+          <span class="summary-chip-label">当前聚焦</span>
+          <span class="summary-chip-value">{{ focusedArc?.title || '未聚焦' }}</span>
+        </div>
+      </div>
+
+      <div class="quick-nav-row">
+        <button
+          v-for="arc in topArcList"
+          :key="arc.arc_id"
+          type="button"
+          class="quick-nav-chip"
+          :class="{ active: focusedArcId === arc.arc_id }"
+          @click="focusArc(arc)"
+        >
+          {{ arc.title || arc.arc_id }}
+        </button>
       </div>
 
       <div v-if="focusedArc" class="focus-banner">
@@ -107,6 +174,37 @@ const workspace = useWorkspaceContext()
 const workspaceStore = useWorkspaceStore()
 const arcCardRefs = ref({})
 
+const structureViews = [
+  { key: 'story_model', label: 'Story Model' },
+  { key: 'plot_arc', label: 'PlotArc' },
+  { key: 'character', label: '角色' },
+  { key: 'worldview', label: '世界观' },
+  { key: 'risk', label: '风险点' }
+]
+
+const structureMetaMap = {
+  story_model: {
+    title: 'Story Model',
+    description: '从故事模型层看当前小说的主线结构、推进阶段与全局关系。'
+  },
+  plot_arc: {
+    title: 'PlotArc',
+    description: '从剧情弧层看当前最值得推进的主线和支线对象。'
+  },
+  character: {
+    title: '角色视角',
+    description: '从角色关系和人物弧层理解当前冲突、关系和角色状态。'
+  },
+  worldview: {
+    title: '世界观视角',
+    description: '从设定与规则层检查当前结构支撑是否完整。'
+  },
+  risk: {
+    title: '风险点视角',
+    description: '优先扫描结构风险、冲突断层和需要补充的关键约束。'
+  }
+}
+
 const mainPlotText = computed(() => {
   const lines = Array.isArray(workspace.state.memoryView?.main_plot_lines)
     ? workspace.state.memoryView.main_plot_lines
@@ -131,6 +229,25 @@ const focusedArcId = computed(() => (
 const focusedArc = computed(() => (
   (workspace.state.activeArcs || []).find((arc) => arc.arc_id === focusedArcId.value) || null
 ))
+
+const sortedArcs = computed(() => {
+  const priorityMap = { core: 4, major: 3, normal: 2, minor: 1 }
+  const stageMap = { climax: 5, escalation: 4, midgame: 3, early_push: 2, setup: 1 }
+  return [...(workspace.state.activeArcs || [])].sort((a, b) => {
+    const priorityDiff = (priorityMap[String(b.priority || '').toLowerCase()] || 0) - (priorityMap[String(a.priority || '').toLowerCase()] || 0)
+    if (priorityDiff !== 0) return priorityDiff
+    return (stageMap[String(b.stage || '').toLowerCase()] || 0) - (stageMap[String(a.stage || '').toLowerCase()] || 0)
+  })
+})
+
+const priorityArc = computed(() => sortedArcs.value[0] || null)
+const topArcList = computed(() => sortedArcs.value.slice(0, 4))
+const mainArcCount = computed(() => (
+  (workspace.state.activeArcs || []).filter((arc) => String(arc.arc_type || '').toLowerCase().includes('main')).length
+))
+
+const activeStructureKey = computed(() => workspaceStore.currentStructureSection || 'plot_arc')
+const activeStructureMeta = computed(() => structureMetaMap[activeStructureKey.value] || structureMetaMap.plot_arc)
 
 const setArcCardRef = (arcId, el) => {
   if (!arcId) return
@@ -157,6 +274,19 @@ const focusArc = (arc) => {
     arcId: arc?.arc_id || '',
     title: arc?.title || arc?.arc_id || ''
   })
+}
+
+const switchStructureView = (key) => {
+  workspaceStore.setStructureSection(key)
+  if (key !== 'plot_arc') {
+    workspaceStore.setCurrentObject({
+      type: key
+    })
+    return
+  }
+  if (priorityArc.value) {
+    focusArc(priorityArc.value)
+  }
 }
 
 const getArcStatusType = (status) => {
@@ -276,6 +406,61 @@ watch(
   gap: 20px;
 }
 
+.view-focus-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  background-color: #F9FAFB;
+}
+
+.view-focus-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6B7280;
+}
+
+.view-focus-title {
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.view-focus-desc {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4B5563;
+}
+
+.structure-switch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.structure-switch-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  color: #4B5563;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.structure-switch-chip.active {
+  border-color: #C7D2FE;
+  background-color: #EEF2FF;
+  color: #4338CA;
+}
+
 .summary-card {
   padding: 20px;
   border-radius: 16px;
@@ -350,6 +535,90 @@ watch(
   color: #6D28D9;
   font-size: 13px;
   font-weight: 600;
+}
+
+.priority-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 18px;
+  margin-bottom: 18px;
+  border-radius: 18px;
+  border: 1px solid #DDD6FE;
+  background: linear-gradient(180deg, #F8FAFC 0%, #F5F3FF 100%);
+}
+
+.priority-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7C3AED;
+}
+
+.priority-title {
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.priority-desc {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4B5563;
+}
+
+.arc-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.summary-chip {
+  min-width: 120px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid #E5E7EB;
+  background-color: #F9FAFB;
+}
+
+.summary-chip-label {
+  display: block;
+  font-size: 11px;
+  color: #9CA3AF;
+}
+
+.summary-chip-value {
+  display: block;
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.quick-nav-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.quick-nav-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  color: #4B5563;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quick-nav-chip.active {
+  border-color: #C7D2FE;
+  background-color: #EEF2FF;
+  color: #4338CA;
 }
 
 .arc-top {

@@ -44,6 +44,17 @@
     </div>
 
     <div class="footer-row">
+      <div v-if="objectActions.length" class="footer-actions">
+        <el-button
+          v-for="item in objectActions"
+          :key="item.label"
+          size="small"
+          plain
+          @click="$emit('action', item.action)"
+        >
+          {{ item.label }}
+        </el-button>
+      </div>
       <el-button size="small" @click="$emit('reanalyze')">重新审查</el-button>
     </div>
   </div>
@@ -65,15 +76,22 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  objectActions: {
+    type: Array,
+    default: () => []
+  },
   activeIssueIndex: {
     type: Number,
     default: -1
   }
 })
 
-defineEmits(['locate', 'reanalyze', 'preview', 'preview-leave'])
+defineEmits(['locate', 'reanalyze', 'preview', 'preview-leave', 'action'])
 
 const issueCount = computed(() => props.issues.length)
+const objectActions = computed(() => (
+  Array.isArray(props.objectActions) ? props.objectActions.filter((item) => item?.label && item?.action) : []
+))
 
 const severityType = (severity) => {
   if (severity === 'high') return 'danger'
@@ -189,7 +207,24 @@ const severityLabel = (severity) => {
 
 .footer-row {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-top: 12px;
+}
+
+.footer-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.footer-row :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.footer-row > .el-button:last-child {
+  justify-content: flex-end;
 }
 </style>

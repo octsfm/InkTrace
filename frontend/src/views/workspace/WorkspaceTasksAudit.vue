@@ -28,7 +28,7 @@
 
       <div class="filter-row">
         <button
-          v-for="item in filterOptions"
+          v-for="item in props.filterOptions"
           :key="item.key"
           type="button"
           class="filter-chip"
@@ -39,33 +39,37 @@
         </button>
       </div>
 
+      <div class="summary-chip-row">
+        <div v-for="item in props.summaryChips" :key="item.label" class="summary-chip">
+          <span class="summary-chip-label">{{ item.label }}</span>
+          <span class="summary-chip-value">{{ item.value }}</span>
+        </div>
+      </div>
+
       <div v-if="focusBannerText" class="focus-banner">
         {{ focusBannerText }}
       </div>
 
       <div class="status-grid">
-        <article class="status-card" :class="getStatusCardClass(statusText)">
+        <article
+          v-for="item in props.statusCards"
+          :key="item.label"
+          class="status-card"
+          :class="getStatusCardClass(item.label === '当前状态' ? item.value : '')"
+        >
           <div class="card-header">
-            <el-icon class="card-icon"><Monitor /></el-icon>
-            <div class="card-title">当前状态</div>
+            <el-icon class="card-icon"><Monitor v-if="item.label === '当前状态'" /><Timer v-else /></el-icon>
+            <div class="card-title">{{ item.label }}</div>
           </div>
-          <div class="status-value">{{ statusText }}</div>
-          <p class="status-hint">{{ statusHint }}</p>
-        </article>
-        
-        <article class="status-card">
-          <div class="card-header">
-            <el-icon class="card-icon"><Timer /></el-icon>
-            <div class="card-title">最近进度</div>
-          </div>
-          <div class="status-value">{{ progressText }}</div>
-          <el-progress 
-            :percentage="workspace.state.organizeProgress?.progress || 0" 
-            :status="getProgressStatus(statusText)"
+          <div class="status-value">{{ item.value }}</div>
+          <el-progress
+            v-if="item.label === '最近进度'"
+            :percentage="workspace.state.organizeProgress?.progress || 0"
+            :status="getProgressStatus(props.statusText)"
             :show-text="false"
             class="progress-bar"
           />
-          <p class="status-hint">第一阶段先把任务入口收口，后续再接完整日志和 trace。</p>
+          <p class="status-hint">{{ item.hint }}</p>
         </article>
       </div>
 
@@ -99,33 +103,83 @@
         </div>
       </div>
 
-      <div v-if="filteredTaskCards.length" class="history-grid">
-        <article
-          v-for="task in filteredTaskCards"
-          :key="task.id"
-          :ref="(el) => setTaskCardRef(task.id, el)"
-          class="history-card"
-          :class="{ focused: focusedTaskId === task.id }"
-          :data-task-id="task.id"
-          @click="focusTask(task)"
-        >
-          <div class="history-top">
-            <div>
-              <div class="history-title">{{ task.title }}</div>
-              <div class="history-meta">{{ task.subtitle }}</div>
+      <div v-if="props.recommendationItems.length" class="recommendation-panel">
+        <div class="recommendation-heading">
+          <h3>优先处理建议</h3>
+          <p>根据当前任务状态，先把最值得你立即处理的任务抬到前面。</p>
+        </div>
+        <div class="recommendation-grid">
+          <article
+            v-for="item in props.recommendationItems"
+            :key="item.key"
+            class="recommendation-card"
+          >
+            <div class="recommendation-top">
+              <span class="recommendation-tag">{{ item.tag }}</span>
+              <span class="recommendation-meta">{{ item.meta }}</span>
             </div>
-            <el-tag size="small" :type="getTaskTagType(task.status)" effect="plain">
-              {{ task.statusLabel }}
-            </el-tag>
-          </div>
-          <p class="history-desc">{{ task.description }}</p>
-          <div class="history-footer">
-            <span>{{ task.hint }}</span>
-            <el-button v-if="task.actionLabel" size="small" plain @click.stop="runTaskAction(task)">
-              {{ task.actionLabel }}
+            <div class="recommendation-title">{{ item.title }}</div>
+            <p class="recommendation-desc">{{ item.description }}</p>
+            <el-button size="small" type="primary" plain @click="runTaskAction({ action: item.action })">
+              {{ item.actionLabel }}
             </el-button>
+          </article>
+        </div>
+      </div>
+
+      <div v-if="props.groupedTaskSections.length" class="task-section-stack">
+        <section
+          v-for="section in props.groupedTaskSections"
+          :key="section.key"
+          class="task-subsection"
+        >
+          <div class="task-subsection-header">
+            <div>
+              <h3>{{ section.title }} <span class="section-count">{{ section.items.length }}</span></h3>
+              <p>{{ section.description }}</p>
+            </div>
           </div>
-        </article>
+          <div class="history-grid">
+            <article
+              v-for="task in section.items"
+              :key="task.id"
+              :ref="(el) => setTaskCardRef(task.id, el)"
+              class="history-card"
+              :class="taskCardClassMap(task)"
+              :data-task-id="task.id"
+              @click="focusTask(task)"
+            >
+              <div class="history-top">
+                <div>
+                  <div class="history-title">{{ task.title }}</div>
+                  <div class="history-meta">{{ task.subtitle }}</div>
+                </div>
+                <el-tag size="small" :type="getTaskTagType(task.status)" effect="plain">
+                  {{ task.statusLabel }}
+                </el-tag>
+              </div>
+              <div class="history-chip-row">
+                <span class="history-chip type">{{ task.typeLabel }}</span>
+                <span class="history-chip">{{ task.targetLabel }}</span>
+              </div>
+              <p class="history-desc">{{ task.description }}</p>
+              <div class="history-note">
+                <div class="note-label">失败原因</div>
+                <div class="note-value">{{ task.reasonText }}</div>
+              </div>
+              <div class="history-note">
+                <div class="note-label">下一步建议</div>
+                <div class="note-value">{{ task.nextStepText }}</div>
+              </div>
+              <div class="history-footer">
+                <span>{{ task.hint }}</span>
+                <el-button v-if="task.actionLabel" size="small" plain @click.stop="runTaskAction(task)">
+                  {{ task.actionLabel }}
+                </el-button>
+              </div>
+            </article>
+          </div>
+        </section>
       </div>
     </section>
 
@@ -136,7 +190,7 @@
           <h3>任务历史</h3>
         </div>
       </div>
-      <el-empty :description="historyEmptyText" />
+      <el-empty :description="props.historyEmptyText" />
     </section>
   </div>
 </template>
@@ -150,28 +204,61 @@ import { contentApi } from '@/api'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 import { useWorkspaceStore } from '@/stores/workspace'
 
+const props = defineProps({
+  filterOptions: {
+    type: Array,
+    default: () => []
+  },
+  statusText: {
+    type: String,
+    default: '未运行'
+  },
+  progressText: {
+    type: String,
+    default: '0%'
+  },
+  statusHint: {
+    type: String,
+    default: ''
+  },
+  statusCards: {
+    type: Array,
+    default: () => []
+  },
+  summaryChips: {
+    type: Array,
+    default: () => []
+  },
+  taskCards: {
+    type: Array,
+    default: () => []
+  },
+  filteredTaskCards: {
+    type: Array,
+    default: () => []
+  },
+  groupedTaskSections: {
+    type: Array,
+    default: () => []
+  },
+  recommendationItems: {
+    type: Array,
+    default: () => []
+  },
+  focusBannerText: {
+    type: String,
+    default: ''
+  },
+  historyEmptyText: {
+    type: String,
+    default: ''
+  }
+})
+
 const workspace = useWorkspaceContext()
 const workspaceStore = useWorkspaceStore()
 const runningAction = ref('')
 const taskCardRefs = ref({})
-
-const filterOptions = [
-  { key: 'all', label: '全部任务' },
-  { key: 'running', label: '运行中' },
-  { key: 'failed', label: '失败任务' },
-  { key: 'completed', label: '已完成' },
-  { key: 'audit', label: '审查结果' }
-]
-
-const statusText = computed(() => {
-  const status = String(workspace.state.organizeProgress?.status || '').trim()
-  if (!status) return '未运行'
-  if (status === 'running') return '整理中'
-  if (status === 'paused') return '已暂停'
-  if (status === 'success' || status === 'done') return '已完成'
-  if (status === 'failed' || status === 'error') return '失败'
-  return status
-})
 
 const getStatusCardClass = (status) => {
   if (status === '失败') return 'is-error'
@@ -188,83 +275,9 @@ const getProgressStatus = (status) => {
   return ''
 }
 
-const progressText = computed(() => `${workspace.state.organizeProgress?.progress ?? 0}%`)
-
-const statusHint = computed(() => {
-  return workspace.state.organizeProgress?.error_message || '如果任务异常，可以在这里统一重试、暂停或恢复。'
-})
-
-const virtualTaskCards = computed(() => {
-  const cards = []
-  const organizeStatus = String(workspace.state.organizeProgress?.status || '').trim()
-  const organizeStatusLabelMap = {
-    running: '运行中',
-    paused: '已暂停',
-    success: '已完成',
-    done: '已完成',
-    failed: '失败',
-    error: '失败'
-  }
-  cards.push({
-    id: 'organize-task',
-    type: 'organize',
-    status: organizeStatus || 'idle',
-    statusLabel: organizeStatusLabelMap[organizeStatus] || '未运行',
-    title: '全书整理任务',
-    subtitle: `当前进度 ${workspace.state.organizeProgress?.progress ?? 0}%`,
-    description: workspace.state.organizeProgress?.error_message || '负责导入后整理、结构分析与相关写回。',
-    hint: organizeStatus === 'failed' || organizeStatus === 'error' ? '建议先查看失败原因，再重试整理。' : '可在上方任务控制台执行暂停、恢复或取消。',
-    actionLabel: (organizeStatus === 'failed' || organizeStatus === 'error') ? '重新整理' : ''
-  })
-
-  if (workspaceStore.currentTask?.id) {
-    const task = workspaceStore.currentTask
-    const labelMap = {
-      running: '运行中',
-      completed: '已完成',
-      failed: '失败'
-    }
-    cards.push({
-      id: task.id,
-      type: task.type || 'task',
-      status: task.status || 'idle',
-      statusLabel: labelMap[task.status] || task.status || '待命中',
-      title: task.label || '当前任务',
-      subtitle: task.chapterId ? `章节 ${task.chapterId}` : '当前工作区任务',
-      description: task.error || '当前工作区最近一次 AI/校验任务状态。',
-      hint: task.status === 'failed' ? '如需恢复，可回到写作页重新发起。' : '可切换回对应工作区继续处理。',
-      actionLabel: task.status === 'failed' ? '回到写作' : ''
-    })
-  }
-
-  return cards
-})
-
-const filteredTaskCards = computed(() => {
-  const filter = workspaceStore.currentTaskFilter
-  const cards = virtualTaskCards.value
-  if (filter === 'all') return cards
-  if (filter === 'running') return cards.filter((item) => item.status === 'running')
-  if (filter === 'failed') return cards.filter((item) => ['failed', 'error'].includes(item.status))
-  if (filter === 'completed') return cards.filter((item) => ['completed', 'success', 'done'].includes(item.status))
-  if (filter === 'audit') return cards.filter((item) => item.type === 'audit')
-  return cards
-})
 
 const focusedTaskId = computed(() => (
   workspaceStore.currentObject?.type === 'task' ? String(workspaceStore.currentObject?.taskId || '') : ''
-))
-
-const focusBannerText = computed(() => {
-  if (workspaceStore.currentObject?.type === 'task' && workspaceStore.currentObject?.title) {
-    return `当前聚焦：${workspaceStore.currentObject.title}`
-  }
-  const filter = filterOptions.find((item) => item.key === workspaceStore.currentTaskFilter)
-  return filter ? `当前筛选：${filter.label}` : ''
-})
-
-const historyEmptyText = computed(() => (
-  filteredTaskCards.value.length ? '更完整的任务历史和 trace 将在后续接入。' : '当前筛选下暂无任务记录。'
 ))
 
 const setTaskCardRef = (taskId, el) => {
@@ -281,7 +294,9 @@ const focusTask = (task) => {
     type: 'task',
     taskId: task.id,
     title: task.title,
-    status: task.status
+    status: task.status,
+    chapterId: task.chapterId || '',
+    targetArcId: task.targetArcId || ''
   })
 }
 
@@ -301,6 +316,13 @@ const getTaskTagType = (status) => {
   if (status === 'paused') return 'warning'
   return 'info'
 }
+
+const taskCardClassMap = (task) => ({
+  focused: focusedTaskId.value === task.id,
+  'is-failed': ['failed', 'error'].includes(task.status),
+  'is-running': task.status === 'running',
+  'is-audit': String(task.type || '').toLowerCase().includes('audit') || String(task.type || '').toLowerCase().includes('analyze')
+})
 
 const runAction = async (name, executor) => {
   runningAction.value = name
@@ -346,13 +368,39 @@ const cancelOrganize = async () => {
 }
 
 const runTaskAction = async (task) => {
-  if (task.id === 'organize-task' && task.actionLabel === '重新整理') {
+  if (task.action?.type === 'retry-organize') {
     await retryOrganize()
     return
   }
 
+  if (task.action?.type === 'chapter' && task.action.chapterId) {
+    await workspace.openChapter?.(task.action.chapterId, 'writing')
+    return
+  }
+
+  if (task.action?.type === 'arc' && task.action.arcId) {
+    workspaceStore.setCurrentObject({
+      type: 'plot_arc',
+      arcId: task.action.arcId,
+      title: task.action.title || task.title
+    })
+    workspace.openSection?.('structure')
+    return
+  }
+
+  if (task.action?.type === 'task-filter') {
+    workspaceStore.setTaskFilter(task.action.filter || 'all')
+    workspace.openSection?.('tasks')
+    return
+  }
+
+  if (task.action?.type === 'section') {
+    workspace.openSection?.(task.action.section || 'tasks')
+    return
+  }
+
   if (task.status === 'failed') {
-    workspace.openSection?.('writing')
+    workspace.openSection?.('tasks')
   }
 }
 
@@ -495,6 +543,35 @@ watch(
   font-weight: 600;
 }
 
+.summary-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.summary-chip {
+  min-width: 96px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #E5E7EB;
+  background-color: #F9FAFB;
+}
+
+.summary-chip-label {
+  display: block;
+  font-size: 11px;
+  color: #9CA3AF;
+}
+
+.summary-chip-value {
+  display: block;
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
 .mt-6 {
   margin-top: 24px;
 }
@@ -612,6 +689,111 @@ watch(
   border: 1px solid #E5E7EB;
 }
 
+.recommendation-panel {
+  margin-top: 20px;
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%);
+}
+
+.recommendation-heading h3,
+.task-subsection-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background-color: #F3F4F6;
+  color: #6B7280;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.recommendation-heading p,
+.task-subsection-header p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #6B7280;
+}
+
+.recommendation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.recommendation-card {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recommendation-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.recommendation-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2563EB;
+  background-color: #EFF6FF;
+  border: 1px solid #DBEAFE;
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.recommendation-meta {
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
+.recommendation-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.recommendation-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4B5563;
+}
+
+.task-section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.task-subsection {
+  padding-top: 4px;
+}
+
+.task-subsection-header {
+  margin-bottom: 14px;
+}
+
 .history-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -629,6 +811,22 @@ watch(
   gap: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.history-card.is-failed {
+  border-color: #FECACA;
+  background: linear-gradient(180deg, #FFFFFF 0%, #FEF2F2 100%);
+}
+
+.history-card.is-running {
+  border-color: #BFDBFE;
+  background: linear-gradient(180deg, #FFFFFF 0%, #EFF6FF 100%);
+}
+
+.history-card.is-audit .history-chip.type {
+  color: #7C3AED;
+  border-color: #DDD6FE;
+  background-color: #F5F3FF;
 }
 
 .history-card:hover {
@@ -668,6 +866,51 @@ watch(
   color: #4B5563;
 }
 
+.history-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.history-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  font-size: 11px;
+  color: #6B7280;
+}
+
+.history-chip.type {
+  color: #1D4ED8;
+  border-color: #DBEAFE;
+  background-color: #EFF6FF;
+}
+
+.history-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background-color: #FFFFFF;
+  border: 1px solid #F3F4F6;
+}
+
+.note-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9CA3AF;
+}
+
+.note-value {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #4B5563;
+}
+
 .history-footer {
   display: flex;
   align-items: center;
@@ -698,7 +941,8 @@ watch(
 
 @media (max-width: 960px) {
   .page-hero,
-  .status-grid {
+  .status-grid,
+  .recommendation-grid {
     grid-template-columns: 1fr;
   }
 

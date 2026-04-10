@@ -58,6 +58,39 @@ const buildIntegrityCheckFromResult = (result = {}) => {
   return normalizeIntegrityCheck({ risk_notes: notes })
 }
 
+const buildDraftPayload = ({ title, action, currentContent, resultText }) => {
+  const fullContent = String(resultText || '')
+  const baseContent = String(currentContent || '')
+
+  if (!fullContent) {
+    return {
+      title,
+      content: '',
+      full_content: '',
+      preview_mode: 'empty',
+      source_action: action
+    }
+  }
+
+  let sharedPrefix = 0
+  const maxLength = Math.min(baseContent.length, fullContent.length)
+  while (sharedPrefix < maxLength && baseContent[sharedPrefix] === fullContent[sharedPrefix]) {
+    sharedPrefix += 1
+  }
+
+  const appendedContent = fullContent.slice(sharedPrefix).trimStart()
+  const sharedRatio = baseContent.length ? sharedPrefix / baseContent.length : 0
+  const shouldPreviewDelta = action === 'continue' && appendedContent && sharedRatio >= 0.8
+
+  return {
+    title,
+    content: shouldPreviewDelta ? appendedContent : fullContent,
+    full_content: fullContent,
+    preview_mode: shouldPreviewDelta ? 'delta' : 'full',
+    source_action: action
+  }
+}
+
 export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
   const loading = ref(false)
   const structureLoading = ref(false)
@@ -67,6 +100,7 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
   const projectId = ref('')
   const chapters = ref([])
   const organizeProgress = ref({})
+  const chapterTasks = ref([])
   const memoryView = ref({})
   const activeArcs = ref([])
   const copilotTab = ref('context')
@@ -125,6 +159,9 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
       project.value = nextProject
       projectId.value = nextProject?.id || ''
       organizeProgress.value = nextProgress || {}
+      chapterTasks.value = projectId.value
+        ? await projectApi.chapterTasksV2(projectId.value).catch(() => [])
+        : []
 
       await loadStructure()
     } catch (error) {
@@ -247,33 +284,45 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
 
       if (action === 'continue') {
         result = await chapterEditorApi.continueWrite(editor.chapter.id, payload)
-        editor.structuralDraft = {
-          title: editor.chapter.title || 'AI 结构稿',
-          content: result?.result_text || ''
-        }
+        editor.structuralDraft = buildDraftPayload({
+          title: editor.chapter.title || 'AI 续写稿',
+          action: 'continue',
+          currentContent: editor.chapter.content,
+          resultText: result?.result_text || ''
+        })
         editor.activeDraftTab = 'structural'
       } else if (action === 'optimize') {
         result = await chapterEditorApi.optimize(editor.chapter.id, payload)
         editor.detemplatedDraft = {
-          title: editor.chapter.title || 'AI 改写稿',
-          content: result?.result_text || '',
+          ...buildDraftPayload({
+            title: editor.chapter.title || 'AI 改写稿',
+            action: 'optimize',
+            currentContent: editor.chapter.content,
+            resultText: result?.result_text || ''
+          }),
           display_fallback_to_structural: false
         }
         editor.activeDraftTab = 'detemplated'
       } else if (action === 'rewrite') {
         result = await chapterEditorApi.rewriteStyle(editor.chapter.id, payload)
         editor.detemplatedDraft = {
-          title: editor.chapter.title || 'AI 改写稿',
-          content: result?.result_text || '',
+          ...buildDraftPayload({
+            title: editor.chapter.title || 'AI 改写稿',
+            action: 'rewrite',
+            currentContent: editor.chapter.content,
+            resultText: result?.result_text || ''
+          }),
           display_fallback_to_structural: false
         }
         editor.activeDraftTab = 'detemplated'
       } else if (action === 'generate') {
         result = await chapterEditorApi.generateFromOutline(editor.chapter.id, payload)
-        editor.structuralDraft = {
+        editor.structuralDraft = buildDraftPayload({
           title: editor.chapter.title || 'AI 结构稿',
-          content: result?.result_text || ''
-        }
+          action: 'generate',
+          currentContent: editor.chapter.content,
+          resultText: result?.result_text || ''
+        })
         if (result?.outline_draft) {
           editor.outline = { ...editor.outline, ...result.outline_draft }
         }
@@ -320,7 +369,7 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     editor.chapter.title = draft.title || editor.chapter.title
     editor.chapter.content = mode === 'append'
       ? `${editor.chapter.content || ''}\n\n${draft.content}`.trim()
-      : draft.content
+      : (draft.full_content || draft.content)
     editor.dirty = true
     return true
   }
@@ -346,6 +395,7 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     projectId,
     chapters,
     organizeProgress,
+    chapterTasks,
     memoryView,
     activeArcs,
     copilotTab,

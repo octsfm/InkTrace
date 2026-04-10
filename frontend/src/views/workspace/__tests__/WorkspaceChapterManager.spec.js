@@ -20,7 +20,7 @@ vi.mock('@/composables/useWorkspaceContext', () => ({
       novel: { id: 'novel-1' },
       chapters: [
         { id: 'ch-1', chapter_number: 1, title: '序章', status: 'draft', updated_at: '2026-04-09T00:00:00Z', word_count: 1200 },
-        { id: 'ch-2', chapter_number: 2, title: '风暴将至', status: 'draft', updated_at: '2026-04-10T00:00:00Z', word_count: 1800 }
+        { id: 'ch-2', chapter_number: 2, title: '风暴将至', status: 'reviewed', updated_at: '2026-04-10T00:00:00Z', word_count: 1800 }
       ]
     },
     createChapter: vi.fn(),
@@ -68,6 +68,9 @@ describe('WorkspaceChapterManager.vue', () => {
 
   it('shows the focused chapter banner', () => {
     expect(wrapper.text()).toContain('当前聚焦：风暴将至')
+    expect(wrapper.text()).toContain('最近更新')
+    expect(wrapper.text()).toContain('风暴将至')
+    expect(wrapper.text()).toContain('已校验 (1)')
   })
 
   it('highlights the focused chapter in kanban mode and scrolls into view', async () => {
@@ -79,5 +82,12 @@ describe('WorkspaceChapterManager.vue', () => {
     expect(focusedCard.exists()).toBe(true)
     expect(focusedCard.classes()).toContain('focused')
     expect(mockScrollIntoView).toHaveBeenCalled()
+  })
+
+  it('applies status filter to the unified chapter collection', async () => {
+    wrapper.vm.selectedStatusFilter = 'reviewed'
+    await nextTick()
+    expect(wrapper.vm.filteredChapters).toHaveLength(1)
+    expect(wrapper.vm.filteredChapters[0].id).toBe('ch-2')
   })
 })

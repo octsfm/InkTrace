@@ -39,6 +39,47 @@
         </div>
       </div>
 
+      <div class="chapter-summary-row">
+        <div class="summary-chip">
+          <span class="summary-chip-label">草稿</span>
+          <span class="summary-chip-value">{{ getChaptersByStatus('draft').length }}</span>
+        </div>
+        <div class="summary-chip">
+          <span class="summary-chip-label">已校验</span>
+          <span class="summary-chip-value">{{ getChaptersByStatus('reviewed').length }}</span>
+        </div>
+        <div class="summary-chip">
+          <span class="summary-chip-label">最近更新</span>
+          <span class="summary-chip-value">{{ latestUpdatedLabel }}</span>
+        </div>
+      </div>
+
+      <div class="chapter-quick-row">
+        <button
+          v-for="chapter in topUpdatedChapters"
+          :key="chapter.id"
+          type="button"
+          class="quick-chapter-chip"
+          :class="{ active: focusedChapterId === chapter.id }"
+          @click="focusChapter(chapter)"
+        >
+          {{ chapter.title || `第 ${chapter.chapter_number || '?'} 章` }}
+        </button>
+      </div>
+
+      <div class="chapter-filter-row">
+        <button
+          v-for="item in statusFilters"
+          :key="item.key"
+          type="button"
+          class="chapter-filter-chip"
+          :class="{ active: selectedStatusFilter === item.key }"
+          @click="selectedStatusFilter = item.key"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+
       <div v-if="focusedChapter" class="focus-banner">
         当前聚焦：{{ focusedChapter.title || `第 ${focusedChapter.chapter_number || '?'} 章` }}
       </div>
@@ -47,7 +88,7 @@
       <div v-if="viewMode === 'list'" class="list-view">
         <el-table
           ref="tableRef"
-          :data="workspace.state.chapters"
+          :data="filteredChapters"
           row-key="id"
           style="width: 100%"
           class="custom-table"
@@ -95,11 +136,11 @@
           <div v-for="col in kanbanColumns" :key="col.status" class="kanban-column">
             <div class="column-header">
               <span class="column-title">{{ col.label }}</span>
-              <span class="column-count">{{ getChaptersByStatus(col.status).length }}</span>
+              <span class="column-count">{{ getFilteredChaptersByStatus(col.status).length }}</span>
             </div>
             <div class="column-body">
               <div 
-                v-for="chapter in getChaptersByStatus(col.status)" 
+                v-for="chapter in getFilteredChaptersByStatus(col.status)" 
                 :key="chapter.id" 
                 class="kanban-card"
                 :class="{ focused: focusedChapterId === chapter.id }"
@@ -137,8 +178,17 @@ const workspace = useWorkspaceContext()
 const workspaceStore = useWorkspaceStore()
 
 const viewMode = ref('list') // 'list' | 'kanban'
+const selectedStatusFilter = ref('all')
 const tableRef = ref(null)
 const chapterCardRefs = ref({})
+
+const statusFilters = computed(() => ([
+  { key: 'all', label: `全部 (${(workspace.state.chapters || []).length || 0})` },
+  { key: 'drafting', label: `构思中 (${getChaptersByStatus('drafting').length})` },
+  { key: 'draft', label: `草稿 (${getChaptersByStatus('draft').length})` },
+  { key: 'reviewed', label: `已校验 (${getChaptersByStatus('reviewed').length})` },
+  { key: 'confirmed', label: `已确认 (${getChaptersByStatus('confirmed').length})` }
+]))
 
 const kanbanColumns = [
   { label: '构思中', status: 'drafting' },
@@ -156,6 +206,17 @@ const getChaptersByStatus = (status) => {
   })
 }
 
+const filteredChapters = computed(() => {
+  if (selectedStatusFilter.value === 'all') {
+    return workspace.state.chapters || []
+  }
+  return getChaptersByStatus(selectedStatusFilter.value)
+})
+
+const getFilteredChaptersByStatus = (status) => (
+  filteredChapters.value.filter((chapter) => (chapter.status || 'draft') === status)
+)
+
 const focusedChapterId = computed(() => {
   if (workspaceStore.currentObject?.type === 'chapter' && workspaceStore.currentObject?.id) {
     return String(workspaceStore.currentObject.id)
@@ -166,6 +227,22 @@ const focusedChapterId = computed(() => {
 const focusedChapter = computed(() => (
   (workspace.state.chapters || []).find((chapter) => chapter.id === focusedChapterId.value) || null
 ))
+
+const sortedByUpdated = computed(() => {
+  return [...(workspace.state.chapters || [])].sort((a, b) => {
+    const aTs = a.updated_at ? new Date(a.updated_at).getTime() : 0
+    const bTs = b.updated_at ? new Date(b.updated_at).getTime() : 0
+    return bTs - aTs
+  })
+})
+
+const latestUpdatedLabel = computed(() => {
+  const chapter = sortedByUpdated.value[0]
+  if (!chapter) return '未记录'
+  return chapter.title || `第 ${chapter.chapter_number || '?'} 章`
+})
+
+const topUpdatedChapters = computed(() => sortedByUpdated.value.slice(0, 4))
 
 const setChapterCardRef = (chapterId, el) => {
   if (!chapterId) return
@@ -350,11 +427,13 @@ watch(
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
   padding: 24px;
   border-radius: 20px;
   border: 1px solid #E5E7EB;
   background-color: #FFFFFF;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
 }
 
 .focus-banner {
@@ -366,6 +445,81 @@ watch(
   color: #1D4ED8;
   font-size: 13px;
   font-weight: 600;
+}
+
+.chapter-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.summary-chip {
+  min-width: 120px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid #E5E7EB;
+  background-color: #F9FAFB;
+}
+
+.summary-chip-label {
+  display: block;
+  font-size: 11px;
+  color: #9CA3AF;
+}
+
+.summary-chip-value {
+  display: block;
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.chapter-quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.chapter-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.quick-chapter-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  color: #4B5563;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quick-chapter-chip.active {
+  border-color: #BFDBFE;
+  background-color: #EFF6FF;
+  color: #1D4ED8;
+}
+
+.chapter-filter-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  color: #4B5563;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chapter-filter-chip.active {
+  border-color: #BFDBFE;
+  background-color: #EFF6FF;
+  color: #1D4ED8;
 }
 
 .section-header {
@@ -392,6 +546,13 @@ watch(
   font-weight: 600;
   color: #111827;
   margin: 0;
+}
+
+.list-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 8px;
 }
 
 .custom-table {
@@ -426,7 +587,9 @@ watch(
 /* Kanban Styles */
 .kanban-view {
   flex: 1;
+  min-height: 0;
   overflow-x: auto;
+  overflow-y: auto;
   padding-bottom: 16px;
 }
 

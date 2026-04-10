@@ -1,16 +1,16 @@
 <template>
   <aside class="workspace-sidebar">
     <div class="sidebar-intro">
-      <div class="sidebar-eyebrow">{{ sidebarEyebrow }}</div>
-      <div class="sidebar-title">{{ sidebarTitle }}</div>
-      <div class="sidebar-subtitle">{{ sidebarSubtitle }}</div>
+      <div class="sidebar-eyebrow">{{ resolvedSidebarMeta.eyebrow }}</div>
+      <div class="sidebar-title">{{ resolvedSidebarMeta.title }}</div>
+      <div class="sidebar-subtitle">{{ resolvedSidebarMeta.subtitle }}</div>
     </div>
 
     <!-- Writing View: Chapter Tree -->
-    <section v-if="workspaceStore.currentView === 'writing' || workspaceStore.currentView === 'chapters'" class="sidebar-section chapter-section">
+    <section v-if="activeView === 'writing' || activeView === 'chapters'" class="sidebar-section chapter-section">
       <div class="sidebar-heading-row">
         <div class="sidebar-heading">章节目录</div>
-        <button type="button" class="ghost-action" @click="createChapter">
+        <button type="button" class="ghost-action" @click="emit('create-chapter')">
           <el-icon><Plus /></el-icon>
         </button>
       </div>
@@ -23,7 +23,7 @@
         clearable
       />
 
-      <div v-if="!state.chapters || !state.chapters.length" class="sidebar-empty">
+      <div v-if="!chapterItems.length" class="sidebar-empty">
         还没有章节，先从导入内容或新建章节开始。
       </div>
 
@@ -33,8 +33,8 @@
           :key="chapter.id"
           type="button"
           class="chapter-item"
-          :class="{ active: currentChapterId === chapter.id }"
-          @click="openChapter(chapter.id)"
+          :class="{ active: activeChapterId === chapter.id }"
+          @click="emit('open-chapter', chapter.id)"
         >
           <div class="chapter-number">第 {{ chapter.chapter_number || '?' }} 章</div>
           <div class="chapter-title">{{ chapter.title || '未命名章节' }}</div>
@@ -46,17 +46,17 @@
     </section>
 
     <!-- Structure View: Object Navigation -->
-    <section v-else-if="workspaceStore.currentView === 'structure'" class="sidebar-section structure-section">
+    <section v-else-if="activeView === 'structure'" class="sidebar-section structure-section">
       <div class="sidebar-heading-row">
         <div class="sidebar-heading">结构导航</div>
       </div>
       <div class="nav-list">
         <button
-          v-for="item in structureItems"
+          v-for="item in resolvedStructureItems"
           :key="item.key"
           class="nav-item"
-          :class="{ active: workspaceStore.currentStructureSection === item.key }"
-          @click="workspaceStore.setStructureSection(item.key)"
+          :class="{ active: activeStructureSection === item.key }"
+          @click="emit('change-structure', item.key)"
         >
           {{ item.label }}
         </button>
@@ -64,17 +64,17 @@
     </section>
 
     <!-- Tasks View: Task Filter Navigation -->
-    <section v-else-if="workspaceStore.currentView === 'tasks'" class="sidebar-section tasks-section">
+    <section v-else-if="activeView === 'tasks'" class="sidebar-section tasks-section">
       <div class="sidebar-heading-row">
         <div class="sidebar-heading">任务视图</div>
       </div>
       <div class="nav-list">
         <button
-          v-for="item in taskFilters"
+          v-for="item in resolvedTaskFilters"
           :key="item.key"
           class="nav-item"
-          :class="{ active: workspaceStore.currentTaskFilter === item.key }"
-          @click="workspaceStore.setTaskFilter(item.key)"
+          :class="{ active: activeTaskFilter === item.key }"
+          @click="emit('change-task-filter', item.key)"
         >
           {{ item.label }}
         </button>
@@ -82,22 +82,18 @@
     </section>
     
     <!-- Overview View: Outline/Info -->
-    <section v-else-if="workspaceStore.currentView === 'overview'" class="sidebar-section overview-section">
+    <section v-else-if="activeView === 'overview'" class="sidebar-section overview-section">
       <div class="sidebar-heading-row">
         <div class="sidebar-heading">概览导航</div>
       </div>
       <div class="nav-list">
-        <div class="overview-card">
-          <div class="overview-label">当前小说</div>
-          <div class="overview-value">{{ state.novel?.title || '未命名小说' }}</div>
-        </div>
-        <div class="overview-card">
-          <div class="overview-label">最近章节</div>
-          <div class="overview-value">{{ latestChapterLabel }}</div>
-        </div>
-        <div class="overview-card">
-          <div class="overview-label">当前任务</div>
-          <div class="overview-value">{{ taskStatusLabel }}</div>
+        <div
+          v-for="item in resolvedOverviewCards"
+          :key="item.label"
+          class="overview-card"
+        >
+          <div class="overview-label">{{ item.label }}</div>
+          <div class="overview-value">{{ item.value }}</div>
         </div>
       </div>
     </section>
@@ -111,8 +107,49 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 import { Plus } from '@element-plus/icons-vue'
 
+const props = defineProps({
+  currentView: {
+    type: String,
+    default: ''
+  },
+  currentChapterId: {
+    type: String,
+    default: ''
+  },
+  currentStructureSection: {
+    type: String,
+    default: ''
+  },
+  currentTaskFilter: {
+    type: String,
+    default: ''
+  },
+  chapters: {
+    type: Array,
+    default: () => []
+  },
+  sidebarMeta: {
+    type: Object,
+    default: () => null
+  },
+  structureItems: {
+    type: Array,
+    default: () => []
+  },
+  taskFilters: {
+    type: Array,
+    default: () => []
+  },
+  overviewCards: {
+    type: Array,
+    default: () => []
+  }
+})
+
+const emit = defineEmits(['open-chapter', 'create-chapter', 'change-structure', 'change-task-filter'])
+
 const workspaceStore = useWorkspaceStore()
-const { state, currentChapterId, openChapter, createChapter } = useWorkspaceContext()
+const { state, currentChapterId } = useWorkspaceContext()
 const chapterKeyword = ref('')
 
 const structureItems = [
@@ -131,9 +168,17 @@ const taskFilters = [
   { key: 'audit', label: '审查' }
 ]
 
+const activeView = computed(() => props.currentView || workspaceStore.currentView)
+const activeChapterId = computed(() => props.currentChapterId || currentChapterId.value || '')
+const activeStructureSection = computed(() => props.currentStructureSection || workspaceStore.currentStructureSection)
+const activeTaskFilter = computed(() => props.currentTaskFilter || workspaceStore.currentTaskFilter)
+const chapterItems = computed(() => (Array.isArray(props.chapters) && props.chapters.length ? props.chapters : (state.chapters || [])))
+const resolvedStructureItems = computed(() => (Array.isArray(props.structureItems) && props.structureItems.length ? props.structureItems : structureItems))
+const resolvedTaskFilters = computed(() => (Array.isArray(props.taskFilters) && props.taskFilters.length ? props.taskFilters : taskFilters))
+
 const filteredChapters = computed(() => {
   const keyword = chapterKeyword.value.trim().toLowerCase()
-  const chapters = Array.isArray(state.chapters) ? [...state.chapters] : []
+  const chapters = Array.isArray(chapterItems.value) ? [...chapterItems.value] : []
   const sorted = chapters.sort((a, b) => (a.chapter_number || 0) - (b.chapter_number || 0))
   if (!keyword) {
     return sorted
@@ -193,10 +238,16 @@ const sidebarMetaMap = {
   }
 }
 
-const sidebarMeta = computed(() => sidebarMetaMap[workspaceStore.currentView] || sidebarMetaMap.overview)
-const sidebarEyebrow = computed(() => sidebarMeta.value.eyebrow)
-const sidebarTitle = computed(() => sidebarMeta.value.title)
-const sidebarSubtitle = computed(() => sidebarMeta.value.subtitle)
+const resolvedSidebarMeta = computed(() => props.sidebarMeta || sidebarMetaMap[activeView.value] || sidebarMetaMap.overview)
+const resolvedOverviewCards = computed(() => (
+  Array.isArray(props.overviewCards) && props.overviewCards.length
+    ? props.overviewCards
+    : [
+        { label: '当前小说', value: state.novel?.title || '未命名小说' },
+        { label: '最近章节', value: latestChapterLabel.value },
+        { label: '当前任务', value: taskStatusLabel.value }
+      ]
+))
 
 const formatDate = (value) => {
   if (!value) return ''
