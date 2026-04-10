@@ -228,4 +228,18 @@ describe('WorkspaceTasksAudit.vue', () => {
     await overviewChip.trigger('click')
     expect(mockOpenSection).toHaveBeenCalledWith('overview')
   })
+
+  it('syncs focused task back into workspace store', async () => {
+    const taskCard = wrapper.find('[data-task-id="editor-analyze-1"]')
+    await taskCard.trigger('click')
+    expect(workspaceStore.currentTask).toMatchObject({
+      id: 'editor-analyze-1',
+      label: 'AI 审查',
+      chapterId: 'ch-2'
+    })
+    expect(workspaceStore.currentObject).toMatchObject({
+      type: 'task',
+      taskId: 'editor-analyze-1'
+    })
+  })
 })

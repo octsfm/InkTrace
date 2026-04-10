@@ -23,7 +23,50 @@ export const useWorkspaceStore = defineStore('workspace', {
     copilotChatPending: false,
     isZenMode: false
   }),
+  getters: {
+    currentTaskFocusId(state) {
+      if (state.currentObject?.type === 'task') {
+        return String(state.currentObject?.taskId || state.currentObject?.id || '')
+      }
+      return String(state.currentTask?.id || '')
+    }
+  },
   actions: {
+    normalizeTask(task) {
+      if (!task?.id) {
+        return null
+      }
+
+      return {
+        id: String(task.id),
+        type: task.type || 'task',
+        label: task.label || task.title || '当前任务',
+        status: task.status || 'idle',
+        chapterId: task.chapterId || task.chapter_id || '',
+        resultType: task.resultType || '',
+        error: task.error || '',
+        targetArcId: task.targetArcId || task.target_arc_id || ''
+      }
+    },
+
+    buildTaskObject(task) {
+      const normalized = this.normalizeTask(task)
+      if (!normalized) {
+        return null
+      }
+
+      return {
+        type: 'task',
+        id: normalized.id,
+        taskId: normalized.id,
+        title: normalized.label,
+        status: normalized.status,
+        chapterId: normalized.chapterId,
+        targetArcId: normalized.targetArcId,
+        resultType: normalized.resultType
+      }
+    },
+
     recordOpenDocument(document) {
       if (!document?.type) {
         return
@@ -69,15 +112,36 @@ export const useWorkspaceStore = defineStore('workspace', {
         return
       }
 
-      this.currentChapterId = chapterId
-      this.currentView = 'writing'
-      this.currentObject = {
-        type: 'chapter',
+      this.focusChapterObject({
         id: chapterId,
         title: chapterMeta.title || ''
+      }, {
+        openView: true,
+        view: 'writing',
+        exitZen: true
+      })
+    },
+
+    focusChapterObject(chapter, options = {}) {
+      const chapterId = String(chapter?.id || chapter?.chapterId || '')
+      if (!chapterId) {
+        return
       }
-      this.recordOpenDocument({ type: 'chapter', id: chapterId, title: chapterMeta.title || '' })
-      this.isZenMode = false
+
+      const nextObject = {
+        type: 'chapter',
+        id: chapterId,
+        title: chapter?.title || ''
+      }
+      this.currentChapterId = chapterId
+      this.currentObject = nextObject
+      this.recordOpenDocument({ type: 'chapter', id: chapterId, title: nextObject.title })
+      if (options.exitZen) {
+        this.isZenMode = false
+      }
+      if (options.openView) {
+        this.currentView = options.view || 'chapters'
+      }
     },
 
     setCurrentObject(object) {
@@ -95,12 +159,151 @@ export const useWorkspaceStore = defineStore('workspace', {
       } else if (object.type === 'task-filter' && object.filter) {
         this.recordOpenDocument({ type: 'task-filter', id: object.filter, title: `任务筛选：${object.filter}` })
       } else if (object.type === 'story_model') {
-        this.recordOpenDocument({ type: 'story_model', id: 'story_model', title: 'Story Model' })
+        this.recordOpenDocument({ type: 'story_model', id: 'story_model', title: '故事模型' })
+      }
+    },
+
+    focusOverview(options = {}) {
+      this.currentObject = { type: 'overview' }
+      if (options.openView !== false) {
+        this.currentView = 'overview'
+      }
+    },
+
+    focusStructureSection(section, options = {}) {
+      const nextSection = section || 'story_model'
+      this.currentStructureSection = nextSection
+      this.currentObject = {
+        type: nextSection
+      }
+      this.recordOpenDocument({
+        type: nextSection,
+        id: nextSection,
+        title: nextSection === 'story_model'
+          ? '故事模型'
+          : nextSection === 'plot_arc'
+            ? '剧情弧'
+            : nextSection === 'risk'
+              ? '风险点'
+              : nextSection
+      })
+      if (options.openView !== false) {
+        this.currentView = 'structure'
       }
     },
 
     setCurrentTask(task) {
-      this.currentTask = task || null
+      const normalized = this.normalizeTask(task)
+      this.currentTask = normalized
+
+      if (!normalized) {
+        return
+      }
+
+      this.recordOpenDocument({
+        type: 'task',
+        id: normalized.id,
+        title: normalized.label
+      })
+
+      if (this.currentObject?.type === 'task') {
+        this.currentObject = this.buildTaskObject(normalized)
+      }
+    },
+
+    focusTask(task, options = {}) {
+      const normalized = this.normalizeTask(task)
+      if (!normalized) {
+        return
+      }
+
+      this.currentTask = normalized
+      this.currentObject = this.buildTaskObject(normalized)
+      this.recordOpenDocument({
+        type: 'task',
+        id: normalized.id,
+        title: normalized.label
+      })
+
+      if (options.openView !== false) {
+        this.currentView = 'tasks'
+      }
+    },
+
+    focusPlotArc(arc, options = {}) {
+      const arcId = String(arc?.arcId || arc?.arc_id || '')
+      this.currentStructureSection = options.section || 'plot_arc'
+      this.currentObject = {
+        type: 'plot_arc',
+        arcId,
+        title: arc?.title || arc?.label || arcId
+      }
+      this.recordOpenDocument({
+        type: 'plot_arc',
+        id: arcId || 'plot_arc',
+        title: arc?.title || arc?.label || arcId
+      })
+      if (options.openView !== false) {
+        this.currentView = 'structure'
+      }
+    },
+
+    focusTaskFilter(filter, options = {}) {
+      this.currentTaskFilter = filter || 'all'
+      this.currentObject = {
+        type: 'task-filter',
+        filter: this.currentTaskFilter
+      }
+      this.recordOpenDocument({
+        type: 'task-filter',
+        id: this.currentTaskFilter,
+        title: `任务筛选：${this.currentTaskFilter}`
+      })
+      if (options.openView !== false) {
+        this.currentView = 'tasks'
+      }
+    },
+
+    focusObject(object, options = {}) {
+      if (!object?.type) {
+        this.currentObject = null
+        return
+      }
+
+      if (object.type === 'overview') {
+        this.focusOverview(options)
+        return
+      }
+
+      if (object.type === 'chapter') {
+        this.focusChapterObject(object, options)
+        return
+      }
+
+      if (object.type === 'plot_arc') {
+        this.focusPlotArc(object, options)
+        return
+      }
+
+      if (['story_model', 'risk'].includes(object.type)) {
+        this.focusStructureSection(object.type, options)
+        return
+      }
+
+      if (object.type === 'task-filter') {
+        this.focusTaskFilter(object.filter, options)
+        return
+      }
+
+      if (object.type === 'task') {
+        this.focusTask(object, options)
+        return
+      }
+
+      this.setCurrentObject(object)
+      if (options.openView && options.view) {
+        this.currentView = options.view
+      }
     },
 
     setContextSnapshot(snapshot) {
@@ -108,20 +311,11 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     setStructureSection(section) {
-      this.currentStructureSection = section || 'story_model'
-      this.currentObject = {
-        type: section || 'story_model'
-      }
-      this.currentView = 'structure'
+      this.focusStructureSection(section, { openView: true })
     },
 
     setTaskFilter(filter) {
-      this.currentTaskFilter = filter || 'all'
-      this.currentObject = {
-        type: 'task-filter',
-        filter: this.currentTaskFilter
-      }
-      this.currentView = 'tasks'
+      this.focusTaskFilter(filter, { openView: true })
     },
 
     setCopilotTab(tab) {

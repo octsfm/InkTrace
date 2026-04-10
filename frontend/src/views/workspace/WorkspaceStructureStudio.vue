@@ -278,12 +278,10 @@ const scrollToFocusedArc = async (arcId) => {
 }
 
 const focusArc = (arc) => {
-  workspaceStore.setStructureSection('plot_arc')
-  workspaceStore.setCurrentObject({
-    type: 'plot_arc',
+  workspaceStore.focusPlotArc({
     arcId: arc?.arc_id || '',
     title: arc?.title || arc?.arc_id || ''
-  })
+  }, { openView: false, section: 'plot_arc' })
 }
 
 const switchStructureView = (key) => {

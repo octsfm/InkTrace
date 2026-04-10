@@ -270,12 +270,10 @@ const setChapterCardRef = (chapterId, el) => {
 
 const focusChapter = (chapter) => {
   if (!chapter?.id) return
-  workspaceStore.currentChapterId = chapter.id
-  workspaceStore.setCurrentObject({
-    type: 'chapter',
+  workspaceStore.focusChapterObject({
     id: chapter.id,
     title: chapter.title || ''
-  })
+  }, { openView: false })
 }
 
 const getRowClassName = ({ row }) => (

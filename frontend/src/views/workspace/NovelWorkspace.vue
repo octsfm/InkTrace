@@ -30,7 +30,7 @@
         </el-tooltip>
       </div>
       <div class="nav-bottom">
-        <el-tooltip content="返回主页 Dashboard" placement="right">
+        <el-tooltip content="返回主页" placement="right">
           <div class="nav-item" @click="goToDashboard">
             <el-icon><House /></el-icon>
           </div>
@@ -227,13 +227,13 @@ const currentObjectLabel = computed(() => {
       return workspaceStore.currentObject.title
     }
     const labelMap = {
-      story_model: 'Story Model',
-      plot_arc: 'PlotArc',
+      story_model: '故事模型',
+      plot_arc: '剧情弧',
       character: '角色',
       worldview: '世界观',
       risk: '风险点'
     }
-    return labelMap[workspaceStore.currentStructureSection] || 'Structure'
+    return labelMap[workspaceStore.currentStructureSection] || '结构'
   }
   if (workspaceStore.currentView === 'tasks') {
     if (workspaceStore.currentObject?.type === 'task' && workspaceStore.currentObject?.title) {
@@ -246,13 +246,13 @@ const currentObjectLabel = computed(() => {
       completed: '已完成',
       audit: '审查结果'
     }
-    return labelMap[workspaceStore.currentTaskFilter] || 'Tasks'
+    return labelMap[workspaceStore.currentTaskFilter] || '任务'
   }
   if (workspaceStore.currentView === 'chapters') {
     if (workspaceStore.currentObject?.type === 'chapter' && workspaceStore.currentObject?.title) {
       return workspaceStore.currentObject.title
     }
-    return currentChapter.value?.title || 'Chapter Manager'
+    return currentChapter.value?.title || '章节管理'
   }
   return ''
 })
@@ -264,27 +264,27 @@ const currentWordCount = computed(() => {
 
 const sidebarMetaMap = {
   writing: {
-    eyebrow: 'Writing',
+    eyebrow: '写作',
     title: '章节与对象导航',
     subtitle: '当前以章节为主对象，切换章节不会离开工作区。'
   },
   chapters: {
-    eyebrow: 'Chapters',
+    eyebrow: '章节',
     title: '章节导航',
     subtitle: '统一查看章节对象，再按需进入写作或管理视图。'
   },
   structure: {
-    eyebrow: 'Structure',
+    eyebrow: '结构',
     title: '结构导航',
     subtitle: '在剧情弧、角色与世界观对象之间切换。'
   },
   tasks: {
-    eyebrow: 'Tasks',
+    eyebrow: '任务',
     title: '任务筛选',
     subtitle: '优先处理失败任务和审查结果。'
   },
   overview: {
-    eyebrow: 'Overview',
+    eyebrow: '概览',
     title: '项目摘要',
     subtitle: '只展示最小必要信息，帮助你决定下一步。'
   }
@@ -295,8 +295,8 @@ const sidebarMeta = computed(() => (
 ))
 
 const sidebarStructureItems = [
-  { key: 'story_model', label: 'Story Model' },
-  { key: 'plot_arc', label: '剧情弧 PlotArc' },
+  { key: 'story_model', label: '故事模型' },
+  { key: 'plot_arc', label: '剧情弧' },
   { key: 'character', label: '角色 Characters' },
   { key: 'worldview', label: '世界观 Worldview' },
   { key: 'risk', label: '风险点 Risks' }
@@ -371,7 +371,7 @@ const topbarQuickFacts = computed(() => {
     })
     facts.push({
       label: '当前对象',
-      value: currentObjectLabel.value || 'Structure'
+      value: currentObjectLabel.value || '结构'
     })
   } else if (workspaceStore.currentView === 'chapters') {
     facts.push({
@@ -697,7 +697,7 @@ const taskRecommendationItems = computed(() => {
       title: '当前任务状态稳定',
       description: '没有需要立即恢复的任务，下一步可切回写作或结构页继续推进。',
       meta: `${taskSummaryCounts.value.all || 0} 个项目任务`,
-      actionLabel: '回到 Overview',
+      actionLabel: '回到概览',
       action: { type: 'section', section: 'overview' }
     })
   }
@@ -709,7 +709,7 @@ const taskFocusBannerText = computed(() => {
   if (workspaceStore.currentObject?.type === 'task' && workspaceStore.currentObject?.title) {
     return `当前聚焦：${workspaceStore.currentObject.title}`
   }
-  const filter = taskFilterOptions.find((item) => item.key === workspaceStore.currentTaskFilter)
+  const filter = taskFilterOptions.value.find((item) => item.key === workspaceStore.currentTaskFilter)
   return filter ? `当前筛选：${filter.label}` : ''
 })
 
@@ -1384,7 +1384,7 @@ const commandPaletteItems = computed(() => {
     {
       id: 'view-overview',
       group: '视图',
-      title: '打开 Overview',
+      title: '打开概览',
       subtitle: '回到小说整体概览',
       keywords: 'overview 概览 dashboard 总览',
       action: { type: 'section', section: 'overview' }
@@ -1392,7 +1392,7 @@ const commandPaletteItems = computed(() => {
     {
       id: 'view-writing',
       group: '视图',
-      title: '打开 Writing',
+      title: '打开写作',
       subtitle: '进入正文写作工作区',
       keywords: 'writing 写作 正文',
       action: recentChapter.value?.id
@@ -1402,7 +1402,7 @@ const commandPaletteItems = computed(() => {
     {
       id: 'view-structure',
       group: '视图',
-      title: '打开 Structure',
+      title: '打开结构',
       subtitle: '查看结构摘要和剧情弧',
       keywords: 'structure 结构 剧情弧',
       action: { type: 'section', section: 'structure', object: { type: 'plot_arc' } }
@@ -1410,7 +1410,7 @@ const commandPaletteItems = computed(() => {
     {
       id: 'view-chapters',
       group: '视图',
-      title: '打开 Chapters',
+      title: '打开章节',
       subtitle: '进入章节管理工作区',
       keywords: 'chapters 章节 管理',
       action: { type: 'section', section: 'chapters' }
@@ -1418,7 +1418,7 @@ const commandPaletteItems = computed(() => {
     {
       id: 'view-tasks',
       group: '视图',
-      title: '打开 Tasks',
+      title: '打开任务',
       subtitle: '查看任务与审查结果',
       keywords: 'tasks 任务 审查',
       action: { type: 'task-filter', filter: 'all' }
@@ -1426,7 +1426,7 @@ const commandPaletteItems = computed(() => {
     {
       id: 'story-model',
       group: '结构',
-      title: '打开 Story Model',
+      title: '打开故事模型',
       subtitle: '查看整体结构模型与约束',
       keywords: 'story model 结构 模型 约束',
       hint: '结构',
@@ -1802,7 +1802,7 @@ const suggestedActions = computed(() => {
       key: 'writing',
       title: '继续当前章节',
       description: `回到 ${currentChapter.value.title || '当前章节'}，继续正文写作与 AI 协作。`,
-      cta: '打开 Writing',
+      cta: '打开写作',
       action: {
         type: 'chapter',
         chapterId: currentChapter.value.id
@@ -1812,7 +1812,7 @@ const suggestedActions = computed(() => {
       key: 'chapters',
       title: '在章节管理中定位',
       description: `切到章节管理页，并聚焦 ${currentChapter.value.title || '当前章节'}。`,
-      cta: '打开 Chapters',
+      cta: '打开章节',
       action: {
         type: 'chapter-manager',
         chapterId: currentChapter.value.id,
@@ -1836,7 +1836,7 @@ const suggestedActions = computed(() => {
     key: 'structure',
     title: '查看活跃剧情弧',
     description: '检查主线、当前进度和活跃剧情弧，避免写作脱离结构。 ',
-    cta: '打开 Structure',
+    cta: '打开结构',
     action: {
       type: 'section',
       section: 'structure',
@@ -1849,7 +1849,7 @@ const suggestedActions = computed(() => {
     key: 'tasks',
     title: '检查任务状态',
     description: '集中查看整理、审查和失败任务的恢复入口。',
-    cta: '打开 Tasks',
+    cta: '打开任务',
     action: {
       type: 'task-filter',
       filter: 'all'
@@ -1876,12 +1876,22 @@ const buildRouteQuery = (extraQuery = {}) => {
 }
 
 const openSection = (section, extraQuery = {}) => {
-  workspaceStore.switchView(section)
-  if (section === 'structure' && !workspaceStore.currentObject) {
-    workspaceStore.setStructureSection(workspaceStore.currentStructureSection)
-  }
-  if (section === 'tasks' && !workspaceStore.currentObject) {
-    workspaceStore.setTaskFilter(workspaceStore.currentTaskFilter)
+  if (section === 'overview') {
+    workspaceStore.focusOverview({ openView: true })
+  } else if (section === 'structure') {
+    if (!workspaceStore.currentObject || !['story_model', 'plot_arc', 'risk'].includes(workspaceStore.currentObject.type)) {
+      workspaceStore.focusStructureSection(workspaceStore.currentStructureSection, { openView: true })
+    } else {
+      workspaceStore.switchView(section)
+    }
+  } else if (section === 'tasks') {
+    if (!workspaceStore.currentObject || !['task', 'task-filter'].includes(workspaceStore.currentObject.type)) {
+      workspaceStore.focusTaskFilter(workspaceStore.currentTaskFilter, { openView: true })
+    } else {
+      workspaceStore.switchView(section)
+    }
+  } else {
+    workspaceStore.switchView(section)
   }
   router.replace({
     path: route.path,
@@ -1906,29 +1916,25 @@ const handleCopilotTrigger = async (payload) => {
 
   if (payload.type === 'chapter-manager' && payload.chapterId) {
     const chapterMeta = (state.chapters || []).find((item) => item.id === payload.chapterId) || {}
-    workspaceStore.currentChapterId = payload.chapterId
-    workspaceStore.setCurrentObject({
-      type: 'chapter',
+    workspaceStore.focusChapterObject({
       id: payload.chapterId,
       title: payload.title || chapterMeta.title || ''
-    })
+    }, { openView: false })
     openSection('chapters')
     return
   }
 
   if (payload.type === 'arc') {
-    workspaceStore.setStructureSection('plot_arc')
-    workspaceStore.setCurrentObject({
-      type: 'plot_arc',
+    workspaceStore.focusPlotArc({
       arcId: payload.arcId || '',
       title: payload.title || ''
-    })
+    }, { openView: false, section: 'plot_arc' })
     openSection('structure')
     return
   }
 
   if (payload.type === 'task-filter') {
-    workspaceStore.setTaskFilter(payload.filter || 'all')
+    workspaceStore.focusTaskFilter(payload.filter || 'all', { openView: false })
     openSection('tasks')
     return
   }
@@ -1936,10 +1942,10 @@ const handleCopilotTrigger = async (payload) => {
   if (payload.type === 'section') {
     if (payload.section === 'structure' && payload.object?.type) {
       workspaceStore.setStructureSection(payload.object.type)
-      workspaceStore.setCurrentObject(payload.object)
+      workspaceStore.focusObject(payload.object, { openView: false })
     }
     if (payload.section === 'tasks' && payload.filter) {
-      workspaceStore.setTaskFilter(payload.filter)
+      workspaceStore.focusTaskFilter(payload.filter, { openView: false })
     }
     openSection(payload.section || 'overview', payload.query || {})
     return
@@ -2052,15 +2058,21 @@ const handleGlobalKeydown = (event) => {
 
 const openChapter = async (chapterId, section = 'writing') => {
   const chapterMeta = (state.chapters || []).find((item) => item.id === chapterId) || {}
-  workspaceStore.openChapter(chapterId, chapterMeta)
-  await state.loadEditorChapter(chapterId)
+  workspaceStore.focusChapterObject({
+    id: chapterId,
+    title: chapterMeta.title || ''
+  }, {
+    openView: true,
+    view: section,
+    exitZen: section === 'writing'
+  })
+  if (section === 'writing') {
+    await state.loadEditorChapter(chapterId)
+  }
   await router.replace({
     path: route.path,
     query: buildRouteQuery({ chapterId })
   })
-  if (section !== 'writing') {
-    workspaceStore.switchView(section)
-  }
 }
 
 const createChapter = async () => {
@@ -2096,13 +2108,21 @@ const ensureWorkspaceEntry = async () => {
   if (state.loading) return
   if (!route.params.id) return
   const requestedSection = resolveRequestedSection()
+  const targetChapterId = resolveDefaultChapterId()
 
   if (requestedSection && requestedSection !== 'writing') {
+    if (requestedSection === 'chapters' && targetChapterId) {
+      const chapterMeta = (state.chapters || []).find((item) => item.id === targetChapterId) || {}
+      workspaceStore.focusChapterObject({
+        id: targetChapterId,
+        title: chapterMeta.title || ''
+      }, { openView: true, view: 'chapters' })
+      return
+    }
     workspaceStore.switchView(requestedSection)
     return
   }
 
-  const targetChapterId = resolveDefaultChapterId()
   if (targetChapterId) {
     if (targetChapterId !== workspaceStore.currentChapterId || !state.editor.chapter?.id) {
       await openChapter(targetChapterId, 'writing')
@@ -2153,7 +2173,17 @@ watch(() => route.query.chapterId, (chapterId) => {
     return
   }
 
-  void openChapter(nextChapterId)
+  const requestedSection = resolveRequestedSection() || workspaceStore.currentView
+  if (requestedSection === 'writing') {
+    void openChapter(nextChapterId, 'writing')
+    return
+  }
+
+  const chapterMeta = (state.chapters || []).find((item) => item.id === nextChapterId) || {}
+  workspaceStore.focusChapterObject({
+    id: nextChapterId,
+    title: chapterMeta.title || ''
+  }, { openView: false })
 })
 
 watch(() => route.query.section, () => {
@@ -2188,6 +2218,7 @@ onMounted(() => {
   if (route && route.params && route.params.id) {
     workspaceStore.initWorkspace(route.params.id)
   }
+  void ensureWorkspaceEntry()
   window.addEventListener('keydown', handleGlobalKeydown)
 })
 

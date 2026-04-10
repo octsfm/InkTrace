@@ -286,9 +286,7 @@ const getProgressStatus = (status) => {
 }
 
 
-const focusedTaskId = computed(() => (
-  workspaceStore.currentObject?.type === 'task' ? String(workspaceStore.currentObject?.taskId || '') : ''
-))
+const focusedTaskId = computed(() => workspaceStore.currentTaskFocusId || '')
 
 const setTaskCardRef = (taskId, el) => {
   if (!taskId) return
@@ -300,14 +298,14 @@ const setTaskCardRef = (taskId, el) => {
 }
 
 const focusTask = (task) => {
-  workspaceStore.setCurrentObject({
-    type: 'task',
-    taskId: task.id,
-    title: task.title,
+  workspaceStore.focusTask({
+    id: task.id,
+    type: task.type,
+    label: task.title,
     status: task.status,
     chapterId: task.chapterId || '',
     targetArcId: task.targetArcId || ''
-  })
+  }, { openView: false })
 }
 
 const scrollToFocusedTask = async (taskId) => {
@@ -378,6 +376,8 @@ const cancelOrganize = async () => {
 }
 
 const runTaskAction = async (task) => {
+  focusTask(task)
+
   if (task.action?.type === 'retry-organize') {
     await retryOrganize()
     return
@@ -389,8 +389,7 @@ const runTaskAction = async (task) => {
   }
 
   if (task.action?.type === 'arc' && task.action.arcId) {
-    workspaceStore.setCurrentObject({
-      type: 'plot_arc',
+    workspaceStore.focusPlotArc({
       arcId: task.action.arcId,
       title: task.action.title || task.title
     })
@@ -399,7 +398,7 @@ const runTaskAction = async (task) => {
   }
 
   if (task.action?.type === 'task-filter') {
-    workspaceStore.setTaskFilter(task.action.filter || 'all')
+    workspaceStore.focusTaskFilter(task.action.filter || 'all')
     workspace.openSection?.('tasks')
     return
   }

@@ -27,7 +27,7 @@ vi.mock('vue-router', () => ({
 }))
 
 // Mock child components
-vi.mock('../WorkspaceOverview.vue', () => ({ default: { name: 'WorkspaceOverview', template: '<div class="workspace-overview-mock">Overview</div>' } }))
+vi.mock('../WorkspaceOverview.vue', () => ({ default: { name: 'WorkspaceOverview', template: '<div class="workspace-overview-mock">概览</div>' } }))
 vi.mock('../WorkspaceWritingStudio.vue', () => ({ default: { name: 'WorkspaceWritingStudio', template: '<div class="workspace-writing-mock">Writing</div>' } }))
 vi.mock('../WorkspaceStructureStudio.vue', () => ({ default: { name: 'WorkspaceStructureStudio', template: '<div class="workspace-structure-mock">Structure</div>' } }))
 vi.mock('../WorkspaceChapterManager.vue', () => ({ default: { name: 'WorkspaceChapterManager', template: '<div class="workspace-chapter-mock">Chapters</div>' } }))
@@ -118,7 +118,11 @@ describe('NovelWorkspace.vue', () => {
     mountComponent()
   })
 
-  it('renders the workspace layout with default overview view', () => {
+  it('renders the workspace layout with overview section when requested', async () => {
+    mockRoute.query = { section: 'overview' }
+    mountComponent()
+    await wrapper.vm.$nextTick()
+
     // Should have left nav
     expect(wrapper.find('.workspace-nav-bar').exists()).toBe(true)
     expect(wrapper.find('.workspace-topbar-mock').exists()).toBe(true)
@@ -155,7 +159,7 @@ describe('NovelWorkspace.vue', () => {
   it('records recent command when command palette executes an item', async () => {
     const item = {
       id: 'view-structure',
-      title: '打开 Structure',
+      title: '打开结构',
       subtitle: '查看结构摘要和剧情弧',
       group: '视图',
       hint: '',
@@ -165,7 +169,7 @@ describe('NovelWorkspace.vue', () => {
     await wrapper.vm.handleCommandExecute(item)
     expect(store.recentCommandItems[0]).toMatchObject({
       id: 'view-structure',
-      title: '打开 Structure'
+      title: '打开结构'
     })
   })
 
@@ -228,6 +232,7 @@ describe('NovelWorkspace.vue', () => {
   })
 
   it('adds task counts to filters and exposes failed task shortcut in top bar actions', () => {
+    store.currentView = 'tasks'
     expect(wrapper.vm.taskFilterOptions.find((item) => item.key === 'failed')?.label).toContain('(1)')
     expect(wrapper.vm.topbarObjectActions.some((item) => item.label.includes('失败任务'))).toBe(true)
     expect(wrapper.vm.topbarQuickFacts.some((item) => item.label === '失败任务')).toBe(true)
@@ -268,6 +273,22 @@ describe('NovelWorkspace.vue', () => {
     })
 
     expect(store.currentView).toBe('writing')
+  })
+
+  it('keeps chapter manager view when entering with chapters section and chapter id', async () => {
+    mockRoute.query = {
+      section: 'chapters',
+      chapterId: 'chapter-1'
+    }
+    mountComponent()
+    await wrapper.vm.$nextTick()
+
+    expect(store.currentView).toBe('chapters')
+    expect(store.currentObject).toMatchObject({
+      type: 'chapter',
+      id: 'chapter-1',
+      title: '第一章'
+    })
   })
 
 })

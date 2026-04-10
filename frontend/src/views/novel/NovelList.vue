@@ -2,10 +2,10 @@
   <div class="novel-list">
     <section class="dashboard-hero">
       <div class="hero-main">
-        <div class="hero-eyebrow">Dashboard</div>
+        <div class="hero-eyebrow">工作台</div>
         <h1 class="hero-title">进入你的小说工作区</h1>
         <p class="hero-description">
-          Dashboard 只负责一件事：帮你快速找到要继续写的小说，并直接进入对应 Workspace。
+          这里现在只负责一件事：帮你快速找到要继续写的小说，并直接进入对应工作区。
         </p>
         <div class="hero-actions">
           <el-button v-if="featuredNovel" type="primary" @click="openWorkspace(featuredNovel.id)">

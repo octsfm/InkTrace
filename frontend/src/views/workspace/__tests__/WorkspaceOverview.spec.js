@@ -21,7 +21,7 @@ const mockWorkspaceContext = {
   },
   currentChapterId: computed(() => 'chapter-1'),
   suggestedActions: computed(() => [
-    { key: 'writing', title: '继续写作', description: '进入当前章节。', cta: '打开 Writing' }
+    { key: 'writing', title: '继续写作', description: '进入当前章节。', cta: '打开写作' }
   ]),
   overviewDecisionCards: computed(() => [
     {
