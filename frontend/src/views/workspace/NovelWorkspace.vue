@@ -3,27 +3,27 @@
     <!-- 最左：主视图导航栏 -->
     <nav class="workspace-nav-bar" :class="{ 'hidden-in-zen': workspaceStore.isZenMode }">
       <div class="nav-top">
-        <el-tooltip content="概览 Overview" placement="right">
+        <el-tooltip content="概览" placement="right">
           <div class="nav-item" :class="{ active: workspaceStore.currentView === 'overview' }" @click="openSection('overview')">
             <el-icon><Monitor /></el-icon>
           </div>
         </el-tooltip>
-        <el-tooltip content="写作 Writing" placement="right">
+        <el-tooltip content="写作" placement="right">
           <div class="nav-item" :class="{ active: workspaceStore.currentView === 'writing' }" @click="openSection('writing')">
             <el-icon><Edit /></el-icon>
           </div>
         </el-tooltip>
-        <el-tooltip content="结构 Structure" placement="right">
+        <el-tooltip content="结构" placement="right">
           <div class="nav-item" :class="{ active: workspaceStore.currentView === 'structure' }" @click="openSection('structure')">
             <el-icon><DataBoard /></el-icon>
           </div>
         </el-tooltip>
-        <el-tooltip content="章节 Chapters" placement="right">
+        <el-tooltip content="章节" placement="right">
           <div class="nav-item" :class="{ active: workspaceStore.currentView === 'chapters' }" @click="openSection('chapters')">
             <el-icon><Notebook /></el-icon>
           </div>
         </el-tooltip>
-        <el-tooltip content="任务 Tasks" placement="right">
+        <el-tooltip content="任务" placement="right">
           <div class="nav-item" :class="{ active: workspaceStore.currentView === 'tasks' }" @click="openSection('tasks')">
             <el-icon><List /></el-icon>
           </div>
@@ -151,23 +151,23 @@ const commandPaletteQuery = ref('')
 
 const viewMetaMap = {
   writing: {
-    title: 'Writing',
+    title: '写作',
     description: '中央区域保持写作优先，AI 结果默认回流为候选稿或审查结果。'
   },
   overview: {
-    title: 'Overview',
+    title: '概览',
     description: '用最小信息集理解当前小说状态，再决定下一步动作。'
   },
   structure: {
-    title: 'Structure',
+    title: '结构',
     description: '集中查看剧情弧、主线进度和结构摘要，不打断写作主流程。'
   },
   chapters: {
-    title: 'Chapter Manager',
-    description: '统一管理章节顺序、状态和批量操作，正文编辑仍回到 Writing。'
+    title: '章节管理',
+    description: '统一管理章节顺序、状态和批量操作，正文编辑仍回到写作。'
   },
   tasks: {
-    title: 'Tasks & Audit',
+    title: '任务与审查',
     description: '查看运行状态、失败原因和恢复入口，而不是浏览原始日志。'
   }
 }

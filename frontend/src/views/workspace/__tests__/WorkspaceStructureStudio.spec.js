@@ -79,7 +79,7 @@ describe('WorkspaceStructureStudio.vue', () => {
     expect(wrapper.text()).toContain('当前聚焦：人物关系波动')
     expect(wrapper.text()).toContain('优先推进弧')
     expect(wrapper.text()).toContain('主线追踪')
-    expect(wrapper.text()).toContain('Story Model')
+    expect(wrapper.text()).toContain('故事模型')
     const focusedCard = wrapper.find('[data-arc-id="arc-2"]')
     expect(focusedCard.exists()).toBe(true)
     expect(focusedCard.classes()).toContain('focused')
@@ -90,7 +90,7 @@ describe('WorkspaceStructureStudio.vue', () => {
   })
 
   it('switches structure view from quick chips', async () => {
-    const chip = wrapper.findAll('.structure-switch-chip').find((node) => node.text().includes('风险点'))
+    const chip = wrapper.findAll('.workspace-selectable-chip').find((node) => node.text().includes('风险点'))
     await chip.trigger('click')
     expect(workspaceStore.currentStructureSection).toBe('risk')
     expect(wrapper.text()).toContain('风险点视角')

@@ -3,7 +3,7 @@
     <header class="writing-header">
       <div class="title-area">
         <div class="title-block">
-          <div class="title-label">Writing</div>
+          <div class="title-label">写作</div>
           <input
             class="chapter-title-input"
             v-model="editorState.chapter.title"
@@ -35,39 +35,9 @@
       </div>
     </header>
 
-    <div class="workspace-action-row">
-      <button type="button" class="workspace-action-chip primary" @click="workspace.openSection?.('overview')">
-        回到概览
-      </button>
-      <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('structure')">
-        查看结构
-      </button>
-      <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('chapters')">
-        查看章节
-      </button>
-      <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('tasks')">
-        打开任务台
-      </button>
-    </div>
+    <WorkspaceActionBar :items="workspaceActionItems" />
 
-    <div class="workspace-summary-row">
-      <div class="workspace-summary-chip">
-        <span class="workspace-summary-label">章节状态</span>
-        <span class="workspace-summary-value">{{ chapterStatusText }}</span>
-      </div>
-      <div class="workspace-summary-chip">
-        <span class="workspace-summary-label">目标弧</span>
-        <span class="workspace-summary-value">{{ targetArcText }}</span>
-      </div>
-      <div class="workspace-summary-chip">
-        <span class="workspace-summary-label">任务状态</span>
-        <span class="workspace-summary-value">{{ currentTaskText }}</span>
-      </div>
-      <div class="workspace-summary-chip">
-        <span class="workspace-summary-label">问题单</span>
-        <span class="workspace-summary-value">{{ issueSummaryText }}</span>
-      </div>
-    </div>
+    <WorkspaceSummaryChips :items="workspaceSummaryItems" variant="compact" />
 
     <div class="writing-body">
       <div class="editor-pane">
@@ -226,6 +196,8 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { FullScreen } from '@element-plus/icons-vue'
 
+import WorkspaceActionBar from '@/components/workspace/WorkspaceActionBar.vue'
+import WorkspaceSummaryChips from '@/components/workspace/WorkspaceSummaryChips.vue'
 import DraftPreviewTabs from '@/components/story/DraftPreviewTabs.vue'
 import ChapterTaskCard from '@/components/story/ChapterTaskCard.vue'
 import ContextSourcePanel from '@/components/story/ContextSourcePanel.vue'
@@ -393,6 +365,31 @@ const issueObjectActions = computed(() => {
 
   return actions
 })
+const workspaceActionItems = computed(() => ([
+  {
+    label: '回到概览',
+    primary: true,
+    onClick: () => workspace.openSection?.('overview')
+  },
+  {
+    label: '查看结构',
+    onClick: () => workspace.openSection?.('structure')
+  },
+  {
+    label: '查看章节',
+    onClick: () => workspace.openSection?.('chapters')
+  },
+  {
+    label: '打开任务台',
+    onClick: () => workspace.openSection?.('tasks')
+  }
+]))
+const workspaceSummaryItems = computed(() => ([
+  { label: '章节状态', value: chapterStatusText.value },
+  { label: '目标弧', value: targetArcText.value },
+  { label: '任务状态', value: currentTaskText.value },
+  { label: '问题单', value: issueSummaryText.value }
+]))
 const writingObjectActions = computed(() => {
   const actions = []
 
@@ -881,54 +878,12 @@ onBeforeUnmount(() => {
   flex-wrap: nowrap;
 }
 
-.workspace-action-row,
-.workspace-summary-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.workspace-writing-studio :deep(.workspace-action-row) {
   padding: 14px 32px 0;
 }
 
-.workspace-summary-row {
-  padding-top: 12px;
-}
-
-.workspace-action-chip {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-  color: #4B5563;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.workspace-action-chip.primary {
-  border-color: #BFDBFE;
-  background-color: #EFF6FF;
-  color: #1D4ED8;
-}
-
-.workspace-summary-chip {
-  min-width: 120px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-}
-
-.workspace-summary-label {
-  display: block;
-  font-size: 11px;
-  color: #9CA3AF;
-}
-
-.workspace-summary-value {
-  display: block;
-  margin-top: 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
+.workspace-writing-studio :deep(.workspace-summary-row) {
+  padding: 10px 32px 0;
 }
 
 .writing-body {

@@ -1,109 +1,53 @@
 <template>
   <div class="workspace-page">
-    <section class="page-hero">
-      <div class="hero-copy">
-        <div class="hero-eyebrow">Chapters</div>
-        <h1>章节管理工作台</h1>
-        <p>统一处理章节顺序、状态和批量查看，正文编辑仍然回到 Writing 视图。</p>
-      </div>
-      <div class="hero-chip-row">
-        <div class="hero-chip">
-          <span class="chip-label">章节总数</span>
-          <span class="chip-value">{{ workspace.state.chapters?.length || 0 }}</span>
-        </div>
-        <div class="hero-chip">
-          <span class="chip-label">当前视图</span>
-          <span class="chip-value">{{ viewMode === 'list' ? '列表' : '看板' }}</span>
-        </div>
-      </div>
-    </section>
+    <WorkspacePageHero
+      eyebrow="章节"
+      title="章节管理工作台"
+      description="统一处理章节顺序、状态和批量查看，正文编辑仍然回到写作视图。"
+    >
+      <WorkspaceHeroChips :items="heroChipItems" />
+    </WorkspacePageHero>
 
     <section class="workspace-section">
-      <div class="section-header">
-        <div class="header-left">
-          <div>
-            <h2>章节管理</h2>
-            <p>章节树、章节表和看板应共享同一份章节对象状态。</p>
+      <WorkspaceSectionHeader>
+        <template #main>
+          <div class="header-left">
+            <div>
+              <h2>章节管理</h2>
+              <p>章节树、章节表和看板应共享同一份章节对象状态。</p>
+            </div>
+            <div class="view-switch">
+              <el-radio-group v-model="viewMode" size="small">
+                <el-radio-button label="list">列表视图</el-radio-button>
+                <el-radio-button label="kanban">看板视图</el-radio-button>
+              </el-radio-group>
+            </div>
           </div>
-          <div class="view-switch">
-            <el-radio-group v-model="viewMode" size="small">
-              <el-radio-button label="list">列表视图</el-radio-button>
-              <el-radio-button label="kanban">看板视图</el-radio-button>
-            </el-radio-group>
+        </template>
+        <template #actions>
+          <div class="header-actions">
+            <el-button type="primary" @click="workspace.createChapter">
+              <el-icon><Plus /></el-icon>新建章节
+            </el-button>
           </div>
-        </div>
-        <div class="header-actions">
-          <el-button type="primary" @click="workspace.createChapter">
-            <el-icon><Plus /></el-icon>新建章节
-          </el-button>
-        </div>
-      </div>
+        </template>
+      </WorkspaceSectionHeader>
 
-      <div class="chapter-summary-row">
-        <div class="summary-chip">
-          <span class="summary-chip-label">草稿</span>
-          <span class="summary-chip-value">{{ getChaptersByStatus('draft').length }}</span>
-        </div>
-        <div class="summary-chip">
-          <span class="summary-chip-label">已校验</span>
-          <span class="summary-chip-value">{{ getChaptersByStatus('reviewed').length }}</span>
-        </div>
-        <div class="summary-chip">
-          <span class="summary-chip-label">最近更新</span>
-          <span class="summary-chip-value">{{ latestUpdatedLabel }}</span>
-        </div>
-      </div>
+      <WorkspaceSummaryChips :items="chapterSummaryItems" />
 
-      <div class="chapter-quick-row">
-        <button
-          v-for="chapter in topUpdatedChapters"
-          :key="chapter.id"
-          type="button"
-          class="quick-chapter-chip"
-          :class="{ active: focusedChapterId === chapter.id }"
-          @click="focusChapter(chapter)"
-        >
-          {{ chapter.title || `第 ${chapter.chapter_number || '?'} 章` }}
-        </button>
-      </div>
+      <WorkspaceSelectableChips :items="quickChapterItems" :selected-key="focusedChapterId" />
 
-      <div class="chapter-filter-row">
-        <button
-          v-for="item in statusFilters"
-          :key="item.key"
-          type="button"
-          class="chapter-filter-chip"
-          :class="{ active: selectedStatusFilter === item.key }"
-          @click="selectedStatusFilter = item.key"
-        >
-          {{ item.label }}
-        </button>
-      </div>
+      <WorkspaceSelectableChips :items="statusFilterItems" :selected-key="selectedStatusFilter" />
 
-      <div class="workspace-action-row">
-        <button type="button" class="workspace-action-chip primary" @click="workspace.openSection?.('overview')">
-          回到概览
-        </button>
-        <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('structure')">
-          查看结构
-        </button>
-        <button
-          v-if="focusedChapterId"
-          type="button"
-          class="workspace-action-chip"
-          @click="workspace.openChapter?.(focusedChapterId)"
-        >
-          进入当前章节写作
-        </button>
-      </div>
+      <WorkspaceActionBar :items="workspaceActionItems" />
 
-      <div class="filter-banner">
-        当前筛选：{{ currentFilterLabel }}
-      </div>
+      <WorkspaceInfoBanner :text="`当前筛选：${currentFilterLabel}`" />
 
-      <div v-if="focusedChapter" class="focus-banner">
-        当前聚焦：{{ focusedChapter.title || `第 ${focusedChapter.chapter_number || '?'} 章` }}
-      </div>
+      <WorkspaceInfoBanner
+        v-if="focusedChapter"
+        :text="`当前聚焦：${focusedChapter.title || `第 ${focusedChapter.chapter_number || '?'} 章`}`"
+        tone="primary"
+      />
 
       <!-- 列表视图 -->
       <div v-if="viewMode === 'list'" class="list-view">
@@ -191,6 +135,13 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus } from '@element-plus/icons-vue'
+import WorkspaceActionBar from '@/components/workspace/WorkspaceActionBar.vue'
+import WorkspaceHeroChips from '@/components/workspace/WorkspaceHeroChips.vue'
+import WorkspaceInfoBanner from '@/components/workspace/WorkspaceInfoBanner.vue'
+import WorkspacePageHero from '@/components/workspace/WorkspacePageHero.vue'
+import WorkspaceSelectableChips from '@/components/workspace/WorkspaceSelectableChips.vue'
+import WorkspaceSectionHeader from '@/components/workspace/WorkspaceSectionHeader.vue'
+import WorkspaceSummaryChips from '@/components/workspace/WorkspaceSummaryChips.vue'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -202,6 +153,45 @@ const viewMode = ref('list') // 'list' | 'kanban'
 const selectedStatusFilter = ref('all')
 const tableRef = ref(null)
 const chapterCardRefs = ref({})
+const workspaceActionItems = computed(() => ([
+  {
+    label: '回到概览',
+    primary: true,
+    onClick: () => workspace.openSection?.('overview')
+  },
+  {
+    label: '查看结构',
+    onClick: () => workspace.openSection?.('structure')
+  },
+  ...(focusedChapterId.value ? [{
+    label: '进入当前章节写作',
+    onClick: () => workspace.openChapter?.(focusedChapterId.value)
+  }] : [])
+]))
+const statusFilterItems = computed(() => (
+  statusFilters.value.map((item) => ({
+    ...item,
+    onClick: () => {
+      selectedStatusFilter.value = item.key
+    }
+  }))
+))
+const quickChapterItems = computed(() => (
+  topUpdatedChapters.value.map((chapter) => ({
+    key: chapter.id,
+    label: chapter.title || `第 ${chapter.chapter_number || '?'} 章`,
+    onClick: () => focusChapter(chapter)
+  }))
+))
+const heroChipItems = computed(() => ([
+  { label: '章节总数', value: String(workspace.state.chapters?.length || 0) },
+  { label: '当前视图', value: viewMode.value === 'list' ? '列表' : '看板' }
+]))
+const chapterSummaryItems = computed(() => ([
+  { label: '草稿', value: String(getChaptersByStatus('draft').length) },
+  { label: '已校验', value: String(getChaptersByStatus('reviewed').length) },
+  { label: '最近更新', value: latestUpdatedLabel.value }
+]))
 
 const statusFilters = computed(() => ([
   { key: 'all', label: `全部 (${(workspace.state.chapters || []).length || 0})` },
@@ -421,33 +411,6 @@ watch(
   color: #4B5563;
 }
 
-.hero-chip-row {
-  display: flex;
-  gap: 12px;
-}
-
-.hero-chip {
-  min-width: 120px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-}
-
-.chip-label {
-  display: block;
-  font-size: 12px;
-  color: #9CA3AF;
-}
-
-.chip-value {
-  display: block;
-  margin-top: 6px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #111827;
-}
-
 .workspace-section {
   display: flex;
   flex-direction: column;
@@ -461,123 +424,20 @@ watch(
   overflow: hidden;
 }
 
-.focus-banner {
+.workspace-page :deep(.workspace-summary-row) {
+  margin-bottom: 18px;
+}
+
+.workspace-page :deep(.workspace-action-row) {
+  margin-bottom: 18px;
+}
+
+.workspace-page :deep(.workspace-selectable-row) {
+  margin-bottom: 18px;
+}
+
+.workspace-page :deep(.workspace-info-banner) {
   margin-bottom: 16px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid #DBEAFE;
-  background-color: #EFF6FF;
-  color: #1D4ED8;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.chapter-summary-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.summary-chip {
-  min-width: 120px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid #E5E7EB;
-  background-color: #F9FAFB;
-}
-
-.summary-chip-label {
-  display: block;
-  font-size: 11px;
-  color: #9CA3AF;
-}
-
-.summary-chip-value {
-  display: block;
-  margin-top: 4px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.chapter-quick-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.chapter-filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.workspace-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.quick-chapter-chip {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-  color: #4B5563;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.quick-chapter-chip.active {
-  border-color: #BFDBFE;
-  background-color: #EFF6FF;
-  color: #1D4ED8;
-}
-
-.chapter-filter-chip {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-  color: #4B5563;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.chapter-filter-chip.active {
-  border-color: #BFDBFE;
-  background-color: #EFF6FF;
-  color: #1D4ED8;
-}
-
-.workspace-action-chip {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-  color: #4B5563;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.workspace-action-chip.primary {
-  border-color: #BFDBFE;
-  background-color: #EFF6FF;
-  color: #1D4ED8;
-}
-
-.filter-banner {
-  margin-bottom: 16px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid #E5E7EB;
-  background-color: #F9FAFB;
-  font-size: 13px;
-  color: #4B5563;
 }
 
 .section-header {

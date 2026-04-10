@@ -1,38 +1,28 @@
 <template>
   <div class="workspace-page">
-    <section class="page-hero">
-      <div class="hero-copy">
-        <div class="hero-eyebrow">Structure</div>
-        <h1>结构与剧情弧工作台</h1>
-        <p>集中查看主线摘要、当前进度和活跃剧情弧，但不抢写作主流程的中心位置。</p>
-      </div>
+    <WorkspacePageHero
+      eyebrow="结构"
+      title="结构与剧情弧工作台"
+      description="集中查看主线摘要、当前进度和活跃剧情弧，但不抢写作主流程的中心位置。"
+    >
       <div class="hero-action">
         <el-button :loading="workspace.state.structureLoading" @click="workspace.refreshStructure">
           <el-icon><Refresh /></el-icon>刷新结构
         </el-button>
       </div>
-    </section>
+    </WorkspacePageHero>
 
     <section class="workspace-section">
-      <div class="section-header">
-        <div class="header-left">
-          <h2>结构台</h2>
-          <p>从宏观视角掌控 Story Model、剧情弧、角色与世界观设定。</p>
-        </div>
-      </div>
+      <WorkspaceSectionHeader>
+        <template #main>
+          <div class="header-left">
+            <h2>结构台</h2>
+            <p>从宏观视角掌控故事模型、剧情弧、角色与世界观设定。</p>
+          </div>
+        </template>
+      </WorkspaceSectionHeader>
 
-      <div class="structure-switch-row">
-        <button
-          v-for="item in structureViews"
-          :key="item.key"
-          type="button"
-          class="structure-switch-chip"
-          :class="{ active: activeStructureKey === item.key }"
-          @click="switchStructureView(item.key)"
-        >
-          {{ item.label }}
-        </button>
-      </div>
+      <WorkspaceSelectableChips :items="structureViewItems" :selected-key="activeStructureKey" />
 
       <div class="view-focus-banner">
         <div>
@@ -49,28 +39,13 @@
         </el-button>
       </div>
 
-      <div class="workspace-action-row">
-        <button type="button" class="workspace-action-chip primary" @click="workspace.openSection?.('overview')">
-          回到概览
-        </button>
-        <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('tasks')">
-          查看任务台
-        </button>
-        <button
-          v-if="priorityArc"
-          type="button"
-          class="workspace-action-chip"
-          @click="focusArc(priorityArc)"
-        >
-          聚焦优先弧
-        </button>
-      </div>
+      <WorkspaceActionBar :items="workspaceActionItems" />
 
       <div class="summary-grid">
         <article class="summary-card">
           <div class="card-header">
             <el-icon class="card-icon"><Document /></el-icon>
-            <h3 class="card-title">主线摘要 (Main Plot)</h3>
+            <h3 class="card-title">主线摘要</h3>
           </div>
           <p class="card-content">{{ mainPlotText }}</p>
         </article>
@@ -78,7 +53,7 @@
         <article class="summary-card">
           <div class="card-header">
             <el-icon class="card-icon"><DataLine /></el-icon>
-            <h3 class="card-title">当前进度 (Progress)</h3>
+            <h3 class="card-title">当前进度</h3>
           </div>
           <p class="card-content">{{ currentProgress }}</p>
         </article>
@@ -86,7 +61,7 @@
         <article class="summary-card">
           <div class="card-header">
             <el-icon class="card-icon"><Connection /></el-icon>
-            <h3 class="card-title">当前状态 (State)</h3>
+            <h3 class="card-title">当前状态</h3>
           </div>
           <p class="card-content">{{ currentState }}</p>
         </article>
@@ -96,7 +71,7 @@
     <section class="workspace-section">
       <div class="section-header">
         <div class="header-left">
-          <h3>活跃剧情弧 (Active Plot Arcs)</h3>
+          <h3>活跃剧情弧</h3>
           <p>当前阶段正在推进或需要关注的剧情分支。</p>
         </div>
       </div>
@@ -112,37 +87,15 @@
         </el-button>
       </div>
 
-      <div class="arc-summary-row">
-        <div class="summary-chip">
-          <span class="summary-chip-label">活跃弧</span>
-          <span class="summary-chip-value">{{ workspace.state.activeArcs.length || 0 }}</span>
-        </div>
-        <div class="summary-chip">
-          <span class="summary-chip-label">主线弧</span>
-          <span class="summary-chip-value">{{ mainArcCount }}</span>
-        </div>
-        <div class="summary-chip">
-          <span class="summary-chip-label">当前聚焦</span>
-          <span class="summary-chip-value">{{ focusedArc?.title || '未聚焦' }}</span>
-        </div>
-      </div>
+      <WorkspaceSummaryChips :items="arcSummaryItems" />
 
-      <div class="quick-nav-row">
-        <button
-          v-for="arc in topArcList"
-          :key="arc.arc_id"
-          type="button"
-          class="quick-nav-chip"
-          :class="{ active: focusedArcId === arc.arc_id }"
-          @click="focusArc(arc)"
-        >
-          {{ arc.title || arc.arc_id }}
-        </button>
-      </div>
+      <WorkspaceSelectableChips :items="quickArcItems" :selected-key="focusedArcId" />
 
-      <div v-if="focusedArc" class="focus-banner">
-        当前聚焦：{{ focusedArc.title || focusedArc.arc_id }}
-      </div>
+      <WorkspaceInfoBanner
+        v-if="focusedArc"
+        :text="`当前聚焦：${focusedArc.title || focusedArc.arc_id}`"
+        tone="primary"
+      />
 
       <div v-if="workspace.state.activeArcs.length" class="arc-grid">
         <article
@@ -160,7 +113,7 @@
               <span class="arc-type">{{ arc.arc_type || '未标注类型' }}</span>
             </div>
             <el-tag size="small" :type="getArcStatusType(arc.status)" effect="plain">
-              {{ arc.status || 'unknown' }}
+              {{ arc.status || '未知' }}
             </el-tag>
           </div>
           <p class="arc-desc">{{ arc.summary || arc.reason || '当前没有更详细的剧情弧摘要。' }}</p>
@@ -185,15 +138,22 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { Refresh, Document, DataLine, Connection } from '@element-plus/icons-vue'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
+import WorkspaceActionBar from '@/components/workspace/WorkspaceActionBar.vue'
+import WorkspaceInfoBanner from '@/components/workspace/WorkspaceInfoBanner.vue'
+import WorkspacePageHero from '@/components/workspace/WorkspacePageHero.vue'
+import WorkspaceSelectableChips from '@/components/workspace/WorkspaceSelectableChips.vue'
+import WorkspaceSectionHeader from '@/components/workspace/WorkspaceSectionHeader.vue'
+import WorkspaceSummaryChips from '@/components/workspace/WorkspaceSummaryChips.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
+
 
 const workspace = useWorkspaceContext()
 const workspaceStore = useWorkspaceStore()
 const arcCardRefs = ref({})
 
 const structureViews = [
-  { key: 'story_model', label: 'Story Model' },
-  { key: 'plot_arc', label: 'PlotArc' },
+  { key: 'story_model', label: '故事模型' },
+  { key: 'plot_arc', label: '剧情弧' },
   { key: 'character', label: '角色' },
   { key: 'worldview', label: '世界观' },
   { key: 'risk', label: '风险点' }
@@ -201,11 +161,11 @@ const structureViews = [
 
 const structureMetaMap = {
   story_model: {
-    title: 'Story Model',
+    title: '故事模型',
     description: '从故事模型层看当前小说的主线结构、推进阶段与全局关系。'
   },
   plot_arc: {
-    title: 'PlotArc',
+    title: '剧情弧',
     description: '从剧情弧层看当前最值得推进的主线和支线对象。'
   },
   character: {
@@ -265,6 +225,39 @@ const mainArcCount = computed(() => (
 
 const activeStructureKey = computed(() => workspaceStore.currentStructureSection || 'plot_arc')
 const activeStructureMeta = computed(() => structureMetaMap[activeStructureKey.value] || structureMetaMap.plot_arc)
+const workspaceActionItems = computed(() => ([
+  {
+    label: '回到概览',
+    primary: true,
+    onClick: () => workspace.openSection?.('overview')
+  },
+  {
+    label: '查看任务台',
+    onClick: () => workspace.openSection?.('tasks')
+  },
+  ...(priorityArc.value ? [{
+    label: '聚焦优先弧',
+    onClick: () => focusArc(priorityArc.value)
+  }] : [])
+]))
+const structureViewItems = computed(() => (
+  structureViews.map((item) => ({
+    ...item,
+    onClick: () => switchStructureView(item.key)
+  }))
+))
+const quickArcItems = computed(() => (
+  topArcList.value.map((arc) => ({
+    key: arc.arc_id,
+    label: arc.title || arc.arc_id,
+    onClick: () => focusArc(arc)
+  }))
+))
+const arcSummaryItems = computed(() => ([
+  { label: '活跃弧', value: String(workspace.state.activeArcs.length || 0) },
+  { label: '主线弧', value: String(mainArcCount.value) },
+  { label: '当前聚焦', value: focusedArc.value?.title || '未聚焦' }
+]))
 
 const setArcCardRef = (arcId, el) => {
   if (!arcId) return
@@ -423,27 +416,12 @@ watch(
   gap: 20px;
 }
 
-.workspace-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.workspace-page :deep(.workspace-action-row) {
   margin-bottom: 18px;
 }
 
-.workspace-action-chip {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-  color: #4B5563;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.workspace-action-chip.primary {
-  border-color: #C7D2FE;
-  background-color: #EEF2FF;
-  color: #4338CA;
+.workspace-page :deep(.workspace-summary-row) {
+  margin-bottom: 18px;
 }
 
 .view-focus-banner {
@@ -478,27 +456,8 @@ watch(
   color: #4B5563;
 }
 
-.structure-switch-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.workspace-page :deep(.workspace-selectable-row) {
   margin-bottom: 18px;
-}
-
-.structure-switch-chip {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-  color: #4B5563;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.structure-switch-chip.active {
-  border-color: #C7D2FE;
-  background-color: #EEF2FF;
-  color: #4338CA;
 }
 
 .summary-card {
@@ -566,15 +525,8 @@ watch(
   box-shadow: 0 16px 28px rgba(124, 58, 237, 0.10);
 }
 
-.focus-banner {
+.workspace-page :deep(.workspace-info-banner) {
   margin-bottom: 16px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid #DDD6FE;
-  background-color: #F5F3FF;
-  color: #6D28D9;
-  font-size: 13px;
-  font-weight: 600;
 }
 
 .priority-banner {
@@ -607,58 +559,6 @@ watch(
   font-size: 13px;
   line-height: 1.7;
   color: #4B5563;
-}
-
-.arc-summary-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.summary-chip {
-  min-width: 120px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid #E5E7EB;
-  background-color: #F9FAFB;
-}
-
-.summary-chip-label {
-  display: block;
-  font-size: 11px;
-  color: #9CA3AF;
-}
-
-.summary-chip-value {
-  display: block;
-  margin-top: 4px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.quick-nav-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.quick-nav-chip {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-  color: #4B5563;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.quick-nav-chip.active {
-  border-color: #C7D2FE;
-  background-color: #EEF2FF;
-  color: #4338CA;
 }
 
 .arc-top {

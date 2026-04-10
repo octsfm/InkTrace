@@ -82,16 +82,16 @@ describe('NovelList Dashboard 入口', () => {
     expect(wrapper.text()).toContain('处理失败任务')
     expect(wrapper.text()).toContain('失败任务')
     expect(wrapper.text()).toContain('高优先级')
-    expect(wrapper.text()).toContain('Overview')
-    expect(wrapper.text()).toContain('Structure')
-    expect(wrapper.text()).toContain('Chapters')
-    expect(wrapper.text()).toContain('Tasks')
+    expect(wrapper.text()).toContain('概览')
+    expect(wrapper.text()).toContain('结构')
+    expect(wrapper.text()).toContain('章节')
+    expect(wrapper.text()).toContain('任务')
     expect(wrapper.text()).toContain('1 个失败任务')
   })
 
   it('navigates to workspace structure section from featured actions', async () => {
     const wrapper = await mountPage()
-    const structureButton = wrapper.findAll('button').find((node) => node.text().includes('Structure'))
+    const structureButton = wrapper.findAll('button').find((node) => node.text().includes('结构'))
     expect(structureButton).toBeTruthy()
     await structureButton.trigger('click')
     expect(mockPush).toHaveBeenCalledWith({
@@ -102,7 +102,7 @@ describe('NovelList Dashboard 入口', () => {
 
   it('navigates to workspace tasks section from featured actions', async () => {
     const wrapper = await mountPage()
-    const tasksButton = wrapper.findAll('button').find((node) => node.text().includes('Tasks'))
+    const tasksButton = wrapper.findAll('button').find((node) => node.text().includes('任务'))
     expect(tasksButton).toBeTruthy()
     await tasksButton.trigger('click')
     expect(mockPush).toHaveBeenCalledWith({

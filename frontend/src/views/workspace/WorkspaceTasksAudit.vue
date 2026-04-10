@@ -1,66 +1,30 @@
 <template>
   <div class="workspace-page">
-    <section class="page-hero">
-      <div class="hero-copy">
-        <div class="hero-eyebrow">Tasks</div>
-        <h1>任务与恢复工作台</h1>
-        <p>这里展示运行状态、异常恢复和操作入口，不再把任务页做成原始日志堆。</p>
-      </div>
-      <div class="hero-chip-row">
-        <div class="hero-chip">
-          <span class="chip-label">当前状态</span>
-          <span class="chip-value">{{ statusText }}</span>
-        </div>
-        <div class="hero-chip">
-          <span class="chip-label">最近进度</span>
-          <span class="chip-value">{{ progressText }}</span>
-        </div>
-      </div>
-    </section>
+    <WorkspacePageHero
+      eyebrow="任务"
+      title="任务与恢复工作台"
+      description="这里展示运行状态、异常恢复和操作入口，不再把任务页做成原始日志堆。"
+    >
+      <WorkspaceHeroChips :items="heroChipItems" />
+    </WorkspacePageHero>
 
     <section class="workspace-section">
-      <div class="section-header">
-        <div class="header-left">
-          <h2>任务与审查</h2>
-          <p>查看后台运行的结构整理、内容审查和导入分析任务状态，并在此处理异常或重试。</p>
-        </div>
-      </div>
+      <WorkspaceSectionHeader>
+        <template #main>
+          <div class="header-left">
+            <h2>任务与审查</h2>
+            <p>查看后台运行的结构整理、内容审查和导入分析任务状态，并在此处理异常或重试。</p>
+          </div>
+        </template>
+      </WorkspaceSectionHeader>
 
-      <div class="filter-row">
-        <button
-          v-for="item in props.filterOptions"
-          :key="item.key"
-          type="button"
-          class="filter-chip"
-          :class="{ active: workspaceStore.currentTaskFilter === item.key }"
-          @click="workspaceStore.setTaskFilter(item.key)"
-        >
-          {{ item.label }}
-        </button>
-      </div>
+      <WorkspaceSelectableChips :items="filterChipItems" :selected-key="workspaceStore.currentTaskFilter" />
 
-      <div class="summary-chip-row">
-        <div v-for="item in props.summaryChips" :key="item.label" class="summary-chip">
-          <span class="summary-chip-label">{{ item.label }}</span>
-          <span class="summary-chip-value">{{ item.value }}</span>
-        </div>
-      </div>
+      <WorkspaceSummaryChips :items="props.summaryChips" />
 
-      <div class="workspace-action-row">
-        <button type="button" class="workspace-action-chip primary" @click="workspace.openSection?.('overview')">
-          回到概览
-        </button>
-        <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('structure')">
-          查看结构
-        </button>
-        <button type="button" class="workspace-action-chip" @click="workspace.openSection?.('chapters')">
-          查看章节
-        </button>
-      </div>
+      <WorkspaceActionBar :items="workspaceActionItems" />
 
-      <div v-if="focusBannerText" class="focus-banner">
-        {{ focusBannerText }}
-      </div>
+      <WorkspaceInfoBanner v-if="focusBannerText" :text="focusBannerText" tone="primary" />
 
       <div class="status-grid">
         <article
@@ -197,11 +161,13 @@
 
     <!-- Placeholder for future task list -->
     <section class="workspace-section mt-6">
-      <div class="section-header">
-        <div class="header-left">
-          <h3>任务历史</h3>
-        </div>
-      </div>
+      <WorkspaceSectionHeader>
+        <template #main>
+          <div class="header-left">
+            <h3>任务历史</h3>
+          </div>
+        </template>
+      </WorkspaceSectionHeader>
       <el-empty :description="props.historyEmptyText" />
     </section>
   </div>
@@ -213,6 +179,13 @@ import { ElMessage } from 'element-plus'
 import { Monitor, Timer, Refresh, VideoPlay, VideoPause, Close } from '@element-plus/icons-vue'
 
 import { contentApi } from '@/api'
+import WorkspaceActionBar from '@/components/workspace/WorkspaceActionBar.vue'
+import WorkspaceHeroChips from '@/components/workspace/WorkspaceHeroChips.vue'
+import WorkspaceInfoBanner from '@/components/workspace/WorkspaceInfoBanner.vue'
+import WorkspacePageHero from '@/components/workspace/WorkspacePageHero.vue'
+import WorkspaceSelectableChips from '@/components/workspace/WorkspaceSelectableChips.vue'
+import WorkspaceSectionHeader from '@/components/workspace/WorkspaceSectionHeader.vue'
+import WorkspaceSummaryChips from '@/components/workspace/WorkspaceSummaryChips.vue'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -271,6 +244,31 @@ const workspace = useWorkspaceContext()
 const workspaceStore = useWorkspaceStore()
 const runningAction = ref('')
 const taskCardRefs = ref({})
+const workspaceActionItems = computed(() => ([
+  {
+    label: '回到概览',
+    primary: true,
+    onClick: () => workspace.openSection?.('overview')
+  },
+  {
+    label: '查看结构',
+    onClick: () => workspace.openSection?.('structure')
+  },
+  {
+    label: '查看章节',
+    onClick: () => workspace.openSection?.('chapters')
+  }
+]))
+const filterChipItems = computed(() => (
+  props.filterOptions.map((item) => ({
+    ...item,
+    onClick: () => workspaceStore.setTaskFilter(item.key)
+  }))
+))
+const heroChipItems = computed(() => ([
+  { label: '当前状态', value: props.statusText },
+  { label: '最近进度', value: props.progressText }
+]))
 
 const getStatusCardClass = (status) => {
   if (status === '失败') return 'is-error'
@@ -477,33 +475,6 @@ watch(
   color: #4B5563;
 }
 
-.hero-chip-row {
-  display: flex;
-  gap: 12px;
-}
-
-.hero-chip {
-  min-width: 120px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-}
-
-.chip-label {
-  display: block;
-  font-size: 12px;
-  color: #9CA3AF;
-}
-
-.chip-value {
-  display: block;
-  margin-top: 6px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #111827;
-}
-
 .workspace-section {
   display: flex;
   flex-direction: column;
@@ -514,97 +485,20 @@ watch(
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
 }
 
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.workspace-page :deep(.workspace-selectable-row) {
   margin-bottom: 16px;
 }
 
-.filter-chip {
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-  color: #6B7280;
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.filter-chip:hover {
-  background-color: #F9FAFB;
-  border-color: #D1D5DB;
-}
-
-.filter-chip.active {
-  background-color: #EFF6FF;
-  border-color: #DBEAFE;
-  color: #1D4ED8;
-}
-
-.focus-banner {
-  margin-bottom: 16px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid #DBEAFE;
-  background-color: #EFF6FF;
-  color: #1D4ED8;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.summary-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+.workspace-page :deep(.workspace-info-banner) {
   margin-bottom: 16px;
 }
 
-.workspace-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.workspace-page :deep(.workspace-action-row) {
   margin-bottom: 16px;
 }
 
-.workspace-action-chip {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-  color: #4B5563;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.workspace-action-chip.primary {
-  border-color: #BFDBFE;
-  background-color: #EFF6FF;
-  color: #1D4ED8;
-}
-
-.summary-chip {
-  min-width: 96px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid #E5E7EB;
-  background-color: #F9FAFB;
-}
-
-.summary-chip-label {
-  display: block;
-  font-size: 11px;
-  color: #9CA3AF;
-}
-
-.summary-chip-value {
-  display: block;
-  margin-top: 4px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #111827;
+.workspace-page :deep(.workspace-summary-row) {
+  margin-bottom: 16px;
 }
 
 .mt-6 {

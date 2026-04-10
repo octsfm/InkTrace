@@ -17,7 +17,7 @@
             导入小说
           </el-button>
           <el-button v-if="featuredNovel" plain @click="openWorkspace(featuredNovel.id, { section: 'overview' })">
-            打开 Overview
+            打开概览
           </el-button>
           <el-button v-else plain @click="$router.push('/config')">模型配置</el-button>
         </div>
@@ -49,16 +49,16 @@
               处理失败任务
             </button>
             <button type="button" class="featured-action" @click="openWorkspace(featuredNovel.id, { section: 'overview' })">
-              Overview
+              概览
             </button>
             <button type="button" class="featured-action" @click="openWorkspace(featuredNovel.id, { section: 'structure' })">
-              Structure
+              结构
             </button>
             <button type="button" class="featured-action" @click="openWorkspace(featuredNovel.id, { section: 'chapters' })">
-              Chapters
+              章节
             </button>
             <button type="button" class="featured-action" @click="openWorkspace(featuredNovel.id, { section: 'tasks' })">
-              Tasks
+              任务
             </button>
           </div>
         </div>
@@ -112,10 +112,10 @@
           <div class="recent-actions">
             <span @click.stop="openWorkspace(novel.id)">继续工作台</span>
             <span v-if="getTaskSummary(novel.id).failed > 0" class="warning-link" @click.stop="openWorkspace(novel.id, { section: 'tasks' })">失败任务</span>
-            <span @click.stop="openWorkspace(novel.id, { section: 'overview' })">Overview</span>
-            <span @click.stop="openWorkspace(novel.id, { section: 'structure' })">Structure</span>
-            <span @click.stop="openWorkspace(novel.id, { section: 'chapters' })">Chapters</span>
-            <span @click.stop="openWorkspace(novel.id, { section: 'tasks' })">Tasks</span>
+            <span @click.stop="openWorkspace(novel.id, { section: 'overview' })">概览</span>
+            <span @click.stop="openWorkspace(novel.id, { section: 'structure' })">结构</span>
+            <span @click.stop="openWorkspace(novel.id, { section: 'chapters' })">章节</span>
+            <span @click.stop="openWorkspace(novel.id, { section: 'tasks' })">任务</span>
           </div>
         </button>
       </div>
@@ -205,9 +205,9 @@
             >
               失败任务
             </el-button>
-            <el-button plain @click.stop="openWorkspace(novel.id, { section: 'overview' })">Overview</el-button>
-            <el-button plain @click.stop="openWorkspace(novel.id, { section: 'structure' })">Structure</el-button>
-            <el-button plain @click.stop="openWorkspace(novel.id, { section: 'tasks' })">Tasks</el-button>
+            <el-button plain @click.stop="openWorkspace(novel.id, { section: 'overview' })">概览</el-button>
+            <el-button plain @click.stop="openWorkspace(novel.id, { section: 'structure' })">结构</el-button>
+            <el-button plain @click.stop="openWorkspace(novel.id, { section: 'tasks' })">任务</el-button>
             <el-button plain @click.stop="handleDelete(novel)">
               <el-icon><Delete /></el-icon>
               删除

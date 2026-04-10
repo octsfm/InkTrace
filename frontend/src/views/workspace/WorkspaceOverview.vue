@@ -1,22 +1,12 @@
 <template>
   <div class="workspace-page">
-    <section class="page-hero">
-      <div class="hero-copy">
-        <div class="hero-eyebrow">Overview</div>
-        <h1>小说工作区概览</h1>
-        <p>这里不再是旧详情页，而是当前小说状态、最近进度和下一步动作的轻量总览。</p>
-      </div>
-      <div class="hero-chip-row">
-        <div class="hero-chip">
-          <span class="chip-label">当前章节</span>
-          <span class="chip-value">{{ currentChapterLabel }}</span>
-        </div>
-        <div class="hero-chip">
-          <span class="chip-label">活跃剧情弧</span>
-          <span class="chip-value">{{ activeArcCount }}</span>
-        </div>
-      </div>
-    </section>
+    <WorkspacePageHero
+      eyebrow="概览"
+      title="小说工作区概览"
+      description="这里不再是旧详情页，而是当前小说状态、最近进度和下一步动作的轻量总览。"
+    >
+      <WorkspaceHeroChips :items="heroChipItems" />
+    </WorkspacePageHero>
 
     <section class="hero-grid">
       <article class="hero-card primary">
@@ -42,28 +32,17 @@
       </article>
     </section>
 
-    <div class="workspace-action-row">
-      <button type="button" class="workspace-action-chip primary" @click="workspace.openSection('writing', chapterQuery)">
-        继续写作
-      </button>
-      <button type="button" class="workspace-action-chip" @click="workspace.openSection('structure')">
-        查看结构
-      </button>
-      <button type="button" class="workspace-action-chip" @click="workspace.openSection('tasks')">
-        打开任务台
-      </button>
-      <button type="button" class="workspace-action-chip" @click="workspace.openSection('chapters')">
-        查看章节
-      </button>
-    </div>
+    <WorkspaceActionBar :items="workspaceActionItems" />
 
     <section class="workspace-section">
-      <div class="section-header">
-        <div>
-          <h3>建议下一步</h3>
-          <p>第一阶段先把创作入口、结构入口和任务入口稳定下来。</p>
-        </div>
-      </div>
+      <WorkspaceSectionHeader>
+        <template #main>
+          <div>
+            <h3>建议下一步</h3>
+            <p>第一阶段先把创作入口、结构入口和任务入口稳定下来。</p>
+          </div>
+        </template>
+      </WorkspaceSectionHeader>
 
       <div class="suggestion-grid">
         <article v-for="item in workspace.suggestedActions.value" :key="item.key" class="suggestion-card">
@@ -77,12 +56,14 @@
     </section>
 
     <section class="workspace-section">
-      <div class="section-header">
-        <div>
-          <h3>下一步入口</h3>
-          <p>这里不只是状态展示，而是把你最可能马上要做的动作直接抬到前面。</p>
-        </div>
-      </div>
+      <WorkspaceSectionHeader>
+        <template #main>
+          <div>
+            <h3>下一步入口</h3>
+            <p>这里不只是状态展示，而是把你最可能马上要做的动作直接抬到前面。</p>
+          </div>
+        </template>
+      </WorkspaceSectionHeader>
 
       <div class="decision-grid">
         <button
@@ -104,13 +85,17 @@
     </section>
 
     <section class="workspace-section">
-      <div class="section-header">
-        <div>
-          <h3>任务快照</h3>
-          <p>这里快速提示失败任务、运行中任务和当前最建议处理的任务。</p>
-        </div>
-        <el-button text @click="workspace.openSection('tasks')">打开任务台</el-button>
-      </div>
+      <WorkspaceSectionHeader>
+        <template #main>
+          <div>
+            <h3>任务快照</h3>
+            <p>这里快速提示失败任务、运行中任务和当前最建议处理的任务。</p>
+          </div>
+        </template>
+        <template #actions>
+          <el-button text @click="workspace.openSection('tasks')">打开任务台</el-button>
+        </template>
+      </WorkspaceSectionHeader>
 
       <div class="task-snapshot-grid">
         <article class="snapshot-card">
@@ -144,13 +129,17 @@
     </section>
 
     <section class="workspace-section">
-      <div class="section-header">
-        <div>
-          <h3>最近章节</h3>
-          <p>从这里可以快速进入新写作台，而不需要先回到旧详情页。</p>
-        </div>
-        <el-button text @click="workspace.openSection('chapters')">查看全部</el-button>
-      </div>
+      <WorkspaceSectionHeader>
+        <template #main>
+          <div>
+            <h3>最近章节</h3>
+            <p>从这里可以快速进入新写作台，而不需要先回到旧详情页。</p>
+          </div>
+        </template>
+        <template #actions>
+          <el-button text @click="workspace.openSection('chapters')">查看全部</el-button>
+        </template>
+      </WorkspaceSectionHeader>
 
       <div v-if="recentChapters.length" class="recent-list">
         <button
@@ -174,6 +163,10 @@
 <script setup>
 import { computed } from 'vue'
 
+import WorkspaceActionBar from '@/components/workspace/WorkspaceActionBar.vue'
+import WorkspaceHeroChips from '@/components/workspace/WorkspaceHeroChips.vue'
+import WorkspacePageHero from '@/components/workspace/WorkspacePageHero.vue'
+import WorkspaceSectionHeader from '@/components/workspace/WorkspaceSectionHeader.vue'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 
 const workspace = useWorkspaceContext()
@@ -192,6 +185,10 @@ const overviewDecisionCards = computed(() => workspace.overviewDecisionCards?.va
 const taskSnapshot = computed(() => workspace.overviewTaskSnapshot?.value || { failed: 0, running: 0, audit: 0, recommendation: null })
 
 const activeArcCount = computed(() => String((workspace.state.activeArcs || []).length || 0))
+const heroChipItems = computed(() => ([
+  { label: '当前章节', value: currentChapterLabel.value },
+  { label: '活跃剧情弧', value: activeArcCount.value }
+]))
 
 const recentChapters = computed(() => {
   return [...(workspace.state.chapters || [])]
@@ -224,6 +221,26 @@ const chapterQuery = computed(() => (
     ? { chapterId: workspace.currentChapterId.value }
     : {}
 ))
+
+const workspaceActionItems = computed(() => ([
+  {
+    label: '继续写作',
+    primary: true,
+    onClick: () => workspace.openSection('writing', chapterQuery.value)
+  },
+  {
+    label: '查看结构',
+    onClick: () => workspace.openSection('structure')
+  },
+  {
+    label: '打开任务台',
+    onClick: () => workspace.openSection('tasks')
+  },
+  {
+    label: '查看章节',
+    onClick: () => workspace.openSection('chapters')
+  }
+]))
 
 const runTaskRecommendation = (item) => {
   const action = item?.action || {}
@@ -266,73 +283,6 @@ const formatDate = (value) => {
   background-color: #F8FAFC;
   height: 100%;
   overflow-y: auto;
-}
-
-.page-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 28px;
-  border-radius: 24px;
-  border: 1px solid #E5E7EB;
-  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
-}
-
-.hero-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.hero-eyebrow {
-  font-size: 12px;
-  font-weight: 600;
-  color: #6B7280;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.page-hero h1 {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 600;
-  color: #111827;
-}
-
-.page-hero p {
-  max-width: 760px;
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.7;
-  color: #4B5563;
-}
-
-.hero-chip-row {
-  display: flex;
-  gap: 12px;
-}
-
-.hero-chip {
-  min-width: 120px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-}
-
-.chip-label {
-  display: block;
-  font-size: 12px;
-  color: #9CA3AF;
-}
-
-.chip-value {
-  display: block;
-  margin-top: 6px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #111827;
 }
 
 .hero-grid {
@@ -441,27 +391,8 @@ const formatDate = (value) => {
   gap: 16px;
 }
 
-.workspace-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.workspace-page :deep(.workspace-action-row) {
   margin-bottom: 20px;
-}
-
-.workspace-action-chip {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #E5E7EB;
-  background-color: #FFFFFF;
-  color: #4B5563;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.workspace-action-chip.primary {
-  border-color: #BFDBFE;
-  background-color: #EFF6FF;
-  color: #1D4ED8;
 }
 
 .task-snapshot-grid {
