@@ -55,10 +55,14 @@
           v-for="item in resolvedStructureItems"
           :key="item.key"
           class="nav-item"
-          :class="{ active: activeStructureSection === item.key }"
+          :class="{ active: activeStructureSection === item.key, 'has-meta': item.hint || item.count !== undefined }"
           @click="emit('change-structure', item.key)"
         >
-          {{ item.label }}
+          <div class="nav-copy">
+            <span class="nav-label">{{ item.label }}</span>
+            <span v-if="item.hint" class="nav-hint">{{ item.hint }}</span>
+          </div>
+          <span v-if="item.count !== undefined" class="nav-count">{{ item.count }}</span>
         </button>
       </div>
     </section>
@@ -73,10 +77,14 @@
           v-for="item in resolvedTaskFilters"
           :key="item.key"
           class="nav-item"
-          :class="{ active: activeTaskFilter === item.key }"
+          :class="{ active: activeTaskFilter === item.key, 'has-meta': item.hint || item.count !== undefined }"
           @click="emit('change-task-filter', item.key)"
         >
-          {{ item.label }}
+          <div class="nav-copy">
+            <span class="nav-label">{{ item.label }}</span>
+            <span v-if="item.hint" class="nav-hint">{{ item.hint }}</span>
+          </div>
+          <span v-if="item.count !== undefined" class="nav-count">{{ item.count }}</span>
         </button>
       </div>
     </section>
@@ -87,14 +95,21 @@
         <div class="sidebar-heading">{{ activeView === 'settings' ? '设置摘要' : '概览导航' }}</div>
       </div>
       <div class="nav-list">
-        <div
+        <button
           v-for="item in resolvedOverviewCards"
-          :key="item.label"
+          :key="item.key || item.label"
+          type="button"
           class="overview-card"
+          :class="{ actionable: !!item.action }"
+          @click="item.action ? emit('run-action', item.action) : null"
         >
-          <div class="overview-label">{{ item.label }}</div>
+          <div class="overview-top">
+            <div class="overview-label">{{ item.label }}</div>
+            <div v-if="item.actionLabel" class="overview-action">{{ item.actionLabel }}</div>
+          </div>
           <div class="overview-value">{{ item.value }}</div>
-        </div>
+          <div v-if="item.hint" class="overview-hint">{{ item.hint }}</div>
+        </button>
       </div>
     </section>
 
@@ -146,7 +161,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['open-chapter', 'create-chapter', 'change-structure', 'change-task-filter'])
+const emit = defineEmits(['open-chapter', 'create-chapter', 'change-structure', 'change-task-filter', 'run-action'])
 
 const workspaceStore = useWorkspaceStore()
 const { state, currentChapterId } = useWorkspaceContext()
@@ -383,9 +398,47 @@ const formatDate = (value) => {
 .nav-item {
   flex-direction: row;
   align-items: center;
+  justify-content: space-between;
   color: #4B5563;
   font-size: 14px;
   font-weight: 500;
+}
+
+.nav-item.has-meta {
+  align-items: flex-start;
+}
+
+.nav-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.nav-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: inherit;
+}
+
+.nav-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #9CA3AF;
+}
+
+.nav-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background-color: #F3F4F6;
+  color: #6B7280;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .chapter-item:hover, .nav-item:hover {
@@ -397,6 +450,15 @@ const formatDate = (value) => {
   background-color: #EFF6FF;
   color: #1D4ED8;
   box-shadow: inset 0 0 0 1px #DBEAFE;
+}
+
+.nav-item.active .nav-hint {
+  color: #60A5FA;
+}
+
+.nav-item.active .nav-count {
+  background-color: #DBEAFE;
+  color: #1D4ED8;
 }
 
 .chapter-item.active .chapter-title {
@@ -436,22 +498,55 @@ const formatDate = (value) => {
 }
 
 .overview-card {
+  width: 100%;
   padding: 14px;
   border: 1px solid #E5E7EB;
   border-radius: 14px;
   background-color: #F9FAFB;
+  text-align: left;
+}
+
+.overview-card.actionable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.overview-card.actionable:hover {
+  background-color: #FFFFFF;
+  border-color: #D1D5DB;
+  transform: translateY(-1px);
+}
+
+.overview-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .overview-label {
   font-size: 12px;
   color: #9CA3AF;
-  margin-bottom: 6px;
 }
 
 .overview-value {
+  margin-top: 6px;
   font-size: 14px;
   line-height: 1.5;
   color: #111827;
   font-weight: 500;
+}
+
+.overview-action {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2563EB;
+}
+
+.overview-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6B7280;
 }
 </style>

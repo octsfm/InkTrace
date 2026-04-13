@@ -59,6 +59,7 @@
       @create-chapter="createChapter"
       @change-structure="workspaceStore.setStructureSection($event)"
       @change-task-filter="workspaceStore.setTaskFilter($event)"
+      @run-action="handleWorkspaceAction"
     />
 
     <!-- 中间：核心内容区 (动态渲染不同视图) -->
@@ -167,7 +168,7 @@ const commandPaletteQuery = ref('')
 const viewMetaMap = {
   writing: {
     title: '写作',
-    description: '中央区域保持写作优先，AI 结果默认回流为候选稿或审查结果。'
+    description: '中央区域保持写作优先，智能结果默认回流为候选稿或审查结果。'
   },
   overview: {
     title: '概览',
@@ -319,13 +320,16 @@ const sidebarMeta = computed(() => (
   sidebarMetaMap[workspaceStore.currentView] || sidebarMetaMap.overview
 ))
 
-const sidebarStructureItems = [
-  { key: 'story_model', label: '故事模型' },
-  { key: 'plot_arc', label: '剧情弧' },
-  { key: 'character', label: '角色' },
-  { key: 'worldview', label: '世界观' },
-  { key: 'risk', label: '风险点' }
-]
+const sidebarStructureItems = computed(() => {
+  const issueCount = Number(state.editor?.integrityCheck?.issue_list?.length || 0)
+  return [
+    { key: 'story_model', label: '故事模型', hint: '全局结构约束与主设定' },
+    { key: 'plot_arc', label: '剧情弧', count: Number((state.activeArcs || []).length || 0), hint: currentTargetArcText.value || '当前主线推进视角' },
+    { key: 'character', label: '角色', hint: '人物关系、动机与角色弧' },
+    { key: 'worldview', label: '世界观', hint: '设定规则与边界条件' },
+    { key: 'risk', label: '风险点', count: issueCount, hint: issueCount > 0 ? '优先检查结构与一致性风险' : '当前未发现明显风险阻塞' }
+  ]
+})
 
 const taskFilterOptionDefs = [
   { key: 'all', label: '全部任务' },
@@ -338,24 +342,71 @@ const taskFilterOptionDefs = [
 const sidebarOverviewCards = computed(() => {
   if (workspaceStore.currentView === 'settings') {
     return [
-      { label: '项目编号', value: state.projectId || '未绑定项目' },
-      { label: '失败任务', value: `${taskSummaryCounts.value.failed || 0} 个` },
-      { label: '问题单', value: `${Number(state.editor?.integrityCheck?.issue_list?.length || 0)} 个` }
+      {
+        key: 'settings-project-id',
+        label: '项目编号',
+        value: state.projectId || '未绑定项目',
+        hint: state.projectId ? '当前工作区已绑定项目。' : '未绑定时部分结构与任务链路可能不完整。'
+      },
+      {
+        key: 'settings-failed-tasks',
+        label: '失败任务',
+        value: `${taskSummaryCounts.value.failed || 0} 个`,
+        hint: taskSummaryCounts.value.failed > 0 ? '建议先恢复失败链路。' : '当前没有失败任务。',
+        actionLabel: taskSummaryCounts.value.failed > 0 ? '去处理' : '',
+        action: taskSummaryCounts.value.failed > 0 ? { type: 'task-filter', filter: 'failed' } : null
+      },
+      {
+        key: 'settings-issues',
+        label: '问题单',
+        value: `${Number(state.editor?.integrityCheck?.issue_list?.length || 0)} 个`,
+        hint: currentChapter.value?.title
+          ? `当前章节：${currentChapter.value.title}`
+          : '回到写作页可查看问题详情。',
+        actionLabel: Number(state.editor?.integrityCheck?.issue_list?.length || 0) > 0 ? '去写作' : '',
+        action: Number(state.editor?.integrityCheck?.issue_list?.length || 0) > 0 && currentChapter.value?.id
+          ? { type: 'chapter', chapterId: currentChapter.value.id }
+          : null
+      }
     ]
   }
 
   return [
     {
+      key: 'overview-novel',
       label: '当前小说',
-      value: state.novel?.title || '未命名小说'
+      value: state.novel?.title || '未命名小说',
+      hint: '工作区主对象',
+      actionLabel: '概览',
+      action: { type: 'section', section: 'overview' }
     },
     {
+      key: 'overview-recent-chapter',
       label: '最近章节',
-      value: recentChapter.value?.title || '暂无章节'
+      value: recentChapter.value?.title || '暂无章节',
+      hint: recentChapter.value?.chapter_number ? `第 ${recentChapter.value.chapter_number} 章` : '尚未创建章节',
+      actionLabel: recentChapter.value?.id ? '去写作' : '',
+      action: recentChapter.value?.id ? { type: 'chapter', chapterId: recentChapter.value.id } : null
     },
     {
+      key: 'overview-current-task',
       label: '当前任务',
-      value: taskStatusText.value || '暂无任务'
+      value: taskStatusText.value || '暂无任务',
+      hint: taskSummaryCounts.value.failed > 0
+        ? `失败 ${taskSummaryCounts.value.failed} 个`
+        : taskSummaryCounts.value.running > 0
+          ? `运行中 ${taskSummaryCounts.value.running} 个`
+          : '当前任务状态稳定',
+      actionLabel: '任务台',
+      action: { type: 'section', section: 'tasks' }
+    },
+    {
+      key: 'overview-structure',
+      label: '结构焦点',
+      value: currentTargetArcText.value || '查看故事模型',
+      hint: currentTargetArcText.value ? '当前写作目标弧' : '当前还没有明显结构焦点',
+      actionLabel: '去结构',
+      action: { type: 'section', section: 'structure' }
     }
   ]
 })
@@ -363,10 +414,18 @@ const sidebarOverviewCards = computed(() => {
 const taskFilterOptions = computed(() => (taskFilterOptionDefs.map((item) => {
   const countMap = taskSummaryCounts.value || {}
   const count = countMap[item.key] ?? countMap.all ?? 0
+  const hintMap = {
+    all: '查看全部任务动态',
+    running: '优先观察仍在执行的任务',
+    failed: '优先恢复失败链路',
+    completed: '查看最近完成结果',
+    audit: '集中处理审查与分析任务'
+  }
   return {
     ...item,
     count,
-    label: `${item.label}${item.key === 'all' ? '' : ` (${count})`}`
+    label: item.label,
+    hint: hintMap[item.key] || ''
   }
 })))
 
@@ -458,7 +517,7 @@ const saveStatusText = computed(() => {
 })
 
 const taskStatusText = computed(() => {
-  if (state.editor.aiRunning) return 'AI 处理中'
+  if (state.editor.aiRunning) return '智能处理中'
   if (taskSummaryCounts.value.failed > 0) return `${taskSummaryCounts.value.failed} 个失败任务`
   if (taskSummaryCounts.value.running > 0) return `${taskSummaryCounts.value.running} 个运行中任务`
   const organizeStatus = normalizeWorkspaceTaskStatus(state.organizeProgress?.status)
@@ -495,7 +554,10 @@ const activeComponentProps = computed(() => {
       groupedTaskSections: groupedTaskSections.value,
       recommendationItems: taskRecommendationItems.value,
       focusBannerText: taskFocusBannerText.value,
-      historyEmptyText: taskHistoryEmptyText.value
+      historyEmptyText: taskHistoryEmptyText.value,
+      historyTitle: taskHistoryTitle.value,
+      historyDescription: taskHistoryDescription.value,
+      timelineItems: taskTimelineItems.value
     }
   }
   if (workspaceStore.currentView === 'settings') {
@@ -561,6 +623,83 @@ const taskPanelStatusHint = computed(() => (
   state.organizeProgress?.error_message || '如果任务异常，可以在这里统一重试、暂停或恢复。'
 ))
 
+const formatTaskTimestampText = (value) => {
+  const timestamp = Number(value || 0)
+  if (!timestamp) {
+    return '未记录时间'
+  }
+
+  const diff = Math.max(0, Date.now() - timestamp)
+  const minute = 60 * 1000
+  const hour = 60 * minute
+  const day = 24 * hour
+  if (diff < minute) return '刚刚'
+  if (diff < hour) return `${Math.floor(diff / minute)} 分钟前`
+  if (diff < day) return `${Math.floor(diff / hour)} 小时前`
+  return `${Math.floor(diff / day)} 天前`
+}
+
+const resolveTaskTimestamp = (task) => {
+  const candidates = [
+    task?.updated_at,
+    task?.finished_at,
+    task?.completed_at,
+    task?.failed_at,
+    task?.started_at,
+    task?.created_at
+  ]
+
+  for (const value of candidates) {
+    if (!value) continue
+    const timestamp = new Date(value).getTime()
+    if (Number.isFinite(timestamp) && timestamp > 0) {
+      return timestamp
+    }
+  }
+
+  return 0
+}
+
+const buildTaskTraceItems = (task, chapterTitle = '') => {
+  const items = []
+  const status = normalizeWorkspaceTaskStatus(task?.status)
+  const taskType = String(task?.task_type || task?.type || '').toLowerCase()
+  const progress = task?.progress ?? task?.percent
+  const currentStage = String(task?.stage || task?.current_stage || '').trim()
+  const targetArc = String(task?.target_arc_title || task?.target_arc_id || task?.targetArcId || '').trim()
+
+  if (currentStage) {
+    items.push({ label: '阶段', value: currentStage })
+  }
+  if (progress !== undefined && progress !== null && String(progress) !== '') {
+    items.push({ label: '进度', value: `${progress}%` })
+  }
+  if (task?.current && task?.total) {
+    items.push({ label: '批次', value: `${task.current}/${task.total}` })
+  }
+  if (String(task?.current_chapter_title || '').trim()) {
+    items.push({ label: '当前章节', value: task.current_chapter_title })
+  } else if (chapterTitle) {
+    items.push({ label: '章节', value: chapterTitle })
+  }
+  if (targetArc) {
+    items.push({ label: '目标弧', value: targetArc })
+  }
+  if (status === 'failed') {
+    items.push({
+      label: '失败',
+      value: String(task?.error_message || task?.error || task?.message || '').trim() || '未提供更多错误信息',
+      tone: 'danger'
+    })
+  } else if (status === 'running' && String(task?.message || '').trim()) {
+    items.push({ label: '状态', value: String(task.message).trim(), tone: 'primary' })
+  } else if ((taskType.includes('audit') || taskType.includes('analyze')) && String(task?.description || '').trim()) {
+    items.push({ label: '审查', value: String(task.description).trim(), tone: 'primary' })
+  }
+
+  return items.slice(0, 4)
+}
+
 const unifiedTaskCards = computed(() => {
   const cards = []
   const organizeStatus = normalizeWorkspaceTaskStatus(state.organizeProgress?.status)
@@ -582,7 +721,11 @@ const unifiedTaskCards = computed(() => {
       ? '建议先查看失败原因，再重试整理。'
       : '可在上方任务控制台执行暂停、恢复或取消。',
     actionLabel: isWorkspaceTaskFailed(organizeStatus) ? '重新整理' : '',
-    action: isWorkspaceTaskFailed(organizeStatus) ? { type: 'retry-organize' } : null
+    action: isWorkspaceTaskFailed(organizeStatus) ? { type: 'retry-organize' } : null,
+    timestamp: resolveTaskTimestamp(state.organizeProgress),
+    timestampText: formatTaskTimestampText(resolveTaskTimestamp(state.organizeProgress)),
+    traceItems: buildTaskTraceItems(state.organizeProgress),
+    raw: state.organizeProgress
   })
 
   ;(Array.isArray(state.chapterTasks) ? state.chapterTasks : []).forEach((task, index) => {
@@ -618,6 +761,9 @@ const unifiedTaskCards = computed(() => {
       action: actionPayload,
       chapterId,
       targetArcId: String(task.target_arc_id || ''),
+      timestamp: resolveTaskTimestamp(task),
+      timestampText: formatTaskTimestampText(resolveTaskTimestamp(task)),
+      traceItems: buildTaskTraceItems(task, chapterTitle),
       raw: task
     })
   })
@@ -641,7 +787,10 @@ const unifiedTaskCards = computed(() => {
       action: task.chapterId
         ? { type: 'chapter', chapterId: task.chapterId }
         : (isWorkspaceTaskFailed(task.status) ? { type: 'task-filter', filter: 'failed' } : { type: 'section', section: 'tasks' }),
-      chapterId: task.chapterId || ''
+      chapterId: task.chapterId || '',
+      timestamp: 0,
+      timestampText: '当前会话',
+      traceItems: buildTaskTraceItems(task, getChapterLabelById(task.chapterId))
     })
   }
 
@@ -785,8 +934,54 @@ const taskFocusBannerText = computed(() => {
   return filter ? `当前筛选：${filter.label}` : ''
 })
 
+const taskHistoryTitle = computed(() => {
+  const filter = taskFilterOptions.value.find((item) => item.key === workspaceStore.currentTaskFilter)
+  return filter ? `${filter.label} · 最近动态` : '最近任务动态'
+})
+
+const taskHistoryDescription = computed(() => {
+  if (workspaceStore.currentTaskFilter === 'failed') {
+    return '把失败原因、最近状态和恢复入口串成一条历史线，便于快速定位。'
+  }
+  if (workspaceStore.currentTaskFilter === 'running') {
+    return '优先观察仍在运行的任务，确认进度、阶段和当前处理对象。'
+  }
+  if (workspaceStore.currentTaskFilter === 'audit') {
+    return '集中查看审查与分析任务，确认结果应该回流到哪个对象处理。'
+  }
+  return '按时间查看最近任务动态，快速决定下一步应该恢复、观察还是回到对象处理。'
+})
+
+const taskTimelineItems = computed(() => {
+  return [...filteredTaskCards.value]
+    .sort((a, b) => {
+      const timestampDiff = Number(b.timestamp || 0) - Number(a.timestamp || 0)
+      if (timestampDiff !== 0) {
+        return timestampDiff
+      }
+      return String(a.title || '').localeCompare(String(b.title || ''), 'zh-CN')
+    })
+    .map((item) => ({
+      id: item.id,
+      title: item.title,
+      status: item.status,
+      statusLabel: item.statusLabel,
+      typeLabel: item.typeLabel,
+      meta: item.subtitle || item.targetLabel,
+      timestampText: item.timestampText || '当前会话',
+      summary: item.reasonText || item.description || item.hint,
+      traceItems: Array.isArray(item.traceItems) ? item.traceItems.slice(0, 3) : [],
+      actionLabel: item.actionLabel,
+      action: item.action,
+      chapterId: item.chapterId || ''
+    }))
+    .slice(0, 8)
+})
+
 const taskHistoryEmptyText = computed(() => (
-  filteredTaskCards.value.length ? '更完整的任务历史和 trace 将在后续接入。' : '当前筛选下暂无任务记录。'
+  workspaceStore.currentTaskFilter === 'all'
+    ? '当前工作区还没有可展示的任务动态。'
+    : '当前筛选下暂无任务动态。'
 ))
 
 const taskStatusCards = computed(() => ([
@@ -914,6 +1109,42 @@ const topbarObjectActions = computed(() => {
         chapterId: currentChapter.value.id
       }
     })
+  }
+
+  if (workspaceStore.currentView === 'overview') {
+    actions.push({
+      label: '继续写作',
+      action: currentChapter.value?.id
+        ? { type: 'chapter', chapterId: currentChapter.value.id }
+        : { type: 'section', section: 'writing' }
+    })
+    actions.push({
+      label: '看结构',
+      action: { type: 'section', section: 'structure' }
+    })
+  }
+
+  if (workspaceStore.currentView === 'settings') {
+    actions.push({
+      label: '回到写作',
+      action: currentChapter.value?.id
+        ? { type: 'chapter', chapterId: currentChapter.value.id }
+        : { type: 'section', section: 'writing' }
+    })
+    if (taskSummaryCounts.value.failed > 0) {
+      actions.push({
+        label: '恢复失败链路',
+        action: {
+          type: 'task-filter',
+          filter: 'failed'
+        }
+      })
+    } else {
+      actions.push({
+        label: '查看任务',
+        action: { type: 'section', section: 'tasks' }
+      })
+    }
   }
 
   return actions
@@ -1383,6 +1614,12 @@ const buildRecentDocumentAction = (doc) => {
   if (doc.type === 'story_model') {
     return { type: 'section', section: 'structure', object: { type: 'story_model' } }
   }
+  if (doc.type === 'character') {
+    return { type: 'section', section: 'structure', object: { type: 'character' } }
+  }
+  if (doc.type === 'worldview') {
+    return { type: 'section', section: 'structure', object: { type: 'worldview' } }
+  }
   if (doc.type === 'risk') {
     return { type: 'section', section: 'structure', object: { type: 'risk' } }
   }
@@ -1454,6 +1691,22 @@ const getRecentDocumentPresentation = (doc) => {
       subtitle: ['重新打开结构模型', relativeTime].filter(Boolean).join(' · '),
       hint: '结构',
       priority: 40
+    }
+  }
+
+  if (doc.type === 'character') {
+    return {
+      subtitle: ['恢复角色视角', relativeTime].filter(Boolean).join(' · '),
+      hint: '结构',
+      priority: 41
+    }
+  }
+
+  if (doc.type === 'worldview') {
+    return {
+      subtitle: ['恢复世界观视角', relativeTime].filter(Boolean).join(' · '),
+      hint: '结构',
+      priority: 41
     }
   }
 
@@ -1618,6 +1871,33 @@ const commandPaletteItems = computed(() => {
       action: { type: 'section', section: 'structure', object: { type: 'story_model' } }
     },
     {
+      id: 'structure-character',
+      group: '结构',
+      title: '打开角色视角',
+      subtitle: '查看角色关系、人物弧和冲突承载',
+      keywords: 'character 角色 人物弧 结构',
+      hint: '结构',
+      action: { type: 'section', section: 'structure', object: { type: 'character' } }
+    },
+    {
+      id: 'structure-worldview',
+      group: '结构',
+      title: '打开世界观视角',
+      subtitle: '查看设定规则和世界观支撑',
+      keywords: 'worldview 世界观 设定 结构',
+      hint: '结构',
+      action: { type: 'section', section: 'structure', object: { type: 'worldview' } }
+    },
+    {
+      id: 'structure-risk',
+      group: '结构',
+      title: '打开风险点视角',
+      subtitle: '查看结构风险、断层与约束缺口',
+      keywords: 'risk 风险点 结构 断层',
+      hint: '结构',
+      action: { type: 'section', section: 'structure', object: { type: 'risk' } }
+    },
+    {
       id: 'dashboard',
       group: '视图',
       title: '返回主页',
@@ -1655,9 +1935,14 @@ const commandPaletteItems = computed(() => {
     })
   }
 
-  if (['story_model', 'risk'].includes(workspaceStore.currentObject?.type)) {
+  if (['story_model', 'character', 'worldview', 'risk'].includes(workspaceStore.currentObject?.type)) {
     const structureType = workspaceStore.currentObject.type
-    const label = structureType === 'story_model' ? '故事模型' : '风险点'
+    const label = {
+      story_model: '故事模型',
+      character: '角色',
+      worldview: '世界观',
+      risk: '风险点'
+    }[structureType] || structureType
     items.unshift({
       id: `current-object-structure-${structureType}`,
       group: '当前对象',
@@ -2077,7 +2362,7 @@ const suggestedActions = computed(() => {
     actions.push({
       key: 'writing',
       title: '继续当前章节',
-      description: `回到 ${currentChapter.value.title || '当前章节'}，继续正文写作与 AI 协作。`,
+      description: `回到 ${currentChapter.value.title || '当前章节'}，继续正文写作与智能协作。`,
       cta: '打开写作',
       action: {
         type: 'chapter',
@@ -2155,7 +2440,7 @@ const openSection = (section, extraQuery = {}) => {
   if (section === 'overview') {
     workspaceStore.focusOverview({ openView: true })
   } else if (section === 'structure') {
-    if (!workspaceStore.currentObject || !['story_model', 'plot_arc', 'risk'].includes(workspaceStore.currentObject.type)) {
+    if (!workspaceStore.currentObject || !['story_model', 'plot_arc', 'character', 'worldview', 'risk'].includes(workspaceStore.currentObject.type)) {
       workspaceStore.focusStructureSection(workspaceStore.currentStructureSection, { openView: true })
     } else {
       workspaceStore.switchView(section)

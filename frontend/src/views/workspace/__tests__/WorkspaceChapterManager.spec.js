@@ -77,6 +77,8 @@ describe('WorkspaceChapterManager.vue', () => {
     expect(wrapper.text()).toContain('最近更新')
     expect(wrapper.text()).toContain('风暴将至')
     expect(wrapper.text()).toContain('已校验 (1)')
+    expect(wrapper.text()).toContain('下一步建议')
+    expect(wrapper.text()).toContain('处理审查结果')
   })
 
   it('highlights the focused chapter in kanban mode and scrolls into view', async () => {
@@ -95,6 +97,19 @@ describe('WorkspaceChapterManager.vue', () => {
     await nextTick()
     expect(wrapper.vm.filteredChapters).toHaveLength(1)
     expect(wrapper.vm.filteredChapters[0].id).toBe('ch-2')
+  })
+
+  it('normalizes chapter status into unified lifecycle labels', () => {
+    expect(wrapper.vm.filteredChapters.find((item) => item.id === 'ch-1')?.normalizedStatus).toBe('draft')
+    expect(wrapper.vm.filteredChapters.find((item) => item.id === 'ch-2')?.normalizedStatus).toBe('reviewed')
+  })
+
+  it('switches section copy when entering kanban mode', async () => {
+    wrapper.vm.viewMode = 'kanban'
+    await nextTick()
+
+    expect(wrapper.text()).toContain('章节看板管理')
+    expect(wrapper.vm.modeBannerText).toContain('看板视图更适合按状态巡视章节流转')
   })
 
   it('provides cross-workspace actions', async () => {

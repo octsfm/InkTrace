@@ -7,7 +7,7 @@
         </div>
         <div>
           <div class="header-eyebrow">助手</div>
-          <h3>AI 助手</h3>
+          <h3>智能助手</h3>
         </div>
       </div>
       <el-tag size="small" type="success" effect="plain">就绪</el-tag>

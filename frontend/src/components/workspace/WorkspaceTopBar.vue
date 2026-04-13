@@ -16,6 +16,21 @@
         <p>{{ viewDescription }}</p>
       </div>
 
+      <div class="pulse-row">
+        <div class="pulse-chip">
+          <span class="pulse-label">保存</span>
+          <span class="pulse-value">{{ saveStatusText }}</span>
+        </div>
+        <div class="pulse-chip">
+          <span class="pulse-label">任务</span>
+          <span class="pulse-value">{{ taskStatusText }}</span>
+        </div>
+        <div class="pulse-chip">
+          <span class="pulse-label">字数</span>
+          <span class="pulse-value">{{ wordCount }}</span>
+        </div>
+      </div>
+
       <div v-if="props.quickFacts.length" class="facts-row">
         <div v-for="item in props.quickFacts" :key="item.label" class="fact-chip">
           <span class="fact-label">{{ item.label }}</span>
@@ -40,7 +55,8 @@
 
       <div class="action-row">
         <button type="button" class="soft-button" @click="$emit('open-command-palette')">
-          命令面板
+          <span>命令面板</span>
+          <span class="button-shortcut">Ctrl+K</span>
         </button>
         <button
           v-for="item in props.objectActions"
@@ -179,6 +195,34 @@ defineEmits(['toggle-copilot', 'action', 'open-command-palette'])
   gap: 10px;
 }
 
+.pulse-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pulse-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%);
+}
+
+.pulse-label {
+  font-size: 11px;
+  color: #9CA3AF;
+}
+
+.pulse-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #111827;
+}
+
 .fact-chip {
   display: inline-flex;
   align-items: center;
@@ -268,6 +312,9 @@ defineEmits(['toggle-copilot', 'action', 'open-command-palette'])
 
 .soft-button,
 .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   border: 1px solid #E5E7EB;
   border-radius: 12px;
   background-color: #ffffff;
@@ -287,6 +334,11 @@ defineEmits(['toggle-copilot', 'action', 'open-command-palette'])
 .ghost-button:hover {
   background-color: #F9FAFB;
   border-color: #D1D5DB;
+}
+
+.button-shortcut {
+  font-size: 11px;
+  color: #9CA3AF;
 }
 
 @media (max-width: 1200px) {

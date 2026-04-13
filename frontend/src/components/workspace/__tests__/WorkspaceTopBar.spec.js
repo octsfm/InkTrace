@@ -11,6 +11,9 @@ describe('WorkspaceTopBar.vue', () => {
         objectLabel: '第一章',
         viewTitle: '写作',
         viewDescription: '中央区域保持写作优先。',
+        saveStatusText: '已保存',
+        taskStatusText: '2 个失败任务',
+        wordCount: 1200,
         quickFacts: [
           { label: '当前章节', value: '第一章' }
         ],
@@ -26,7 +29,10 @@ describe('WorkspaceTopBar.vue', () => {
 
     expect(wrapper.text()).toContain('当前章节')
     expect(wrapper.text()).toContain('已保存')
+    expect(wrapper.text()).toContain('2 个失败任务')
+    expect(wrapper.text()).toContain('1200')
     expect(wrapper.text()).toContain('章节管理')
+    expect(wrapper.text()).toContain('Ctrl+K')
     expect(wrapper.text()).toContain('收起助手')
 
     await wrapper.findAll('button')[1].trigger('click')
@@ -56,5 +62,18 @@ describe('WorkspaceTopBar.vue', () => {
     expect(wrapper.text()).toContain('收起助手')
     await wrapper.findAll('button')[1].trigger('click')
     expect(wrapper.emitted('action')[0][0]).toEqual({ type: 'task-filter', filter: 'failed' })
+  })
+
+  it('emits command palette event from shortcut button', async () => {
+    const wrapper = mount(WorkspaceTopBar, {
+      props: {
+        novelTitle: '风暴将至',
+        viewTitle: '概览',
+        viewDescription: '从这里决定下一步。'
+      }
+    })
+
+    await wrapper.find('button').trigger('click')
+    expect(wrapper.emitted('open-command-palette')).toBeTruthy()
   })
 })

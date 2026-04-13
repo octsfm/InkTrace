@@ -128,7 +128,10 @@
               <div class="history-top">
                 <div>
                   <div class="history-title">{{ task.title }}</div>
-                  <div class="history-meta">{{ task.subtitle }}</div>
+                  <div class="history-meta">
+                    <span>{{ task.subtitle }}</span>
+                    <span v-if="task.timestampText">· {{ task.timestampText }}</span>
+                  </div>
                 </div>
                 <el-tag size="small" :type="getTaskTagType(task.status)" effect="plain">
                   {{ task.statusLabel }}
@@ -139,6 +142,17 @@
                 <span class="history-chip">{{ task.targetLabel }}</span>
               </div>
               <p class="history-desc">{{ task.description }}</p>
+              <div v-if="task.traceItems?.length" class="trace-list">
+                <div
+                  v-for="trace in task.traceItems"
+                  :key="`${task.id}-${trace.label}`"
+                  class="trace-item"
+                  :class="getTraceToneClass(trace.tone)"
+                >
+                  <span class="trace-label">{{ trace.label }}</span>
+                  <span class="trace-value">{{ trace.value }}</span>
+                </div>
+              </div>
               <div class="history-note">
                 <div class="note-label">失败原因</div>
                 <div class="note-value">{{ task.reasonText }}</div>
@@ -159,16 +173,54 @@
       </div>
     </section>
 
-    <!-- Placeholder for future task list -->
     <section class="workspace-section mt-6">
       <WorkspaceSectionHeader>
         <template #main>
           <div class="header-left">
-            <h3>任务历史</h3>
+            <h3>{{ props.historyTitle }}</h3>
+            <p>{{ props.historyDescription }}</p>
           </div>
         </template>
       </WorkspaceSectionHeader>
-      <el-empty :description="props.historyEmptyText" />
+      <div v-if="props.timelineItems.length" class="timeline-list">
+        <article
+          v-for="item in props.timelineItems"
+          :key="item.id"
+          class="timeline-card"
+          :class="getTimelineCardClass(item.status)"
+        >
+          <div class="timeline-top">
+            <div>
+              <div class="timeline-title">{{ item.title }}</div>
+              <div class="timeline-meta">{{ item.typeLabel }} · {{ item.meta }}</div>
+            </div>
+            <div class="timeline-side">
+              <span class="timeline-time">{{ item.timestampText }}</span>
+              <el-tag size="small" :type="getTaskTagType(item.status)" effect="plain">
+                {{ item.statusLabel }}
+              </el-tag>
+            </div>
+          </div>
+          <p class="timeline-summary">{{ item.summary }}</p>
+          <div v-if="item.traceItems?.length" class="timeline-trace-row">
+            <span
+              v-for="trace in item.traceItems"
+              :key="`${item.id}-${trace.label}`"
+              class="timeline-trace-chip"
+              :class="getTraceToneClass(trace.tone)"
+            >
+              {{ trace.label }}：{{ trace.value }}
+            </span>
+          </div>
+          <div class="timeline-footer">
+            <span>{{ item.meta }}</span>
+            <el-button v-if="item.actionLabel" size="small" plain @click="runTaskAction(item)">
+              {{ item.actionLabel }}
+            </el-button>
+          </div>
+        </article>
+      </div>
+      <el-empty v-else :description="props.historyEmptyText" />
     </section>
   </div>
 </template>
@@ -237,6 +289,18 @@ const props = defineProps({
   historyEmptyText: {
     type: String,
     default: ''
+  },
+  historyTitle: {
+    type: String,
+    default: '最近任务动态'
+  },
+  historyDescription: {
+    type: String,
+    default: ''
+  },
+  timelineItems: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -330,6 +394,17 @@ const taskCardClassMap = (task) => ({
   'is-failed': ['failed', 'error'].includes(task.status),
   'is-running': task.status === 'running',
   'is-audit': String(task.type || '').toLowerCase().includes('audit') || String(task.type || '').toLowerCase().includes('analyze')
+})
+
+const getTraceToneClass = (tone) => {
+  if (tone === 'danger') return 'is-danger'
+  if (tone === 'primary') return 'is-primary'
+  return ''
+}
+
+const getTimelineCardClass = (status) => ({
+  'is-failed': ['failed', 'error'].includes(status),
+  'is-running': status === 'running'
 })
 
 const runAction = async (name, executor) => {
@@ -794,6 +869,46 @@ watch(
   color: #4B5563;
 }
 
+.trace-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trace-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  font-size: 11px;
+  color: #6B7280;
+}
+
+.trace-item.is-primary,
+.timeline-trace-chip.is-primary {
+  color: #1D4ED8;
+  border-color: #DBEAFE;
+  background-color: #EFF6FF;
+}
+
+.trace-item.is-danger,
+.timeline-trace-chip.is-danger {
+  color: #B91C1C;
+  border-color: #FECACA;
+  background-color: #FEF2F2;
+}
+
+.trace-label {
+  font-weight: 600;
+}
+
+.trace-value {
+  color: inherit;
+}
+
 .history-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -840,6 +955,96 @@ watch(
 }
 
 .history-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.timeline-card {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.timeline-card.is-failed {
+  border-color: #FECACA;
+  background: linear-gradient(180deg, #FFFFFF 0%, #FEF2F2 100%);
+}
+
+.timeline-card.is-running {
+  border-color: #BFDBFE;
+  background: linear-gradient(180deg, #FFFFFF 0%, #EFF6FF 100%);
+}
+
+.timeline-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.timeline-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.timeline-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.timeline-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.timeline-time {
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
+.timeline-summary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4B5563;
+}
+
+.timeline-trace-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.timeline-trace-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  font-size: 11px;
+  color: #6B7280;
+}
+
+.timeline-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;

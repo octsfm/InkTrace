@@ -39,7 +39,7 @@
         <template #main>
           <div>
             <h3>建议下一步</h3>
-            <p>第一阶段先把创作入口、结构入口和任务入口稳定下来。</p>
+            <p>这里直接根据当前章节、结构焦点和任务状态给出最自然的继续入口。</p>
           </div>
         </template>
       </WorkspaceSectionHeader>
@@ -192,7 +192,11 @@ const heroChipItems = computed(() => ([
 
 const recentChapters = computed(() => {
   return [...(workspace.state.chapters || [])]
-    .sort((a, b) => (b.chapter_number || 0) - (a.chapter_number || 0))
+    .sort((a, b) => {
+      const aTs = a.updated_at ? new Date(a.updated_at).getTime() : 0
+      const bTs = b.updated_at ? new Date(b.updated_at).getTime() : 0
+      return bTs - aTs
+    })
     .slice(0, 5)
 })
 

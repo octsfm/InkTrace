@@ -32,7 +32,7 @@ describe('WorkspaceSidebar.vue', () => {
         currentView: 'overview',
         overviewCards: [
           { label: '当前小说', value: '风暴将至' },
-          { label: '最近章节', value: '第一章' }
+          { label: '最近章节', value: '第一章', actionLabel: '去写作', action: { type: 'chapter', chapterId: 'chapter-1' } }
         ]
       },
       global: {
@@ -42,6 +42,10 @@ describe('WorkspaceSidebar.vue', () => {
 
     expect(wrapper.text()).toContain('风暴将至')
     expect(wrapper.text()).toContain('第一章')
+    expect(wrapper.text()).toContain('去写作')
+
+    await wrapper.findAll('.overview-card')[1].trigger('click')
+    expect(wrapper.emitted('run-action')[0][0]).toEqual({ type: 'chapter', chapterId: 'chapter-1' })
   })
 
   it('emits structure change for parent-owned navigation', async () => {
@@ -70,8 +74,8 @@ describe('WorkspaceSidebar.vue', () => {
         currentView: 'tasks',
         currentTaskFilter: 'failed',
         taskFilters: [
-          { key: 'all', label: '全部任务', count: 5 },
-          { key: 'failed', label: '失败任务 (2)', count: 2 }
+          { key: 'all', label: '全部任务', count: 5, hint: '查看全部任务动态' },
+          { key: 'failed', label: '失败任务', count: 2, hint: '优先恢复失败链路' }
         ]
       },
       global: {
@@ -79,7 +83,9 @@ describe('WorkspaceSidebar.vue', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('失败任务 (2)')
+    expect(wrapper.text()).toContain('失败任务')
+    expect(wrapper.text()).toContain('优先恢复失败链路')
+    expect(wrapper.text()).toContain('2')
   })
 
   it('renders settings summary cards when settings view is active', () => {

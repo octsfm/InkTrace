@@ -20,11 +20,11 @@
       </div>
       <div class="actions-area">
         <div class="action-cluster">
-          <el-button text @click="runAiAction('continue')" :loading="editorState.aiRunning">AI 续写</el-button>
+          <el-button text @click="runAiAction('continue')" :loading="editorState.aiRunning">智能续写</el-button>
           <el-button text @click="runAiAction('generate')" :loading="editorState.aiRunning">按大纲生成</el-button>
           <el-button text @click="runAiAction('optimize')" :loading="editorState.aiRunning">去模板化</el-button>
           <el-button text @click="runAiAction('rewrite')" :loading="editorState.aiRunning">风格改写</el-button>
-          <el-button text @click="runAiAction('analyze')" :loading="editorState.aiRunning">AI 审查</el-button>
+          <el-button text @click="runAiAction('analyze')" :loading="editorState.aiRunning">智能审查</el-button>
         </div>
         <div class="action-cluster action-cluster-compact">
           <el-button type="primary" :loading="editorState.saving" @click="saveChapter">保存</el-button>
@@ -155,7 +155,7 @@
 
         <div ref="draftPreviewSectionRef">
           <DraftPreviewTabs
-            title="AI 回流区"
+            title="智能回流区"
             :active-tab="editorState.activeDraftTab"
             :structural-draft="editorState.structuralDraft"
             :detemplated-draft="editorState.detemplatedDraft"
@@ -444,7 +444,7 @@ const editor = useEditor({
     StarterKit,
     IssueHighlightExtension,
     Placeholder.configure({
-      placeholder: '按 "/" 呼出 AI 命令，或直接开始写作...'
+      placeholder: '按 "/" 呼出智能命令，或直接开始写作...'
     })
   ],
   content: '',
@@ -480,13 +480,13 @@ const runAiAction = async (action) => {
   await workspace.runEditorAiAction(action)
   await revealAiResult(action)
   const messageMap = {
-    continue: 'AI 续写结果已回流到右侧候选区',
+    continue: '智能续写结果已回流到右侧候选区',
     generate: '生成结果已回流到右侧候选区',
     optimize: '去模板化结果已回流到右侧候选区',
     rewrite: '改写结果已回流到右侧候选区',
     analyze: '审查结果已回流到右侧问题区'
   }
-  ElMessage.success(messageMap[action] || 'AI 任务已提交')
+  ElMessage.success(messageMap[action] || '智能任务已提交')
 }
 
 const scrollInspectorTo = async (targetRef) => {

@@ -112,6 +112,63 @@
         </article>
       </div>
     </section>
+
+    <section class="workspace-section">
+      <WorkspaceSectionHeader>
+        <template #main>
+          <div class="header-left">
+            <h2>工作区诊断</h2>
+            <p>把当前最需要处理的阻塞、风险和可继续项集中展示，避免在多个页之间来回判断。</p>
+          </div>
+        </template>
+      </WorkspaceSectionHeader>
+
+      <div class="diagnostic-grid">
+        <article
+          v-for="item in diagnosticCards"
+          :key="item.key"
+          class="diagnostic-card"
+          :class="item.tone ? `tone-${item.tone}` : ''"
+        >
+          <div class="diagnostic-top">
+            <span class="diagnostic-label">{{ item.label }}</span>
+            <span class="diagnostic-state">{{ item.state }}</span>
+          </div>
+          <div class="diagnostic-title">{{ item.title }}</div>
+          <p class="diagnostic-description">{{ item.description }}</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="workspace-section">
+      <WorkspaceSectionHeader>
+        <template #main>
+          <div class="header-left">
+            <h2>建议动作</h2>
+            <p>这里不是配置表，而是把最自然的恢复、回写和排查动作直接抬出来。</p>
+          </div>
+        </template>
+      </WorkspaceSectionHeader>
+
+      <div class="decision-grid">
+        <article
+          v-for="item in decisionCards"
+          :key="item.key"
+          class="decision-card"
+        >
+          <div class="decision-top">
+            <span class="decision-tag">{{ item.tag }}</span>
+            <span class="decision-cta">{{ item.cta }}</span>
+          </div>
+          <div class="decision-title">{{ item.title }}</div>
+          <p class="decision-description">{{ item.description }}</p>
+          <div class="decision-meta">{{ item.meta }}</div>
+          <el-button size="small" type="primary" plain @click="item.onClick">
+            {{ item.cta }}
+          </el-button>
+        </article>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -251,6 +308,94 @@ const bannerTone = computed(() => {
   if (props.issueCount > 0) return 'primary'
   return 'success'
 })
+
+const diagnosticCards = computed(() => ([
+  {
+    key: 'binding',
+    label: '项目绑定',
+    state: props.projectId ? '已连接' : '待确认',
+    title: props.projectId ? '项目与工作区已绑定' : '当前还未绑定项目',
+    description: props.projectId
+      ? `当前项目编号：${props.projectId}`
+      : '未绑定时，结构分析、任务恢复和部分上下文回流能力可能不完整。',
+    tone: props.projectId ? 'success' : 'warning'
+  },
+  {
+    key: 'tasks',
+    label: '任务链路',
+    state: props.failedTaskCount > 0 ? '需恢复' : (props.runningTaskCount > 0 ? '运行中' : '稳定'),
+    title: props.failedTaskCount > 0 ? `有 ${props.failedTaskCount} 个失败任务待处理` : (props.runningTaskCount > 0 ? '仍有任务在运行' : '当前没有明显任务阻塞'),
+    description: props.failedTaskCount > 0
+      ? '优先恢复失败任务，能减少后续结构和章节判断被旧结果污染。'
+      : (props.runningTaskCount > 0 ? `当前有 ${props.runningTaskCount} 个运行中任务，适合先观察结果回流。`
+        : '当前任务状态相对平稳，可以继续写作或回到结构推进。'),
+    tone: props.failedTaskCount > 0 ? 'warning' : (props.runningTaskCount > 0 ? 'primary' : 'success')
+  },
+  {
+    key: 'editor',
+    label: '正文与问题单',
+    state: props.issueCount > 0 ? '待处理' : '正常',
+    title: props.issueCount > 0 ? `当前有 ${props.issueCount} 个问题单` : '当前正文没有待处理问题单',
+    description: props.issueCount > 0
+      ? '建议先回到写作页，处理一致性和结构风险后再继续推进。'
+      : `当前章节：${currentChapterText.value}`,
+    tone: props.issueCount > 0 ? 'primary' : 'success'
+  }
+]))
+
+const getActionItem = (key) => props.actionItems.find((item) => item.key === key)
+
+const decisionCards = computed(() => {
+  const cards = []
+
+  if (props.failedTaskCount > 0) {
+    cards.push({
+      key: 'failed-tasks',
+      tag: '任务',
+      cta: '查看任务',
+      title: '先恢复失败任务',
+      description: '当前存在失败链路，优先恢复后再继续写作或结构推进会更稳。',
+      meta: `${props.failedTaskCount} 个失败任务`,
+      onClick: () => getActionItem('settings-open-tasks')?.onClick?.()
+    })
+  }
+
+  if (props.issueCount > 0) {
+    cards.push({
+      key: 'issue-loop',
+      tag: '写作',
+      cta: '回到写作',
+      title: '先处理当前问题单',
+      description: '当前章节已有问题单，适合先回正文闭环，再继续任务和结构判断。',
+      meta: `${props.issueCount} 个问题待处理`,
+      onClick: () => getActionItem('settings-open-writing')?.onClick?.()
+    })
+  }
+
+  cards.push({
+    key: 'structure-check',
+    tag: '结构',
+    cta: '查看结构',
+    title: '检查当前结构焦点',
+    description: '在继续正文前，先确认当前工作区对象和结构推进方向是否一致。',
+    meta: currentContextText.value || '当前工作区对象',
+    onClick: () => getActionItem('settings-open-structure')?.onClick?.()
+  })
+
+  if (!cards.length) {
+    cards.push({
+      key: 'continue-writing',
+      tag: '写作',
+      cta: '回到写作',
+      title: '工作区状态稳定，可继续创作',
+      description: '当前没有明显失败任务或问题单，适合直接回到正文推进。',
+      meta: currentChapterText.value,
+      onClick: () => getActionItem('settings-open-writing')?.onClick?.()
+    })
+  }
+
+  return cards.slice(0, 3)
+})
 </script>
 
 <style scoped>
@@ -263,6 +408,13 @@ const bannerTone = computed(() => {
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.diagnostic-grid,
+.decision-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -311,8 +463,82 @@ const bannerTone = computed(() => {
   text-align: right;
 }
 
+.diagnostic-card,
+.decision-card {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diagnostic-card.tone-primary {
+  border-color: #BFDBFE;
+  background: linear-gradient(180deg, #FFFFFF 0%, #EFF6FF 100%);
+}
+
+.diagnostic-card.tone-warning {
+  border-color: #FDE68A;
+  background: linear-gradient(180deg, #FFFFFF 0%, #FFFBEB 100%);
+}
+
+.diagnostic-card.tone-success {
+  border-color: #BBF7D0;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F0FDF4 100%);
+}
+
+.diagnostic-top,
+.decision-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.diagnostic-label,
+.decision-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2563EB;
+  background-color: #EFF6FF;
+  border: 1px solid #DBEAFE;
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.diagnostic-state,
+.decision-cta {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+}
+
+.diagnostic-title,
+.decision-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.diagnostic-description,
+.decision-description {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4B5563;
+}
+
+.decision-meta {
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
 @media (max-width: 1024px) {
-  .settings-grid {
+  .settings-grid,
+  .diagnostic-grid,
+  .decision-grid {
     grid-template-columns: 1fr;
   }
 }

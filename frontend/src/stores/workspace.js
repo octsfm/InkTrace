@@ -161,8 +161,18 @@ export const useWorkspaceStore = defineStore('workspace', {
       } else if (object.type === 'issue') {
         const issueId = object.id || object.issueId || `${object.chapterId || 'chapter'}::${object.index ?? 'issue'}`
         this.recordOpenDocument({ type: 'issue', id: issueId, title: object.title || object.code || '问题单' })
-      } else if (object.type === 'story_model') {
-        this.recordOpenDocument({ type: 'story_model', id: 'story_model', title: '故事模型' })
+      } else if (['story_model', 'character', 'worldview', 'risk'].includes(object.type)) {
+        const structureTitleMap = {
+          story_model: '故事模型',
+          character: '角色',
+          worldview: '世界观',
+          risk: '风险点'
+        }
+        this.recordOpenDocument({
+          type: object.type,
+          id: object.type,
+          title: structureTitleMap[object.type] || object.type
+        })
       }
     },
 
@@ -184,6 +194,10 @@ export const useWorkspaceStore = defineStore('workspace', {
         id: nextSection,
         title: nextSection === 'story_model'
           ? '故事模型'
+          : nextSection === 'character'
+            ? '角色'
+            : nextSection === 'worldview'
+              ? '世界观'
           : nextSection === 'plot_arc'
             ? '剧情弧'
             : nextSection === 'risk'
@@ -320,7 +334,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         return
       }
 
-      if (['story_model', 'risk'].includes(object.type)) {
+      if (['story_model', 'character', 'worldview', 'risk'].includes(object.type)) {
         this.focusStructureSection(object.type, options)
         return
       }

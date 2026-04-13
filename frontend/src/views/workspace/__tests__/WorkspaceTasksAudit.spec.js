@@ -181,7 +181,28 @@ describe('WorkspaceTasksAudit.vue', () => {
           }
         ],
         focusBannerText: '当前聚焦：全书整理任务',
-        historyEmptyText: '更完整的任务历史和 trace 将在后续接入。'
+        historyEmptyText: '当前筛选下暂无任务动态。',
+        historyTitle: '失败任务 · 最近动态',
+        historyDescription: '把失败原因、最近状态和恢复入口串成一条历史线，便于快速定位。',
+        timelineItems: [
+          {
+            id: 'timeline-task-1',
+            title: 'AI 审查',
+            typeLabel: '审查任务',
+            status: 'failed',
+            statusLabel: '失败',
+            meta: '章节 ch-2 · 审查任务',
+            timestampText: '2 分钟前',
+            summary: '一致性校验失败',
+            traceItems: [
+              { label: '章节', value: '风暴将至' },
+              { label: '失败', value: '一致性校验失败', tone: 'danger' }
+            ],
+            actionLabel: '打开章节',
+            action: { type: 'chapter', chapterId: 'ch-2' },
+            chapterId: 'ch-2'
+          }
+        ]
       },
       global: {
         plugins: [pinia],
@@ -220,6 +241,8 @@ describe('WorkspaceTasksAudit.vue', () => {
     expect(wrapper.text()).toContain('先恢复：AI 审查')
     expect(wrapper.text()).toContain('优先恢复')
     expect(wrapper.text()).toContain('优先恢复 2')
+    expect(wrapper.text()).toContain('失败任务 · 最近动态')
+    expect(wrapper.text()).toContain('2 分钟前')
     expect(wrapper.text()).toContain('回到概览')
   })
 

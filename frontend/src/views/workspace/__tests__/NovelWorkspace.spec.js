@@ -167,6 +167,26 @@ describe('NovelWorkspace.vue', () => {
     expect(wrapper.vm.sidebarOverviewCards[0].label).toBe('项目编号')
   })
 
+  it('builds actionable overview sidebar cards and topbar actions', async () => {
+    store.currentView = 'overview'
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.sidebarOverviewCards.some((item) => item.key === 'overview-recent-chapter' && item.action?.type === 'chapter')).toBe(true)
+    expect(wrapper.vm.sidebarOverviewCards.some((item) => item.key === 'overview-current-task' && item.action?.section === 'tasks')).toBe(true)
+    expect(wrapper.vm.resolvedTopbarObjectActions.some((item) => item.label === '继续写作')).toBe(true)
+    expect(wrapper.vm.resolvedTopbarObjectActions.some((item) => item.label === '看结构')).toBe(true)
+  })
+
+  it('builds actionable settings sidebar cards and recovery action in topbar', async () => {
+    store.currentView = 'settings'
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.sidebarOverviewCards.some((item) => item.key === 'settings-failed-tasks' && item.action?.filter === 'failed')).toBe(true)
+    expect(wrapper.vm.sidebarOverviewCards.some((item) => item.key === 'settings-issues' && item.action?.type === 'chapter')).toBe(true)
+    expect(wrapper.vm.resolvedTopbarObjectActions.some((item) => item.label === '回到写作')).toBe(true)
+    expect(wrapper.vm.resolvedTopbarObjectActions.some((item) => item.label === '恢复失败链路')).toBe(true)
+  })
+
   it('hides left nav when zen mode is enabled', async () => {
     store.currentView = 'writing'
     store.isZenMode = true
@@ -212,6 +232,9 @@ describe('NovelWorkspace.vue', () => {
     store.currentObject = { type: 'chapter', id: 'chapter-1', title: '第一章' }
     const itemIds = wrapper.vm.commandPaletteItems.map((item) => item.id)
     expect(itemIds).toContain('story-model')
+    expect(itemIds).toContain('structure-character')
+    expect(itemIds).toContain('structure-worldview')
+    expect(itemIds).toContain('structure-risk')
     expect(itemIds).toContain('copilot-chat')
     expect(itemIds).toContain('current-object-chapter-chapter-1')
     expect(itemIds.some((id) => id.startsWith('recent-doc-chapter-chapter-1'))).toBe(false)
@@ -256,6 +279,18 @@ describe('NovelWorkspace.vue', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.commandPaletteItems.some((item) => item.id === 'current-object-structure-story_model')).toBe(true)
+  })
+
+  it('builds restore commands for worldview recent object and current structure view', async () => {
+    store.currentObject = { type: 'worldview' }
+    store.openDocuments = [
+      { type: 'worldview', id: 'worldview', title: '世界观', lastOpenedAt: Date.now() - 1000 }
+    ]
+    await wrapper.vm.$nextTick()
+
+    const itemIds = wrapper.vm.commandPaletteItems.map((item) => item.id)
+    expect(itemIds).toContain('current-object-structure-worldview')
+    expect(itemIds.some((id) => id.startsWith('recent-doc-worldview-worldview'))).toBe(false)
   })
 
   it('deduplicates current object and recent object commands for the same chapter', async () => {
@@ -352,9 +387,17 @@ describe('NovelWorkspace.vue', () => {
     expect(wrapper.vm.groupedTaskSections.some((item) => item.key === 'failed')).toBe(true)
   })
 
+  it('builds richer structure navigation metadata for sidebar', () => {
+    expect(wrapper.vm.sidebarStructureItems.find((item) => item.key === 'plot_arc')?.count).toBeDefined()
+    expect(wrapper.vm.sidebarStructureItems.find((item) => item.key === 'plot_arc')?.hint).toBeTruthy()
+    expect(wrapper.vm.sidebarStructureItems.find((item) => item.key === 'risk')?.count).toBe(1)
+  })
+
   it('adds task counts to filters and exposes failed task shortcut in top bar actions', () => {
     store.currentView = 'tasks'
-    expect(wrapper.vm.taskFilterOptions.find((item) => item.key === 'failed')?.label).toContain('(1)')
+    expect(wrapper.vm.taskFilterOptions.find((item) => item.key === 'failed')?.label).toBe('失败任务')
+    expect(wrapper.vm.taskFilterOptions.find((item) => item.key === 'failed')?.count).toBe(1)
+    expect(wrapper.vm.taskFilterOptions.find((item) => item.key === 'failed')?.hint).toContain('优先恢复')
     expect(wrapper.vm.topbarObjectActions.some((item) => item.label.includes('失败任务'))).toBe(true)
     expect(wrapper.vm.topbarQuickFacts.some((item) => item.label === '失败任务')).toBe(true)
   })

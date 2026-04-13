@@ -13,8 +13,8 @@
         <template #main>
           <div class="header-left">
             <div>
-              <h2>章节管理</h2>
-              <p>章节树、章节表和看板应共享同一份章节对象状态。</p>
+              <h2>{{ sectionTitle }}</h2>
+              <p>{{ sectionDescription }}</p>
             </div>
             <div class="view-switch">
               <el-radio-group v-model="viewMode" size="small">
@@ -41,13 +41,31 @@
 
       <WorkspaceActionBar :items="workspaceActionItems" />
 
-      <WorkspaceInfoBanner :text="`当前筛选：${currentFilterLabel}`" />
+      <WorkspaceInfoBanner :text="modeBannerText" />
 
       <WorkspaceInfoBanner
         v-if="focusedChapter"
         :text="`当前聚焦：${focusedChapter.title || `第 ${focusedChapter.chapter_number || '?'} 章`}`"
         tone="primary"
       />
+
+      <div v-if="focusedChapter" class="focus-grid">
+        <article class="focus-card">
+          <div class="focus-label">当前章节</div>
+          <h3>{{ focusedChapter.title || `第 ${focusedChapter.chapter_number || '?'} 章` }}</h3>
+          <p>第 {{ focusedChapter.chapter_number || '?' }} 章 · {{ formatStatus(focusedChapter.normalizedStatus) }}</p>
+        </article>
+        <article class="focus-card">
+          <div class="focus-label">内容体量</div>
+          <h3>{{ formatWordCount(focusedChapter.word_count || (focusedChapter.content ? focusedChapter.content.length : 0)) }}</h3>
+          <p>最近更新：{{ formatDate(focusedChapter.updated_at) }}</p>
+        </article>
+        <article class="focus-card">
+          <div class="focus-label">下一步建议</div>
+          <h3>{{ focusedChapterNextStep.title }}</h3>
+          <p>{{ focusedChapterNextStep.description }}</p>
+        </article>
+      </div>
 
       <!-- 列表视图 -->
       <div v-if="viewMode === 'list'" class="list-view">
@@ -69,8 +87,8 @@
                 <el-tag v-if="focusedChapterId === row.id" size="small" type="primary" effect="plain">
                   当前对象
                 </el-tag>
-                <el-tag size="small" :type="getStatusType(row.status)" class="status-tag" effect="plain">
-                  {{ formatStatus(row.status) }}
+                <el-tag size="small" :type="getStatusType(row.normalizedStatus)" class="status-tag" effect="plain">
+                  {{ formatStatus(row.normalizedStatus) }}
                 </el-tag>
               </div>
             </template>
@@ -95,7 +113,6 @@
         </el-table>
       </div>
 
-      <!-- 看板视图 (Placeholder) -->
       <div v-else class="kanban-view">
         <div class="kanban-columns">
           <div v-for="col in kanbanColumns" :key="col.status" class="kanban-column">
@@ -122,6 +139,9 @@
                 <div class="card-actions">
                   <el-button size="small" type="primary" plain @click.stop="workspace.openChapter(chapter.id)">进入写作</el-button>
                 </div>
+              </div>
+              <div v-if="!getFilteredChaptersByStatus(col.status).length" class="kanban-empty">
+                当前筛选下没有{{ col.label }}章节
               </div>
             </div>
           </div>
@@ -185,8 +205,17 @@ const quickChapterItems = computed(() => (
 ))
 const heroChipItems = computed(() => ([
   { label: '章节总数', value: String(workspace.state.chapters?.length || 0) },
-  { label: '当前视图', value: viewMode.value === 'list' ? '列表' : '看板' }
+  { label: '当前视图', value: viewMode.value === 'list' ? '列表' : '看板' },
+  { label: '当前筛选', value: currentFilterLabel.value.replace(/\s+\(\d+\)$/, '') }
 ]))
+const sectionTitle = computed(() => (
+  viewMode.value === 'list' ? '章节列表管理' : '章节看板管理'
+))
+const sectionDescription = computed(() => (
+  viewMode.value === 'list'
+    ? '按更新时间、字数和状态快速核对章节对象，再决定进入写作或继续整理。'
+    : '按章节状态统一巡视推进节奏，优先定位还未完成收口的章节。'
+))
 const chapterSummaryItems = computed(() => ([
   { label: '草稿', value: String(getChaptersByStatus('draft').length) },
   { label: '已校验', value: String(getChaptersByStatus('reviewed').length) },
@@ -208,18 +237,64 @@ const kanbanColumns = [
   { label: '已确认', status: 'confirmed' }
 ]
 
+const chapterStatusMap = {
+  idea: 'drafting',
+  outline: 'drafting',
+  drafting: 'drafting',
+  planned: 'drafting',
+  saved: 'draft',
+  writing: 'draft',
+  draft: 'draft',
+  reviewed: 'reviewed',
+  checked: 'reviewed',
+  analyzed: 'reviewed',
+  confirmed: 'confirmed',
+  completed: 'confirmed',
+  done: 'confirmed',
+  final: 'confirmed',
+  published: 'confirmed'
+}
+
+const resolveChapterStatus = (chapter = {}) => {
+  const rawStatus = String(chapter.status || '').trim().toLowerCase()
+  if (chapterStatusMap[rawStatus]) {
+    return chapterStatusMap[rawStatus]
+  }
+
+  const issueCount = Number(chapter.integrity_check?.issue_list?.length || 0)
+  if (issueCount > 0 || chapter.integrity_check) {
+    return 'reviewed'
+  }
+
+  if (chapter.detemplated_draft || chapter.structural_draft) {
+    return 'draft'
+  }
+
+  if (chapter.outline?.goal && !String(chapter.content || '').trim()) {
+    return 'drafting'
+  }
+
+  if (String(chapter.content || '').trim() || chapter.updated_at) {
+    return 'draft'
+  }
+
+  return 'drafting'
+}
+
+const normalizedChapters = computed(() => (
+  (workspace.state.chapters || []).map((chapter) => ({
+    ...chapter,
+    normalizedStatus: resolveChapterStatus(chapter)
+  }))
+))
+
 const getChaptersByStatus = (status) => {
-  // If chapters don't have explicit status yet, put them all in 'draft' for now
-  if (!workspace.state.chapters) return []
-  return workspace.state.chapters.filter(c => {
-    const cStatus = c.status || 'draft'
-    return cStatus === status
-  })
+  return normalizedChapters.value.filter((chapter) => chapter.normalizedStatus === status)
 }
 
 const filteredChapters = computed(() => {
   if (selectedStatusFilter.value === 'all') {
-    return workspace.state.chapters || []
+    return normalizedChapters.value
   }
   return getChaptersByStatus(selectedStatusFilter.value)
 })
@@ -227,9 +302,15 @@ const filteredChapters = computed(() => {
 const currentFilterLabel = computed(() => (
   statusFilters.value.find((item) => item.key === selectedStatusFilter.value)?.label || '全部'
 ))
+const modeBannerText = computed(() => {
+  if (viewMode.value === 'kanban') {
+    return `当前筛选：${currentFilterLabel.value}；看板视图更适合按状态巡视章节流转。`
+  }
+  return `当前筛选：${currentFilterLabel.value}；列表视图更适合核对字数、更新时间和当前对象。`
+})
 
 const getFilteredChaptersByStatus = (status) => (
-  filteredChapters.value.filter((chapter) => (chapter.status || 'draft') === status)
+  filteredChapters.value.filter((chapter) => chapter.normalizedStatus === status)
 )
 
 const focusedChapterId = computed(() => {
@@ -240,11 +321,33 @@ const focusedChapterId = computed(() => {
 })
 
 const focusedChapter = computed(() => (
-  (workspace.state.chapters || []).find((chapter) => chapter.id === focusedChapterId.value) || null
+  normalizedChapters.value.find((chapter) => chapter.id === focusedChapterId.value) || null
 ))
+const focusedChapterNextStep = computed(() => {
+  const status = focusedChapter.value?.normalizedStatus || 'draft'
+  const map = {
+    drafting: {
+      title: '先补结构与目标',
+      description: '当前章节仍在构思中，适合先回到结构或继续补全章节目标。'
+    },
+    draft: {
+      title: '继续正文写作',
+      description: '当前章节仍是草稿状态，适合回到写作台继续推进正文。'
+    },
+    reviewed: {
+      title: '处理审查结果',
+      description: '当前章节已校验，适合先处理问题单或补全需要修复的片段。'
+    },
+    confirmed: {
+      title: '准备推进下一章',
+      description: '当前章节已确认，可转向下一章或回到结构台确认后续推进。'
+    }
+  }
+  return map[status] || map.draft
+})
 
 const sortedByUpdated = computed(() => {
-  return [...(workspace.state.chapters || [])].sort((a, b) => {
+  return [...normalizedChapters.value].sort((a, b) => {
     const aTs = a.updated_at ? new Date(a.updated_at).getTime() : 0
     const bTs = b.updated_at ? new Date(b.updated_at).getTime() : 0
     return bTs - aTs
@@ -438,6 +541,40 @@ watch(
   margin-bottom: 16px;
 }
 
+.focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.focus-card {
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+}
+
+.focus-label {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+}
+
+.focus-card h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: #111827;
+}
+
+.focus-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4B5563;
+}
+
 .section-header {
   display: flex;
   align-items: center;
@@ -557,6 +694,17 @@ watch(
   flex: 1;
 }
 
+.kanban-empty {
+  padding: 16px 12px;
+  border: 1px dashed #D1D5DB;
+  border-radius: 12px;
+  background-color: #FFFFFF;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #9CA3AF;
+  text-align: center;
+}
+
 .kanban-card {
   background-color: #ffffff;
   border: 1px solid #E5E7EB;
@@ -607,6 +755,10 @@ watch(
 @media (max-width: 1100px) {
   .page-hero {
     flex-direction: column;
+  }
+
+  .focus-grid {
+    grid-template-columns: 1fr;
   }
 
   .header-left {

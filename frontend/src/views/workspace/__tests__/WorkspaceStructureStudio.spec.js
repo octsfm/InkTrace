@@ -80,6 +80,8 @@ describe('WorkspaceStructureStudio.vue', () => {
     expect(wrapper.text()).toContain('优先推进弧')
     expect(wrapper.text()).toContain('主线追踪')
     expect(wrapper.text()).toContain('故事模型')
+    expect(wrapper.text()).toContain('切到风险点视角')
+    expect(wrapper.text()).toContain('切到角色视角')
     const focusedCard = wrapper.find('[data-arc-id="arc-2"]')
     expect(focusedCard.exists()).toBe(true)
     expect(focusedCard.classes()).toContain('focused')
@@ -94,6 +96,11 @@ describe('WorkspaceStructureStudio.vue', () => {
     await chip.trigger('click')
     expect(workspaceStore.currentStructureSection).toBe('risk')
     expect(wrapper.text()).toContain('风险点视角')
+    expect(wrapper.text()).toContain('结构风险扫描')
+    expect(wrapper.text()).toContain('风险视角')
+    expect(wrapper.text()).toContain('当前主要风险')
+    expect(wrapper.text()).toContain('回到剧情弧主视角')
+    expect(wrapper.text()).not.toContain('当前聚焦：人物关系波动')
   })
 
   it('provides cross-workspace actions', async () => {
