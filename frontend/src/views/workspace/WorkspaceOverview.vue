@@ -381,6 +381,13 @@ const formatDate = (value) => {
   border-radius: 16px;
   background-color: #F9FAFB;
   border: 1px solid #E5E7EB;
+  transition: all 0.2s ease;
+}
+
+.suggestion-card:hover {
+  transform: translateY(-1px);
+  border-color: #D1D5DB;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05);
 }
 
 .suggestion-card h4 {
@@ -410,6 +417,13 @@ const formatDate = (value) => {
   border-radius: 16px;
   border: 1px solid #E5E7EB;
   background-color: #F9FAFB;
+  transition: all 0.2s ease;
+}
+
+.snapshot-card:hover {
+  transform: translateY(-1px);
+  border-color: #D1D5DB;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05);
 }
 
 .snapshot-label {
@@ -436,6 +450,7 @@ const formatDate = (value) => {
   border-radius: 18px;
   border: 1px solid #E5E7EB;
   background: linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
 }
 
 .task-recommendation-top {
@@ -551,6 +566,29 @@ const formatDate = (value) => {
 
   .page-hero {
     flex-direction: column;
+  }
+}
+
+@media (max-width: 768px) {
+  .workspace-page {
+    padding: 20px;
+    gap: 20px;
+  }
+
+  .hero-card,
+  .workspace-section {
+    padding: 20px;
+  }
+
+  .hero-actions,
+  .task-recommendation-top,
+  .recent-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .recent-item {
+    gap: 8px;
   }
 }
 </style>

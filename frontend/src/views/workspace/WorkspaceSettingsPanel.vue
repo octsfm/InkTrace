@@ -399,6 +399,16 @@ const decisionCards = computed(() => {
 </script>
 
 <style scoped>
+.workspace-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px;
+  background-color: #F8FAFC;
+  height: 100%;
+  overflow-y: auto;
+}
+
 .workspace-section {
   display: flex;
   flex-direction: column;
@@ -424,6 +434,15 @@ const decisionCards = computed(() => {
   border: 1px solid #E5E7EB;
   background-color: #FFFFFF;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease;
+}
+
+.settings-card:hover,
+.diagnostic-card:hover,
+.decision-card:hover {
+  transform: translateY(-1px);
+  border-color: #D1D5DB;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
 }
 
 .settings-card h3 {
@@ -540,6 +559,30 @@ const decisionCards = computed(() => {
   .diagnostic-grid,
   .decision-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .workspace-page {
+    padding: 20px;
+    gap: 20px;
+  }
+
+  .settings-card,
+  .diagnostic-card,
+  .decision-card {
+    padding: 18px;
+  }
+
+  .settings-list div,
+  .diagnostic-top,
+  .decision-top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settings-list dd {
+    text-align: left;
   }
 }
 </style>

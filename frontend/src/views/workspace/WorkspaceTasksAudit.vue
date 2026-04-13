@@ -624,6 +624,15 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.status-card:hover,
+.recommendation-card:hover,
+.timeline-card:hover {
+  transform: translateY(-1px);
+  border-color: #D1D5DB;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05);
 }
 
 .status-card.is-error {
@@ -745,6 +754,7 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 10px;
+  transition: all 0.2s ease;
 }
 
 .recommendation-top {
@@ -977,6 +987,7 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: all 0.2s ease;
 }
 
 .timeline-card.is-failed {
@@ -1081,6 +1092,31 @@ watch(
 
   .page-hero {
     flex-direction: column;
+  }
+}
+
+@media (max-width: 768px) {
+  .workspace-page {
+    padding: 20px;
+    gap: 20px;
+  }
+
+  .action-panel,
+  .recommendation-panel,
+  .timeline-card,
+  .history-card,
+  .status-card {
+    padding: 18px;
+  }
+
+  .history-top,
+  .history-footer,
+  .timeline-top,
+  .timeline-footer,
+  .timeline-side,
+  .recommendation-top {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

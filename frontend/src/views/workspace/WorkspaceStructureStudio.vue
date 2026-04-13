@@ -764,6 +764,15 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.summary-card:hover,
+.decision-card:hover,
+.lens-card:hover {
+  transform: translateY(-1px);
+  border-color: #D1D5DB;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05);
 }
 
 .card-header {
@@ -789,6 +798,49 @@ watch(
   color: #4B5563;
   line-height: 1.5;
   margin: 0;
+}
+
+.lens-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.lens-card {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.lens-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2563EB;
+  background-color: #EFF6FF;
+  border: 1px solid #DBEAFE;
+  border-radius: 999px;
+  padding: 3px 8px;
+  width: fit-content;
+}
+
+.lens-card h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.lens-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4B5563;
 }
 
 .arc-grid {
@@ -840,6 +892,7 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: all 0.2s ease;
 }
 
 .decision-top {
@@ -972,12 +1025,32 @@ watch(
 @media (max-width: 1100px) {
   .page-hero,
   .summary-grid,
-  .decision-grid {
+  .decision-grid,
+  .lens-grid {
     grid-template-columns: 1fr;
   }
 
   .page-hero {
     flex-direction: column;
+  }
+}
+
+@media (max-width: 768px) {
+  .workspace-page {
+    padding: 20px;
+    gap: 24px;
+  }
+
+  .workspace-section {
+    padding: 20px;
+  }
+
+  .view-focus-banner,
+  .priority-banner,
+  .arc-top,
+  .arc-meta {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>
