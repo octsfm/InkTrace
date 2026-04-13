@@ -28,6 +28,11 @@
             <el-icon><List /></el-icon>
           </div>
         </el-tooltip>
+        <el-tooltip content="设置" placement="right">
+          <div class="nav-item" :class="{ active: workspaceStore.currentView === 'settings' }" @click="openSection('settings')">
+            <el-icon><Setting /></el-icon>
+          </div>
+        </el-tooltip>
       </div>
       <div class="nav-bottom">
         <el-tooltip content="返回主页" placement="right">
@@ -128,7 +133,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useNovelWorkspaceStore } from '@/stores/novelWorkspace'
 import { WORKSPACE_CONTEXT_KEY } from '@/composables/useWorkspaceContext'
 import {
-  Monitor, Edit, DataBoard, Notebook, List, House
+  Monitor, Edit, DataBoard, Notebook, List, House, Setting
 } from '@element-plus/icons-vue'
 
 // Import views
@@ -137,6 +142,16 @@ import WorkspaceWritingStudio from './WorkspaceWritingStudio.vue'
 import WorkspaceStructureStudio from './WorkspaceStructureStudio.vue'
 import WorkspaceChapterManager from './WorkspaceChapterManager.vue'
 import WorkspaceTasksAudit from './WorkspaceTasksAudit.vue'
+import WorkspaceSettingsPanel from './WorkspaceSettingsPanel.vue'
+import {
+  buildWorkspaceTaskActionPayload,
+  buildWorkspaceTaskStatusLabel,
+  buildWorkspaceTaskTypeLabel,
+  isWorkspaceTaskCompleted,
+  isWorkspaceTaskFailed,
+  isWorkspaceTaskRunning,
+  normalizeWorkspaceTaskStatus
+} from './workspaceTaskModel'
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar.vue'
 import WorkspaceCopilotPanel from '@/components/workspace/WorkspaceCopilotPanel.vue'
 import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar.vue'
@@ -169,6 +184,10 @@ const viewMetaMap = {
   tasks: {
     title: '任务与审查',
     description: '查看运行状态、失败原因和恢复入口，而不是浏览原始日志。'
+  },
+  settings: {
+    title: '设置',
+    description: '集中查看当前工作区前提、项目绑定、任务状态与编辑器诊断。'
   }
 }
 
@@ -179,6 +198,7 @@ const activeComponent = computed(() => {
     case 'structure': return WorkspaceStructureStudio
     case 'chapters': return WorkspaceChapterManager
     case 'tasks': return WorkspaceTasksAudit
+    case 'settings': return WorkspaceSettingsPanel
     case 'overview':
     default:
       return WorkspaceOverview
@@ -283,6 +303,11 @@ const sidebarMetaMap = {
     title: '任务筛选',
     subtitle: '优先处理失败任务和审查结果。'
   },
+  settings: {
+    eyebrow: '设置',
+    title: '工作区设置',
+    subtitle: '集中查看当前工作区前提、任务状态与模型上下文。'
+  },
   overview: {
     eyebrow: '概览',
     title: '项目摘要',
@@ -297,9 +322,9 @@ const sidebarMeta = computed(() => (
 const sidebarStructureItems = [
   { key: 'story_model', label: '故事模型' },
   { key: 'plot_arc', label: '剧情弧' },
-  { key: 'character', label: '角色 Characters' },
-  { key: 'worldview', label: '世界观 Worldview' },
-  { key: 'risk', label: '风险点 Risks' }
+  { key: 'character', label: '角色' },
+  { key: 'worldview', label: '世界观' },
+  { key: 'risk', label: '风险点' }
 ]
 
 const taskFilterOptionDefs = [
@@ -310,20 +335,30 @@ const taskFilterOptionDefs = [
   { key: 'audit', label: '审查结果' }
 ]
 
-const sidebarOverviewCards = computed(() => ([
-  {
-    label: '当前小说',
-    value: state.novel?.title || '未命名小说'
-  },
-  {
-    label: '最近章节',
-    value: recentChapter.value?.title || '暂无章节'
-  },
-  {
-    label: '当前任务',
-    value: taskStatusText.value || '暂无任务'
+const sidebarOverviewCards = computed(() => {
+  if (workspaceStore.currentView === 'settings') {
+    return [
+      { label: '项目 ID', value: state.projectId || '未绑定项目' },
+      { label: '失败任务', value: `${taskSummaryCounts.value.failed || 0} 个` },
+      { label: '问题单', value: `${Number(state.editor?.integrityCheck?.issue_list?.length || 0)} 个` }
+    ]
   }
-]))
+
+  return [
+    {
+      label: '当前小说',
+      value: state.novel?.title || '未命名小说'
+    },
+    {
+      label: '最近章节',
+      value: recentChapter.value?.title || '暂无章节'
+    },
+    {
+      label: '当前任务',
+      value: taskStatusText.value || '暂无任务'
+    }
+  ]
+})
 
 const taskFilterOptions = computed(() => (taskFilterOptionDefs.map((item) => {
   const countMap = taskSummaryCounts.value || {}
@@ -426,12 +461,12 @@ const taskStatusText = computed(() => {
   if (state.editor.aiRunning) return 'AI 处理中'
   if (taskSummaryCounts.value.failed > 0) return `${taskSummaryCounts.value.failed} 个失败任务`
   if (taskSummaryCounts.value.running > 0) return `${taskSummaryCounts.value.running} 个运行中任务`
-  const organizeStatus = String(state.organizeProgress?.status || '').trim()
-  if (!organizeStatus) return '暂无任务'
-  if (organizeStatus === 'running') return `整理中 ${state.organizeProgress?.progress ?? 0}%`
+  const organizeStatus = normalizeWorkspaceTaskStatus(state.organizeProgress?.status)
+  if (!organizeStatus || organizeStatus === 'idle') return '暂无任务'
+  if (isWorkspaceTaskRunning(organizeStatus)) return `整理中 ${state.organizeProgress?.progress ?? 0}%`
   if (organizeStatus === 'paused') return '整理已暂停'
-  if (organizeStatus === 'failed' || organizeStatus === 'error') return '整理失败'
-  if (organizeStatus === 'success' || organizeStatus === 'done') return '最近任务完成'
+  if (isWorkspaceTaskFailed(organizeStatus)) return '整理失败'
+  if (isWorkspaceTaskCompleted(organizeStatus)) return '最近任务完成'
   return organizeStatus
 })
 
@@ -439,9 +474,9 @@ const taskSummaryCounts = computed(() => {
   const items = Array.isArray(state.chapterTasks) ? state.chapterTasks : []
   return {
     all: items.length,
-    running: items.filter((item) => String(item?.status || '').trim() === 'running').length,
-    failed: items.filter((item) => ['failed', 'error'].includes(String(item?.status || '').trim())).length,
-    completed: items.filter((item) => ['completed', 'success', 'done'].includes(String(item?.status || '').trim())).length,
+    running: items.filter((item) => isWorkspaceTaskRunning(item?.status)).length,
+    failed: items.filter((item) => isWorkspaceTaskFailed(item?.status)).length,
+    completed: items.filter((item) => isWorkspaceTaskCompleted(item?.status)).length,
     audit: items.filter((item) => String(item?.task_type || item?.type || '').toLowerCase().includes('audit')).length
   }
 })
@@ -463,6 +498,43 @@ const activeComponentProps = computed(() => {
       historyEmptyText: taskHistoryEmptyText.value
     }
   }
+  if (workspaceStore.currentView === 'settings') {
+    return {
+      novelTitle: state.novel?.title || '',
+      projectId: state.projectId || '',
+      chapterCount: (state.chapters || []).length,
+      currentView: workspaceStore.currentView,
+      currentChapterTitle: currentChapter.value?.title || '',
+      saveStatusText: saveStatusText.value,
+      taskStatusText: taskStatusText.value,
+      failedTaskCount: taskSummaryCounts.value.failed,
+      runningTaskCount: taskSummaryCounts.value.running,
+      auditTaskCount: taskSummaryCounts.value.audit,
+      issueCount: Number(state.editor?.integrityCheck?.issue_list?.length || 0),
+      copilotOpen: workspaceStore.isCopilotOpen,
+      recentPromptCount: (workspaceStore.copilotRecentPrompts || []).length,
+      sessionCount: (workspaceStore.copilotChatSessions || []).length,
+      zenMode: workspaceStore.isZenMode,
+      currentObjectTitle: currentObjectLabel.value || '',
+      actionItems: [
+        {
+          key: 'settings-open-writing',
+          label: '回到写作',
+          onClick: () => openSection('writing', currentChapterId.value ? { chapterId: currentChapterId.value } : {})
+        },
+        {
+          key: 'settings-open-tasks',
+          label: '查看任务',
+          onClick: () => openSection('tasks')
+        },
+        {
+          key: 'settings-open-structure',
+          label: '查看结构',
+          onClick: () => openSection('structure')
+        }
+      ]
+    }
+  }
   return {}
 })
 
@@ -474,12 +546,12 @@ const overviewTaskSnapshot = computed(() => ({
 }))
 
 const taskPanelStatusText = computed(() => {
-  const status = String(state.organizeProgress?.status || '').trim()
-  if (!status) return '未运行'
+  const status = normalizeWorkspaceTaskStatus(state.organizeProgress?.status)
+  if (!status || status === 'idle') return '未运行'
   if (status === 'running') return '整理中'
   if (status === 'paused') return '已暂停'
-  if (status === 'success' || status === 'done') return '已完成'
-  if (status === 'failed' || status === 'error') return '失败'
+  if (status === 'completed') return '已完成'
+  if (status === 'failed') return '失败'
   return status
 })
 
@@ -491,55 +563,55 @@ const taskPanelStatusHint = computed(() => (
 
 const unifiedTaskCards = computed(() => {
   const cards = []
-  const organizeStatus = String(state.organizeProgress?.status || '').trim()
+  const organizeStatus = normalizeWorkspaceTaskStatus(state.organizeProgress?.status)
   cards.push({
     id: 'organize-task',
     type: 'organize',
     typeLabel: '整理任务',
     status: organizeStatus || 'idle',
-    statusLabel: buildTaskStatusLabel(organizeStatus),
+    statusLabel: buildWorkspaceTaskStatusLabel(organizeStatus),
     title: '全书整理任务',
     subtitle: `当前进度 ${state.organizeProgress?.progress ?? 0}%`,
     description: state.organizeProgress?.error_message || '负责导入后整理、结构分析与相关写回。',
     targetLabel: '目标对象：全书结构与章节状态',
     reasonText: state.organizeProgress?.error_message || '当前未提供更详细的失败原因。',
-    nextStepText: ['failed', 'error'].includes(organizeStatus)
+    nextStepText: isWorkspaceTaskFailed(organizeStatus)
       ? '建议先查看失败原因，再重新整理。'
       : '可在任务控制台继续暂停、恢复或取消。',
-    hint: ['failed', 'error'].includes(organizeStatus)
+    hint: isWorkspaceTaskFailed(organizeStatus)
       ? '建议先查看失败原因，再重试整理。'
       : '可在上方任务控制台执行暂停、恢复或取消。',
-    actionLabel: ['failed', 'error'].includes(organizeStatus) ? '重新整理' : '',
-    action: ['failed', 'error'].includes(organizeStatus) ? { type: 'retry-organize' } : null
+    actionLabel: isWorkspaceTaskFailed(organizeStatus) ? '重新整理' : '',
+    action: isWorkspaceTaskFailed(organizeStatus) ? { type: 'retry-organize' } : null
   })
 
   ;(Array.isArray(state.chapterTasks) ? state.chapterTasks : []).forEach((task, index) => {
     const taskId = String(task.id || task.task_id || `chapter-task-${index}`)
     const taskType = String(task.task_type || task.type || 'task')
-    const taskStatus = String(task.status || '').trim() || 'idle'
+    const taskStatus = normalizeWorkspaceTaskStatus(task.status)
     const chapterId = String(task.chapter_id || task.chapterId || '')
     const chapterTitle = (state.chapters || []).find((item) => item.id === chapterId)?.title || ''
     const taskTitle = task.title || task.label || task.name || `章节任务 ${index + 1}`
-    const actionPayload = buildTaskActionPayload(task)
+    const actionPayload = buildWorkspaceTaskActionPayload(task)
     const taskSubtitle = [
       chapterTitle || (chapterId ? `章节 ${chapterId}` : ''),
       task.target_arc_title || task.target_arc_id || '',
-      buildTaskTypeLabel(task)
+      buildWorkspaceTaskTypeLabel(task)
     ].filter(Boolean).join(' · ')
 
     cards.push({
       id: taskId,
       type: taskType,
-      typeLabel: buildTaskTypeLabel(task),
+      typeLabel: buildWorkspaceTaskTypeLabel(task),
       status: taskStatus,
-      statusLabel: buildTaskStatusLabel(taskStatus),
+      statusLabel: buildWorkspaceTaskStatusLabel(taskStatus),
       title: taskTitle,
       subtitle: taskSubtitle || '项目任务',
       description: task.error_message || task.error || task.description || '用于驱动章节生成、审查与结构推进的项目任务。',
       targetLabel: buildTaskTargetLabel(task, chapterTitle),
       reasonText: buildTaskReasonText(task),
       nextStepText: buildTaskNextStepText(task),
-      hint: ['failed', 'error'].includes(taskStatus)
+      hint: isWorkspaceTaskFailed(taskStatus)
         ? '建议先回到对应对象处理后再恢复。'
         : '可切回对应章节或结构对象继续推进。',
       actionLabel: buildTaskActionLabel(task),
@@ -555,20 +627,20 @@ const unifiedTaskCards = computed(() => {
     cards.push({
       id: task.id,
       type: task.type || 'task',
-      typeLabel: buildTaskTypeLabel(task),
-      status: task.status || 'idle',
-      statusLabel: buildTaskStatusLabel(task.status),
+      typeLabel: buildWorkspaceTaskTypeLabel(task),
+      status: normalizeWorkspaceTaskStatus(task.status),
+      statusLabel: buildWorkspaceTaskStatusLabel(task.status),
       title: task.label || '当前任务',
       subtitle: task.chapterId ? `章节 ${task.chapterId}` : '当前工作区任务',
       description: task.error || '当前工作区最近一次 AI/校验任务状态。',
       targetLabel: task.chapterId ? `目标章节：${task.chapterId}` : '目标对象：当前工作区',
       reasonText: task.error || '当前未提供更详细的失败原因。',
       nextStepText: task.chapterId ? '建议先回到对应章节继续处理。' : '建议先查看失败任务筛选。', 
-      hint: task.status === 'failed' ? '如需恢复，可回到写作页重新发起。' : '可切换回对应工作区继续处理。',
-      actionLabel: task.chapterId ? '打开对象' : (task.status === 'failed' ? '查看失败任务' : ''),
+      hint: isWorkspaceTaskFailed(task.status) ? '如需恢复，可回到写作页重新发起。' : '可切换回对应工作区继续处理。',
+      actionLabel: task.chapterId ? '打开对象' : (isWorkspaceTaskFailed(task.status) ? '查看失败任务' : ''),
       action: task.chapterId
         ? { type: 'chapter', chapterId: task.chapterId }
-        : (task.status === 'failed' ? { type: 'task-filter', filter: 'failed' } : { type: 'section', section: 'tasks' }),
+        : (isWorkspaceTaskFailed(task.status) ? { type: 'task-filter', filter: 'failed' } : { type: 'section', section: 'tasks' }),
       chapterId: task.chapterId || ''
     })
   }
@@ -587,9 +659,9 @@ const filteredTaskCards = computed(() => {
   const filter = workspaceStore.currentTaskFilter
   const cards = unifiedTaskCards.value
   if (filter === 'all') return cards
-  if (filter === 'running') return cards.filter((item) => item.status === 'running')
-  if (filter === 'failed') return cards.filter((item) => ['failed', 'error'].includes(item.status))
-  if (filter === 'completed') return cards.filter((item) => ['completed', 'success', 'done'].includes(item.status))
+  if (filter === 'running') return cards.filter((item) => isWorkspaceTaskRunning(item.status))
+  if (filter === 'failed') return cards.filter((item) => isWorkspaceTaskFailed(item.status))
+  if (filter === 'completed') return cards.filter((item) => isWorkspaceTaskCompleted(item.status))
   if (filter === 'audit') return cards.filter((item) => item.type === 'audit')
   return cards
 })
@@ -608,13 +680,13 @@ const groupedTaskSections = computed(() => {
       key: 'failed',
       title: '优先恢复',
       description: '这些任务当前失败或异常，建议优先定位并恢复。',
-      items: cards.filter((item) => ['failed', 'error'].includes(item.status))
+      items: cards.filter((item) => isWorkspaceTaskFailed(item.status))
     },
     {
       key: 'running',
       title: '运行中',
       description: '这些任务仍在运行，可以先观察进度或切回对象继续处理。',
-      items: cards.filter((item) => item.status === 'running')
+      items: cards.filter((item) => isWorkspaceTaskRunning(item.status))
     },
     {
       key: 'audit',
@@ -637,9 +709,9 @@ const groupedTaskSections = computed(() => {
 
 const taskRecommendationItems = computed(() => {
   const items = []
-  const failedTask = unifiedTaskCards.value.find((item) => ['failed', 'error'].includes(item.status) && item.id !== 'organize-task')
-  const failedOrganizeTask = unifiedTaskCards.value.find((item) => item.id === 'organize-task' && ['failed', 'error'].includes(item.status))
-  const runningTask = unifiedTaskCards.value.find((item) => item.status === 'running' && item.id !== 'organize-task')
+  const failedTask = unifiedTaskCards.value.find((item) => isWorkspaceTaskFailed(item.status) && item.id !== 'organize-task')
+  const failedOrganizeTask = unifiedTaskCards.value.find((item) => item.id === 'organize-task' && isWorkspaceTaskFailed(item.status))
+  const runningTask = unifiedTaskCards.value.find((item) => isWorkspaceTaskRunning(item.status) && item.id !== 'organize-task')
   const auditTask = unifiedTaskCards.value.find((item) => String(item.type || '').toLowerCase().includes('audit'))
 
   if (failedTask) {
@@ -1117,7 +1189,7 @@ const overviewDecisionCards = computed(() => {
       key: 'structure-focus',
       tag: '结构',
       cta: '查看',
-      title: currentTargetArcText.value ? '检查活跃剧情弧' : '打开 Story Model',
+      title: currentTargetArcText.value ? '检查活跃剧情弧' : '打开故事模型',
       description: currentTargetArcText.value
         ? '先确认主线和当前推进阶段，避免写作脱离结构目标。'
         : '当前缺少明显活跃剧情弧，先回到结构工作台确定主线推进。',
@@ -1197,48 +1269,6 @@ const currentCopilotSessionMeta = computed(() => {
     objectTitle: baseTitle || ''
   }
 })
-
-const buildTaskStatusLabel = (status) => {
-  const normalized = String(status || '').trim()
-  if (!normalized) return '待命中'
-  if (normalized === 'running') return '运行中'
-  if (normalized === 'paused') return '已暂停'
-  if (['completed', 'success', 'done'].includes(normalized)) return '已完成'
-  if (['failed', 'error'].includes(normalized)) return '失败'
-  return normalized
-}
-
-const buildTaskTypeLabel = (task) => {
-  const type = String(task?.task_type || task?.type || '').toLowerCase()
-  if (type.includes('audit') || type.includes('analyze')) return '审查任务'
-  if (type.includes('organize')) return '整理任务'
-  if (type.includes('write') || type.includes('draft')) return '写作任务'
-  if (type.includes('arc') || type.includes('plot')) return '结构任务'
-  return '项目任务'
-}
-
-const buildTaskActionPayload = (task) => {
-  const chapterId = String(task?.chapter_id || task?.chapterId || '').trim()
-  const targetArcId = String(task?.target_arc_id || task?.targetArcId || '').trim()
-  if (chapterId) {
-    return { type: 'chapter', chapterId }
-  }
-  if (targetArcId) {
-    return {
-      type: 'arc',
-      arcId: targetArcId,
-      title: task?.target_arc_title || targetArcId
-    }
-  }
-  const taskType = String(task?.task_type || task?.type || '').toLowerCase()
-  if (taskType.includes('audit') || taskType.includes('analyze')) {
-    return { type: 'task-filter', filter: 'audit' }
-  }
-  if (['failed', 'error'].includes(String(task?.status || '').trim())) {
-    return { type: 'task-filter', filter: 'failed' }
-  }
-  return { type: 'section', section: 'tasks' }
-}
 
 const buildTaskActionLabel = (task) => {
   const chapterId = String(task?.chapter_id || task?.chapterId || '').trim()
@@ -1335,40 +1365,187 @@ const currentIssueCommands = computed(() => {
     hint: issue.severity === 'high' ? '高优先级' : '问题',
     action: {
       type: 'issue',
-      issueIndex: index
+      issueIndex: index,
+      issueTitle: issue.title || issue.code || `问题 ${index + 1}`,
+      issueCode: issue.code || '',
+      chapterId: currentChapter.value?.id || ''
     }
   }))
 })
 
+const buildRecentDocumentAction = (doc) => {
+  if (doc.type === 'chapter') {
+    return { type: 'chapter', chapterId: doc.id }
+  }
+  if (doc.type === 'plot_arc') {
+    return { type: 'arc', arcId: doc.id, title: doc.title || '' }
+  }
+  if (doc.type === 'story_model') {
+    return { type: 'section', section: 'structure', object: { type: 'story_model' } }
+  }
+  if (doc.type === 'risk') {
+    return { type: 'section', section: 'structure', object: { type: 'risk' } }
+  }
+  if (doc.type === 'task-filter') {
+    return { type: 'task-filter', filter: doc.id }
+  }
+  if (doc.type === 'task') {
+    return {
+      type: 'task',
+      taskId: doc.id,
+      title: doc.title || '',
+      chapterId: doc.chapterId || '',
+      status: doc.status || '',
+      targetArcId: doc.targetArcId || ''
+    }
+  }
+  if (doc.type === 'issue') {
+    return {
+      type: 'issue',
+      issueId: doc.id,
+      issueIndex: typeof doc.index === 'number' ? doc.index : Number(doc.index ?? -1),
+      issueTitle: doc.title || '',
+      issueCode: doc.code || '',
+      chapterId: doc.chapterId || ''
+    }
+  }
+  return { type: 'section', section: workspaceStore.currentView || 'overview' }
+}
+
+const getTaskStatusLabel = (status) => {
+  if (status === 'failed') return '失败'
+  if (status === 'running') return '运行中'
+  if (status === 'completed') return '已完成'
+  if (status === 'paused') return '已暂停'
+  return ''
+}
+
+const getChapterLabelById = (chapterId) => {
+  const chapter = (state.chapters || []).find((item) => item.id === chapterId)
+  if (!chapter) {
+    return ''
+  }
+  return chapter.title || `第 ${chapter.chapter_number || '?'} 章`
+}
+
+const getRecentDocumentPresentation = (doc) => {
+  const relativeTime = formatRelativeTime(doc.lastOpenedAt)
+  const chapterLabel = getChapterLabelById(doc.chapterId)
+  const taskStatusLabel = getTaskStatusLabel(doc.status)
+
+  if (doc.type === 'chapter') {
+    return {
+      subtitle: ['重新打开该章节', relativeTime].filter(Boolean).join(' · '),
+      hint: '最近',
+      priority: 55
+    }
+  }
+
+  if (doc.type === 'plot_arc') {
+    return {
+      subtitle: ['重新打开该剧情弧', relativeTime].filter(Boolean).join(' · '),
+      hint: '结构',
+      priority: 45
+    }
+  }
+
+  if (doc.type === 'story_model') {
+    return {
+      subtitle: ['重新打开结构模型', relativeTime].filter(Boolean).join(' · '),
+      hint: '结构',
+      priority: 40
+    }
+  }
+
+  if (doc.type === 'risk') {
+    return {
+      subtitle: ['恢复风险点视角', relativeTime].filter(Boolean).join(' · '),
+      hint: '结构',
+      priority: 42
+    }
+  }
+
+  if (doc.type === 'task') {
+    return {
+      subtitle: ['恢复该任务对象', chapterLabel, relativeTime].filter(Boolean).join(' · '),
+      hint: taskStatusLabel || '任务',
+      priority: doc.status === 'failed' ? 72 : doc.status === 'running' ? 68 : 58
+    }
+  }
+
+  if (doc.type === 'issue') {
+    return {
+      subtitle: ['恢复该问题定位', chapterLabel, relativeTime].filter(Boolean).join(' · '),
+      hint: '问题',
+      priority: 70
+    }
+  }
+
+  if (doc.type === 'task-filter') {
+    return {
+      subtitle: ['恢复该任务筛选', relativeTime].filter(Boolean).join(' · '),
+      hint: '任务',
+      priority: 38
+    }
+  }
+
+  return {
+    subtitle: ['重新打开最近对象', relativeTime].filter(Boolean).join(' · '),
+    hint: '最近',
+    priority: 30
+  }
+}
+
+const getCommandObjectRestoreKey = (item) => {
+  const action = item?.action || {}
+  if (action.type === 'chapter' && action.chapterId) {
+    return `chapter:${action.chapterId}`
+  }
+  if (action.type === 'chapter-manager' && action.chapterId) {
+    return `chapter:${action.chapterId}`
+  }
+  if (action.type === 'arc' && action.arcId) {
+    return `plot_arc:${action.arcId}`
+  }
+  if (action.type === 'task-filter' && action.filter) {
+    return `task-filter:${action.filter}`
+  }
+  if (action.type === 'task' && action.taskId) {
+    return `task:${action.taskId}`
+  }
+  if (action.type === 'issue') {
+    const chapterId = action.chapterId || currentChapter.value?.id || 'chapter'
+    const issueIndex = Number(action.issueIndex ?? -1)
+    return `issue:${action.issueId || `${chapterId}::issue-${issueIndex}`}`
+  }
+  if (action.type === 'section' && action.section === 'structure' && action.object?.type) {
+    return `${action.object.type}:${action.object.type}`
+  }
+  if (action.type === 'section' && action.section === 'overview') {
+    return 'overview:overview'
+  }
+  if (action.type === 'section' && action.section === 'settings') {
+    return 'settings:settings'
+  }
+  return ''
+}
+
 const recentOpenDocumentCommands = computed(() => {
   return (workspaceStore.openDocuments || [])
     .slice(0, 8)
-    .map((doc, index) => ({
-      id: `recent-doc-${doc.type}-${doc.id}-${index}`,
-      group: '最近对象',
-      title: doc.title || `${doc.type} ${doc.id}`,
-      subtitle: [
-        doc.type === 'chapter'
-          ? '重新打开该章节'
-          : doc.type === 'plot_arc'
-            ? '重新打开该剧情弧'
-            : doc.type === 'story_model'
-              ? '重新打开结构模型'
-              : '重新打开最近对象',
-        formatRelativeTime(doc.lastOpenedAt)
-      ].filter(Boolean).join(' · '),
-      keywords: `${doc.title || ''} 最近 打开 recent ${doc.type}`,
-      hint: '最近',
-      action: doc.type === 'chapter'
-        ? { type: 'chapter', chapterId: doc.id }
-        : doc.type === 'plot_arc'
-          ? { type: 'arc', arcId: doc.id, title: doc.title || '' }
-          : doc.type === 'story_model'
-            ? { type: 'section', section: 'structure', object: { type: 'story_model' } }
-            : doc.type === 'task-filter'
-              ? { type: 'task-filter', filter: doc.id }
-              : { type: 'section', section: workspaceStore.currentView || 'overview' }
-    }))
+    .map((doc, index) => {
+      const presentation = getRecentDocumentPresentation(doc)
+      return {
+        id: `recent-doc-${doc.type}-${doc.id}-${index}`,
+        group: '最近对象',
+        title: doc.title || `${doc.type} ${doc.id}`,
+        subtitle: presentation.subtitle,
+        keywords: `${doc.title || ''} 最近 打开 recent ${doc.type} ${doc.status || ''} ${doc.code || ''} ${getChapterLabelById(doc.chapterId)}`,
+        hint: presentation.hint,
+        priority: presentation.priority,
+        action: buildRecentDocumentAction(doc)
+      }
+    })
 })
 
 const recentCommandIdSet = computed(() => (
@@ -1424,6 +1601,14 @@ const commandPaletteItems = computed(() => {
       action: { type: 'task-filter', filter: 'all' }
     },
     {
+      id: 'view-settings',
+      group: '视图',
+      title: '打开设置',
+      subtitle: '查看工作区设置与运行诊断',
+      keywords: 'settings 设置 配置 诊断',
+      action: { type: 'section', section: 'settings' }
+    },
+    {
       id: 'story-model',
       group: '结构',
       title: '打开故事模型',
@@ -1435,7 +1620,7 @@ const commandPaletteItems = computed(() => {
     {
       id: 'dashboard',
       group: '视图',
-      title: '返回 Dashboard',
+      title: '返回主页',
       subtitle: '离开当前工作区回到首页',
       keywords: 'dashboard 首页 返回',
       action: { type: 'dashboard' }
@@ -1459,13 +1644,31 @@ const commandPaletteItems = computed(() => {
       id: `current-object-arc-${workspaceStore.currentObject.arcId}`,
       group: '当前对象',
       title: `打开当前剧情弧：${workspaceStore.currentObject.title || workspaceStore.currentObject.arcId}`,
-      subtitle: '切到 Structure 并聚焦当前剧情弧',
+      subtitle: '切到结构页并聚焦当前剧情弧',
       keywords: `${workspaceStore.currentObject.title || ''} 当前对象 剧情弧 structure`,
       hint: '当前',
       action: {
         type: 'arc',
         arcId: workspaceStore.currentObject.arcId,
         title: workspaceStore.currentObject.title || ''
+      }
+    })
+  }
+
+  if (['story_model', 'risk'].includes(workspaceStore.currentObject?.type)) {
+    const structureType = workspaceStore.currentObject.type
+    const label = structureType === 'story_model' ? '故事模型' : '风险点'
+    items.unshift({
+      id: `current-object-structure-${structureType}`,
+      group: '当前对象',
+      title: `打开当前结构视角：${label}`,
+      subtitle: '切到结构页并恢复当前结构视角',
+      keywords: `${label} 当前对象 结构 structure`,
+      hint: '当前',
+      action: {
+        type: 'section',
+        section: 'structure',
+        object: { type: structureType }
       }
     })
   }
@@ -1485,17 +1688,68 @@ const commandPaletteItems = computed(() => {
     })
   }
 
-  if (workspaceStore.currentTask?.id) {
+  if (workspaceStore.currentObject?.type === 'task' && workspaceStore.currentObject?.id) {
+    items.unshift({
+      id: `current-object-task-${workspaceStore.currentObject.id}`,
+      group: '当前对象',
+      title: `打开当前任务：${workspaceStore.currentObject.title || workspaceStore.currentTask?.label || '当前任务'}`,
+      subtitle: '切到任务台并恢复当前任务焦点',
+      keywords: `${workspaceStore.currentObject.title || ''} 当前对象 任务 task`,
+      hint: '当前',
+      action: {
+        type: 'task',
+        taskId: workspaceStore.currentObject.id,
+        title: workspaceStore.currentObject.title || workspaceStore.currentTask?.label || '',
+        chapterId: workspaceStore.currentObject.chapterId || '',
+        status: workspaceStore.currentObject.status || ''
+      }
+    })
+  }
+
+  if (workspaceStore.currentObject?.type === 'issue') {
+    items.unshift({
+      id: `current-object-issue-${workspaceStore.currentObject.id || workspaceStore.currentObject.issueId || workspaceStore.currentObject.index}`,
+      group: '当前对象',
+      title: `回到当前问题：${workspaceStore.currentObject.title || workspaceStore.currentObject.code || '问题单'}`,
+      subtitle: '回到写作页并恢复当前问题定位',
+      keywords: `${workspaceStore.currentObject.title || ''} 当前对象 问题 issue`,
+      hint: '当前',
+      action: {
+        type: 'issue',
+        issueId: workspaceStore.currentObject.id || workspaceStore.currentObject.issueId || '',
+        issueIndex: Number(workspaceStore.currentObject.index ?? -1),
+        issueTitle: workspaceStore.currentObject.title || '',
+        issueCode: workspaceStore.currentObject.code || '',
+        chapterId: workspaceStore.currentObject.chapterId || currentChapter.value?.id || ''
+      }
+    })
+  }
+
+  const currentTaskIsFocusedObject = (
+    workspaceStore.currentObject?.type === 'task'
+    && workspaceStore.currentObject?.id
+    && workspaceStore.currentTask?.id
+    && String(workspaceStore.currentObject.id) === String(workspaceStore.currentTask.id)
+  )
+
+  if (workspaceStore.currentTask?.id && !currentTaskIsFocusedObject) {
+    const currentTaskChapterLabel = getChapterLabelById(workspaceStore.currentTask.chapterId)
+    const currentTaskStatusLabel = getTaskStatusLabel(workspaceStore.currentTask.status)
     items.push({
       id: `current-task-${workspaceStore.currentTask.id}`,
       group: '任务',
       title: workspaceStore.currentTask.label || '当前任务',
-      subtitle: workspaceStore.currentTask.chapterId ? `回到对应章节 ${workspaceStore.currentTask.chapterId}` : '打开当前任务上下文',
+      subtitle: ['恢复当前任务上下文', currentTaskChapterLabel, currentTaskStatusLabel].filter(Boolean).join(' · '),
       keywords: `${workspaceStore.currentTask.label || ''} 当前任务 task`,
-      hint: '当前',
-      action: workspaceStore.currentTask.chapterId
-        ? { type: 'chapter', chapterId: workspaceStore.currentTask.chapterId }
-        : { type: 'task-filter', filter: 'all' }
+      hint: currentTaskStatusLabel || '当前',
+      action: {
+        type: 'task',
+        taskId: workspaceStore.currentTask.id,
+        title: workspaceStore.currentTask.label || '',
+        chapterId: workspaceStore.currentTask.chapterId || '',
+        status: workspaceStore.currentTask.status || '',
+        targetArcId: workspaceStore.currentTask.targetArcId || ''
+      }
     })
   }
 
@@ -1643,7 +1897,23 @@ const commandPaletteItems = computed(() => {
   items.push(...recentOpenDocumentCommands.value)
   items.push(...currentIssueCommands.value)
 
-  return items
+  const currentObjectRestoreKeys = new Set(
+    items
+      .filter((item) => item.group === '当前对象')
+      .map((item) => getCommandObjectRestoreKey(item))
+      .filter(Boolean)
+  )
+
+  return items.filter((item) => {
+    if (item.group !== '最近对象') {
+      return true
+    }
+    const restoreKey = getCommandObjectRestoreKey(item)
+    if (!restoreKey) {
+      return true
+    }
+    return !currentObjectRestoreKeys.has(restoreKey)
+  })
 })
 
 const filteredCommandPaletteItems = computed(() => {
@@ -1667,13 +1937,19 @@ const filteredCommandPaletteItems = computed(() => {
     const isCurrentObject = group.includes('当前对象')
     const isRecentCommand = recentCommandIdSet.value.has(item.id)
     const isRecentOpen = recentOpenDocumentIdSet.value.has(item.id)
+    const isTaskGroup = group === '任务'
+    const isViewGroup = group === '视图'
     const isCurrentView = item.action?.section === workspaceStore.currentView
       || (item.action?.type === 'task-filter' && workspaceStore.currentView === 'tasks' && item.action?.filter === workspaceStore.currentTaskFilter)
+    const commandPriority = Number(item.priority || 0)
 
     if (isCurrentObject) score += 80
     if (isRecentCommand) score += 60
     if (isRecentOpen) score += 45
     if (isCurrentView) score += 35
+    if (!query && isTaskGroup) score += 10
+    if (!query && isViewGroup) score += 5
+    if (!query) score += commandPriority
 
     if (!query) {
       return score
@@ -1890,6 +2166,8 @@ const openSection = (section, extraQuery = {}) => {
     } else {
       workspaceStore.switchView(section)
     }
+  } else if (section === 'settings') {
+    workspaceStore.switchView(section)
   } else {
     workspaceStore.switchView(section)
   }
@@ -1935,6 +2213,18 @@ const handleCopilotTrigger = async (payload) => {
 
   if (payload.type === 'task-filter') {
     workspaceStore.focusTaskFilter(payload.filter || 'all', { openView: false })
+    openSection('tasks')
+    return
+  }
+
+  if (payload.type === 'task' && payload.taskId) {
+    workspaceStore.focusTask({
+      id: payload.taskId,
+      label: payload.title || '',
+      chapterId: payload.chapterId || '',
+      status: payload.status || '',
+      targetArcId: payload.targetArcId || ''
+    }, { openView: false })
     openSection('tasks')
     return
   }
@@ -2028,6 +2318,12 @@ const handleCommandExecute = async (item) => {
     } else {
       openSection('writing')
     }
+    workspaceStore.focusIssue({
+      index: item.action.issueIndex,
+      title: item.action.issueTitle || item.title || '',
+      code: item.action.issueCode || '',
+      chapterId: item.action.chapterId || currentChapter.value?.id || ''
+    }, { openView: false })
     closeCommandPalette()
     return
   }

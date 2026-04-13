@@ -218,4 +218,27 @@ describe('Workspace Store (DDD + TDD)', () => {
       title: '故事模型'
     })
   })
+
+  it('should focus issue via unified object contract', () => {
+    const store = useWorkspaceStore()
+
+    store.focusIssue({
+      index: 2,
+      code: 'continuity',
+      title: '连续性风险',
+      chapterId: 'chapter-3'
+    }, { openView: false })
+
+    expect(store.currentObject).toMatchObject({
+      type: 'issue',
+      index: 2,
+      code: 'continuity',
+      title: '连续性风险',
+      chapterId: 'chapter-3'
+    })
+    expect(store.openDocuments[0]).toMatchObject({
+      type: 'issue',
+      title: '连续性风险'
+    })
+  })
 })

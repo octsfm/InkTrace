@@ -629,12 +629,12 @@ const syncHighlightForIssue = (issue) => {
 
 const handleLocateIssue = ({ issue, index }) => {
   previewIssueIndex.value = -1
-  workspaceStore.setCurrentObject({
-    type: 'issue',
+  workspaceStore.focusIssue({
     index,
     code: issue?.code || '',
-    title: issue?.title || ''
-  })
+    title: issue?.title || '',
+    chapterId: editorState.chapter?.id || ''
+  }, { openView: false })
 
   if (!editor.value) {
     ElMessage.warning('编辑器尚未就绪')
@@ -682,29 +682,25 @@ const handleObjectAction = async (payload) => {
   }
 
   if (payload.type === 'chapter-manager' && payload.chapterId) {
-    workspaceStore.currentChapterId = payload.chapterId
-    workspaceStore.setCurrentObject({
-      type: 'chapter',
+    workspaceStore.focusChapterObject({
       id: payload.chapterId,
       title: payload.title || editorState.chapter.title || ''
-    })
+    }, { openView: true, view: 'chapters' })
     workspace.openSection?.('chapters')
     return
   }
 
   if (payload.type === 'arc') {
-    workspaceStore.setStructureSection('plot_arc')
-    workspaceStore.setCurrentObject({
-      type: 'plot_arc',
+    workspaceStore.focusPlotArc({
       arcId: payload.arcId || '',
       title: payload.title || ''
-    })
+    }, { openView: true, section: 'plot_arc' })
     workspace.openSection?.('structure')
     return
   }
 
   if (payload.type === 'task-filter') {
-    workspaceStore.setTaskFilter(payload.filter || 'all')
+    workspaceStore.focusTaskFilter(payload.filter || 'all', { openView: true })
     workspace.openSection?.('tasks')
     return
   }

@@ -50,8 +50,8 @@ describe('WorkspaceSidebar.vue', () => {
         currentView: 'structure',
         currentStructureSection: 'plot_arc',
         structureItems: [
-          { key: 'story_model', label: 'Story Model' },
-          { key: 'plot_arc', label: '剧情弧 PlotArc' }
+          { key: 'story_model', label: '故事模型' },
+          { key: 'plot_arc', label: '剧情弧' }
         ]
       },
       global: {
@@ -80,5 +80,24 @@ describe('WorkspaceSidebar.vue', () => {
     })
 
     expect(wrapper.text()).toContain('失败任务 (2)')
+  })
+
+  it('renders settings summary cards when settings view is active', () => {
+    const wrapper = mount(WorkspaceSidebar, {
+      props: {
+        currentView: 'settings',
+        overviewCards: [
+          { label: '项目 ID', value: 'proj-1' },
+          { label: '失败任务', value: '2 个' }
+        ]
+      },
+      global: {
+        stubs: ['el-input', 'el-icon']
+      }
+    })
+
+    expect(wrapper.text()).toContain('设置摘要')
+    expect(wrapper.text()).toContain('proj-1')
+    expect(wrapper.text()).toContain('2 个')
   })
 })

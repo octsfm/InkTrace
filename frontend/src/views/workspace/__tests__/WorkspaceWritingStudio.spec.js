@@ -177,6 +177,14 @@ describe('WorkspaceWritingStudio.vue', () => {
     expect(mockSetMeta).toHaveBeenCalled()
     expect(mockDispatch).toHaveBeenCalled()
     expect(mockSetTextSelection).toHaveBeenCalled()
+    const workspaceStore = useWorkspaceStore()
+    expect(workspaceStore.currentObject).toMatchObject({
+      type: 'issue',
+      index: 0,
+      code: 'continuity',
+      title: 'test',
+      chapterId: '1'
+    })
   })
 
   it('previews issue highlight on hover and restores persistent highlight on leave', async () => {

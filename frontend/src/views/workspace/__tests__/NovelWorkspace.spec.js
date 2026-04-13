@@ -3,6 +3,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import NovelWorkspace from '../NovelWorkspace.vue'
+import {
+  buildWorkspaceTaskActionPayload,
+  buildWorkspaceTaskStatusLabel,
+  normalizeWorkspaceTaskStatus
+} from '../workspaceTaskModel'
 
 const mockRoute = { params: { id: '1' }, query: {} }
 
@@ -32,6 +37,7 @@ vi.mock('../WorkspaceWritingStudio.vue', () => ({ default: { name: 'WorkspaceWri
 vi.mock('../WorkspaceStructureStudio.vue', () => ({ default: { name: 'WorkspaceStructureStudio', template: '<div class="workspace-structure-mock">Structure</div>' } }))
 vi.mock('../WorkspaceChapterManager.vue', () => ({ default: { name: 'WorkspaceChapterManager', template: '<div class="workspace-chapter-mock">Chapters</div>' } }))
 vi.mock('../WorkspaceTasksAudit.vue', () => ({ default: { name: 'WorkspaceTasksAudit', template: '<div class="workspace-tasks-mock">Tasks</div>' } }))
+vi.mock('../WorkspaceSettingsPanel.vue', () => ({ default: { name: 'WorkspaceSettingsPanel', template: '<div class="workspace-settings-mock">Settings</div>' } }))
 vi.mock('@/components/workspace/WorkspaceSidebar.vue', () => ({ default: { name: 'WorkspaceSidebar', template: '<div class="workspace-sidebar-mock">Sidebar</div>' } }))
 vi.mock('@/components/workspace/WorkspaceCopilotPanel.vue', () => ({ default: { name: 'WorkspaceCopilotPanel', template: '<div class="workspace-copilot-mock">Copilot</div>' } }))
 vi.mock('@/components/workspace/WorkspaceTopBar.vue', () => ({ default: { name: 'WorkspaceTopBar', template: '<div class="workspace-topbar-mock">TopBar</div>' } }))
@@ -118,6 +124,18 @@ describe('NovelWorkspace.vue', () => {
     mountComponent()
   })
 
+  it('normalizes workspace task status and action payload through shared task model', () => {
+    expect(normalizeWorkspaceTaskStatus('error')).toBe('failed')
+    expect(buildWorkspaceTaskStatusLabel('done')).toBe('已完成')
+    expect(buildWorkspaceTaskActionPayload({
+      task_type: 'audit',
+      status: 'error'
+    })).toEqual({
+      type: 'task-filter',
+      filter: 'failed'
+    })
+  })
+
   it('renders the workspace layout with overview section when requested', async () => {
     mockRoute.query = { section: 'overview' }
     mountComponent()
@@ -138,6 +156,15 @@ describe('NovelWorkspace.vue', () => {
     
     expect(wrapper.find('.workspace-writing-mock').exists()).toBe(true)
     expect(wrapper.find('.workspace-overview-mock').exists()).toBe(false)
+  })
+
+  it('switches to settings view when store activeView changes', async () => {
+    store.currentView = 'settings'
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.workspace-settings-mock').exists()).toBe(true)
+    expect(wrapper.find('.workspace-overview-mock').exists()).toBe(false)
+    expect(wrapper.vm.sidebarOverviewCards[0].label).toBe('项目 ID')
   })
 
   it('hides left nav when zen mode is enabled', async () => {
@@ -173,6 +200,11 @@ describe('NovelWorkspace.vue', () => {
     })
   })
 
+  it('includes settings command in command palette items', () => {
+    const itemIds = wrapper.vm.commandPaletteItems.map((item) => item.id)
+    expect(itemIds).toContain('view-settings')
+  })
+
   it('includes expanded object commands in command palette items', () => {
     store.openDocuments = [
       { type: 'chapter', id: 'chapter-1', title: '第一章', lastOpenedAt: Date.now() - 60 * 1000 }
@@ -181,20 +213,109 @@ describe('NovelWorkspace.vue', () => {
     const itemIds = wrapper.vm.commandPaletteItems.map((item) => item.id)
     expect(itemIds).toContain('story-model')
     expect(itemIds).toContain('copilot-chat')
-    expect(itemIds.some((id) => id.startsWith('recent-doc-chapter-chapter-1'))).toBe(true)
+    expect(itemIds).toContain('current-object-chapter-chapter-1')
+    expect(itemIds.some((id) => id.startsWith('recent-doc-chapter-chapter-1'))).toBe(false)
     expect(itemIds).toContain('issue-0')
   })
 
-  it('records recent plot arc objects into recent open commands', async () => {
+  it('promotes current plot arc object over duplicated recent entry', async () => {
     store.setCurrentObject({ type: 'plot_arc', arcId: 'arc-1', title: '主线追踪' })
     await wrapper.vm.$nextTick()
-    expect(wrapper.vm.commandPaletteItems.some((item) => item.id.startsWith('recent-doc-plot_arc-arc-1'))).toBe(true)
+    expect(wrapper.vm.commandPaletteItems.some((item) => item.id === 'current-object-arc-arc-1')).toBe(true)
+    expect(wrapper.vm.commandPaletteItems.some((item) => item.id.startsWith('recent-doc-plot_arc-arc-1'))).toBe(false)
+  })
+
+  it('builds restore commands for recent issue and task objects', async () => {
+    store.openDocuments = [
+      { type: 'risk', id: 'risk', title: '风险点', lastOpenedAt: Date.now() - 3000 },
+      { type: 'issue', id: 'chapter-1::issue-0', title: '连续性风险', chapterId: 'chapter-1', index: 0, code: 'continuity', lastOpenedAt: Date.now() - 2000 },
+      { type: 'task', id: 'task-1', title: '章节审查', chapterId: 'chapter-1', status: 'failed', lastOpenedAt: Date.now() - 1000 }
+    ]
+    await wrapper.vm.$nextTick()
+
+    const itemIds = wrapper.vm.commandPaletteItems.map((item) => item.id)
+    expect(itemIds.some((id) => id.startsWith('recent-doc-risk-risk'))).toBe(true)
+    expect(itemIds.some((id) => id.startsWith('recent-doc-issue-chapter-1::issue-0'))).toBe(true)
+    expect(itemIds.some((id) => id.startsWith('recent-doc-task-task-1'))).toBe(true)
+  })
+
+  it('adds richer subtitle and hint for recent failed task objects', async () => {
+    store.openDocuments = [
+      { type: 'task', id: 'task-1', title: '章节审查', chapterId: 'chapter-1', status: 'failed', lastOpenedAt: Date.now() - 1000 }
+    ]
+    await wrapper.vm.$nextTick()
+
+    const taskItem = wrapper.vm.commandPaletteItems.find((item) => item.id.startsWith('recent-doc-task-task-1'))
+    expect(taskItem.subtitle).toContain('恢复该任务对象')
+    expect(taskItem.subtitle).toContain('第一章')
+    expect(taskItem.hint).toBe('失败')
+  })
+
+  it('builds current object command for structure section objects', async () => {
+    store.currentObject = { type: 'story_model' }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.commandPaletteItems.some((item) => item.id === 'current-object-structure-story_model')).toBe(true)
+  })
+
+  it('deduplicates current object and recent object commands for the same chapter', async () => {
+    store.currentObject = { type: 'chapter', id: 'chapter-1', title: '第一章' }
+    store.openDocuments = [
+      { type: 'chapter', id: 'chapter-1', title: '第一章', lastOpenedAt: Date.now() - 1000 }
+    ]
+    await wrapper.vm.$nextTick()
+
+    const itemIds = wrapper.vm.commandPaletteItems.map((item) => item.id)
+    expect(itemIds).toContain('current-object-chapter-chapter-1')
+    expect(itemIds.some((id) => id.startsWith('recent-doc-chapter-chapter-1'))).toBe(false)
   })
 
   it('prioritizes current object command when query is empty', async () => {
     store.currentObject = { type: 'chapter', id: 'chapter-1', title: '第一章' }
     await wrapper.vm.$nextTick()
     expect(wrapper.vm.filteredCommandPaletteItems[0].id).toBe('current-object-chapter-chapter-1')
+  })
+
+  it('prioritizes failed task recent objects over lower-priority structure restores when query is empty', async () => {
+    store.currentObject = null
+    store.openDocuments = [
+      { type: 'risk', id: 'risk', title: '风险点', lastOpenedAt: Date.now() - 3000 },
+      { type: 'task', id: 'task-1', title: '章节审查', chapterId: 'chapter-1', status: 'failed', lastOpenedAt: Date.now() - 1000 }
+    ]
+    await wrapper.vm.$nextTick()
+
+    const riskIndex = wrapper.vm.filteredCommandPaletteItems.findIndex((item) => item.id.startsWith('recent-doc-risk-risk'))
+    const taskIndex = wrapper.vm.filteredCommandPaletteItems.findIndex((item) => item.id.startsWith('recent-doc-task-task-1'))
+    expect(taskIndex).toBeGreaterThanOrEqual(0)
+    expect(riskIndex).toBeGreaterThanOrEqual(0)
+    expect(taskIndex).toBeLessThan(riskIndex)
+  })
+
+  it('deduplicates current task entry when the same task is already the current object', async () => {
+    store.currentTask = { id: 'task-1', label: '章节审查', chapterId: 'chapter-1', status: 'failed' }
+    store.currentObject = { type: 'task', id: 'task-1', title: '章节审查', chapterId: 'chapter-1', status: 'failed' }
+    await wrapper.vm.$nextTick()
+
+    const itemIds = wrapper.vm.commandPaletteItems.map((item) => item.id)
+    expect(itemIds).toContain('current-object-task-task-1')
+    expect(itemIds).not.toContain('current-task-task-1')
+  })
+
+  it('builds richer current task entry when task is not the current object', async () => {
+    store.currentObject = null
+    store.currentTask = { id: 'task-2', label: '结构整理', chapterId: 'chapter-1', status: 'running' }
+    await wrapper.vm.$nextTick()
+
+    const item = wrapper.vm.commandPaletteItems.find((entry) => entry.id === 'current-task-task-2')
+    expect(item.subtitle).toContain('恢复当前任务上下文')
+    expect(item.subtitle).toContain('第一章')
+    expect(item.hint).toBe('运行中')
+    expect(item.action).toMatchObject({
+      type: 'task',
+      taskId: 'task-2',
+      chapterId: 'chapter-1',
+      status: 'running'
+    })
   })
 
   it('prioritizes stronger title matches when searching command palette', async () => {
@@ -273,6 +394,28 @@ describe('NovelWorkspace.vue', () => {
     })
 
     expect(store.currentView).toBe('writing')
+    expect(store.currentObject).toMatchObject({
+      type: 'issue',
+      index: 0
+    })
+  })
+
+  it('restores task object when executing task command', async () => {
+    await wrapper.vm.handleCommandExecute({
+      id: 'recent-doc-task-task-1',
+      title: '章节审查',
+      subtitle: '恢复该任务对象',
+      group: '最近对象',
+      hint: '最近',
+      action: { type: 'task', taskId: 'task-1', title: '章节审查', chapterId: 'chapter-1', status: 'failed' }
+    })
+
+    expect(store.currentView).toBe('tasks')
+    expect(store.currentObject).toMatchObject({
+      type: 'task',
+      taskId: 'task-1',
+      chapterId: 'chapter-1'
+    })
   })
 
   it('keeps chapter manager view when entering with chapters section and chapter id', async () => {

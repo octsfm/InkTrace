@@ -81,10 +81,10 @@
       </div>
     </section>
     
-    <!-- Overview View: Outline/Info -->
-    <section v-else-if="activeView === 'overview'" class="sidebar-section overview-section">
+    <!-- Overview / Settings View: Outline/Info -->
+    <section v-else-if="activeView === 'overview' || activeView === 'settings'" class="sidebar-section overview-section">
       <div class="sidebar-heading-row">
-        <div class="sidebar-heading">概览导航</div>
+        <div class="sidebar-heading">{{ activeView === 'settings' ? '设置摘要' : '概览导航' }}</div>
       </div>
       <div class="nav-list">
         <div
@@ -153,11 +153,11 @@ const { state, currentChapterId } = useWorkspaceContext()
 const chapterKeyword = ref('')
 
 const structureItems = [
-  { key: 'story_model', label: 'Story Model' },
-  { key: 'plot_arc', label: '剧情弧 PlotArc' },
-  { key: 'character', label: '角色 Characters' },
-  { key: 'worldview', label: '世界观 Worldview' },
-  { key: 'risk', label: '风险点 Risks' }
+  { key: 'story_model', label: '故事模型' },
+  { key: 'plot_arc', label: '剧情弧' },
+  { key: 'character', label: '角色' },
+  { key: 'worldview', label: '世界观' },
+  { key: 'risk', label: '风险点' }
 ]
 
 const taskFilters = [
@@ -212,27 +212,32 @@ const taskStatusLabel = computed(() => {
 
 const sidebarMetaMap = {
   writing: {
-    eyebrow: 'Writing',
+    eyebrow: '写作',
     title: '章节与对象导航',
     subtitle: '当前以章节为主对象，切换章节不会离开工作区。'
   },
   chapters: {
-    eyebrow: 'Chapters',
+    eyebrow: '章节',
     title: '章节导航',
     subtitle: '统一查看章节对象，再按需进入写作或管理视图。'
   },
   structure: {
-    eyebrow: 'Structure',
+    eyebrow: '结构',
     title: '结构导航',
     subtitle: '在剧情弧、角色与世界观对象之间切换。'
   },
   tasks: {
-    eyebrow: 'Tasks',
+    eyebrow: '任务',
     title: '任务筛选',
     subtitle: '优先处理失败任务和审查结果。'
   },
+  settings: {
+    eyebrow: '设置',
+    title: '设置摘要',
+    subtitle: '快速确认当前工作区前提、任务状态与诊断信息。'
+  },
   overview: {
-    eyebrow: 'Overview',
+    eyebrow: '概览',
     title: '项目摘要',
     subtitle: '只展示最小必要信息，帮助你决定下一步。'
   }

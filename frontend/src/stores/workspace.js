@@ -158,6 +158,9 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.recordOpenDocument({ type: 'task', id: object.taskId || object.id, title: object.title || object.label || '' })
       } else if (object.type === 'task-filter' && object.filter) {
         this.recordOpenDocument({ type: 'task-filter', id: object.filter, title: `任务筛选：${object.filter}` })
+      } else if (object.type === 'issue') {
+        const issueId = object.id || object.issueId || `${object.chapterId || 'chapter'}::${object.index ?? 'issue'}`
+        this.recordOpenDocument({ type: 'issue', id: issueId, title: object.title || object.code || '问题单' })
       } else if (object.type === 'story_model') {
         this.recordOpenDocument({ type: 'story_model', id: 'story_model', title: '故事模型' })
       }
@@ -203,7 +206,10 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.recordOpenDocument({
         type: 'task',
         id: normalized.id,
-        title: normalized.label
+        title: normalized.label,
+        chapterId: normalized.chapterId,
+        status: normalized.status,
+        targetArcId: normalized.targetArcId
       })
 
       if (this.currentObject?.type === 'task') {
@@ -222,7 +228,10 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.recordOpenDocument({
         type: 'task',
         id: normalized.id,
-        title: normalized.label
+        title: normalized.label,
+        chapterId: normalized.chapterId,
+        status: normalized.status,
+        targetArcId: normalized.targetArcId
       })
 
       if (options.openView !== false) {
@@ -264,6 +273,32 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
 
+    focusIssue(issue, options = {}) {
+      const issueIndex = Number(issue?.index ?? -1)
+      const chapterId = String(issue?.chapterId || issue?.chapter_id || this.currentChapterId || '')
+      const issueId = String(issue?.id || `${chapterId || 'chapter'}::issue-${issueIndex >= 0 ? issueIndex : 'current'}`)
+      this.currentObject = {
+        type: 'issue',
+        id: issueId,
+        issueId,
+        index: issueIndex,
+        code: issue?.code || '',
+        title: issue?.title || '',
+        chapterId
+      }
+      this.recordOpenDocument({
+        type: 'issue',
+        id: issueId,
+        title: issue?.title || issue?.code || '问题单',
+        chapterId,
+        index: issueIndex,
+        code: issue?.code || ''
+      })
+      if (options.openView !== false) {
+        this.currentView = options.view || 'writing'
+      }
+    },
+
     focusObject(object, options = {}) {
       if (!object?.type) {
         this.currentObject = null
@@ -297,6 +332,11 @@ export const useWorkspaceStore = defineStore('workspace', {
 
       if (object.type === 'task') {
         this.focusTask(object, options)
+        return
+      }
+
+      if (object.type === 'issue') {
+        this.focusIssue(object, options)
         return
       }
 

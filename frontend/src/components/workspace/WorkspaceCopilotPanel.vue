@@ -221,7 +221,7 @@
         <div class="card-header-row">
           <div class="card-title">结构约束</div>
           <button type="button" class="inline-link" @click="$emit('trigger', resolvedStoryModelAction)">
-            打开 Story Model
+            打开故事模型
           </button>
         </div>
         <div v-if="resolvedMainPlotLines.length" class="memory-list">
