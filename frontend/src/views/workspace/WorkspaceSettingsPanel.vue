@@ -31,7 +31,7 @@
               <dd>{{ novelTitle }}</dd>
             </div>
             <div>
-              <dt>项目 ID</dt>
+              <dt>项目编号</dt>
               <dd>{{ projectIdText }}</dd>
             </div>
             <div>
@@ -46,10 +46,10 @@
         </article>
 
         <article class="settings-card">
-          <h3>模型与 Copilot</h3>
+          <h3>模型与助手</h3>
           <dl class="settings-list">
             <div>
-              <dt>Copilot</dt>
+              <dt>助手</dt>
               <dd>{{ copilotStatusText }}</dd>
             </div>
             <div>
@@ -105,7 +105,7 @@
               <dd>{{ issueCountText }}</dd>
             </div>
             <div>
-              <dt>Zen Mode</dt>
+              <dt>专注模式</dt>
               <dd>{{ zenModeText }}</dd>
             </div>
           </dl>
@@ -223,7 +223,7 @@ const zenModeText = computed(() => (props.zenMode ? '已开启' : '未开启'))
 const heroChipItems = computed(() => ([
   { label: '当前视图', value: currentViewText.value },
   { label: '整理状态', value: props.taskStatusText || '未运行' },
-  { label: 'Copilot', value: copilotStatusText.value }
+  { label: '助手', value: copilotStatusText.value }
 ]))
 
 const summaryItems = computed(() => ([

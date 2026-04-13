@@ -8,7 +8,7 @@ describe('WorkspaceCommandPalette.vue', () => {
     {
       id: 'view-writing',
       group: '视图',
-      title: '打开 Writing',
+      title: '打开写作',
       subtitle: '进入正文写作工作区',
       action: { type: 'section', section: 'writing' }
     },
@@ -32,7 +32,7 @@ describe('WorkspaceCommandPalette.vue', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('打开 Writing')
+    expect(wrapper.text()).toContain('打开写作')
     expect(wrapper.text()).toContain('第一章')
   })
 
@@ -64,7 +64,7 @@ describe('WorkspaceCommandPalette.vue', () => {
               {
                 id: 'recent-writing',
                 group: '视图',
-                title: '最近打开 Writing',
+                title: '最近打开写作',
                 subtitle: '最近执行过的命令',
                 action: { type: 'section', section: 'writing' }
               }
@@ -79,7 +79,7 @@ describe('WorkspaceCommandPalette.vue', () => {
     })
 
     expect(wrapper.text()).toContain('最近命令')
-    expect(wrapper.text()).toContain('最近打开 Writing')
+    expect(wrapper.text()).toContain('最近打开写作')
   })
 
   it('prioritizes recent object group before recent commands when query is empty', () => {
@@ -106,7 +106,7 @@ describe('WorkspaceCommandPalette.vue', () => {
               {
                 id: 'recent-writing',
                 group: '视图',
-                title: '最近打开 Writing',
+                title: '最近打开写作',
                 subtitle: '最近执行过的命令',
                 action: { type: 'section', section: 'writing' }
               }

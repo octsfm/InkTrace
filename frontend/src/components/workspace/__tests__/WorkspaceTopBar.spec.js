@@ -9,7 +9,7 @@ describe('WorkspaceTopBar.vue', () => {
       props: {
         novelTitle: '风暴将至',
         objectLabel: '第一章',
-        viewTitle: 'Writing',
+        viewTitle: '写作',
         viewDescription: '中央区域保持写作优先。',
         quickFacts: [
           { label: '当前章节', value: '第一章' }
@@ -27,6 +27,7 @@ describe('WorkspaceTopBar.vue', () => {
     expect(wrapper.text()).toContain('当前章节')
     expect(wrapper.text()).toContain('已保存')
     expect(wrapper.text()).toContain('章节管理')
+    expect(wrapper.text()).toContain('收起助手')
 
     await wrapper.findAll('button')[1].trigger('click')
     expect(wrapper.emitted('action')).toBeTruthy()
@@ -38,7 +39,7 @@ describe('WorkspaceTopBar.vue', () => {
       props: {
         novelTitle: '风暴将至',
         objectLabel: '第一章',
-        viewTitle: 'Writing',
+        viewTitle: '写作',
         viewDescription: '中央区域保持写作优先。',
         quickFacts: [],
         statusCards: [
@@ -52,6 +53,7 @@ describe('WorkspaceTopBar.vue', () => {
     })
 
     expect(wrapper.text()).toContain('失败任务 2')
+    expect(wrapper.text()).toContain('收起助手')
     await wrapper.findAll('button')[1].trigger('click')
     expect(wrapper.emitted('action')[0][0]).toEqual({ type: 'task-filter', filter: 'failed' })
   })

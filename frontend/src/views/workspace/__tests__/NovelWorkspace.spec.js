@@ -33,15 +33,15 @@ vi.mock('vue-router', () => ({
 
 // Mock child components
 vi.mock('../WorkspaceOverview.vue', () => ({ default: { name: 'WorkspaceOverview', template: '<div class="workspace-overview-mock">概览</div>' } }))
-vi.mock('../WorkspaceWritingStudio.vue', () => ({ default: { name: 'WorkspaceWritingStudio', template: '<div class="workspace-writing-mock">Writing</div>' } }))
-vi.mock('../WorkspaceStructureStudio.vue', () => ({ default: { name: 'WorkspaceStructureStudio', template: '<div class="workspace-structure-mock">Structure</div>' } }))
-vi.mock('../WorkspaceChapterManager.vue', () => ({ default: { name: 'WorkspaceChapterManager', template: '<div class="workspace-chapter-mock">Chapters</div>' } }))
-vi.mock('../WorkspaceTasksAudit.vue', () => ({ default: { name: 'WorkspaceTasksAudit', template: '<div class="workspace-tasks-mock">Tasks</div>' } }))
-vi.mock('../WorkspaceSettingsPanel.vue', () => ({ default: { name: 'WorkspaceSettingsPanel', template: '<div class="workspace-settings-mock">Settings</div>' } }))
-vi.mock('@/components/workspace/WorkspaceSidebar.vue', () => ({ default: { name: 'WorkspaceSidebar', template: '<div class="workspace-sidebar-mock">Sidebar</div>' } }))
-vi.mock('@/components/workspace/WorkspaceCopilotPanel.vue', () => ({ default: { name: 'WorkspaceCopilotPanel', template: '<div class="workspace-copilot-mock">Copilot</div>' } }))
-vi.mock('@/components/workspace/WorkspaceTopBar.vue', () => ({ default: { name: 'WorkspaceTopBar', template: '<div class="workspace-topbar-mock">TopBar</div>' } }))
-vi.mock('@/components/workspace/WorkspaceCommandPalette.vue', () => ({ default: { name: 'WorkspaceCommandPalette', props: ['visible'], template: '<div v-if="visible" class="workspace-command-palette-mock">CommandPalette</div>' } }))
+vi.mock('../WorkspaceWritingStudio.vue', () => ({ default: { name: 'WorkspaceWritingStudio', template: '<div class="workspace-writing-mock">写作</div>' } }))
+vi.mock('../WorkspaceStructureStudio.vue', () => ({ default: { name: 'WorkspaceStructureStudio', template: '<div class="workspace-structure-mock">结构</div>' } }))
+vi.mock('../WorkspaceChapterManager.vue', () => ({ default: { name: 'WorkspaceChapterManager', template: '<div class="workspace-chapter-mock">章节</div>' } }))
+vi.mock('../WorkspaceTasksAudit.vue', () => ({ default: { name: 'WorkspaceTasksAudit', template: '<div class="workspace-tasks-mock">任务</div>' } }))
+vi.mock('../WorkspaceSettingsPanel.vue', () => ({ default: { name: 'WorkspaceSettingsPanel', template: '<div class="workspace-settings-mock">设置</div>' } }))
+vi.mock('@/components/workspace/WorkspaceSidebar.vue', () => ({ default: { name: 'WorkspaceSidebar', template: '<div class="workspace-sidebar-mock">侧栏</div>' } }))
+vi.mock('@/components/workspace/WorkspaceCopilotPanel.vue', () => ({ default: { name: 'WorkspaceCopilotPanel', template: '<div class="workspace-copilot-mock">助手</div>' } }))
+vi.mock('@/components/workspace/WorkspaceTopBar.vue', () => ({ default: { name: 'WorkspaceTopBar', template: '<div class="workspace-topbar-mock">顶栏</div>' } }))
+vi.mock('@/components/workspace/WorkspaceCommandPalette.vue', () => ({ default: { name: 'WorkspaceCommandPalette', props: ['visible'], template: '<div v-if="visible" class="workspace-command-palette-mock">命令面板</div>' } }))
 vi.mock('@/stores/novelWorkspace', () => ({
   useNovelWorkspaceStore: vi.fn(() => ({
     novel: { title: '测试小说' },
@@ -164,7 +164,7 @@ describe('NovelWorkspace.vue', () => {
 
     expect(wrapper.find('.workspace-settings-mock').exists()).toBe(true)
     expect(wrapper.find('.workspace-overview-mock').exists()).toBe(false)
-    expect(wrapper.vm.sidebarOverviewCards[0].label).toBe('项目 ID')
+    expect(wrapper.vm.sidebarOverviewCards[0].label).toBe('项目编号')
   })
 
   it('hides left nav when zen mode is enabled', async () => {
@@ -373,7 +373,7 @@ describe('NovelWorkspace.vue', () => {
       id: 'chat-session-writing::chapter:chapter-1',
       title: '第一章',
       subtitle: '切到该对象的聊天会话',
-      group: 'Copilot 会话',
+      group: '助手会话',
       hint: '会话',
       action: { type: 'chat-session', sessionKey: 'writing::chapter:chapter-1' }
     })

@@ -338,7 +338,7 @@ const taskFilterOptionDefs = [
 const sidebarOverviewCards = computed(() => {
   if (workspaceStore.currentView === 'settings') {
     return [
-      { label: '项目 ID', value: state.projectId || '未绑定项目' },
+      { label: '项目编号', value: state.projectId || '未绑定项目' },
       { label: '失败任务', value: `${taskSummaryCounts.value.failed || 0} 个` },
       { label: '问题单', value: `${Number(state.editor?.integrityCheck?.issue_list?.length || 0)} 个` }
     ]
@@ -1852,29 +1852,29 @@ const commandPaletteItems = computed(() => {
   items.push(
     {
       id: 'copilot-chat',
-      group: 'Copilot',
-      title: '打开 Copilot Chat',
+      group: '助手',
+      title: '打开助手对话',
       subtitle: '切到对话页并保留当前对象上下文',
       keywords: 'copilot chat 对话 助手',
-      hint: 'Copilot',
+      hint: '助手',
       action: { type: 'copilot-tab', tab: 'chat' }
     },
     {
       id: 'copilot-context',
-      group: 'Copilot',
-      title: '打开 Copilot Context',
+      group: '助手',
+      title: '打开助手上下文',
       subtitle: '查看当前对象上下文卡片',
       keywords: 'copilot context 上下文',
-      hint: 'Copilot',
+      hint: '助手',
       action: { type: 'copilot-tab', tab: 'context' }
     },
     {
       id: 'copilot-inspire',
-      group: 'Copilot',
-      title: '打开 Copilot Inspire',
+      group: '助手',
+      title: '打开助手灵感',
       subtitle: '查看建议动作与灵感提示',
       keywords: 'copilot inspire 灵感 建议',
-      hint: 'Copilot',
+      hint: '助手',
       action: { type: 'copilot-tab', tab: 'inspire' }
     }
   )
@@ -1882,7 +1882,7 @@ const commandPaletteItems = computed(() => {
   copilotChatSessions.value.slice(0, 6).forEach((session) => {
     items.push({
       id: `chat-session-${session.key}`,
-      group: 'Copilot 会话',
+      group: '助手会话',
       title: session.label,
       subtitle: session.summary || `切到该对象的聊天会话${session.metaText ? ` · ${session.metaText}` : ''}`,
       keywords: `${session.label} chat session 会话`,
@@ -1976,7 +1976,7 @@ const filteredCommandPaletteItems = computed(() => {
     const groupPriority = (group) => {
       if (group === '最近对象') return 4
       if (group === '当前对象') return 3
-      if (group === 'Copilot 会话') return 2
+      if (group === '助手会话') return 2
       return 1
     }
     const groupDiff = groupPriority(b.group) - groupPriority(a.group)
@@ -2007,7 +2007,7 @@ const groupedCommandPaletteItems = computed(() => {
     if (isEmptyQuery && group === '最近对象') return 5
     if (isEmptyQuery && group === '最近命令') return 4
     if (group === '当前对象') return 3
-    if (group === 'Copilot 会话') return 2
+    if (group === '助手会话') return 2
     return 1
   }
 

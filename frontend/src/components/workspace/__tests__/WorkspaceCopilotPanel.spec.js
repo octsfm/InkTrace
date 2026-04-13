@@ -101,7 +101,7 @@ describe('WorkspaceCopilotPanel.vue', () => {
     await wrapper.find('.send-button').trigger('click')
     await nextTick()
     expect(wrapper.text()).toContain('我')
-    expect(wrapper.text()).toContain('Copilot')
+    expect(wrapper.text()).toContain('助手')
     expect(wrapper.text()).toContain('测试回复')
   })
 

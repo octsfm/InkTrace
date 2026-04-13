@@ -52,7 +52,7 @@
           {{ item.label }}
         </button>
         <button type="button" class="ghost-button" @click="$emit('toggle-copilot')">
-          {{ copilotOpen ? '收起 Copilot' : '打开 Copilot' }}
+          {{ copilotOpen ? '收起助手' : '打开助手' }}
         </button>
       </div>
     </div>

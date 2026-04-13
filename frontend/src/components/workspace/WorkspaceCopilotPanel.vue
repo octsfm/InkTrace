@@ -6,11 +6,11 @@
           <el-icon class="header-icon"><Cpu /></el-icon>
         </div>
         <div>
-          <div class="header-eyebrow">Copilot</div>
-          <h3>AI Copilot</h3>
+          <div class="header-eyebrow">助手</div>
+          <h3>AI 助手</h3>
         </div>
       </div>
-      <el-tag size="small" type="success" effect="plain">Ready</el-tag>
+      <el-tag size="small" type="success" effect="plain">就绪</el-tag>
     </div>
 
     <div class="tab-switcher">
@@ -89,7 +89,7 @@
           class="chat-message"
           :class="message.role"
         >
-          <div class="message-role">{{ message.role === 'assistant' ? 'Copilot' : '我' }}</div>
+          <div class="message-role">{{ message.role === 'assistant' ? '助手' : '我' }}</div>
           <div class="message-bubble">{{ message.content }}</div>
         </article>
       </div>
