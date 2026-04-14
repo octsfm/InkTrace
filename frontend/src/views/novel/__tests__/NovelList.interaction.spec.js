@@ -89,6 +89,17 @@ describe('NovelList Dashboard 入口', () => {
     expect(wrapper.text()).toContain('1 个失败任务')
   })
 
+  it('navigates to workspace root from primary featured action', async () => {
+    const wrapper = await mountPage()
+    const primaryButton = wrapper.findAll('button').find((node) => node.text().includes('继续最近工作台'))
+    expect(primaryButton).toBeTruthy()
+    await primaryButton.trigger('click')
+    expect(mockPush).toHaveBeenCalledWith({
+      path: '/novel/novel-1',
+      query: {}
+    })
+  })
+
   it('navigates to workspace structure section from featured actions', async () => {
     const wrapper = await mountPage()
     const structureButton = wrapper.findAll('button').find((node) => node.text().includes('结构'))

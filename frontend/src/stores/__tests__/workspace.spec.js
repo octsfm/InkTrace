@@ -16,6 +16,62 @@ describe('Workspace Store (DDD + TDD)', () => {
     expect(store.currentChapterId).toBeNull()
     expect(store.currentCopilotTab).toBe('context')
     expect(store.isZenMode).toBe(false)
+    expect(store.resourceSnapshot).toBeNull()
+    expect(store.taskCenterSnapshot).toBeNull()
+  })
+
+  it('should sync shell state from novel workspace domain store', () => {
+    const store = useWorkspaceStore()
+
+    store.syncShellState({
+      novelId: 'novel-1',
+      novelInfo: { id: 'novel-1', title: '风暴将至' },
+      projectId: 'project-1',
+      chapterCount: 12,
+      activeChapterId: 'chapter-2',
+      hasStructure: true
+    })
+
+    expect(store.novelId).toBe('novel-1')
+    expect(store.novelInfo).toMatchObject({ title: '风暴将至' })
+    expect(store.resourceSnapshot).toMatchObject({
+      novelId: 'novel-1',
+      novelTitle: '风暴将至',
+      projectId: 'project-1',
+      chapterCount: 12,
+      activeChapterId: 'chapter-2',
+      hasStructure: true
+    })
+  })
+
+  it('should sync task center snapshot with normalized task statuses', () => {
+    const store = useWorkspaceStore()
+
+    store.syncTaskCenterSnapshot({
+      organizeTask: { status: 'done', stage: 'done', current: 3, total: 3, percent: 100 },
+      tasks: [
+        { id: 'task-1', type: 'audit', label: 'AI 审查', status: 'error', chapterId: 'chapter-1' },
+        { id: 'task-2', type: 'writing', label: 'AI 续写', status: 'running' }
+      ],
+      failedCount: 1,
+      runningCount: 1,
+      completedCount: 1,
+      auditCount: 1
+    })
+
+    expect(store.taskCenterSnapshot.organizeTask).toMatchObject({
+      id: 'organize-task',
+      status: 'completed'
+    })
+    expect(store.taskCenterSnapshot.tasks[0]).toMatchObject({
+      id: 'task-1',
+      status: 'failed'
+    })
+    expect(store.taskCenterSnapshot.tasks[1]).toMatchObject({
+      id: 'task-2',
+      status: 'running'
+    })
+    expect(store.taskCenterSnapshot.failedCount).toBe(1)
   })
 
   it('should switch view and handle zen mode rules', () => {
@@ -143,6 +199,28 @@ describe('Workspace Store (DDD + TDD)', () => {
       type: 'task',
       id: 'task-1',
       title: 'AI 审查'
+    })
+  })
+
+  it('should focus writing result through unified object contract', () => {
+    const store = useWorkspaceStore()
+
+    store.focusWritingResult({
+      chapterId: 'chapter-1',
+      resultType: 'issues',
+      taskId: 'task-3'
+    }, { openView: false })
+
+    expect(store.currentObject).toMatchObject({
+      type: 'writing-result',
+      chapterId: 'chapter-1',
+      resultType: 'issues',
+      taskId: 'task-3'
+    })
+    expect(store.openDocuments[0]).toMatchObject({
+      type: 'writing-result',
+      chapterId: 'chapter-1',
+      title: '问题结果'
     })
   })
 

@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import WorkspaceTasksAudit from '../WorkspaceTasksAudit.vue'
 
 const mockScrollIntoView = vi.fn()
+const mockExecuteWorkspaceAction = vi.fn()
 
 vi.mock('@/api', () => ({
   contentApi: {
@@ -28,7 +29,8 @@ vi.mock('@/composables/useWorkspaceContext', async () => ({
     },
     refreshStructure: vi.fn(),
     openSection: mockOpenSection,
-    openChapter: mockOpenChapter
+    openChapter: mockOpenChapter,
+    executeWorkspaceAction: mockExecuteWorkspaceAction
   }))
 }))
 
@@ -40,6 +42,7 @@ describe('WorkspaceTasksAudit.vue', () => {
     mockScrollIntoView.mockClear()
     mockOpenSection.mockClear()
     mockOpenChapter.mockClear()
+    mockExecuteWorkspaceAction.mockClear()
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: mockScrollIntoView
@@ -104,9 +107,10 @@ describe('WorkspaceTasksAudit.vue', () => {
             subtitle: '章节 ch-2',
             description: '一致性校验失败',
             hint: '如需恢复，可回到写作页重新发起。',
-            actionLabel: '打开章节',
-            action: { type: 'chapter', chapterId: 'ch-2' },
-            chapterId: 'ch-2'
+            actionLabel: '查看问题单',
+            action: { type: 'writing-result', chapterId: 'ch-2', resultType: 'issues', taskId: 'editor-analyze-1' },
+            chapterId: 'ch-2',
+            resultTypeLabel: '问题结果'
           }
         ],
         filteredTaskCards: [
@@ -162,9 +166,10 @@ describe('WorkspaceTasksAudit.vue', () => {
                 subtitle: '章节 ch-2',
                 description: '一致性校验失败',
                 hint: '如需恢复，可回到写作页重新发起。',
-                actionLabel: '打开章节',
-                action: { type: 'chapter', chapterId: 'ch-2' },
-                chapterId: 'ch-2'
+                actionLabel: '查看问题单',
+                action: { type: 'writing-result', chapterId: 'ch-2', resultType: 'issues', taskId: 'editor-analyze-1' },
+                chapterId: 'ch-2',
+                resultTypeLabel: '问题结果'
               }
             ]
           }
@@ -176,8 +181,8 @@ describe('WorkspaceTasksAudit.vue', () => {
             title: '先恢复：AI 审查',
             description: '一致性校验失败',
             meta: '章节 ch-2',
-            actionLabel: '打开章节',
-            action: { type: 'chapter', chapterId: 'ch-2' }
+            actionLabel: '查看问题单',
+            action: { type: 'writing-result', chapterId: 'ch-2', resultType: 'issues', taskId: 'editor-analyze-1' }
           }
         ],
         focusBannerText: '当前聚焦：全书整理任务',
@@ -194,12 +199,13 @@ describe('WorkspaceTasksAudit.vue', () => {
             meta: '章节 ch-2 · 审查任务',
             timestampText: '2 分钟前',
             summary: '一致性校验失败',
+            resultTypeLabel: '问题结果',
             traceItems: [
               { label: '章节', value: '风暴将至' },
               { label: '失败', value: '一致性校验失败', tone: 'danger' }
             ],
-            actionLabel: '打开章节',
-            action: { type: 'chapter', chapterId: 'ch-2' },
+            actionLabel: '查看问题单',
+            action: { type: 'writing-result', chapterId: 'ch-2', resultType: 'issues', taskId: 'editor-analyze-1' },
             chapterId: 'ch-2'
           }
         ]
@@ -220,6 +226,8 @@ describe('WorkspaceTasksAudit.vue', () => {
   it('shows the active filter banner', () => {
     expect(wrapper.text()).toContain('当前聚焦：全书整理任务')
     expect(wrapper.text()).toContain('失败任务')
+    expect(wrapper.text()).toContain('最近一次整理失败')
+    expect(wrapper.text()).toContain('重新整理')
   })
 
   it('highlights and scrolls to the focused task card', () => {
@@ -230,10 +238,16 @@ describe('WorkspaceTasksAudit.vue', () => {
     expect(mockScrollIntoView).toHaveBeenCalled()
   })
 
-  it('runs chapter action from parent-provided task payload', async () => {
-    const actionButtons = wrapper.findAll('button').filter((node) => node.text().includes('打开章节'))
+  it('routes result action from parent-provided task payload back into writing result flow', async () => {
+    const actionButtons = wrapper.findAll('button').filter((node) => node.text().includes('查看问题单'))
     await actionButtons[0].trigger('click')
-    expect(mockOpenChapter).toHaveBeenCalledWith('ch-2', 'writing')
+    expect(mockExecuteWorkspaceAction).toHaveBeenCalledWith({
+      type: 'writing-result',
+      chapterId: 'ch-2',
+      resultType: 'issues',
+      taskId: 'editor-analyze-1',
+      title: '先恢复：AI 审查'
+    })
   })
 
   it('renders recommendation and grouped task sections', () => {

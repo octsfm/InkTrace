@@ -66,11 +66,31 @@ describe('WorkspaceStructureStudio.vue', () => {
       arcId: 'arc-2',
       title: '人物关系波动'
     }
+    workspaceStore.taskCenterSnapshot = {
+      tasks: [
+        {
+          id: 'task-arc-1',
+          label: '结构审查',
+          status: 'failed',
+          targetArcId: 'arc-1',
+          resultType: 'issues'
+        }
+      ],
+      failedCount: 1,
+      runningCount: 0,
+      completedCount: 0,
+      auditCount: 1
+    }
 
     wrapper = mount(WorkspaceStructureStudio, {
       global: {
         plugins: [pinia],
-        stubs: ['el-button', 'el-icon', 'el-tag', 'el-empty']
+        stubs: {
+          'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' },
+          'el-icon': { template: '<span><slot /></span>' },
+          'el-tag': { template: '<span><slot /></span>' },
+          'el-empty': { template: '<div><slot /></div>' }
+        }
       }
     })
   })
@@ -81,7 +101,7 @@ describe('WorkspaceStructureStudio.vue', () => {
     expect(wrapper.text()).toContain('主线追踪')
     expect(wrapper.text()).toContain('故事模型')
     expect(wrapper.text()).toContain('切到风险点视角')
-    expect(wrapper.text()).toContain('切到角色视角')
+    expect(wrapper.text()).toContain('风险切换')
     const focusedCard = wrapper.find('[data-arc-id="arc-2"]')
     expect(focusedCard.exists()).toBe(true)
     expect(focusedCard.classes()).toContain('focused')
@@ -100,6 +120,8 @@ describe('WorkspaceStructureStudio.vue', () => {
     expect(wrapper.text()).toContain('风险视角')
     expect(wrapper.text()).toContain('当前主要风险')
     expect(wrapper.text()).toContain('回到剧情弧主视角')
+    expect(wrapper.text()).toContain('当前处于结构风险扫描视角')
+    expect(wrapper.text()).toContain('查看任务台')
     expect(wrapper.text()).not.toContain('当前聚焦：人物关系波动')
   })
 
@@ -107,5 +129,17 @@ describe('WorkspaceStructureStudio.vue', () => {
     const overviewChip = wrapper.findAll('.workspace-action-chip').find((node) => node.text().includes('回到概览'))
     await overviewChip.trigger('click')
     expect(mockOpenSection).toHaveBeenCalledWith('overview')
+  })
+
+  it('surfaces failed task recovery for structure decisions', async () => {
+    const focusTaskFilterSpy = vi.spyOn(workspaceStore, 'focusTaskFilter')
+    expect(wrapper.text()).toContain('当前有 1 个失败任务影响结构推进')
+    expect(wrapper.text()).toContain('结构审查 · 问题结果')
+
+    const recoveryButton = wrapper.findAll('button').find((node) => node.text().includes('看失败任务'))
+    await recoveryButton.trigger('click')
+
+    expect(focusTaskFilterSpy).toHaveBeenCalledWith('failed', { openView: false })
+    expect(mockOpenSection).toHaveBeenCalledWith('tasks')
   })
 })

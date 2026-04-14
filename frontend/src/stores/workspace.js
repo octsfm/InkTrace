@@ -1,13 +1,16 @@
 import { defineStore } from 'pinia'
+import { buildWorkspaceResultLabel, normalizeWorkspaceTaskStatus } from '@/views/workspace/workspaceTaskModel'
 
 export const useWorkspaceStore = defineStore('workspace', {
   state: () => ({
     novelId: null,
     novelInfo: null,
+    resourceSnapshot: null,
     currentView: 'writing',
     currentChapterId: null,
     currentObject: null,
     currentTask: null,
+    taskCenterSnapshot: null,
     currentContextSnapshot: null,
     openDocuments: [],
     currentStructureSection: 'story_model',
@@ -41,7 +44,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         id: String(task.id),
         type: task.type || 'task',
         label: task.label || task.title || '当前任务',
-        status: task.status || 'idle',
+        status: normalizeWorkspaceTaskStatus(task.status || 'idle'),
         chapterId: task.chapterId || task.chapter_id || '',
         resultType: task.resultType || '',
         error: task.error || '',
@@ -64,6 +67,20 @@ export const useWorkspaceStore = defineStore('workspace', {
         chapterId: normalized.chapterId,
         targetArcId: normalized.targetArcId,
         resultType: normalized.resultType
+      }
+    },
+
+    buildWritingResultObject(result = {}) {
+      const chapterId = String(result.chapterId || result.chapter_id || this.currentChapterId || '')
+      const resultType = String(result.resultType || 'none')
+      const taskId = String(result.taskId || result.id || '')
+      return {
+        type: 'writing-result',
+        id: `${chapterId || 'chapter'}::${resultType || 'result'}`,
+        taskId,
+        chapterId,
+        resultType,
+        title: result.title || ''
       }
     },
 
@@ -94,6 +111,21 @@ export const useWorkspaceStore = defineStore('workspace', {
 
     initWorkspace(novelId) {
       this.novelId = novelId
+    },
+
+    syncShellState(payload = {}) {
+      const novelId = String(payload.novelId || this.novelId || '')
+      const novelInfo = payload.novelInfo || this.novelInfo || null
+      this.novelId = novelId || null
+      this.novelInfo = novelInfo
+      this.resourceSnapshot = {
+        novelId,
+        novelTitle: novelInfo?.title || '',
+        projectId: String(payload.projectId || ''),
+        chapterCount: Number(payload.chapterCount || 0),
+        activeChapterId: String(payload.activeChapterId || this.currentChapterId || ''),
+        hasStructure: Boolean(payload.hasStructure)
+      }
     },
 
     switchView(viewName) {
@@ -161,6 +193,14 @@ export const useWorkspaceStore = defineStore('workspace', {
       } else if (object.type === 'issue') {
         const issueId = object.id || object.issueId || `${object.chapterId || 'chapter'}::${object.index ?? 'issue'}`
         this.recordOpenDocument({ type: 'issue', id: issueId, title: object.title || object.code || '问题单' })
+      } else if (object.type === 'writing-result') {
+        const resultId = object.id || `${object.chapterId || 'chapter'}::${object.resultType || 'result'}`
+        this.recordOpenDocument({
+          type: 'writing-result',
+          id: resultId,
+          title: object.title || buildWorkspaceResultLabel(object.resultType, { noneLabel: '候选稿' }),
+          chapterId: object.chapterId || ''
+        })
       } else if (['story_model', 'character', 'worldview', 'risk'].includes(object.type)) {
         const structureTitleMap = {
           story_model: '故事模型',
@@ -313,6 +353,23 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
 
+    focusWritingResult(result, options = {}) {
+      const normalized = this.buildWritingResultObject(result)
+      this.currentObject = normalized
+      if (normalized.chapterId) {
+        this.currentChapterId = normalized.chapterId
+      }
+      this.recordOpenDocument({
+        type: 'writing-result',
+        id: normalized.id,
+        title: normalized.title || buildWorkspaceResultLabel(normalized.resultType, { noneLabel: '候选稿' }),
+        chapterId: normalized.chapterId
+      })
+      if (options.openView !== false) {
+        this.currentView = options.view || 'writing'
+      }
+    },
+
     focusObject(object, options = {}) {
       if (!object?.type) {
         this.currentObject = null
@@ -354,6 +411,11 @@ export const useWorkspaceStore = defineStore('workspace', {
         return
       }
 
+      if (object.type === 'writing-result') {
+        this.focusWritingResult(object, options)
+        return
+      }
+
       this.setCurrentObject(object)
       if (options.openView && options.view) {
         this.currentView = options.view
@@ -362,6 +424,33 @@ export const useWorkspaceStore = defineStore('workspace', {
 
     setContextSnapshot(snapshot) {
       this.currentContextSnapshot = snapshot || null
+    },
+
+    syncTaskCenterSnapshot(snapshot = {}) {
+      const tasks = Array.isArray(snapshot.tasks)
+        ? snapshot.tasks.map((task) => this.normalizeTask(task)).filter(Boolean)
+        : []
+
+      const organizeTask = snapshot.organizeTask && typeof snapshot.organizeTask === 'object'
+        ? {
+            id: String(snapshot.organizeTask.id || 'organize-task'),
+            status: normalizeWorkspaceTaskStatus(snapshot.organizeTask.status),
+            stage: snapshot.organizeTask.stage || '',
+            current: Number(snapshot.organizeTask.current || 0),
+            total: Number(snapshot.organizeTask.total || 0),
+            percent: Number(snapshot.organizeTask.percent || snapshot.organizeTask.progress || 0),
+            chapterTitle: snapshot.organizeTask.current_chapter_title || ''
+          }
+        : null
+
+      this.taskCenterSnapshot = {
+        tasks,
+        organizeTask,
+        failedCount: Number(snapshot.failedCount || 0),
+        runningCount: Number(snapshot.runningCount || 0),
+        completedCount: Number(snapshot.completedCount || 0),
+        auditCount: Number(snapshot.auditCount || 0)
+      }
     },
 
     setStructureSection(section) {
@@ -536,10 +625,14 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     resetWorkspaceState() {
+      this.novelId = null
+      this.novelInfo = null
+      this.resourceSnapshot = null
       this.currentView = 'writing'
       this.currentChapterId = null
       this.currentObject = null
       this.currentTask = null
+      this.taskCenterSnapshot = null
       this.currentContextSnapshot = null
       this.openDocuments = []
       this.currentStructureSection = 'story_model'

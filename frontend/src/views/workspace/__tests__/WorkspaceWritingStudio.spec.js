@@ -11,6 +11,7 @@ const mockSetTextSelection = vi.fn()
 const mockDispatch = vi.fn()
 const mockSetMeta = vi.fn()
 const mockTransaction = { meta: {} }
+const mockScrollIntoView = vi.fn()
 const mockWorkspaceContext = {
   state: {
     editor: {
@@ -29,7 +30,17 @@ const mockWorkspaceContext = {
       },
       structuralDraft: null,
       detemplatedDraft: null,
-      activeDraftTab: 'structural'
+      activeDraftTab: 'structural',
+      resultState: {
+        latestTaskId: '',
+        latestAction: '',
+        latestResultType: 'none',
+        latestDraftType: '',
+        lastDecision: 'idle',
+        lastUpdatedAt: '',
+        latestIssueCount: 1,
+        lastError: ''
+      }
     },
     projectId: 'proj-1',
     markEditorDirty: vi.fn()
@@ -90,9 +101,14 @@ describe('WorkspaceWritingStudio.vue', () => {
     mockSetTextSelection.mockClear()
     mockDispatch.mockClear()
     mockSetMeta.mockClear()
+    mockScrollIntoView.mockClear()
     mockSetMeta.mockImplementation((key, payload) => {
       mockTransaction.meta = { key, payload }
       return mockTransaction
+    })
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: mockScrollIntoView
     })
     mockWorkspaceContext.runEditorAiAction.mockClear()
     const pinia = createPinia()
@@ -168,6 +184,64 @@ describe('WorkspaceWritingStudio.vue', () => {
     expect(objectActions.map((item) => item.label)).toContain('查看目标弧')
   })
 
+  it('renders unified result state banner for pending drafts', async () => {
+    mockWorkspaceContext.state.editor.structuralDraft = {
+      title: 'Chapter 1',
+      content: '候选稿内容'
+    }
+    mockWorkspaceContext.state.editor.resultState = {
+      latestTaskId: 'task-1',
+      latestAction: 'continue',
+      latestResultType: 'candidate',
+      latestDraftType: 'structural',
+      lastDecision: 'pending',
+      lastUpdatedAt: new Date().toISOString(),
+      latestIssueCount: 0,
+      lastError: ''
+    }
+
+    wrapper = mount(WorkspaceWritingStudio, {
+      global: {
+        plugins: [createPinia()],
+        stubs: [
+          'el-button', 'el-skeleton', 'el-empty', 'el-icon', 'el-tooltip',
+          'el-card', 'el-tag', 'el-alert', 'el-tabs', 'el-tab-pane',
+          'el-descriptions', 'el-descriptions-item', 'el-collapse', 'el-collapse-item'
+        ],
+        directives: { loading: () => {} },
+        mocks: {
+          $route: { query: { chapterId: '1' } },
+          $router: { push: vi.fn() }
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('最近回流：候选稿')
+    expect(wrapper.text()).toContain('结果状态')
+    expect(wrapper.text()).toContain('候选稿 · 待处理')
+  })
+
+  it('switches into draft result focus when workspace focuses a writing result object', async () => {
+    const workspaceStore = useWorkspaceStore()
+    mockWorkspaceContext.state.editor.structuralDraft = {
+      title: 'Chapter 1',
+      content: '候选稿内容'
+    }
+    workspaceStore.focusWritingResult({
+      chapterId: '1',
+      resultType: 'candidate',
+      taskId: 'task-1'
+    }, { openView: false })
+    await wrapper.vm.$nextTick()
+
+    expect(mockWorkspaceContext.state.editor.activeDraftTab).toBe('structural')
+    expect(workspaceStore.currentObject).toMatchObject({
+      type: 'writing-result',
+      chapterId: '1',
+      resultType: 'candidate'
+    })
+  })
+
   it('dispatches temporary highlight when locating an issue', async () => {
     const issuePanel = wrapper.findComponent(IssuePanelCard)
     await issuePanel.vm.$emit('locate', {
@@ -185,6 +259,16 @@ describe('WorkspaceWritingStudio.vue', () => {
       title: 'test',
       chapterId: '1'
     })
+  })
+
+  it('prefers explicit issue range when provided', async () => {
+    const issuePanel = wrapper.findComponent(IssuePanelCard)
+    await issuePanel.vm.$emit('locate', {
+      issue: { code: 'continuity', severity: 'high', title: 'test', detail: '连续性不足', from: 3, to: 8 },
+      index: 0
+    })
+
+    expect(mockSetTextSelection).toHaveBeenCalledWith({ from: 3, to: 8 })
   })
 
   it('previews issue highlight on hover and restores persistent highlight on leave', async () => {

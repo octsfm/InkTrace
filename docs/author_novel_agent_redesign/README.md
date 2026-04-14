@@ -57,6 +57,7 @@
 28. [28 核心组件规格说明](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/28_component_specifications.md)
 29. [29 交互与任务时序说明](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/29_interaction_and_task_sequence.md)
 30. [30 组件树与状态归属说明](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/30_component_tree_and_state_ownership.md)
+31. [31 Workspace 第一阶段验收状态](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/31_workspace_phase1_acceptance_status.md)
 
 ## 4. 当前规则
 

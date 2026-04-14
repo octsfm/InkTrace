@@ -3,7 +3,7 @@
     <WorkspacePageHero
       eyebrow="概览"
       title="小说工作区概览"
-      description="这里不再是旧详情页，而是当前小说状态、最近进度和下一步动作的轻量总览。"
+      description="这里集中呈现当前小说状态、最近进度和下一步动作，是工作区的轻量总览入口。"
     >
       <WorkspaceHeroChips :items="heroChipItems" />
     </WorkspacePageHero>
@@ -33,6 +33,17 @@
     </section>
 
     <WorkspaceActionBar :items="workspaceActionItems" />
+
+    <WorkspaceStatePanel
+      v-if="overviewStatePanel"
+      :tone="overviewStatePanel.tone"
+      :tag="overviewStatePanel.tag"
+      :title="overviewStatePanel.title"
+      :description="overviewStatePanel.description"
+      :caption="overviewStatePanel.caption"
+      :actions="overviewStatePanel.actions"
+      @action="runOverviewStateAction"
+    />
 
     <section class="workspace-section">
       <WorkspaceSectionHeader>
@@ -133,7 +144,7 @@
         <template #main>
           <div>
             <h3>最近章节</h3>
-            <p>从这里可以快速进入新写作台，而不需要先回到旧详情页。</p>
+            <p>从这里可以直接进入对应章节的工作区写作流，继续正文、结果回流和任务恢复。</p>
           </div>
         </template>
         <template #actions>
@@ -167,12 +178,18 @@ import WorkspaceActionBar from '@/components/workspace/WorkspaceActionBar.vue'
 import WorkspaceHeroChips from '@/components/workspace/WorkspaceHeroChips.vue'
 import WorkspacePageHero from '@/components/workspace/WorkspacePageHero.vue'
 import WorkspaceSectionHeader from '@/components/workspace/WorkspaceSectionHeader.vue'
+import WorkspaceStatePanel from '@/components/workspace/WorkspaceStatePanel.vue'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 
 const workspace = useWorkspaceContext()
+const resourceSnapshot = computed(() => workspace.resourceSnapshot?.value || {})
+const taskCenterSnapshot = computed(() => workspace.taskCenterSnapshot?.value || { failedCount: 0, runningCount: 0, auditCount: 0 })
+const contextSnapshot = computed(() => workspace.contextSnapshot?.value || {})
 
 const currentProgress = computed(() => {
-  return workspace.state.memoryView?.current_progress || '当前还没有形成稳定的结构进度，适合先从章节或结构页开始。'
+  return workspace.state.memoryView?.current_progress
+    || contextSnapshot.value.contextMeta?.summary
+    || '当前还没有形成稳定的结构进度，适合先从章节或结构页开始。'
 })
 
 const currentChapterLabel = computed(() => {
@@ -187,7 +204,9 @@ const taskSnapshot = computed(() => workspace.overviewTaskSnapshot?.value || { f
 const activeArcCount = computed(() => String((workspace.state.activeArcs || []).length || 0))
 const heroChipItems = computed(() => ([
   { label: '当前章节', value: currentChapterLabel.value },
-  { label: '活跃剧情弧', value: activeArcCount.value }
+  { label: '活跃剧情弧', value: activeArcCount.value },
+  { label: '项目状态', value: resourceSnapshot.value.projectId ? '已绑定' : '待绑定' },
+  { label: '失败任务', value: String(taskCenterSnapshot.value.failedCount || taskSnapshot.value.failed || 0) }
 ]))
 
 const recentChapters = computed(() => {
@@ -245,6 +264,86 @@ const workspaceActionItems = computed(() => ([
     onClick: () => workspace.openSection('chapters')
   }
 ]))
+
+const overviewStatePanel = computed(() => {
+  const contextChapterTitle = String(contextSnapshot.value.chapterTitle || '').trim()
+  const failedCount = Number(taskSnapshot.value.failed || 0)
+  if (!resourceSnapshot.value.projectId) {
+    return {
+      tone: 'warning',
+      tag: '前提缺失',
+      title: '当前工作区还未绑定项目',
+      description: '未绑定时，结构分析、任务回流和上下文拼装都可能不完整，建议先确认项目链路是否稳定。',
+      caption: '项目快照',
+      actions: [
+        { key: 'open-settings', label: '查看设置', primary: true },
+        { key: 'continue-writing', label: '回到写作' }
+      ]
+    }
+  }
+  if (!workspace.state.chapters?.length) {
+    return {
+      tone: 'warning',
+      tag: '空状态',
+      title: '当前还没有章节内容',
+      description: '建议先创建第一章，之后再进入写作、结构或任务闭环。',
+      caption: '章节为空',
+      actions: [
+        { key: 'create-chapter', label: '新建章节', primary: true },
+        { key: 'open-chapters', label: '查看章节' }
+      ]
+    }
+  }
+  if (!contextChapterTitle && workspace.state.chapters?.length) {
+    return {
+      tone: 'info',
+      tag: '上下文',
+      title: '当前还没有稳定的章节上下文快照',
+      description: '建议先进入一个章节，让写作、任务和结构页共享同一份上下文基线。',
+      caption: resourceSnapshot.value.novelTitle || '工作区快照',
+      actions: [
+        { key: 'open-chapters', label: '选择章节', primary: true },
+        { key: 'continue-writing', label: '回到写作' }
+      ]
+    }
+  }
+  if (failedCount > 0) {
+    return {
+      tone: 'danger',
+      tag: '恢复',
+      title: `当前有 ${failedCount} 个失败任务待恢复`,
+      description: '建议先处理失败链路，再继续写作或结构推进，避免旧结果干扰当前判断。',
+      caption: '任务异常',
+      actions: [
+        { key: 'open-failed-tasks', label: '看失败任务', primary: true },
+        { key: 'continue-writing', label: '回到写作' }
+      ]
+    }
+  }
+  return null
+})
+
+const runOverviewStateAction = (key) => {
+  if (key === 'create-chapter') {
+    workspace.createChapter?.()
+    return
+  }
+  if (key === 'open-chapters') {
+    workspace.openSection('chapters')
+    return
+  }
+  if (key === 'open-settings') {
+    workspace.openSection('settings')
+    return
+  }
+  if (key === 'open-failed-tasks') {
+    workspace.executeWorkspaceAction?.({ type: 'task-filter', filter: 'failed' })
+    return
+  }
+  if (key === 'continue-writing') {
+    workspace.openSection('writing', chapterQuery.value)
+  }
+}
 
 const runTaskRecommendation = (item) => {
   const action = item?.action || {}

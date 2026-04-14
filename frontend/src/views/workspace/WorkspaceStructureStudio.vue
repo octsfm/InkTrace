@@ -42,6 +42,16 @@
       <WorkspaceSummaryChips :items="structureFocusSummaryItems" />
       <WorkspaceActionBar :items="workspaceActionItems" />
       <WorkspaceInfoBanner v-if="structureFocusBannerText" :text="structureFocusBannerText" tone="primary" />
+      <WorkspaceStatePanel
+        v-if="structureStatePanel"
+        :tone="structureStatePanel.tone"
+        :tag="structureStatePanel.tag"
+        :title="structureStatePanel.title"
+        :description="structureStatePanel.description"
+        :caption="structureStatePanel.caption"
+        :actions="structureStatePanel.actions"
+        @action="runStructureStateAction"
+      />
 
       <div class="summary-grid">
         <article class="summary-card">
@@ -192,8 +202,10 @@ import WorkspaceInfoBanner from '@/components/workspace/WorkspaceInfoBanner.vue'
 import WorkspacePageHero from '@/components/workspace/WorkspacePageHero.vue'
 import WorkspaceSelectableChips from '@/components/workspace/WorkspaceSelectableChips.vue'
 import WorkspaceSectionHeader from '@/components/workspace/WorkspaceSectionHeader.vue'
+import WorkspaceStatePanel from '@/components/workspace/WorkspaceStatePanel.vue'
 import WorkspaceSummaryChips from '@/components/workspace/WorkspaceSummaryChips.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { buildWorkspaceResultLabel } from './workspaceTaskModel'
 
 
 const workspace = useWorkspaceContext()
@@ -258,6 +270,13 @@ const currentChapterLabel = computed(() => {
     return `第 ${currentChapter.value.chapter_number} 章`
   }
   return currentChapterId.value ? '当前章节' : '未打开章节'
+})
+const taskCenterSnapshot = computed(() => workspaceStore.taskCenterSnapshot || {
+  tasks: [],
+  failedCount: 0,
+  runningCount: 0,
+  completedCount: 0,
+  auditCount: 0
 })
 
 const focusedArcId = computed(() => (
@@ -339,6 +358,10 @@ const structureFocusSummaryItems = computed(() => {
     { label: '主线摘要', value: String(Array.isArray(workspace.state.memoryView?.main_plot_lines) ? workspace.state.memoryView.main_plot_lines.length : 0) }
   ]
 
+  if (taskCenterSnapshot.value.failedCount > 0) {
+    items.push({ label: '失败任务', value: String(taskCenterSnapshot.value.failedCount), tone: 'warning' })
+  }
+
   if (activeStructureKey.value === 'risk') {
     return [
       { label: '风险视角', value: '已开启', tone: 'warning' },
@@ -381,6 +404,48 @@ const structureFocusBannerText = computed(() => {
     risk: '当前视角会优先提醒结构风险、冲突断层和需要补充的关键约束。'
   }
   return bannerMap[activeStructureKey.value] || ''
+})
+const structureStatePanel = computed(() => {
+  if (!workspace.state.activeArcs?.length) {
+    return {
+      tone: 'warning',
+      tag: '空状态',
+      title: '当前没有可展示的活跃剧情弧',
+      description: '说明结构摘要还没完全形成，适合先回到写作或任务台推动一次整理与审查。',
+      caption: activeStructureMeta.value.title,
+      actions: [
+        { key: 'open-writing', label: '回到写作', primary: true },
+        { key: 'open-tasks', label: '打开任务台' }
+      ]
+    }
+  }
+  if (taskCenterSnapshot.value.failedCount > 0 && activeStructureKey.value === 'plot_arc') {
+    return {
+      tone: 'danger',
+      tag: '恢复',
+      title: `当前有 ${taskCenterSnapshot.value.failedCount} 个失败任务影响结构推进`,
+      description: '建议先恢复失败链路，再继续判断剧情弧优先级和结构走向，避免旧结果污染当前视角。',
+      caption: priorityArc.value?.title || '剧情弧视角',
+      actions: [
+        { key: 'open-failed-tasks', label: '看失败任务', primary: true },
+        { key: 'open-writing', label: '回到写作' }
+      ]
+    }
+  }
+  if (activeStructureKey.value === 'risk') {
+    return {
+      tone: 'warning',
+      tag: '风险',
+      title: '当前处于结构风险扫描视角',
+      description: '这里更适合先发现断层和缺口，再决定回到写作、任务或剧情弧主视角继续处理。',
+      caption: priorityArc.value?.title || '风险扫描',
+      actions: [
+        { key: 'return-plot-arc', label: '回到剧情弧', primary: true },
+        { key: 'open-tasks', label: '查看任务台' }
+      ]
+    }
+  }
+  return null
 })
 const structureLensCards = computed(() => {
   const cardsByView = {
@@ -457,6 +522,7 @@ const structureLensCards = computed(() => {
 })
 const structureDecisionCards = computed(() => {
   const cards = []
+  const priorityArcTask = taskCenterSnapshot.value.tasks.find((task) => String(task.targetArcId || '') === String(priorityArc.value?.arc_id || ''))
 
   if (priorityArc.value) {
     cards.push({
@@ -467,6 +533,30 @@ const structureDecisionCards = computed(() => {
       description: priorityBannerDescription.value,
       meta: `${priorityArc.value.stage || '未标注阶段'} · ${priorityArc.value.priority || '未标注优先级'}`,
       onClick: () => focusArc(priorityArc.value)
+    })
+  }
+
+  if (priorityArcTask) {
+    const resultLabel = priorityArcTask.resultType
+      ? buildWorkspaceResultLabel(priorityArcTask.resultType, { noneLabel: '' })
+      : ''
+    cards.push({
+      key: 'priority-arc-task',
+      tag: priorityArcTask.status === 'failed' ? '恢复' : '任务',
+      cta: priorityArcTask.status === 'failed' ? '处理' : '查看',
+      title: `${priorityArcTask.label}${resultLabel ? ` · ${resultLabel}` : ''}`,
+      description: priorityArcTask.status === 'failed'
+        ? '这个任务直接关联当前优先剧情弧，建议先处理后再继续结构判断。'
+        : '这个任务当前正关联优先剧情弧，可直接跳转到对应恢复或结果区域。',
+      meta: `${priorityArc.value?.title || '当前优先弧'} · ${priorityArcTask.status === 'failed' ? '失败' : '回流中'}`,
+      onClick: () => {
+        if (priorityArcTask.status === 'failed') {
+          workspace.openSection?.('tasks')
+          workspaceStore.focusTaskFilter('failed', { openView: false })
+          return
+        }
+        workspace.openSection?.('tasks')
+      }
     })
   }
 
@@ -592,6 +682,29 @@ const switchStructureView = (key) => {
   }
   if (priorityArc.value) {
     focusArc(priorityArc.value)
+  }
+}
+
+const runStructureStateAction = (key) => {
+  if (key === 'open-failed-tasks') {
+    workspaceStore.focusTaskFilter('failed', { openView: false })
+    workspace.openSection?.('tasks')
+    return
+  }
+  if (key === 'open-writing' && currentChapterId.value) {
+    workspace.openChapter?.(currentChapterId.value, 'writing')
+    return
+  }
+  if (key === 'open-writing') {
+    workspace.openSection?.('writing')
+    return
+  }
+  if (key === 'open-tasks') {
+    workspace.openSection?.('tasks')
+    return
+  }
+  if (key === 'return-plot-arc') {
+    switchStructureView('plot_arc')
   }
 }
 

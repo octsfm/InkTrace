@@ -145,9 +145,8 @@ import WorkspaceChapterManager from './WorkspaceChapterManager.vue'
 import WorkspaceTasksAudit from './WorkspaceTasksAudit.vue'
 import WorkspaceSettingsPanel from './WorkspaceSettingsPanel.vue'
 import {
-  buildWorkspaceTaskActionPayload,
-  buildWorkspaceTaskStatusLabel,
-  buildWorkspaceTaskTypeLabel,
+  buildWorkspaceResultLabel,
+  buildWorkspaceTaskCenter,
   isWorkspaceTaskCompleted,
   isWorkspaceTaskFailed,
   isWorkspaceTaskRunning,
@@ -239,7 +238,16 @@ const currentViewMeta = computed(() => (
   viewMetaMap[workspaceStore.currentView] || viewMetaMap.overview
 ))
 
+const getWritingResultLabel = (resultType) => buildWorkspaceResultLabel(resultType, { noneLabel: '候选稿' })
+
 const currentObjectLabel = computed(() => {
+  if (workspaceStore.currentObject?.type === 'writing-result') {
+    const resultLabel = getWritingResultLabel(workspaceStore.currentObject.resultType)
+    if (currentChapter.value?.title) {
+      return `${resultLabel} · ${currentChapter.value.title}`
+    }
+    return resultLabel
+  }
   if (workspaceStore.currentView === 'writing' && currentChapter.value) {
     return currentChapter.value.title || `第 ${currentChapter.value.chapter_number || '?'} 章`
   }
@@ -345,27 +353,27 @@ const sidebarOverviewCards = computed(() => {
       {
         key: 'settings-project-id',
         label: '项目编号',
-        value: state.projectId || '未绑定项目',
-        hint: state.projectId ? '当前工作区已绑定项目。' : '未绑定时部分结构与任务链路可能不完整。'
+        value: resourceSnapshot.value.projectId || '未绑定项目',
+        hint: resourceSnapshot.value.projectId ? '当前工作区已绑定项目。' : '未绑定时部分结构与任务链路可能不完整。'
       },
       {
         key: 'settings-failed-tasks',
         label: '失败任务',
-        value: `${taskSummaryCounts.value.failed || 0} 个`,
-        hint: taskSummaryCounts.value.failed > 0 ? '建议先恢复失败链路。' : '当前没有失败任务。',
-        actionLabel: taskSummaryCounts.value.failed > 0 ? '去处理' : '',
-        action: taskSummaryCounts.value.failed > 0 ? { type: 'task-filter', filter: 'failed' } : null
+        value: `${taskCenterSnapshot.value.failedCount || 0} 个`,
+        hint: taskCenterSnapshot.value.failedCount > 0 ? '建议先恢复失败链路。' : '当前没有失败任务。',
+        actionLabel: taskCenterSnapshot.value.failedCount > 0 ? '去处理' : '',
+        action: taskCenterSnapshot.value.failedCount > 0 ? { type: 'task-filter', filter: 'failed' } : null
       },
       {
         key: 'settings-issues',
         label: '问题单',
-        value: `${Number(state.editor?.integrityCheck?.issue_list?.length || 0)} 个`,
-        hint: currentChapter.value?.title
-          ? `当前章节：${currentChapter.value.title}`
+        value: `${Number(contextSnapshot.value.contextMeta?.issueCount || state.editor?.integrityCheck?.issue_list?.length || 0)} 个`,
+        hint: (contextSnapshot.value.chapterTitle || currentChapter.value?.title)
+          ? `当前章节：${contextSnapshot.value.chapterTitle || currentChapter.value?.title}`
           : '回到写作页可查看问题详情。',
-        actionLabel: Number(state.editor?.integrityCheck?.issue_list?.length || 0) > 0 ? '去写作' : '',
-        action: Number(state.editor?.integrityCheck?.issue_list?.length || 0) > 0 && currentChapter.value?.id
-          ? { type: 'chapter', chapterId: currentChapter.value.id }
+        actionLabel: Number(contextSnapshot.value.contextMeta?.issueCount || state.editor?.integrityCheck?.issue_list?.length || 0) > 0 ? '去写作' : '',
+        action: Number(contextSnapshot.value.contextMeta?.issueCount || state.editor?.integrityCheck?.issue_list?.length || 0) > 0 && (contextSnapshot.value.chapterId || currentChapter.value?.id)
+          ? { type: 'chapter', chapterId: contextSnapshot.value.chapterId || currentChapter.value?.id }
           : null
       }
     ]
@@ -392,10 +400,10 @@ const sidebarOverviewCards = computed(() => {
       key: 'overview-current-task',
       label: '当前任务',
       value: taskStatusText.value || '暂无任务',
-      hint: taskSummaryCounts.value.failed > 0
-        ? `失败 ${taskSummaryCounts.value.failed} 个`
-        : taskSummaryCounts.value.running > 0
-          ? `运行中 ${taskSummaryCounts.value.running} 个`
+      hint: taskCenterSnapshot.value.failedCount > 0
+        ? `失败 ${taskCenterSnapshot.value.failedCount} 个`
+        : taskCenterSnapshot.value.runningCount > 0
+          ? `运行中 ${taskCenterSnapshot.value.runningCount} 个`
           : '当前任务状态稳定',
       actionLabel: '任务台',
       action: { type: 'section', section: 'tasks' }
@@ -438,6 +446,49 @@ const currentTargetArcText = computed(() => {
   const activeArc = (state.activeArcs || [])[0]
   if (activeArc) return activeArc.title || activeArc.arc_id
   return ''
+})
+
+const resourceSnapshot = computed(() => workspaceStore.resourceSnapshot || {
+  novelId: route.params.id || '',
+  novelTitle: state.novel?.title || '',
+  projectId: state.projectId || '',
+  chapterCount: (state.chapters || []).length,
+  activeChapterId: currentChapter.value?.id || workspaceStore.currentChapterId || '',
+  hasStructure: Boolean((state.activeArcs || []).length)
+})
+
+const taskCenterSnapshot = computed(() => {
+  const snapshot = workspaceStore.taskCenterSnapshot
+  const hasUsableSnapshot = Boolean(
+    snapshot && (
+      (Array.isArray(snapshot.tasks) && snapshot.tasks.length > 0)
+      || snapshot.failedCount
+      || snapshot.runningCount
+      || snapshot.completedCount
+      || snapshot.auditCount
+      || snapshot.organizeTask
+    )
+  )
+
+  if (hasUsableSnapshot) {
+    return snapshot
+  }
+
+  return {
+    tasks: [],
+    failedCount: taskSummaryCounts.value.failed || 0,
+    runningCount: taskSummaryCounts.value.running || 0,
+    completedCount: taskSummaryCounts.value.completed || 0,
+    auditCount: taskSummaryCounts.value.audit || 0
+  }
+})
+
+const contextSnapshot = computed(() => workspaceStore.currentContextSnapshot || {
+  chapterId: currentChapter.value?.id || '',
+  chapterTitle: currentChapter.value?.title || '',
+  contextMeta: {
+    issueCount: Number(state.editor?.integrityCheck?.issue_list?.length || 0)
+  }
 })
 
 const topbarQuickFacts = computed(() => {
@@ -483,10 +534,10 @@ const topbarQuickFacts = computed(() => {
       label: '当前筛选',
       value: currentObjectLabel.value || '全部任务'
     })
-    if (taskSummaryCounts.value.failed > 0) {
+    if (taskCenterSnapshot.value.failedCount > 0) {
       facts.push({
         label: '失败任务',
-        value: String(taskSummaryCounts.value.failed)
+        value: String(taskCenterSnapshot.value.failedCount)
       })
     }
   } else {
@@ -495,13 +546,17 @@ const topbarQuickFacts = computed(() => {
       value: recentChapter.value?.title || '暂无章节'
     })
     facts.push({
+      label: '项目状态',
+      value: resourceSnapshot.value.projectId ? '已绑定' : '待绑定'
+    })
+    facts.push({
       label: '活跃弧',
       value: String((state.activeArcs || []).length || 0)
     })
-    if (taskSummaryCounts.value.failed > 0) {
+    if (taskCenterSnapshot.value.failedCount > 0) {
       facts.push({
         label: '失败任务',
-        value: String(taskSummaryCounts.value.failed)
+        value: String(taskCenterSnapshot.value.failedCount)
       })
     }
   }
@@ -518,8 +573,8 @@ const saveStatusText = computed(() => {
 
 const taskStatusText = computed(() => {
   if (state.editor.aiRunning) return '智能处理中'
-  if (taskSummaryCounts.value.failed > 0) return `${taskSummaryCounts.value.failed} 个失败任务`
-  if (taskSummaryCounts.value.running > 0) return `${taskSummaryCounts.value.running} 个运行中任务`
+  if (taskCenterSnapshot.value.failedCount > 0) return `${taskCenterSnapshot.value.failedCount} 个失败任务`
+  if (taskCenterSnapshot.value.runningCount > 0) return `${taskCenterSnapshot.value.runningCount} 个运行中任务`
   const organizeStatus = normalizeWorkspaceTaskStatus(state.organizeProgress?.status)
   if (!organizeStatus || organizeStatus === 'idle') return '暂无任务'
   if (isWorkspaceTaskRunning(organizeStatus)) return `整理中 ${state.organizeProgress?.progress ?? 0}%`
@@ -530,6 +585,10 @@ const taskStatusText = computed(() => {
 })
 
 const taskSummaryCounts = computed(() => {
+  if (state.taskCenter?.counts) {
+    return state.taskCenter.counts
+  }
+
   const items = Array.isArray(state.chapterTasks) ? state.chapterTasks : []
   return {
     all: items.length,
@@ -564,6 +623,9 @@ const activeComponentProps = computed(() => {
     return {
       novelTitle: state.novel?.title || '',
       projectId: state.projectId || '',
+      resourceSnapshot: workspaceStore.resourceSnapshot,
+      taskCenterSnapshot: workspaceStore.taskCenterSnapshot,
+      contextSnapshot: workspaceStore.currentContextSnapshot,
       chapterCount: (state.chapters || []).length,
       currentView: workspaceStore.currentView,
       currentChapterTitle: currentChapter.value?.title || '',
@@ -593,6 +655,11 @@ const activeComponentProps = computed(() => {
           key: 'settings-open-structure',
           label: '查看结构',
           onClick: () => openSection('structure')
+        },
+        {
+          key: 'settings-open-chapters',
+          label: '查看章节',
+          onClick: () => openSection('chapters')
         }
       ]
     }
@@ -639,169 +706,19 @@ const formatTaskTimestampText = (value) => {
   return `${Math.floor(diff / day)} 天前`
 }
 
-const resolveTaskTimestamp = (task) => {
-  const candidates = [
-    task?.updated_at,
-    task?.finished_at,
-    task?.completed_at,
-    task?.failed_at,
-    task?.started_at,
-    task?.created_at
-  ]
-
-  for (const value of candidates) {
-    if (!value) continue
-    const timestamp = new Date(value).getTime()
-    if (Number.isFinite(timestamp) && timestamp > 0) {
-      return timestamp
-    }
-  }
-
-  return 0
-}
-
-const buildTaskTraceItems = (task, chapterTitle = '') => {
-  const items = []
-  const status = normalizeWorkspaceTaskStatus(task?.status)
-  const taskType = String(task?.task_type || task?.type || '').toLowerCase()
-  const progress = task?.progress ?? task?.percent
-  const currentStage = String(task?.stage || task?.current_stage || '').trim()
-  const targetArc = String(task?.target_arc_title || task?.target_arc_id || task?.targetArcId || '').trim()
-
-  if (currentStage) {
-    items.push({ label: '阶段', value: currentStage })
-  }
-  if (progress !== undefined && progress !== null && String(progress) !== '') {
-    items.push({ label: '进度', value: `${progress}%` })
-  }
-  if (task?.current && task?.total) {
-    items.push({ label: '批次', value: `${task.current}/${task.total}` })
-  }
-  if (String(task?.current_chapter_title || '').trim()) {
-    items.push({ label: '当前章节', value: task.current_chapter_title })
-  } else if (chapterTitle) {
-    items.push({ label: '章节', value: chapterTitle })
-  }
-  if (targetArc) {
-    items.push({ label: '目标弧', value: targetArc })
-  }
-  if (status === 'failed') {
-    items.push({
-      label: '失败',
-      value: String(task?.error_message || task?.error || task?.message || '').trim() || '未提供更多错误信息',
-      tone: 'danger'
-    })
-  } else if (status === 'running' && String(task?.message || '').trim()) {
-    items.push({ label: '状态', value: String(task.message).trim(), tone: 'primary' })
-  } else if ((taskType.includes('audit') || taskType.includes('analyze')) && String(task?.description || '').trim()) {
-    items.push({ label: '审查', value: String(task.description).trim(), tone: 'primary' })
-  }
-
-  return items.slice(0, 4)
-}
-
 const unifiedTaskCards = computed(() => {
-  const cards = []
-  const organizeStatus = normalizeWorkspaceTaskStatus(state.organizeProgress?.status)
-  cards.push({
-    id: 'organize-task',
-    type: 'organize',
-    typeLabel: '整理任务',
-    status: organizeStatus || 'idle',
-    statusLabel: buildWorkspaceTaskStatusLabel(organizeStatus),
-    title: '全书整理任务',
-    subtitle: `当前进度 ${state.organizeProgress?.progress ?? 0}%`,
-    description: state.organizeProgress?.error_message || '负责导入后整理、结构分析与相关写回。',
-    targetLabel: '目标对象：全书结构与章节状态',
-    reasonText: state.organizeProgress?.error_message || '当前未提供更详细的失败原因。',
-    nextStepText: isWorkspaceTaskFailed(organizeStatus)
-      ? '建议先查看失败原因，再重新整理。'
-      : '可在任务控制台继续暂停、恢复或取消。',
-    hint: isWorkspaceTaskFailed(organizeStatus)
-      ? '建议先查看失败原因，再重试整理。'
-      : '可在上方任务控制台执行暂停、恢复或取消。',
-    actionLabel: isWorkspaceTaskFailed(organizeStatus) ? '重新整理' : '',
-    action: isWorkspaceTaskFailed(organizeStatus) ? { type: 'retry-organize' } : null,
-    timestamp: resolveTaskTimestamp(state.organizeProgress),
-    timestampText: formatTaskTimestampText(resolveTaskTimestamp(state.organizeProgress)),
-    traceItems: buildTaskTraceItems(state.organizeProgress),
-    raw: state.organizeProgress
+  const taskCenter = state.taskCenter || buildWorkspaceTaskCenter({
+    organizeProgress: state.organizeProgress,
+    chapterTasks: state.chapterTasks,
+    sessionTasks: state.sessionTasks,
+    currentTask: workspaceStore.currentTask,
+    chapters: state.chapters
   })
 
-  ;(Array.isArray(state.chapterTasks) ? state.chapterTasks : []).forEach((task, index) => {
-    const taskId = String(task.id || task.task_id || `chapter-task-${index}`)
-    const taskType = String(task.task_type || task.type || 'task')
-    const taskStatus = normalizeWorkspaceTaskStatus(task.status)
-    const chapterId = String(task.chapter_id || task.chapterId || '')
-    const chapterTitle = (state.chapters || []).find((item) => item.id === chapterId)?.title || ''
-    const taskTitle = task.title || task.label || task.name || `章节任务 ${index + 1}`
-    const actionPayload = buildWorkspaceTaskActionPayload(task)
-    const taskSubtitle = [
-      chapterTitle || (chapterId ? `章节 ${chapterId}` : ''),
-      task.target_arc_title || task.target_arc_id || '',
-      buildWorkspaceTaskTypeLabel(task)
-    ].filter(Boolean).join(' · ')
-
-    cards.push({
-      id: taskId,
-      type: taskType,
-      typeLabel: buildWorkspaceTaskTypeLabel(task),
-      status: taskStatus,
-      statusLabel: buildWorkspaceTaskStatusLabel(taskStatus),
-      title: taskTitle,
-      subtitle: taskSubtitle || '项目任务',
-      description: task.error_message || task.error || task.description || '用于驱动章节生成、审查与结构推进的项目任务。',
-      targetLabel: buildTaskTargetLabel(task, chapterTitle),
-      reasonText: buildTaskReasonText(task),
-      nextStepText: buildTaskNextStepText(task),
-      hint: isWorkspaceTaskFailed(taskStatus)
-        ? '建议先回到对应对象处理后再恢复。'
-        : '可切回对应章节或结构对象继续推进。',
-      actionLabel: buildTaskActionLabel(task),
-      action: actionPayload,
-      chapterId,
-      targetArcId: String(task.target_arc_id || ''),
-      timestamp: resolveTaskTimestamp(task),
-      timestampText: formatTaskTimestampText(resolveTaskTimestamp(task)),
-      traceItems: buildTaskTraceItems(task, chapterTitle),
-      raw: task
-    })
-  })
-
-  if (workspaceStore.currentTask?.id) {
-    const task = workspaceStore.currentTask
-    cards.push({
-      id: task.id,
-      type: task.type || 'task',
-      typeLabel: buildWorkspaceTaskTypeLabel(task),
-      status: normalizeWorkspaceTaskStatus(task.status),
-      statusLabel: buildWorkspaceTaskStatusLabel(task.status),
-      title: task.label || '当前任务',
-      subtitle: task.chapterId ? `章节 ${task.chapterId}` : '当前工作区任务',
-      description: task.error || '当前工作区最近一次 AI/校验任务状态。',
-      targetLabel: task.chapterId ? `目标章节：${task.chapterId}` : '目标对象：当前工作区',
-      reasonText: task.error || '当前未提供更详细的失败原因。',
-      nextStepText: task.chapterId ? '建议先回到对应章节继续处理。' : '建议先查看失败任务筛选。', 
-      hint: isWorkspaceTaskFailed(task.status) ? '如需恢复，可回到写作页重新发起。' : '可切换回对应工作区继续处理。',
-      actionLabel: task.chapterId ? '打开对象' : (isWorkspaceTaskFailed(task.status) ? '查看失败任务' : ''),
-      action: task.chapterId
-        ? { type: 'chapter', chapterId: task.chapterId }
-        : (isWorkspaceTaskFailed(task.status) ? { type: 'task-filter', filter: 'failed' } : { type: 'section', section: 'tasks' }),
-      chapterId: task.chapterId || '',
-      timestamp: 0,
-      timestampText: '当前会话',
-      traceItems: buildTaskTraceItems(task, getChapterLabelById(task.chapterId))
-    })
-  }
-
-  const deduped = []
-  const seen = new Set()
-  cards.forEach((item) => {
-    if (seen.has(item.id)) return
-    seen.add(item.id)
-    deduped.push(item)
-  })
-  return deduped
+  return (taskCenter.tasks || []).map((item) => ({
+    ...item,
+    timestampText: item.timestamp ? formatTaskTimestampText(item.timestamp) : '当前会话'
+  }))
 })
 
 const filteredTaskCards = computed(() => {
@@ -912,12 +829,15 @@ const taskRecommendationItems = computed(() => {
   }
 
   if (!items.length) {
+    const totalTaskCount = Array.isArray(taskCenterSnapshot.value.tasks) && taskCenterSnapshot.value.tasks.length
+      ? taskCenterSnapshot.value.tasks.length
+      : (taskSummaryCounts.value.all || 0)
     items.push({
       key: 'task-fallback',
       tag: '任务',
       title: '当前任务状态稳定',
       description: '没有需要立即恢复的任务，下一步可切回写作或结构页继续推进。',
-      meta: `${taskSummaryCounts.value.all || 0} 个项目任务`,
+      meta: `${totalTaskCount} 个项目任务`,
       actionLabel: '回到概览',
       action: { type: 'section', section: 'overview' }
     })
@@ -967,6 +887,7 @@ const taskTimelineItems = computed(() => {
       status: item.status,
       statusLabel: item.statusLabel,
       typeLabel: item.typeLabel,
+      resultTypeLabel: item.resultTypeLabel || '',
       meta: item.subtitle || item.targetLabel,
       timestampText: item.timestampText || '当前会话',
       summary: item.reasonText || item.description || item.hint,
@@ -1003,9 +924,9 @@ const taskStatusCards = computed(() => ([
 ]))
 
 const topbarStatusCards = computed(() => {
-  const issueCount = Number(state.editor.integrityCheck?.issue_list?.length || 0)
-  const failedTaskCount = Number(taskSummaryCounts.value.failed || 0)
-  const runningTaskCount = Number(taskSummaryCounts.value.running || 0)
+  const issueCount = Number(contextSnapshot.value.contextMeta?.issueCount || state.editor.integrityCheck?.issue_list?.length || 0)
+  const failedTaskCount = Number(taskCenterSnapshot.value.failedCount || 0)
+  const runningTaskCount = Number(taskCenterSnapshot.value.runningCount || 0)
   return [
     {
       label: '保存',
@@ -1035,12 +956,25 @@ const topbarStatusCards = computed(() => {
 const topbarObjectActions = computed(() => {
   const actions = []
 
-  if (taskSummaryCounts.value.failed > 0) {
+  if (taskCenterSnapshot.value.failedCount > 0) {
     actions.push({
-      label: `失败任务 ${taskSummaryCounts.value.failed}`,
+      label: `失败任务 ${taskCenterSnapshot.value.failedCount}`,
       action: {
         type: 'task-filter',
         filter: 'failed'
+      }
+    })
+  }
+
+  if (workspaceStore.currentObject?.type === 'writing-result') {
+    actions.push({
+      label: `查看${getWritingResultLabel(workspaceStore.currentObject.resultType)}`,
+      action: {
+        type: 'writing-result',
+        chapterId: workspaceStore.currentObject.chapterId || currentChapter.value?.id || '',
+        resultType: workspaceStore.currentObject.resultType || 'candidate',
+        taskId: workspaceStore.currentObject.taskId || '',
+        title: workspaceStore.currentObject.title || getWritingResultLabel(workspaceStore.currentObject.resultType)
       }
     })
   }
@@ -1209,6 +1143,12 @@ const copilotCurrentStateText = computed(() => {
 })
 
 const copilotCurrentObjectTitle = computed(() => {
+  if (workspaceStore.currentObject?.type === 'writing-result') {
+    const resultLabel = getWritingResultLabel(workspaceStore.currentObject.resultType)
+    return currentChapter.value?.title
+      ? `${resultLabel} · ${currentChapter.value.title}`
+      : resultLabel
+  }
   if (workspaceStore.currentView === 'writing') {
     return currentChapter.value?.title || '当前章节'
   }
@@ -1223,6 +1163,9 @@ const copilotCurrentObjectTitle = computed(() => {
 
 const copilotCurrentObjectMeta = computed(() => {
   const objectType = String(workspaceStore.currentObject?.type || '').trim()
+  if (objectType === 'writing-result') {
+    return `${getWritingResultLabel(workspaceStore.currentObject?.resultType)}对象`
+  }
   if (workspaceStore.currentView === 'writing') {
     return '正文写作对象'
   }
@@ -1239,6 +1182,15 @@ const copilotCurrentObjectMeta = computed(() => {
 })
 
 const copilotCurrentObjectAction = computed(() => {
+  if (workspaceStore.currentObject?.type === 'writing-result') {
+    return {
+      type: 'writing-result',
+      chapterId: workspaceStore.currentObject.chapterId || currentChapter.value?.id || '',
+      resultType: workspaceStore.currentObject.resultType || 'candidate',
+      taskId: workspaceStore.currentObject.taskId || '',
+      title: workspaceStore.currentObject.title || getWritingResultLabel(workspaceStore.currentObject.resultType)
+    }
+  }
   if (workspaceStore.currentView === 'writing' && workspaceStore.currentObject?.id) {
     return {
       type: 'chapter-manager',
@@ -1296,6 +1248,28 @@ const copilotContextSummary = computed(() => ({
 
 const copilotChatPrompts = computed(() => {
   if (workspaceStore.currentView === 'writing') {
+    if (workspaceStore.currentObject?.type === 'writing-result') {
+      const resultType = workspaceStore.currentObject.resultType || 'candidate'
+      if (resultType === 'issues') {
+        return [
+          '这些问题单应该先处理哪几个？',
+          '当前问题结果里最可能影响后续剧情的风险是什么？',
+          '我应该先回正文修复，还是先看结构约束？'
+        ]
+      }
+      if (resultType === 'diff') {
+        return [
+          '这份改写稿最值得保留的变化是什么？',
+          '当前改写稿和正文相比，最大的收益与风险分别是什么？',
+          '我应该整体采用这份改写稿，还是只吸收部分段落？'
+        ]
+      }
+      return [
+        '这份候选稿最适合如何并入正文？',
+        '当前候选稿还缺少哪种情绪或信息落点？',
+        '我应该直接采纳、局部吸收，还是继续改写这一稿？'
+      ]
+    }
     return [
       '下一章最适合推进哪条剧情弧？',
       '当前章节还有哪些一致性风险？',
@@ -1325,6 +1299,55 @@ const copilotChatPrompts = computed(() => {
 
 const copilotObjectPromptCards = computed(() => {
   if (workspaceStore.currentView === 'writing') {
+    if (workspaceStore.currentObject?.type === 'writing-result') {
+      const resultType = workspaceStore.currentObject.resultType || 'candidate'
+      if (resultType === 'issues') {
+        return [
+          {
+            title: '排序问题优先级',
+            tag: '问题',
+            description: '判断哪些问题会最先影响结构、人物或信息一致性。',
+            prompt: `请根据当前问题结果「${copilotCurrentObjectTitle.value}」，帮我按优先级排序这些问题，并说明先修哪几个最划算。`
+          },
+          {
+            title: '规划修复路径',
+            tag: '恢复',
+            description: '决定先回正文、结构还是任务台处理。',
+            prompt: `围绕当前问题结果「${copilotCurrentObjectTitle.value}」，我下一步应该先回正文修复、先看结构约束，还是先处理相关任务？请给出顺序。`
+          }
+        ]
+      }
+      if (resultType === 'diff') {
+        return [
+          {
+            title: '评估改写价值',
+            tag: '改写',
+            description: '比较当前改写稿和原正文，找出最值得保留的变化。',
+            prompt: `请评估当前改写结果「${copilotCurrentObjectTitle.value}」，指出最值得采纳的三处变化，以及各自的风险。`
+          },
+          {
+            title: '制定采纳策略',
+            tag: '写作',
+            description: '判断整体采用还是局部吸收更合适。',
+            prompt: `对于当前改写结果「${copilotCurrentObjectTitle.value}」，我更适合整体替换、局部吸收，还是继续改写？请说明依据。`
+          }
+        ]
+      }
+      return [
+        {
+          title: '评估候选稿可用性',
+          tag: '候选',
+          description: '快速判断当前候选稿是否适合直接并入正文。',
+          prompt: `请评估当前候选稿「${copilotCurrentObjectTitle.value}」的可用性，指出最该保留和最该修改的部分。`
+        },
+        {
+          title: '规划合并方式',
+          tag: '写作',
+          description: '决定是追加、覆盖还是局部吸收。',
+          prompt: `围绕当前候选稿「${copilotCurrentObjectTitle.value}」，我更适合追加到正文、覆盖当前段落，还是只局部吸收？`
+        }
+      ]
+    }
     return [
       {
         title: '评估当前章节风险',
@@ -1485,6 +1508,8 @@ const currentCopilotSessionMeta = computed(() => {
     discriminator = `arc:${currentObject.arcId}`
   } else if (currentObject.type === 'task' && currentObject.taskId) {
     discriminator = `task:${currentObject.taskId}`
+  } else if (currentObject.type === 'writing-result') {
+    discriminator = `writing-result:${currentObject.chapterId || 'chapter'}:${currentObject.resultType || 'candidate'}`
   } else if (currentObject.type === 'task-filter' && currentObject.filter) {
     discriminator = `task-filter:${currentObject.filter}`
   } else if (view === 'writing' && currentChapter.value?.id) {
@@ -1500,53 +1525,6 @@ const currentCopilotSessionMeta = computed(() => {
     objectTitle: baseTitle || ''
   }
 })
-
-const buildTaskActionLabel = (task) => {
-  const chapterId = String(task?.chapter_id || task?.chapterId || '').trim()
-  const targetArcId = String(task?.target_arc_id || task?.targetArcId || '').trim()
-  const taskType = String(task?.task_type || task?.type || '').toLowerCase()
-  if (chapterId) return '打开章节'
-  if (targetArcId) return '查看目标弧'
-  if (taskType.includes('audit') || taskType.includes('analyze')) return '查看审查'
-  if (['failed', 'error'].includes(String(task?.status || '').trim())) return '查看失败任务'
-  return '查看任务'
-}
-
-const buildTaskTargetLabel = (task, chapterTitle) => {
-  const targetArcTitle = String(task?.target_arc_title || task?.targetArcId || task?.target_arc_id || '').trim()
-  if (chapterTitle) {
-    return `目标章节：${chapterTitle}`
-  }
-  if (targetArcTitle) {
-    return `目标弧：${targetArcTitle}`
-  }
-  return '目标对象：项目任务'
-}
-
-const buildTaskReasonText = (task) => {
-  return String(task?.error_message || task?.error || task?.description || '').trim() || '当前未提供更详细的失败原因。'
-}
-
-const buildTaskNextStepText = (task) => {
-  const status = String(task?.status || '').trim()
-  const taskType = String(task?.task_type || task?.type || '').toLowerCase()
-  if (['failed', 'error'].includes(status)) {
-    if (String(task?.chapter_id || task?.chapterId || '').trim()) {
-      return '建议先回到对应章节修复，再重新触发任务。'
-    }
-    if (String(task?.target_arc_id || task?.targetArcId || '').trim()) {
-      return '建议先检查目标剧情弧状态，再重新推进相关任务。'
-    }
-    return '建议先查看失败任务筛选，再决定是否重试。'
-  }
-  if (status === 'running') {
-    return '任务仍在进行中，可先回到对应对象继续处理。'
-  }
-  if (taskType.includes('audit') || taskType.includes('analyze')) {
-    return '建议先看审查结果，再回到写作或结构页处理。'
-  }
-  return '可切回目标对象继续推进。'
-}
 
 const formatRelativeTime = (timestamp) => {
   const value = Number(timestamp || 0)
@@ -1646,6 +1624,15 @@ const buildRecentDocumentAction = (doc) => {
       chapterId: doc.chapterId || ''
     }
   }
+  if (doc.type === 'writing-result') {
+    return {
+      type: 'writing-result',
+      chapterId: doc.chapterId || '',
+      resultType: doc.resultType || 'candidate',
+      taskId: doc.taskId || '',
+      title: doc.title || ''
+    }
+  }
   return { type: 'section', section: workspaceStore.currentView || 'overview' }
 }
 
@@ -1734,6 +1721,15 @@ const getRecentDocumentPresentation = (doc) => {
     }
   }
 
+  if (doc.type === 'writing-result') {
+    const resultLabel = buildWorkspaceResultLabel(doc.resultType, { noneLabel: '候选稿' })
+    return {
+      subtitle: ['恢复该结果回流', resultLabel, chapterLabel, relativeTime].filter(Boolean).join(' · '),
+      hint: '结果',
+      priority: doc.resultType === 'issues' ? 71 : 66
+    }
+  }
+
   if (doc.type === 'task-filter') {
     return {
       subtitle: ['恢复该任务筛选', relativeTime].filter(Boolean).join(' · '),
@@ -1770,6 +1766,10 @@ const getCommandObjectRestoreKey = (item) => {
     const chapterId = action.chapterId || currentChapter.value?.id || 'chapter'
     const issueIndex = Number(action.issueIndex ?? -1)
     return `issue:${action.issueId || `${chapterId}::issue-${issueIndex}`}`
+  }
+  if (action.type === 'writing-result') {
+    const chapterId = action.chapterId || currentChapter.value?.id || 'chapter'
+    return `writing-result:${chapterId}:${action.resultType || 'candidate'}`
   }
   if (action.type === 'section' && action.section === 'structure' && action.object?.type) {
     return `${action.object.type}:${action.object.type}`
@@ -2006,6 +2006,26 @@ const commandPaletteItems = computed(() => {
         issueTitle: workspaceStore.currentObject.title || '',
         issueCode: workspaceStore.currentObject.code || '',
         chapterId: workspaceStore.currentObject.chapterId || currentChapter.value?.id || ''
+      }
+    })
+  }
+
+  if (workspaceStore.currentObject?.type === 'writing-result') {
+    const resultType = workspaceStore.currentObject.resultType || 'candidate'
+    const resultLabel = buildWorkspaceResultLabel(resultType, { noneLabel: '候选稿' })
+    items.unshift({
+      id: `current-object-writing-result-${workspaceStore.currentObject.id || `${workspaceStore.currentObject.chapterId || 'chapter'}-${resultType}`}`,
+      group: '当前对象',
+      title: `回到当前结果：${resultLabel}`,
+      subtitle: '回到写作页并恢复当前结果区域',
+      keywords: `${resultLabel} 当前对象 writing result`,
+      hint: '当前',
+      action: {
+        type: 'writing-result',
+        chapterId: workspaceStore.currentObject.chapterId || currentChapter.value?.id || '',
+        resultType,
+        taskId: workspaceStore.currentObject.taskId || '',
+        title: workspaceStore.currentObject.title || resultLabel
       }
     })
   }
@@ -2514,6 +2534,22 @@ const handleCopilotTrigger = async (payload) => {
     return
   }
 
+  if (payload.type === 'writing-result') {
+    const chapterId = String(payload.chapterId || currentChapter.value?.id || '')
+    if (chapterId) {
+      await openChapter(chapterId, 'writing')
+    } else {
+      openSection('writing')
+    }
+    workspaceStore.focusWritingResult({
+      chapterId,
+      resultType: payload.resultType || 'candidate',
+      taskId: payload.taskId || '',
+      title: payload.title || ''
+    }, { openView: false })
+    return
+  }
+
   if (payload.type === 'section') {
     if (payload.section === 'structure' && payload.object?.type) {
       workspaceStore.setStructureSection(payload.object.type)
@@ -2720,6 +2756,9 @@ const ensureWorkspaceEntry = async () => {
 // Provide context for child components
 provide(WORKSPACE_CONTEXT_KEY, {
   state,
+  resourceSnapshot: computed(() => workspaceStore.resourceSnapshot),
+  taskCenterSnapshot: computed(() => workspaceStore.taskCenterSnapshot),
+  contextSnapshot: computed(() => workspaceStore.currentContextSnapshot),
   currentSection: computed(() => workspaceStore.currentView),
   currentChapterId,
   latestChapter,
@@ -2772,12 +2811,31 @@ watch(() => route.query.section, () => {
 })
 
 watch(() => [state.editor.contextMeta, state.memoryView], ([contextMeta, memoryView]) => {
+  workspaceStore.syncShellState({
+    novelId: route.params.id,
+    novelInfo: state.novel,
+    projectId: state.projectId,
+    chapterCount: state.chapters?.length || 0,
+    activeChapterId: state.editor.chapter?.id || workspaceStore.currentChapterId || '',
+    hasStructure: Boolean((state.activeArcs || []).length || Object.keys(memoryView || {}).length)
+  })
   workspaceStore.setContextSnapshot({
     chapterId: state.editor.chapter?.id || '',
     chapterTitle: state.editor.chapter?.title || '',
     activeArcs: state.activeArcs || [],
     memoryView: memoryView || {},
     contextMeta: contextMeta || {}
+  })
+}, { deep: true, immediate: true })
+
+watch(() => state.taskCenter, (taskCenter) => {
+  workspaceStore.syncTaskCenterSnapshot({
+    organizeTask: state.organizeProgress || {},
+    tasks: taskCenter?.tasks || [],
+    failedCount: taskCenter?.counts?.failed || 0,
+    runningCount: taskCenter?.counts?.running || 0,
+    completedCount: taskCenter?.counts?.completed || 0,
+    auditCount: taskCenter?.counts?.audit || 0
   })
 }, { deep: true, immediate: true })
 
@@ -2798,6 +2856,14 @@ onMounted(() => {
   // Initialize workspace with novelId from route
   if (route && route.params && route.params.id) {
     workspaceStore.initWorkspace(route.params.id)
+    workspaceStore.syncShellState({
+      novelId: route.params.id,
+      novelInfo: state.novel,
+      projectId: state.projectId,
+      chapterCount: state.chapters?.length || 0,
+      activeChapterId: state.editor.chapter?.id || workspaceStore.currentChapterId || '',
+      hasStructure: Boolean((state.activeArcs || []).length || Object.keys(state.memoryView || {}).length)
+    })
   }
   void ensureWorkspaceEntry()
   window.addEventListener('keydown', handleGlobalKeydown)

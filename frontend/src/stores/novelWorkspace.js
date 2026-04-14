@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 
 import { chapterEditorApi, contentApi, novelApi, projectApi } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { buildWorkspaceTaskCenter, normalizeWorkspaceTaskResultType } from '@/views/workspace/workspaceTaskModel'
 
 const createEmptyEditorState = () => ({
   loading: false,
@@ -21,7 +22,17 @@ const createEmptyEditorState = () => ({
   contextMeta: {},
   structuralDraft: null,
   detemplatedDraft: null,
-  integrityCheck: null
+  integrityCheck: null,
+  resultState: {
+    latestTaskId: '',
+    latestAction: '',
+    latestResultType: 'none',
+    latestDraftType: '',
+    lastDecision: 'idle',
+    lastUpdatedAt: '',
+    latestIssueCount: 0,
+    lastError: ''
+  }
 })
 
 const normalizeIntegrityCheck = (payload = {}) => ({
@@ -101,6 +112,7 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
   const chapters = ref([])
   const organizeProgress = ref({})
   const chapterTasks = ref([])
+  const sessionTasks = ref([])
   const memoryView = ref({})
   const activeArcs = ref([])
   const copilotTab = ref('context')
@@ -122,6 +134,34 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
   const markEditorDirty = (value = true) => {
     editor.dirty = Boolean(value)
   }
+
+  const updateEditorResultState = (patch = {}) => {
+    editor.resultState = {
+      ...createEmptyEditorState().resultState,
+      ...(editor.resultState || {}),
+      ...patch
+    }
+  }
+
+  const upsertSessionTask = (task) => {
+    if (!task?.id) return
+    const nextTask = { ...task }
+    const index = sessionTasks.value.findIndex((item) => item.id === nextTask.id)
+    if (index === -1) {
+      sessionTasks.value = [nextTask, ...sessionTasks.value].slice(0, 20)
+      return
+    }
+    const previous = sessionTasks.value[index]
+    sessionTasks.value.splice(index, 1, { ...previous, ...nextTask })
+  }
+
+  const taskCenter = computed(() => buildWorkspaceTaskCenter({
+    organizeProgress: organizeProgress.value,
+    chapterTasks: chapterTasks.value,
+    sessionTasks: sessionTasks.value,
+    currentTask: useWorkspaceStore().currentTask,
+    chapters: chapters.value
+  }))
 
   const loadStructure = async () => {
     if (!projectId.value) {
@@ -213,6 +253,16 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
       editor.integrityCheck = chapter.integrity_check
         ? normalizeIntegrityCheck(chapter.integrity_check)
         : null
+      updateEditorResultState({
+        latestTaskId: '',
+        latestAction: '',
+        latestResultType: 'none',
+        latestDraftType: '',
+        lastDecision: 'idle',
+        lastUpdatedAt: '',
+        latestIssueCount: Array.isArray(editor.integrityCheck?.issue_list) ? editor.integrityCheck.issue_list.length : 0,
+        lastError: ''
+      })
       editor.activeDraftTab = editor.detemplatedDraft ? 'detemplated' : 'structural'
       editor.dirty = false
     } finally {
@@ -268,8 +318,32 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     }
     const taskMeta = taskMetaMap[action] || { type: action, label: action, resultType: 'none' }
     const taskId = `editor-${action}-${Date.now()}`
+    const baseSessionTask = {
+      id: taskId,
+      type: taskMeta.type,
+      task_type: taskMeta.type,
+      label: taskMeta.label,
+      title: taskMeta.label,
+      chapterId: editor.chapter.id,
+      chapter_id: editor.chapter.id,
+      resultType: taskMeta.resultType,
+      started_at: new Date().toISOString()
+    }
 
     editor.aiRunning = true
+    updateEditorResultState({
+      latestTaskId: taskId,
+      latestAction: action,
+      latestResultType: taskMeta.resultType,
+      latestDraftType: '',
+      lastDecision: 'pending',
+      lastUpdatedAt: new Date().toISOString(),
+      lastError: ''
+    })
+    upsertSessionTask({
+      ...baseSessionTask,
+      status: 'running'
+    })
     workspaceStore.setCurrentTask({
       id: taskId,
       type: taskMeta.type,
@@ -337,6 +411,29 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
         editor.integrityCheck = integrityCheck
       }
 
+      updateEditorResultState({
+        latestTaskId: taskId,
+        latestAction: action,
+        latestResultType: taskMeta.resultType,
+        latestDraftType: action === 'optimize' || action === 'rewrite'
+          ? 'detemplated'
+          : (action === 'analyze' ? '' : 'structural'),
+        lastDecision: 'pending',
+        lastUpdatedAt: new Date().toISOString(),
+        latestIssueCount: Array.isArray(editor.integrityCheck?.issue_list) ? editor.integrityCheck.issue_list.length : 0,
+        lastError: ''
+      })
+
+      upsertSessionTask({
+        ...baseSessionTask,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        resultType: normalizeWorkspaceTaskResultType({
+          ...baseSessionTask,
+          resultType: taskMeta.resultType
+        })
+      })
       workspaceStore.setCurrentTask({
         id: taskId,
         type: taskMeta.type,
@@ -347,6 +444,22 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
       })
       return result
     } catch (error) {
+      updateEditorResultState({
+        latestTaskId: taskId,
+        latestAction: action,
+        latestResultType: taskMeta.resultType,
+        latestDraftType: '',
+        lastDecision: 'error',
+        lastUpdatedAt: new Date().toISOString(),
+        lastError: error?.message || 'AI 任务失败'
+      })
+      upsertSessionTask({
+        ...baseSessionTask,
+        status: 'failed',
+        error: error?.message || 'AI 任务失败',
+        failed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
       workspaceStore.setCurrentTask({
         id: taskId,
         type: taskMeta.type,
@@ -371,6 +484,12 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
       ? `${editor.chapter.content || ''}\n\n${draft.content}`.trim()
       : (draft.full_content || draft.content)
     editor.dirty = true
+    updateEditorResultState({
+      latestDraftType: type,
+      lastDecision: mode === 'append' ? 'applied_append' : 'applied_replace',
+      lastUpdatedAt: new Date().toISOString(),
+      lastError: ''
+    })
     return true
   }
 
@@ -378,12 +497,24 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     const applied = applyDraftToEditor({ type, mode: 'replace' })
     if (!applied) return false
     await saveEditorChapter()
+    updateEditorResultState({
+      latestDraftType: type,
+      lastDecision: 'saved',
+      lastUpdatedAt: new Date().toISOString(),
+      lastError: ''
+    })
     return true
   }
 
   const discardDraft = ({ type }) => {
     if (type === 'detemplated') editor.detemplatedDraft = null
     if (type === 'structural') editor.structuralDraft = null
+    updateEditorResultState({
+      latestDraftType: type,
+      lastDecision: 'discarded',
+      lastUpdatedAt: new Date().toISOString(),
+      lastError: ''
+    })
   }
 
   return {
@@ -396,6 +527,8 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     chapters,
     organizeProgress,
     chapterTasks,
+    sessionTasks,
+    taskCenter,
     memoryView,
     activeArcs,
     copilotTab,

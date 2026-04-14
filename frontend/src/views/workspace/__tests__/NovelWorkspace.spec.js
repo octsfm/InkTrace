@@ -178,6 +178,18 @@ describe('NovelWorkspace.vue', () => {
   })
 
   it('builds actionable settings sidebar cards and recovery action in topbar', async () => {
+    store.taskCenterSnapshot = {
+      tasks: [],
+      failedCount: 1,
+      runningCount: 0,
+      completedCount: 0,
+      auditCount: 1
+    }
+    store.currentContextSnapshot = {
+      chapterId: 'chapter-1',
+      chapterTitle: '第一章',
+      contextMeta: { issueCount: 1 }
+    }
     store.currentView = 'settings'
     await wrapper.vm.$nextTick()
 
@@ -185,6 +197,55 @@ describe('NovelWorkspace.vue', () => {
     expect(wrapper.vm.sidebarOverviewCards.some((item) => item.key === 'settings-issues' && item.action?.type === 'chapter')).toBe(true)
     expect(wrapper.vm.resolvedTopbarObjectActions.some((item) => item.label === '回到写作')).toBe(true)
     expect(wrapper.vm.resolvedTopbarObjectActions.some((item) => item.label === '恢复失败链路')).toBe(true)
+  })
+
+  it('uses workspace snapshots for overview quick facts and settings sidebar cards', async () => {
+    store.resourceSnapshot = {
+      novelId: 'novel-1',
+      novelTitle: '风暴将至',
+      projectId: 'project-1',
+      chapterCount: 3,
+      activeChapterId: 'chapter-1',
+      hasStructure: true
+    }
+    store.taskCenterSnapshot = {
+      tasks: [],
+      failedCount: 2,
+      runningCount: 1,
+      completedCount: 3,
+      auditCount: 1
+    }
+    store.currentContextSnapshot = {
+      chapterId: 'chapter-1',
+      chapterTitle: '第一章',
+      contextMeta: { issueCount: 5 }
+    }
+
+    store.currentView = 'overview'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.resolvedTopbarQuickFacts.some((item) => item.label === '项目状态' && item.value === '已绑定')).toBe(true)
+    expect(wrapper.vm.resolvedTopbarQuickFacts.some((item) => item.label === '失败任务' && item.value === '2')).toBe(true)
+
+    store.currentView = 'settings'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.sidebarOverviewCards.find((item) => item.key === 'settings-project-id')?.value).toBe('project-1')
+    expect(wrapper.vm.sidebarOverviewCards.find((item) => item.key === 'settings-failed-tasks')?.value).toBe('2 个')
+    expect(wrapper.vm.sidebarOverviewCards.find((item) => item.key === 'settings-issues')?.value).toBe('5 个')
+  })
+
+  it('prefers task center snapshot for task quick facts and task status text', async () => {
+    store.taskCenterSnapshot = {
+      tasks: [],
+      failedCount: 3,
+      runningCount: 1,
+      completedCount: 0,
+      auditCount: 1
+    }
+    store.currentView = 'tasks'
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.resolvedTopbarQuickFacts.some((item) => item.label === '失败任务' && item.value === '3')).toBe(true)
+    expect(wrapper.vm.taskStatusText).toBe('3 个失败任务')
   })
 
   it('hides left nav when zen mode is enabled', async () => {
@@ -252,7 +313,8 @@ describe('NovelWorkspace.vue', () => {
     store.openDocuments = [
       { type: 'risk', id: 'risk', title: '风险点', lastOpenedAt: Date.now() - 3000 },
       { type: 'issue', id: 'chapter-1::issue-0', title: '连续性风险', chapterId: 'chapter-1', index: 0, code: 'continuity', lastOpenedAt: Date.now() - 2000 },
-      { type: 'task', id: 'task-1', title: '章节审查', chapterId: 'chapter-1', status: 'failed', lastOpenedAt: Date.now() - 1000 }
+      { type: 'task', id: 'task-1', title: '章节审查', chapterId: 'chapter-1', status: 'failed', lastOpenedAt: Date.now() - 1000 },
+      { type: 'writing-result', id: 'chapter-1::issues', title: '问题结果', chapterId: 'chapter-1', resultType: 'issues', taskId: 'task-1', lastOpenedAt: Date.now() - 500 }
     ]
     await wrapper.vm.$nextTick()
 
@@ -260,6 +322,7 @@ describe('NovelWorkspace.vue', () => {
     expect(itemIds.some((id) => id.startsWith('recent-doc-risk-risk'))).toBe(true)
     expect(itemIds.some((id) => id.startsWith('recent-doc-issue-chapter-1::issue-0'))).toBe(true)
     expect(itemIds.some((id) => id.startsWith('recent-doc-task-task-1'))).toBe(true)
+    expect(itemIds.some((id) => id.startsWith('recent-doc-writing-result-chapter-1::issues'))).toBe(true)
   })
 
   it('adds richer subtitle and hint for recent failed task objects', async () => {
@@ -272,6 +335,96 @@ describe('NovelWorkspace.vue', () => {
     expect(taskItem.subtitle).toContain('恢复该任务对象')
     expect(taskItem.subtitle).toContain('第一章')
     expect(taskItem.hint).toBe('失败')
+  })
+
+  it('builds restore commands for current writing result object', async () => {
+    store.currentObject = {
+      type: 'writing-result',
+      id: 'chapter-1::issues',
+      chapterId: 'chapter-1',
+      resultType: 'issues',
+      taskId: 'task-1',
+      title: '问题结果'
+    }
+    await wrapper.vm.$nextTick()
+
+    const currentItem = wrapper.vm.commandPaletteItems.find((item) => item.id.startsWith('current-object-writing-result-'))
+    expect(currentItem).toBeTruthy()
+    expect(currentItem.action).toMatchObject({
+      type: 'writing-result',
+      chapterId: 'chapter-1',
+      resultType: 'issues',
+      taskId: 'task-1'
+    })
+  })
+
+  it('treats writing result as a first-class current object in shell labels and copilot action', async () => {
+    store.currentView = 'writing'
+    store.currentObject = {
+      type: 'writing-result',
+      id: 'chapter-1::issues',
+      chapterId: 'chapter-1',
+      resultType: 'issues',
+      taskId: 'task-1',
+      title: '问题结果'
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.currentObjectLabel).toContain('问题结果')
+    expect(wrapper.vm.copilotCurrentObjectAction).toMatchObject({
+      type: 'writing-result',
+      chapterId: 'chapter-1',
+      resultType: 'issues',
+      taskId: 'task-1'
+    })
+    expect(wrapper.vm.currentCopilotSessionMeta.key).toContain('writing-result:chapter-1:issues')
+  })
+
+  it('adds topbar object action for current writing result object', async () => {
+    store.currentView = 'writing'
+    store.currentObject = {
+      type: 'writing-result',
+      id: 'chapter-1::issues',
+      chapterId: 'chapter-1',
+      resultType: 'issues',
+      taskId: 'task-1',
+      title: '问题结果'
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.resolvedTopbarObjectActions.some((item) => item.label === '查看问题结果' && item.action?.type === 'writing-result')).toBe(true)
+  })
+
+  it('adapts copilot prompts for issue result objects', async () => {
+    store.currentView = 'writing'
+    store.currentObject = {
+      type: 'writing-result',
+      id: 'chapter-1::issues',
+      chapterId: 'chapter-1',
+      resultType: 'issues',
+      taskId: 'task-1',
+      title: '问题结果'
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.copilotChatPrompts[0]).toContain('问题单')
+    expect(wrapper.vm.copilotObjectPromptCards[0].title).toBe('排序问题优先级')
+  })
+
+  it('adapts copilot prompts for candidate result objects', async () => {
+    store.currentView = 'writing'
+    store.currentObject = {
+      type: 'writing-result',
+      id: 'chapter-1::candidate',
+      chapterId: 'chapter-1',
+      resultType: 'candidate',
+      taskId: 'task-2',
+      title: '候选稿'
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.copilotChatPrompts[0]).toContain('候选稿')
+    expect(wrapper.vm.copilotObjectPromptCards[0].title).toBe('评估候选稿可用性')
   })
 
   it('builds current object command for structure section objects', async () => {
@@ -377,8 +530,10 @@ describe('NovelWorkspace.vue', () => {
     expect(wrapper.vm.unifiedTaskCards.some((item) => item.id === 'task-1' && item.type === 'audit')).toBe(true)
     expect(wrapper.vm.taskStatusCards[2].label).toBe('失败任务')
     expect(wrapper.vm.unifiedTaskCards.find((item) => item.id === 'task-1')?.action).toEqual({
-      type: 'chapter',
-      chapterId: 'chapter-1'
+      type: 'writing-result',
+      chapterId: 'chapter-1',
+      resultType: 'issues',
+      taskId: 'task-1'
     })
   })
 
@@ -394,6 +549,13 @@ describe('NovelWorkspace.vue', () => {
   })
 
   it('adds task counts to filters and exposes failed task shortcut in top bar actions', () => {
+    store.taskCenterSnapshot = {
+      tasks: [],
+      failedCount: 1,
+      runningCount: 0,
+      completedCount: 0,
+      auditCount: 1
+    }
     store.currentView = 'tasks'
     expect(wrapper.vm.taskFilterOptions.find((item) => item.key === 'failed')?.label).toBe('失败任务')
     expect(wrapper.vm.taskFilterOptions.find((item) => item.key === 'failed')?.count).toBe(1)

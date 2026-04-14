@@ -33,6 +33,27 @@ const routes = [
     name: 'NovelWorkspace',
     component: () => import('@/views/workspace/NovelWorkspace.vue'),
     meta: { title: '小说工作区' }
+  },
+  {
+    path: '/novel/:id/write',
+    redirect: (to) => ({
+      path: `/novel/${to.params.id}`,
+      query: {
+        ...to.query,
+        section: 'writing'
+      }
+    })
+  },
+  {
+    path: '/novel/:id/chapters/:chapterId/edit',
+    redirect: (to) => ({
+      path: `/novel/${to.params.id}`,
+      query: {
+        ...to.query,
+        section: 'writing',
+        chapterId: String(to.params.chapterId || '')
+      }
+    })
   }
 ]
 

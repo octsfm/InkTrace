@@ -78,6 +78,9 @@
             <div v-else-if="hasBlockingIssues" class="editor-banner banner-warning">
               当前有 {{ blockingIssueCount }} 个高优先级问题，保存正文前建议先处理。
             </div>
+            <div v-if="resultStatusBanner" class="editor-banner" :class="resultStatusBanner.toneClass">
+              <strong>{{ resultStatusBanner.title }}</strong>{{ resultStatusBanner.description ? ` · ${resultStatusBanner.description}` : '' }}
+            </div>
             <div v-if="activeIssueTitle" class="editor-banner banner-focus">
               <strong>当前定位问题：</strong>{{ activeIssueTitle }}
               <span v-if="activeIssueDetail"> · {{ activeIssueDetail }}</span>
@@ -113,6 +116,10 @@
             <div class="summary-item">
               <span class="summary-label">审查问题</span>
               <span class="summary-value">{{ issueSummaryText }}</span>
+            </div>
+            <div class="summary-item summary-item-wide">
+              <span class="summary-label">结果状态</span>
+              <span class="summary-value">{{ resultBoundaryText }}</span>
             </div>
           </div>
         </div>
@@ -205,6 +212,7 @@ import IssuePanelCard from '@/components/story/IssuePanelCard.vue'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 import { ARC_STAGE_LABELS, ARC_STATUS_LABELS, ARC_TYPE_LABELS } from '@/constants/storyLabels'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { buildWorkspaceResultLabel } from './workspaceTaskModel'
 
 const issueHighlightPluginKey = new PluginKey('issueHighlight')
 
@@ -264,6 +272,7 @@ const issueCount = computed(() => issueList.value.length)
 const blockingIssueCount = computed(() => issueList.value.filter((item) => item?.severity === 'high').length)
 const hasBlockingIssues = computed(() => blockingIssueCount.value > 0)
 const draftCount = computed(() => [editorState.structuralDraft, editorState.detemplatedDraft].filter(Boolean).length)
+const resultState = computed(() => editorState.resultState || {})
 const previewIssueIndex = ref(-1)
 const activeIssueIndex = computed(() => workspaceStore.currentObject?.type === 'issue' ? Number(workspaceStore.currentObject?.index ?? -1) : -1)
 const focusedIssueIndex = computed(() => (previewIssueIndex.value >= 0 ? previewIssueIndex.value : activeIssueIndex.value))
@@ -303,6 +312,9 @@ const chapterStatusText = computed(() => {
   return editorState.chapter?.id ? '已保存' : '未载入'
 })
 const draftSummaryText = computed(() => {
+  if (resultState.value.latestResultType === 'issues') {
+    return '最近回流为问题结果'
+  }
   if (!draftCount.value) return '暂无'
   return `共 ${draftCount.value} 份`
 })
@@ -310,6 +322,56 @@ const issueSummaryText = computed(() => {
   if (!issueCount.value) return '无'
   if (blockingIssueCount.value) return `${issueCount.value} 个，其中阻断 ${blockingIssueCount.value} 个`
   return `${issueCount.value} 个`
+})
+const resultBoundaryText = computed(() => {
+  const decisionMap = {
+    idle: '待命中',
+    pending: '待处理',
+    applied_append: '已插入正文',
+    applied_replace: '已覆盖正文',
+    saved: '已写回并保存',
+    discarded: '已放弃',
+    error: '执行失败'
+  }
+  const resultLabel = buildWorkspaceResultLabel(resultState.value.latestResultType, {
+    noneLabel: '暂无结果',
+    rewriteVariant: 'draft'
+  })
+  const decisionLabel = decisionMap[resultState.value.lastDecision || 'idle'] || '待处理'
+  return `${resultLabel} · ${decisionLabel}`
+})
+const resultStatusBanner = computed(() => {
+  const type = resultState.value.latestResultType || 'none'
+  const decision = resultState.value.lastDecision || 'idle'
+  if (decision === 'error') {
+    return {
+      title: '最近一次智能结果执行失败',
+      description: resultState.value.lastError || '请检查任务状态后重试。',
+      toneClass: 'banner-danger'
+    }
+  }
+  if (type === 'issues' && issueCount.value) {
+    return {
+      title: '最近回流：问题结果',
+      description: `当前有 ${issueCount.value} 个问题单，建议先定位再决定是否改写正文。`,
+      toneClass: 'banner-warning'
+    }
+  }
+  if ((type === 'candidate' || type === 'diff') && decision === 'pending') {
+    return {
+      title: `最近回流：${buildWorkspaceResultLabel(type, { noneLabel: '候选稿', rewriteVariant: 'draft' })}`,
+      description: '当前结果尚未写回正文，可选择覆盖、追加、保存或放弃。',
+      toneClass: 'banner-info'
+    }
+  }
+  if ((type === 'candidate' || type === 'diff') && ['applied_append', 'applied_replace', 'saved', 'discarded'].includes(decision)) {
+    return {
+      title: `最近结果状态：${resultBoundaryText.value}`,
+      description: '结果区与正文状态已同步，可继续写作或再次发起 AI 操作。',
+      toneClass: 'banner-success'
+    }
+  }
+  return null
 })
 const targetArcText = computed(() => {
   const taskArcId = String(editorState.chapterTask?.target_arc_id || '').trim()
@@ -554,6 +616,23 @@ const buildIssueSearchTerms = (issue) => {
     .filter((item) => item && item.length >= 2)
 }
 
+const resolveIssueExplicitRange = (issue) => {
+  const directFrom = Number(issue?.from ?? issue?.start_offset ?? issue?.start)
+  const directTo = Number(issue?.to ?? issue?.end_offset ?? issue?.end)
+  if (Number.isFinite(directFrom) && Number.isFinite(directTo) && directTo > directFrom) {
+    return { from: directFrom, to: directTo }
+  }
+
+  const range = issue?.anchor_range || issue?.range || null
+  const rangeFrom = Number(range?.from ?? range?.start)
+  const rangeTo = Number(range?.to ?? range?.end)
+  if (Number.isFinite(rangeFrom) && Number.isFinite(rangeTo) && rangeTo > rangeFrom) {
+    return { from: rangeFrom, to: rangeTo }
+  }
+
+  return null
+}
+
 const findIssueSelection = (searchTerms) => {
   if (!editor.value?.state?.doc || !Array.isArray(searchTerms) || !searchTerms.length) {
     return null
@@ -612,6 +691,10 @@ const applyIssueHighlight = (selection) => {
 }
 
 const locateIssueSelection = (issue) => {
+  const explicitRange = resolveIssueExplicitRange(issue)
+  if (explicitRange) {
+    return explicitRange
+  }
   const searchTerms = buildIssueSearchTerms(issue)
   return findIssueSelection(searchTerms)
 }
@@ -714,6 +797,35 @@ const handleWritingAction = async (payload) => {
   await handleObjectAction(payload)
 }
 
+const revealFocusedWorkspaceResult = async () => {
+  const object = workspaceStore.currentObject
+  if (object?.type !== 'writing-result') {
+    return
+  }
+
+  if (String(object.chapterId || '') && String(object.chapterId || '') !== String(editorState.chapter?.id || '')) {
+    return
+  }
+
+  if (object.resultType === 'issues') {
+    await scrollInspectorTo(issuePanelSectionRef)
+    return
+  }
+
+  if (object.resultType === 'diff') {
+    editorState.activeDraftTab = editorState.detemplatedDraft ? 'detemplated' : editorState.activeDraftTab
+    await scrollInspectorTo(draftPreviewSectionRef)
+    return
+  }
+
+  if (object.resultType === 'candidate') {
+    editorState.activeDraftTab = editorState.structuralDraft
+      ? 'structural'
+      : (editorState.detemplatedDraft ? 'detemplated' : editorState.activeDraftTab)
+    await scrollInspectorTo(draftPreviewSectionRef)
+  }
+}
+
 // Helpers
 const escapeHtml = (value) => String(value || '')
   .replace(/&/g, '&amp;')
@@ -744,6 +856,19 @@ watch(
   ([chapterId]) => {
     clearIssueHighlight()
     void workspace.loadEditorChapter(chapterId)
+  },
+  { immediate: true }
+)
+
+watch(
+  () => [
+    workspaceStore.currentObject?.type,
+    workspaceStore.currentObject?.chapterId,
+    workspaceStore.currentObject?.resultType,
+    editorState.chapter?.id
+  ],
+  () => {
+    void revealFocusedWorkspaceResult()
   },
   { immediate: true }
 )
@@ -993,6 +1118,24 @@ onBeforeUnmount(() => {
   color: #6D28D9;
 }
 
+.banner-info {
+  background-color: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  color: #1D4ED8;
+}
+
+.banner-success {
+  background-color: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  color: #15803D;
+}
+
+.banner-danger {
+  background-color: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #B91C1C;
+}
+
 .editor-shell {
   width: 100%;
   max-width: 920px;
@@ -1097,6 +1240,10 @@ onBeforeUnmount(() => {
   border-radius: 14px;
   background-color: #F9FAFB;
   border: 1px solid #E5E7EB;
+}
+
+.summary-item-wide {
+  grid-column: 1 / -1;
 }
 
 .summary-label {

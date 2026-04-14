@@ -21,6 +21,16 @@
       <WorkspaceSummaryChips :items="summaryItems" />
       <WorkspaceActionBar :items="actionItems" />
       <WorkspaceInfoBanner v-if="bannerText" :text="bannerText" :tone="bannerTone" />
+      <WorkspaceStatePanel
+        v-if="settingsStatePanel"
+        :tone="settingsStatePanel.tone"
+        :tag="settingsStatePanel.tag"
+        :title="settingsStatePanel.title"
+        :description="settingsStatePanel.description"
+        :caption="settingsStatePanel.caption"
+        :actions="settingsStatePanel.actions"
+        @action="runSettingsStateAction"
+      />
 
       <div class="settings-grid">
         <article class="settings-card">
@@ -180,6 +190,7 @@ import WorkspaceHeroChips from '@/components/workspace/WorkspaceHeroChips.vue'
 import WorkspaceInfoBanner from '@/components/workspace/WorkspaceInfoBanner.vue'
 import WorkspacePageHero from '@/components/workspace/WorkspacePageHero.vue'
 import WorkspaceSectionHeader from '@/components/workspace/WorkspaceSectionHeader.vue'
+import WorkspaceStatePanel from '@/components/workspace/WorkspaceStatePanel.vue'
 import WorkspaceSummaryChips from '@/components/workspace/WorkspaceSummaryChips.vue'
 
 const props = defineProps({
@@ -190,6 +201,18 @@ const props = defineProps({
   projectId: {
     type: String,
     default: ''
+  },
+  resourceSnapshot: {
+    type: Object,
+    default: () => ({})
+  },
+  taskCenterSnapshot: {
+    type: Object,
+    default: () => ({})
+  },
+  contextSnapshot: {
+    type: Object,
+    default: () => ({})
   },
   chapterCount: {
     type: Number,
@@ -263,24 +286,29 @@ const viewLabelMap = {
 }
 
 const novelTitle = computed(() => props.novelTitle || '未命名小说')
-const projectIdText = computed(() => props.projectId || '未绑定项目')
-const chapterCountText = computed(() => `${props.chapterCount || 0} 个章节`)
+const projectIdText = computed(() => props.resourceSnapshot?.projectId || props.projectId || '未绑定项目')
+const chapterCountText = computed(() => `${props.resourceSnapshot?.chapterCount || props.chapterCount || 0} 个章节`)
 const currentViewText = computed(() => viewLabelMap[props.currentView] || props.currentView || '概览')
-const currentChapterText = computed(() => props.currentChapterTitle || '未打开章节')
+const currentChapterText = computed(() => props.contextSnapshot?.chapterTitle || props.currentChapterTitle || '未打开章节')
 const copilotStatusText = computed(() => (props.copilotOpen ? '已开启' : '已关闭'))
-const currentContextText = computed(() => props.currentObjectTitle || currentViewText.value)
+const currentContextText = computed(() => props.currentObjectTitle || props.contextSnapshot?.chapterTitle || currentViewText.value)
 const recentPromptText = computed(() => `${props.recentPromptCount || 0} 条`)
 const sessionCountText = computed(() => `${props.sessionCount || 0} 个`)
-const failedTaskText = computed(() => `${props.failedTaskCount || 0} 个`)
-const runningTaskText = computed(() => `${props.runningTaskCount || 0} 个`)
-const auditTaskText = computed(() => `${props.auditTaskCount || 0} 个`)
-const issueCountText = computed(() => `${props.issueCount || 0} 个`)
+const failedTaskValue = computed(() => props.taskCenterSnapshot?.failedCount ?? props.failedTaskCount ?? 0)
+const runningTaskValue = computed(() => props.taskCenterSnapshot?.runningCount ?? props.runningTaskCount ?? 0)
+const auditTaskValue = computed(() => props.taskCenterSnapshot?.auditCount ?? props.auditTaskCount ?? 0)
+const issueCountValue = computed(() => props.issueCount || Number(props.contextSnapshot?.contextMeta?.issueCount || 0) || 0)
+const failedTaskText = computed(() => `${failedTaskValue.value} 个`)
+const runningTaskText = computed(() => `${runningTaskValue.value} 个`)
+const auditTaskText = computed(() => `${auditTaskValue.value} 个`)
+const issueCountText = computed(() => `${issueCountValue.value} 个`)
 const zenModeText = computed(() => (props.zenMode ? '已开启' : '未开启'))
 
 const heroChipItems = computed(() => ([
   { label: '当前视图', value: currentViewText.value },
   { label: '整理状态', value: props.taskStatusText || '未运行' },
-  { label: '助手', value: copilotStatusText.value }
+  { label: '助手', value: copilotStatusText.value },
+  { label: '上下文', value: props.contextSnapshot?.chapterTitle ? '已锁定' : '待补足' }
 ]))
 
 const summaryItems = computed(() => ([
@@ -291,22 +319,67 @@ const summaryItems = computed(() => ([
 ]))
 
 const bannerText = computed(() => {
-  if (!props.projectId) {
+  if (!projectIdText.value || projectIdText.value === '未绑定项目') {
     return '当前小说还未绑定项目，结构分析和任务回流能力可能不完整。'
   }
-  if (props.failedTaskCount > 0) {
-    return `当前有 ${props.failedTaskCount} 个失败任务，建议先恢复失败链路再继续推进。`
+  if (failedTaskValue.value > 0) {
+    return `当前有 ${failedTaskValue.value} 个失败任务，建议先恢复失败链路再继续推进。`
   }
-  if (props.issueCount > 0) {
-    return `当前章节有 ${props.issueCount} 个问题单，适合先回到写作页处理。`
+  if (issueCountValue.value > 0) {
+    return `当前章节有 ${issueCountValue.value} 个问题单，适合先回到写作页处理。`
+  }
+  if (!props.contextSnapshot?.chapterTitle) {
+    return '当前还没有稳定的章节上下文快照，建议先进入一个章节后再使用诊断页判断恢复路径。'
   }
   return '当前工作区状态基本完整，可以继续写作、结构推进或处理任务。'
 })
 
 const bannerTone = computed(() => {
-  if (!props.projectId || props.failedTaskCount > 0) return 'warning'
-  if (props.issueCount > 0) return 'primary'
+  if (!props.projectId || failedTaskValue.value > 0) return 'warning'
+  if (issueCountValue.value > 0 || !props.contextSnapshot?.chapterTitle) return 'primary'
   return 'success'
+})
+const settingsStatePanel = computed(() => {
+  if (!props.projectId) {
+    return {
+      tone: 'warning',
+      tag: '前提缺失',
+      title: '当前工作区还未绑定项目',
+      description: '未绑定时，结构分析、任务回流和部分上下文同步都可能不完整，建议先确认项目绑定状态。',
+      caption: '项目前提',
+      actions: [
+        { key: 'open-structure', label: '查看结构', primary: true },
+        { key: 'open-writing', label: '回到写作' }
+      ]
+    }
+  }
+  if (failedTaskValue.value > 0) {
+    return {
+      tone: 'danger',
+      tag: '恢复',
+      title: `当前有 ${failedTaskValue.value} 个失败任务待恢复`,
+      description: '建议先清掉异常链路，再继续使用工作区的结构、写作和章节闭环。',
+      caption: '任务异常',
+      actions: [
+        { key: 'open-tasks', label: '查看任务', primary: true },
+        { key: 'open-writing', label: '回到写作' }
+      ]
+    }
+  }
+  if (!props.contextSnapshot?.chapterTitle) {
+    return {
+      tone: 'info',
+      tag: '上下文',
+      title: '当前没有稳定的章节上下文快照',
+      description: '建议先进入一个章节，再使用任务、结构和设置页进行统一诊断，这样恢复路径会更准确。',
+      caption: '上下文快照',
+      actions: [
+        { key: 'open-chapters', label: '查看章节', primary: true },
+        { key: 'open-writing', label: '回到写作' }
+      ]
+    }
+  }
+  return null
 })
 
 const diagnosticCards = computed(() => ([
@@ -316,30 +389,40 @@ const diagnosticCards = computed(() => ([
     state: props.projectId ? '已连接' : '待确认',
     title: props.projectId ? '项目与工作区已绑定' : '当前还未绑定项目',
     description: props.projectId
-      ? `当前项目编号：${props.projectId}`
+      ? `当前项目编号：${projectIdText.value}`
       : '未绑定时，结构分析、任务恢复和部分上下文回流能力可能不完整。',
     tone: props.projectId ? 'success' : 'warning'
   },
   {
     key: 'tasks',
-    label: '任务链路',
-    state: props.failedTaskCount > 0 ? '需恢复' : (props.runningTaskCount > 0 ? '运行中' : '稳定'),
-    title: props.failedTaskCount > 0 ? `有 ${props.failedTaskCount} 个失败任务待处理` : (props.runningTaskCount > 0 ? '仍有任务在运行' : '当前没有明显任务阻塞'),
-    description: props.failedTaskCount > 0
+    label: '任务快照',
+    state: failedTaskValue.value > 0 ? '需恢复' : (runningTaskValue.value > 0 ? '运行中' : '稳定'),
+    title: failedTaskValue.value > 0 ? `有 ${failedTaskValue.value} 个失败任务待处理` : (runningTaskValue.value > 0 ? '仍有任务在运行' : '当前没有明显任务阻塞'),
+    description: failedTaskValue.value > 0
       ? '优先恢复失败任务，能减少后续结构和章节判断被旧结果污染。'
-      : (props.runningTaskCount > 0 ? `当前有 ${props.runningTaskCount} 个运行中任务，适合先观察结果回流。`
+      : (runningTaskValue.value > 0 ? `当前有 ${runningTaskValue.value} 个运行中任务，适合先观察结果回流。`
         : '当前任务状态相对平稳，可以继续写作或回到结构推进。'),
-    tone: props.failedTaskCount > 0 ? 'warning' : (props.runningTaskCount > 0 ? 'primary' : 'success')
+    tone: failedTaskValue.value > 0 ? 'warning' : (runningTaskValue.value > 0 ? 'primary' : 'success')
+  },
+  {
+    key: 'context',
+    label: '上下文快照',
+    state: props.contextSnapshot?.chapterTitle ? '已锁定' : '待补足',
+    title: props.contextSnapshot?.chapterTitle ? `当前上下文已锁定到《${props.contextSnapshot.chapterTitle}》` : '当前还没有稳定章节上下文',
+    description: props.contextSnapshot?.chapterTitle
+      ? `当前对象：${currentContextText.value}`
+      : '未锁定章节时，设置页的诊断更多只能反映工作区概况，恢复路径会更粗粒度。',
+    tone: props.contextSnapshot?.chapterTitle ? 'success' : 'primary'
   },
   {
     key: 'editor',
     label: '正文与问题单',
-    state: props.issueCount > 0 ? '待处理' : '正常',
-    title: props.issueCount > 0 ? `当前有 ${props.issueCount} 个问题单` : '当前正文没有待处理问题单',
-    description: props.issueCount > 0
+    state: issueCountValue.value > 0 ? '待处理' : '正常',
+    title: issueCountValue.value > 0 ? `当前有 ${issueCountValue.value} 个问题单` : '当前正文没有待处理问题单',
+    description: issueCountValue.value > 0
       ? '建议先回到写作页，处理一致性和结构风险后再继续推进。'
       : `当前章节：${currentChapterText.value}`,
-    tone: props.issueCount > 0 ? 'primary' : 'success'
+    tone: issueCountValue.value > 0 ? 'primary' : 'success'
   }
 ]))
 
@@ -348,27 +431,39 @@ const getActionItem = (key) => props.actionItems.find((item) => item.key === key
 const decisionCards = computed(() => {
   const cards = []
 
-  if (props.failedTaskCount > 0) {
+  if (failedTaskValue.value > 0) {
     cards.push({
       key: 'failed-tasks',
       tag: '任务',
       cta: '查看任务',
       title: '先恢复失败任务',
       description: '当前存在失败链路，优先恢复后再继续写作或结构推进会更稳。',
-      meta: `${props.failedTaskCount} 个失败任务`,
+      meta: `${failedTaskValue.value} 个失败任务`,
       onClick: () => getActionItem('settings-open-tasks')?.onClick?.()
     })
   }
 
-  if (props.issueCount > 0) {
+  if (issueCountValue.value > 0) {
     cards.push({
       key: 'issue-loop',
       tag: '写作',
       cta: '回到写作',
       title: '先处理当前问题单',
       description: '当前章节已有问题单，适合先回正文闭环，再继续任务和结构判断。',
-      meta: `${props.issueCount} 个问题待处理`,
+      meta: `${issueCountValue.value} 个问题待处理`,
       onClick: () => getActionItem('settings-open-writing')?.onClick?.()
+    })
+  }
+
+  if (!props.contextSnapshot?.chapterTitle) {
+    cards.push({
+      key: 'context-loop',
+      tag: '上下文',
+      cta: '查看章节',
+      title: '先补足当前章节上下文',
+      description: '只有先进入具体章节，任务回流、问题定位和结构诊断才会落到同一对象上。',
+      meta: novelTitle.value,
+      onClick: () => getActionItem('settings-open-chapters')?.onClick?.()
     })
   }
 
@@ -396,6 +491,24 @@ const decisionCards = computed(() => {
 
   return cards.slice(0, 3)
 })
+
+const runSettingsStateAction = (key) => {
+  if (key === 'open-tasks') {
+    getActionItem('settings-open-tasks')?.onClick?.()
+    return
+  }
+  if (key === 'open-writing') {
+    getActionItem('settings-open-writing')?.onClick?.()
+    return
+  }
+  if (key === 'open-structure') {
+    getActionItem('settings-open-structure')?.onClick?.()
+    return
+  }
+  if (key === 'open-chapters') {
+    getActionItem('settings-open-chapters')?.onClick?.()
+  }
+}
 </script>
 
 <style scoped>

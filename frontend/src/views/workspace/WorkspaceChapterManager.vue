@@ -42,6 +42,16 @@
       <WorkspaceActionBar :items="workspaceActionItems" />
 
       <WorkspaceInfoBanner :text="modeBannerText" />
+      <WorkspaceStatePanel
+        v-if="chapterStatePanel"
+        :tone="chapterStatePanel.tone"
+        :tag="chapterStatePanel.tag"
+        :title="chapterStatePanel.title"
+        :description="chapterStatePanel.description"
+        :caption="chapterStatePanel.caption"
+        :actions="chapterStatePanel.actions"
+        @action="runChapterStateAction"
+      />
 
       <WorkspaceInfoBanner
         v-if="focusedChapter"
@@ -107,7 +117,7 @@
             <template #default="{ row }">
               <el-button size="small" @click.stop="focusChapter(row)">聚焦</el-button>
               <el-button size="small" type="primary" plain @click.stop="workspace.openChapter(row.id)">进入写作</el-button>
-              <el-button size="small" text @click.stop="openLegacyEditor(row.id)">旧版</el-button>
+              <el-button size="small" text @click.stop="openChapterWorkspace(row.id)">章节编辑</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -161,9 +171,11 @@ import WorkspaceInfoBanner from '@/components/workspace/WorkspaceInfoBanner.vue'
 import WorkspacePageHero from '@/components/workspace/WorkspacePageHero.vue'
 import WorkspaceSelectableChips from '@/components/workspace/WorkspaceSelectableChips.vue'
 import WorkspaceSectionHeader from '@/components/workspace/WorkspaceSectionHeader.vue'
+import WorkspaceStatePanel from '@/components/workspace/WorkspaceStatePanel.vue'
 import WorkspaceSummaryChips from '@/components/workspace/WorkspaceSummaryChips.vue'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { buildWorkspaceResultLabel } from './workspaceTaskModel'
 
 const router = useRouter()
 const workspace = useWorkspaceContext()
@@ -323,6 +335,73 @@ const focusedChapterId = computed(() => {
 const focusedChapter = computed(() => (
   normalizedChapters.value.find((chapter) => chapter.id === focusedChapterId.value) || null
 ))
+const taskCenterSnapshot = computed(() => workspaceStore.taskCenterSnapshot || { tasks: [], failedCount: 0 })
+const focusedChapterTasks = computed(() => {
+  const chapterId = String(focusedChapter.value?.id || '')
+  if (!chapterId) return []
+  return (taskCenterSnapshot.value.tasks || []).filter((task) => String(task.chapterId || '') === chapterId)
+})
+const focusedChapterPrimaryTask = computed(() => (
+  focusedChapterTasks.value.find((task) => task.status === 'failed')
+  || focusedChapterTasks.value.find((task) => task.resultType === 'issues')
+  || focusedChapterTasks.value.find((task) => ['candidate', 'diff'].includes(String(task.resultType || '')))
+  || focusedChapterTasks.value[0]
+  || null
+))
+const chapterStatePanel = computed(() => {
+  if (!normalizedChapters.value.length) {
+    return {
+      tone: 'warning',
+      tag: '空状态',
+      title: '当前还没有章节对象',
+      description: '建议先创建第一章，之后再通过写作、任务和结构页继续闭环。',
+      caption: '章节为空',
+      actions: [
+        { key: 'create-chapter', label: '新建章节', primary: true },
+        { key: 'open-overview', label: '回到概览' }
+      ]
+    }
+  }
+  if (!focusedChapter.value && normalizedChapters.value.length) {
+    return {
+      tone: 'info',
+      tag: '聚焦',
+      title: '当前还没有聚焦章节',
+      description: '先聚焦一个章节，再决定进入写作、结构或查看任务闭环。',
+      caption: viewMode.value === 'list' ? '列表视图' : '看板视图',
+      actions: [
+        { key: 'focus-latest', label: '聚焦最近章节', primary: true },
+        { key: 'open-writing', label: '进入写作' }
+      ]
+    }
+  }
+  if (focusedChapter.value && focusedChapterPrimaryTask.value) {
+    const task = focusedChapterPrimaryTask.value
+    const resultLabel = task.resultType
+      ? buildWorkspaceResultLabel(task.resultType, { noneLabel: '章节任务', rewriteVariant: 'draft' })
+      : '章节任务'
+    return {
+      tone: task.status === 'failed' ? 'danger' : 'info',
+      tag: task.status === 'failed' ? '恢复' : '结果',
+      title: task.status === 'failed'
+        ? `当前章节存在失败任务：${task.label}`
+        : `当前章节最近回流：${resultLabel}`,
+      description: task.status === 'failed'
+        ? '建议先恢复这个章节关联任务，再继续正文或结构推进。'
+        : '可以直接跳转到当前章节的对应结果区域，继续完成写作闭环。',
+      caption: focusedChapter.value.title,
+      actions: [
+        {
+          key: task.status === 'failed' ? 'open-failed-tasks' : 'open-focused-result',
+          label: task.status === 'failed' ? '看失败任务' : `查看${resultLabel}`,
+          primary: true
+        },
+        { key: 'open-writing', label: '进入写作' }
+      ]
+    }
+  }
+  return null
+})
 const focusedChapterNextStep = computed(() => {
   const status = focusedChapter.value?.normalizedStatus || 'draft'
   const map = {
@@ -377,6 +456,39 @@ const focusChapter = (chapter) => {
     id: chapter.id,
     title: chapter.title || ''
   }, { openView: false })
+}
+
+const runChapterStateAction = (key) => {
+  if (key === 'create-chapter') {
+    workspace.createChapter?.()
+    return
+  }
+  if (key === 'open-overview') {
+    workspace.openSection?.('overview')
+    return
+  }
+  if (key === 'focus-latest' && sortedByUpdated.value[0]) {
+    focusChapter(sortedByUpdated.value[0])
+    return
+  }
+  if (key === 'open-failed-tasks') {
+    workspaceStore.focusTaskFilter('failed', { openView: false })
+    workspace.openSection?.('tasks')
+    return
+  }
+  if (key === 'open-focused-result' && focusedChapterPrimaryTask.value) {
+    workspace.executeWorkspaceAction?.({
+      type: 'writing-result',
+      chapterId: focusedChapter.value?.id || '',
+      resultType: focusedChapterPrimaryTask.value.resultType || 'candidate',
+      taskId: focusedChapterPrimaryTask.value.id,
+      title: focusedChapterPrimaryTask.value.label || focusedChapter.value?.title || ''
+    })
+    return
+  }
+  if (key === 'open-writing' && sortedByUpdated.value[0]) {
+    workspace.openChapter?.((focusedChapter.value?.id || sortedByUpdated.value[0].id))
+  }
 }
 
 const getRowClassName = ({ row }) => (
@@ -447,8 +559,14 @@ const formatDateShort = (value) => {
   }
 }
 
-const openLegacyEditor = (chapterId) => {
-  router.push(`/novel/${workspace.state.novel?.id}/chapters/${chapterId}/edit`)
+const openChapterWorkspace = (chapterId) => {
+  router.push({
+    path: `/novel/${workspace.state.novel?.id}`,
+    query: {
+      section: 'writing',
+      chapterId
+    }
+  })
 }
 
 watch(

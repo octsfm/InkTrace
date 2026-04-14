@@ -9,10 +9,12 @@ import WorkspaceChapterManager from '../WorkspaceChapterManager.vue'
 const mockScrollIntoView = vi.fn()
 const mockOpenSection = vi.fn()
 const mockOpenChapter = vi.fn()
+const mockRouterPush = vi.fn()
+const mockExecuteWorkspaceAction = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(() => ({
-    push: vi.fn()
+    push: mockRouterPush
   }))
 }))
 
@@ -27,7 +29,8 @@ vi.mock('@/composables/useWorkspaceContext', () => ({
     },
     createChapter: vi.fn(),
     openChapter: mockOpenChapter,
-    openSection: mockOpenSection
+    openSection: mockOpenSection,
+    executeWorkspaceAction: mockExecuteWorkspaceAction
   }))
 }))
 
@@ -39,6 +42,8 @@ describe('WorkspaceChapterManager.vue', () => {
     mockScrollIntoView.mockClear()
     mockOpenSection.mockClear()
     mockOpenChapter.mockClear()
+    mockRouterPush.mockClear()
+    mockExecuteWorkspaceAction.mockClear()
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: mockScrollIntoView
@@ -53,6 +58,18 @@ describe('WorkspaceChapterManager.vue', () => {
       type: 'chapter',
       id: 'ch-2',
       title: '风暴将至'
+    }
+    workspaceStore.taskCenterSnapshot = {
+      tasks: [
+        {
+          id: 'task-ch-2',
+          label: 'AI 审查',
+          status: 'completed',
+          chapterId: 'ch-2',
+          resultType: 'issues'
+        }
+      ],
+      failedCount: 0
     }
 
     wrapper = mount(WorkspaceChapterManager, {
@@ -79,6 +96,8 @@ describe('WorkspaceChapterManager.vue', () => {
     expect(wrapper.text()).toContain('已校验 (1)')
     expect(wrapper.text()).toContain('下一步建议')
     expect(wrapper.text()).toContain('处理审查结果')
+    expect(wrapper.text()).toContain('当前章节最近回流：问题结果')
+    expect(wrapper.text()).toContain('查看问题结果')
   })
 
   it('highlights the focused chapter in kanban mode and scrolls into view', async () => {
@@ -116,5 +135,29 @@ describe('WorkspaceChapterManager.vue', () => {
     const structureChip = wrapper.findAll('.workspace-action-chip').find((node) => node.text().includes('查看结构'))
     await structureChip.trigger('click')
     expect(mockOpenSection).toHaveBeenCalledWith('structure')
+  })
+
+  it('routes chapter edit action back into workspace writing view', () => {
+    wrapper.vm.openChapterWorkspace('ch-2')
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      path: '/novel/novel-1',
+      query: {
+        section: 'writing',
+        chapterId: 'ch-2'
+      }
+    })
+  })
+
+  it('routes focused chapter result back into writing-result flow', async () => {
+    const resultButton = wrapper.findAll('button').find((node) => node.text().includes('查看问题结果'))
+    await resultButton.trigger('click')
+
+    expect(mockExecuteWorkspaceAction).toHaveBeenCalledWith({
+      type: 'writing-result',
+      chapterId: 'ch-2',
+      resultType: 'issues',
+      taskId: 'task-ch-2',
+      title: 'AI 审查'
+    })
   })
 })

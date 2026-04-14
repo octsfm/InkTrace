@@ -25,6 +25,16 @@
       <WorkspaceActionBar :items="workspaceActionItems" />
 
       <WorkspaceInfoBanner v-if="focusBannerText" :text="focusBannerText" tone="primary" />
+      <WorkspaceStatePanel
+        v-if="taskStatePanel"
+        :tone="taskStatePanel.tone"
+        :tag="taskStatePanel.tag"
+        :title="taskStatePanel.title"
+        :description="taskStatePanel.description"
+        :caption="taskStatePanel.caption"
+        :actions="taskStatePanel.actions"
+        @action="runTaskStateAction"
+      />
 
       <div class="status-grid">
         <article
@@ -96,7 +106,7 @@
             </div>
             <div class="recommendation-title">{{ item.title }}</div>
             <p class="recommendation-desc">{{ item.description }}</p>
-            <el-button size="small" type="primary" plain @click="runTaskAction({ action: item.action })">
+            <el-button size="small" type="primary" plain @click="runTaskAction({ ...item, action: item.action })">
               {{ item.actionLabel }}
             </el-button>
           </article>
@@ -139,6 +149,7 @@
               </div>
               <div class="history-chip-row">
                 <span class="history-chip type">{{ task.typeLabel }}</span>
+                <span v-if="task.resultTypeLabel" class="history-chip result">{{ task.resultTypeLabel }}</span>
                 <span class="history-chip">{{ task.targetLabel }}</span>
               </div>
               <p class="history-desc">{{ task.description }}</p>
@@ -213,7 +224,7 @@
             </span>
           </div>
           <div class="timeline-footer">
-            <span>{{ item.meta }}</span>
+            <span>{{ item.resultTypeLabel ? `${item.resultTypeLabel} · ${item.meta}` : item.meta }}</span>
             <el-button v-if="item.actionLabel" size="small" plain @click="runTaskAction(item)">
               {{ item.actionLabel }}
             </el-button>
@@ -237,6 +248,7 @@ import WorkspaceInfoBanner from '@/components/workspace/WorkspaceInfoBanner.vue'
 import WorkspacePageHero from '@/components/workspace/WorkspacePageHero.vue'
 import WorkspaceSelectableChips from '@/components/workspace/WorkspaceSelectableChips.vue'
 import WorkspaceSectionHeader from '@/components/workspace/WorkspaceSectionHeader.vue'
+import WorkspaceStatePanel from '@/components/workspace/WorkspaceStatePanel.vue'
 import WorkspaceSummaryChips from '@/components/workspace/WorkspaceSummaryChips.vue'
 import { useWorkspaceContext } from '@/composables/useWorkspaceContext'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -333,6 +345,50 @@ const heroChipItems = computed(() => ([
   { label: '当前状态', value: props.statusText },
   { label: '最近进度', value: props.progressText }
 ]))
+const taskStatePanel = computed(() => {
+  const hasTasks = Array.isArray(props.taskCards) && props.taskCards.length > 0
+  const organizeStatus = String(workspace.state.organizeProgress?.status || '').trim()
+  if (!hasTasks && !organizeStatus) {
+    return {
+      tone: 'info',
+      tag: '空状态',
+      title: '当前还没有可展示的任务动态',
+      description: '适合先回到写作或结构页继续推进；当整理、审查或 AI 任务开始后，这里会形成统一恢复中心。',
+      caption: '任务中心',
+      actions: [
+        { key: 'open-writing', label: '回到写作', primary: true },
+        { key: 'open-structure', label: '查看结构' }
+      ]
+    }
+  }
+  if (props.statusText === '整理失败' || props.statusText === '失败') {
+    return {
+      tone: 'danger',
+      tag: '恢复',
+      title: '最近一次整理失败',
+      description: props.statusHint || '建议先恢复整理任务，再继续处理章节或结构工作。',
+      caption: '整理异常',
+      actions: [
+        { key: 'retry-organize', label: '重新整理', primary: true },
+        { key: 'focus-failed', label: '看失败任务' }
+      ]
+    }
+  }
+  if (props.statusText === '整理已暂停' || props.statusText === '已暂停') {
+    return {
+      tone: 'warning',
+      tag: '恢复',
+      title: '整理任务当前已暂停',
+      description: '你可以先恢复任务，或保持暂停状态先回到对象页处理。',
+      caption: '任务暂停',
+      actions: [
+        { key: 'resume-organize', label: '恢复任务', primary: true },
+        { key: 'open-writing', label: '回到写作' }
+      ]
+    }
+  }
+  return null
+})
 
 const getStatusCardClass = (status) => {
   if (status === '失败') return 'is-error'
@@ -450,6 +506,29 @@ const cancelOrganize = async () => {
   })
 }
 
+const runTaskStateAction = async (key) => {
+  if (key === 'retry-organize') {
+    await retryOrganize()
+    return
+  }
+  if (key === 'resume-organize') {
+    await resumeOrganize()
+    return
+  }
+  if (key === 'focus-failed') {
+    workspaceStore.focusTaskFilter('failed')
+    workspace.openSection?.('tasks')
+    return
+  }
+  if (key === 'open-writing') {
+    workspace.openSection?.('writing')
+    return
+  }
+  if (key === 'open-structure') {
+    workspace.openSection?.('structure')
+  }
+}
+
 const runTaskAction = async (task) => {
   focusTask(task)
 
@@ -460,6 +539,17 @@ const runTaskAction = async (task) => {
 
   if (task.action?.type === 'chapter' && task.action.chapterId) {
     await workspace.openChapter?.(task.action.chapterId, 'writing')
+    return
+  }
+
+  if (task.action?.type === 'writing-result') {
+    await workspace.executeWorkspaceAction?.({
+      type: 'writing-result',
+      chapterId: task.action.chapterId,
+      resultType: task.action.resultType,
+      taskId: task.action.taskId || task.id,
+      title: task.title
+    })
     return
   }
 
