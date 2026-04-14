@@ -12,6 +12,35 @@ const mockDispatch = vi.fn()
 const mockSetMeta = vi.fn()
 const mockTransaction = { meta: {} }
 const mockScrollIntoView = vi.fn()
+let lastEditorOptions = null
+const mockEditorInstance = {
+  commands: {
+    setContent: mockSetContent,
+    focus: mockFocus,
+    setTextSelection: mockSetTextSelection
+  },
+  getText: vi.fn(() => 'test content'),
+  state: {
+    selection: {
+      empty: true,
+      from: 0,
+      to: 0
+    },
+    tr: {
+      setMeta: mockSetMeta
+    },
+    doc: {
+      textBetween: vi.fn(() => ''),
+      descendants: (callback) => {
+        callback({ isText: true, text: 'test content' }, 0)
+      }
+    }
+  },
+  view: {
+    dispatch: mockDispatch
+  },
+  destroy: vi.fn()
+}
 const mockWorkspaceContext = {
   state: {
     editor: {
@@ -61,30 +90,16 @@ vi.mock('vue-router', () => ({
 // Mock TipTap
 vi.mock('@tiptap/vue-3', () => ({
   EditorContent: { template: '<div class="mock-editor-content"></div>' },
-  useEditor: vi.fn(() => ({
-    value: {
-      commands: {
-        setContent: mockSetContent,
-        focus: mockFocus,
-        setTextSelection: mockSetTextSelection
-      },
-      getText: vi.fn(() => 'test content'),
-      state: {
-        tr: {
-          setMeta: mockSetMeta
-        },
-        doc: {
-          descendants: (callback) => {
-            callback({ isText: true, text: 'test content' }, 0)
-          }
-        }
-      },
-      view: {
-        dispatch: mockDispatch
-      },
-      destroy: vi.fn()
-    }
-  }))
+  useEditor: vi.fn((options) => {
+    lastEditorOptions = options
+    return { value: mockEditorInstance }
+  })
+}))
+
+vi.mock('@tiptap/vue-3/menus', () => ({
+  BubbleMenu: {
+    template: '<div class="mock-bubble-menu"><slot /></div>'
+  }
 }))
 
 // Mock composable
@@ -102,6 +117,10 @@ describe('WorkspaceWritingStudio.vue', () => {
     mockDispatch.mockClear()
     mockSetMeta.mockClear()
     mockScrollIntoView.mockClear()
+    lastEditorOptions = null
+    mockEditorInstance.state.selection = { empty: true, from: 0, to: 0 }
+    mockEditorInstance.state.doc.textBetween.mockReset()
+    mockEditorInstance.state.doc.textBetween.mockReturnValue('')
     mockSetMeta.mockImplementation((key, payload) => {
       mockTransaction.meta = { key, payload }
       return mockTransaction
@@ -219,6 +238,113 @@ describe('WorkspaceWritingStudio.vue', () => {
     expect(wrapper.text()).toContain('最近回流：候选稿')
     expect(wrapper.text()).toContain('结果状态')
     expect(wrapper.text()).toContain('候选稿 · 待处理')
+  })
+
+  it('shows a real selection bubble and seeds copilot draft from selected text', async () => {
+    const workspaceStore = useWorkspaceStore()
+    mockEditorInstance.state.selection = {
+      empty: false,
+      from: 1,
+      to: 6
+    }
+    mockEditorInstance.state.doc.textBetween.mockReturnValue('这是一段选中的正文')
+
+    lastEditorOptions.onSelectionUpdate({ editor: mockEditorInstance })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('解释片段')
+    expect(wrapper.text()).toContain('改写片段')
+    expect(wrapper.text()).toContain('审查片段')
+
+    const rewriteButton = wrapper.findAll('button').find((node) => node.text().includes('改写片段'))
+    await rewriteButton.trigger('click')
+
+    expect(workspaceStore.isCopilotOpen).toBe(true)
+    expect(workspaceStore.currentCopilotTab).toBe('chat')
+    expect(workspaceStore.copilotChatDraft).toContain('这是一段选中的正文')
+    expect(workspaceStore.copilotChatDraft).toContain('改写方案')
+  })
+
+  it('renders an inline candidate block inside the editor area', async () => {
+    mockWorkspaceContext.state.editor.chapter.content = '原始正文第一段。'
+    mockWorkspaceContext.state.editor.structuralDraft = {
+      title: 'Chapter 1',
+      content: '这是新增续写内容。',
+      full_content: '原始正文第一段。\n这是新增续写内容。',
+      preview_mode: 'delta'
+    }
+    mockWorkspaceContext.state.editor.resultState = {
+      latestTaskId: 'task-2',
+      latestAction: 'continue',
+      latestResultType: 'candidate',
+      latestDraftType: 'structural',
+      lastDecision: 'pending',
+      lastUpdatedAt: new Date().toISOString(),
+      latestIssueCount: 0,
+      lastError: ''
+    }
+
+    wrapper = mount(WorkspaceWritingStudio, {
+      global: {
+        plugins: [createPinia()],
+        stubs: [
+          'el-button', 'el-skeleton', 'el-empty', 'el-icon', 'el-tooltip',
+          'el-card', 'el-tag', 'el-alert', 'el-tabs', 'el-tab-pane',
+          'el-descriptions', 'el-descriptions-item', 'el-collapse', 'el-collapse-item'
+        ],
+        directives: { loading: () => {} },
+        mocks: {
+          $route: { query: { chapterId: '1' } },
+          $router: { push: vi.fn() }
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('行内候选块')
+    expect(wrapper.text()).toContain('这是新增续写内容。')
+    expect(wrapper.text()).toContain('插入正文末尾')
+  })
+
+  it('renders an inline diff block for detemplated drafts', async () => {
+    mockWorkspaceContext.state.editor.chapter.content = '原始正文第一段。\n原始正文第二段。'
+    mockWorkspaceContext.state.editor.detemplatedDraft = {
+      title: 'Chapter 1',
+      content: '改写后第一段。\n改写后第二段。',
+      full_content: '改写后第一段。\n改写后第二段。',
+      preview_mode: 'full',
+      display_fallback_to_structural: false
+    }
+    mockWorkspaceContext.state.editor.resultState = {
+      latestTaskId: 'task-3',
+      latestAction: 'rewrite',
+      latestResultType: 'diff',
+      latestDraftType: 'detemplated',
+      lastDecision: 'pending',
+      lastUpdatedAt: new Date().toISOString(),
+      latestIssueCount: 0,
+      lastError: ''
+    }
+
+    wrapper = mount(WorkspaceWritingStudio, {
+      global: {
+        plugins: [createPinia()],
+        stubs: [
+          'el-button', 'el-skeleton', 'el-empty', 'el-icon', 'el-tooltip',
+          'el-card', 'el-tag', 'el-alert', 'el-tabs', 'el-tab-pane',
+          'el-descriptions', 'el-descriptions-item', 'el-collapse', 'el-collapse-item'
+        ],
+        directives: { loading: () => {} },
+        mocks: {
+          $route: { query: { chapterId: '1' } },
+          $router: { push: vi.fn() }
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('行内改写对照')
+    expect(wrapper.text()).toContain('原正文')
+    expect(wrapper.text()).toContain('改写结果')
+    expect(wrapper.text()).toContain('改写后第一段。')
   })
 
   it('switches into draft result focus when workspace focuses a writing result object', async () => {

@@ -256,4 +256,73 @@ describe('WorkspaceCopilotPanel.vue', () => {
     expect(wrapper.text()).toContain('父层推荐问题')
     expect(wrapper.text()).toContain('父层动作卡')
   })
+
+  it('renders dedicated inspire items instead of plain suggested actions', async () => {
+    const wrapper = mount(WorkspaceCopilotPanel, {
+      props: {
+        modelValue: 'inspire',
+        currentView: 'writing',
+        currentObject: {
+          type: 'writing-result',
+          id: 'ch-1::issues',
+          title: '问题结果'
+        },
+        currentChapterTitle: '风暴将至',
+        activeArcs: [],
+        memoryView: {},
+        organizeProgress: {},
+        suggestedActions: [],
+        inspireItems: [
+          {
+            key: 'inspire-1',
+            tag: '修复',
+            focus: '问题结果',
+            title: '先规划修复顺序',
+            description: '先排清优先级再回正文。',
+            rationale: '问题结果更适合先排序。',
+            prompt: '请给我问题修复优先级。',
+            cta: '查看结果',
+            action: { type: 'writing-result', chapterId: 'ch-1', resultType: 'issues' }
+          }
+        ]
+      },
+      global: {
+        stubs: ['el-button', 'el-icon', 'el-tag']
+      }
+    })
+
+    expect(wrapper.text()).toContain('先规划修复顺序')
+    expect(wrapper.text()).toContain('问题结果')
+    expect(wrapper.text()).toContain('问题结果更适合先排序')
+
+    const injectButton = wrapper.findAll('.inspire-card .prompt-action-button').find((node) => node.text().includes('注入灵感'))
+    await injectButton.trigger('click')
+    expect(wrapper.emitted('update:chatDraft')).toBeTruthy()
+
+    const openButton = wrapper.findAll('.inspire-card .prompt-action-button').find((node) => node.text().includes('查看结果'))
+    await openButton.trigger('click')
+    expect(wrapper.emitted('trigger')).toBeTruthy()
+  })
+
+  it('shows loading placeholder when inspire data is pending', () => {
+    const wrapper = mount(WorkspaceCopilotPanel, {
+      props: {
+        modelValue: 'inspire',
+        currentView: 'overview',
+        currentObject: null,
+        currentChapterTitle: '',
+        activeArcs: [],
+        memoryView: {},
+        organizeProgress: {},
+        suggestedActions: [],
+        inspireItems: [],
+        inspirePending: true
+      },
+      global: {
+        stubs: ['el-button', 'el-icon', 'el-tag']
+      }
+    })
+
+    expect(wrapper.text()).toContain('正在整理当前对象的灵感推荐')
+  })
 })

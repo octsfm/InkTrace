@@ -85,8 +85,42 @@
               <strong>当前定位问题：</strong>{{ activeIssueTitle }}
               <span v-if="activeIssueDetail"> · {{ activeIssueDetail }}</span>
             </div>
+            <WorkspaceInlineResultBlock
+              v-if="inlineResultBlock"
+              :result-type="inlineResultBlock.resultType"
+              :result-label="inlineResultBlock.resultLabel"
+              :title="inlineResultBlock.title"
+              :hint="inlineResultBlock.hint"
+              :description="inlineResultBlock.description"
+              :original-text="inlineResultBlock.originalText"
+              :result-text="inlineResultBlock.resultText"
+              :actions="inlineResultBlock.actions"
+              @action="handleInlineResultAction"
+            />
             <div class="editor-shell" :class="{ 'editor-shell-issue-focus': activeIssueIndex >= 0 }">
               <div class="editor-paper">
+                <bubble-menu
+                  v-if="editor && hasSelectionBubble"
+                  class="selection-bubble-menu"
+                  :editor="editor"
+                  plugin-key="writing-selection-bubble"
+                  :should-show="shouldShowSelectionBubble"
+                >
+                  <div class="selection-bubble-content">
+                    <div class="selection-bubble-preview">{{ selectedTextPreview }}</div>
+                    <div class="selection-bubble-actions">
+                      <button type="button" class="selection-bubble-action" @click="sendSelectionToCopilot('explain')">
+                        解释片段
+                      </button>
+                      <button type="button" class="selection-bubble-action" @click="sendSelectionToCopilot('rewrite')">
+                        改写片段
+                      </button>
+                      <button type="button" class="selection-bubble-action" @click="sendSelectionToCopilot('audit')">
+                        审查片段
+                      </button>
+                    </div>
+                  </div>
+                </bubble-menu>
                 <editor-content :editor="editor" class="editor-surface" />
               </div>
             </div>
@@ -199,11 +233,13 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { ElMessage } from 'element-plus'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
+import { BubbleMenu } from '@tiptap/vue-3/menus'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { FullScreen } from '@element-plus/icons-vue'
 
 import WorkspaceActionBar from '@/components/workspace/WorkspaceActionBar.vue'
+import WorkspaceInlineResultBlock from '@/components/workspace/WorkspaceInlineResultBlock.vue'
 import WorkspaceSummaryChips from '@/components/workspace/WorkspaceSummaryChips.vue'
 import DraftPreviewTabs from '@/components/story/DraftPreviewTabs.vue'
 import ChapterTaskCard from '@/components/story/ChapterTaskCard.vue'
@@ -262,6 +298,8 @@ const editorState = workspace.state.editor
 const inspectorRef = ref(null)
 const draftPreviewSectionRef = ref(null)
 const issuePanelSectionRef = ref(null)
+const selectedText = ref('')
+const selectedTextRange = ref({ from: 0, to: 0 })
 
 const selectedChapterId = computed(() => String(route.query.chapterId || workspace.currentChapterId.value || ''))
 
@@ -501,6 +539,120 @@ const writingObjectActions = computed(() => {
   return actions
 })
 
+const inlineResultBlock = computed(() => {
+  const chapterTitle = editorState.chapter?.title || '当前章节'
+  const currentContent = String(editorState.chapter?.content || '')
+
+  if (editorState.detemplatedDraft && resultState.value.latestResultType === 'diff') {
+    return {
+      resultType: 'diff',
+      resultLabel: buildWorkspaceResultLabel('diff', { rewriteVariant: 'draft' }),
+      title: `行内改写对照 · ${chapterTitle}`,
+      hint: '正文区内对照',
+      description: '这里直接对比当前正文与改写结果，先判断是否值得采纳，再决定覆盖、保存或跳到右侧结果区。',
+      originalText: currentContent,
+      resultText: editorState.detemplatedDraft.full_content || editorState.detemplatedDraft.content || '',
+      actions: [
+        { key: 'apply-detemplated-replace', label: '覆盖正文', primary: true },
+        { key: 'save-detemplated', label: '保存草稿' },
+        { key: 'open-draft-panel', label: '查看右侧结果区' }
+      ]
+    }
+  }
+
+  if (editorState.structuralDraft && resultState.value.latestResultType === 'candidate') {
+    return {
+      resultType: 'candidate',
+      resultLabel: buildWorkspaceResultLabel('candidate'),
+      title: `行内候选块 · ${chapterTitle}`,
+      hint: editorState.structuralDraft.preview_mode === 'delta' ? '新增续写段' : '完整候选稿',
+      description: editorState.structuralDraft.preview_mode === 'delta'
+        ? '当前候选块展示新增续写段，可直接并入正文，也可继续在右侧结果区做更细操作。'
+        : '当前候选块展示完整候选稿，可先在正文区快速判断是否值得采用。',
+      originalText: currentContent,
+      resultText: editorState.structuralDraft.content || '',
+      actions: [
+        { key: 'apply-structural-append', label: '插入正文末尾', primary: true },
+        { key: 'save-structural', label: '保存草稿' },
+        { key: 'open-draft-panel', label: '查看右侧结果区' }
+      ]
+    }
+  }
+
+  return null
+})
+
+const hasSelectionBubble = computed(() => Boolean(selectedText.value) && !editorState.aiRunning)
+const selectedTextPreview = computed(() => {
+  const text = String(selectedText.value || '').trim()
+  if (!text) return ''
+  return text.length > 60 ? `${text.slice(0, 60)}...` : text
+})
+
+const clearSelectionContext = () => {
+  selectedText.value = ''
+  selectedTextRange.value = { from: 0, to: 0 }
+}
+
+const syncSelectionContext = (nextEditor) => {
+  const selection = nextEditor?.state?.selection
+  const textBetween = nextEditor?.state?.doc?.textBetween
+  if (!selection || typeof textBetween !== 'function' || selection.empty) {
+    clearSelectionContext()
+    return
+  }
+
+  const from = Number(selection.from || 0)
+  const to = Number(selection.to || 0)
+  if (!from || !to || to <= from) {
+    clearSelectionContext()
+    return
+  }
+
+  const nextSelectedText = normalizeEditorText(textBetween(from, to, '\n', '\n')).trim()
+  if (!nextSelectedText) {
+    clearSelectionContext()
+    return
+  }
+
+  selectedText.value = nextSelectedText
+  selectedTextRange.value = { from, to }
+}
+
+const shouldShowSelectionBubble = ({ editor: nextEditor, state }) => {
+  if (editorState.aiRunning) return false
+  if (!state?.selection || state.selection.empty) return false
+  const selected = normalizeEditorText(nextEditor?.state?.doc?.textBetween?.(state.selection.from, state.selection.to, '\n', '\n') || '').trim()
+  return Boolean(selected)
+}
+
+const buildSelectionPrompt = (mode) => {
+  const chapterTitle = editorState.chapter?.title || '当前章节'
+  const selectionBlock = `选中文本：\n「${selectedText.value}」`
+
+  if (mode === 'rewrite') {
+    return `请作为小说写作助手，围绕章节《${chapterTitle}》中的这段正文给出 2 个更自然的改写方案，并说明各自适合保留的语气与信息重点。\n\n${selectionBlock}`
+  }
+
+  if (mode === 'audit') {
+    return `请作为审查助手，检查章节《${chapterTitle}》中的这段正文是否存在一致性、节奏、信息落点或人物状态问题，并按优先级给出修复建议。\n\n${selectionBlock}`
+  }
+
+  return `请解释章节《${chapterTitle}》中的这段正文当前承担的剧情、情绪和信息功能，并指出如果继续往下写，最自然的承接方向是什么。\n\n${selectionBlock}`
+}
+
+const sendSelectionToCopilot = (mode) => {
+  if (!selectedText.value) {
+    ElMessage.info('请先选中一段正文')
+    return
+  }
+
+  workspaceStore.toggleCopilot(true)
+  workspaceStore.setCopilotTab('chat')
+  workspaceStore.setCopilotChatDraft(buildSelectionPrompt(mode))
+  ElMessage.success('已将选中文本送入 Copilot')
+}
+
 const editor = useEditor({
   extensions: [
     StarterKit,
@@ -521,6 +673,9 @@ const editor = useEditor({
       editorState.chapter.content = nextContent
       workspace.state.markEditorDirty()
     }
+  },
+  onSelectionUpdate: ({ editor: nextEditor }) => {
+    syncSelectionContext(nextEditor)
   }
 })
 
@@ -531,6 +686,7 @@ const syncEditorFromStore = (content = '') => {
   if (currentContent === nextContent) return
 
   editor.value.commands.setContent(plainTextToHtml(nextContent), false)
+  clearSelectionContext()
 }
 
 const saveChapter = async () => {
@@ -797,6 +953,28 @@ const handleWritingAction = async (payload) => {
   await handleObjectAction(payload)
 }
 
+const handleInlineResultAction = async (key) => {
+  if (key === 'apply-structural-append') {
+    handleApplyDraft({ type: 'structural', mode: 'append' })
+    return
+  }
+  if (key === 'apply-detemplated-replace') {
+    handleApplyDraft({ type: 'detemplated', mode: 'replace' })
+    return
+  }
+  if (key === 'save-structural') {
+    await handleSaveDraft({ type: 'structural' })
+    return
+  }
+  if (key === 'save-detemplated') {
+    await handleSaveDraft({ type: 'detemplated' })
+    return
+  }
+  if (key === 'open-draft-panel') {
+    await scrollInspectorTo(draftPreviewSectionRef)
+  }
+}
+
 const revealFocusedWorkspaceResult = async () => {
   const object = workspaceStore.currentObject
   if (object?.type !== 'writing-result') {
@@ -855,6 +1033,7 @@ watch(
   () => [selectedChapterId.value, workspace.state.projectId],
   ([chapterId]) => {
     clearIssueHighlight()
+    clearSelectionContext()
     void workspace.loadEditorChapter(chapterId)
   },
   { immediate: true }
@@ -1158,6 +1337,53 @@ onBeforeUnmount(() => {
   background-color: #FFFFFF;
   border: 1px solid #EEF2F7;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  position: relative;
+}
+
+.selection-bubble-menu {
+  display: inline-flex;
+  max-width: 320px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(17, 24, 39, 0.96);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.24);
+  color: #F9FAFB;
+}
+
+.selection-bubble-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.selection-bubble-preview {
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(249, 250, 251, 0.88);
+}
+
+.selection-bubble-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.selection-bubble-action {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #FFFFFF;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.selection-bubble-action:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
 }
 
 .editor-surface :deep(.tiptap-editor) {

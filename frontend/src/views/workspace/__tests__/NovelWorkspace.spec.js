@@ -13,6 +13,20 @@ const mockRoute = { params: { id: '1' }, query: {} }
 
 const mockMemoryViewV2 = vi.fn(async () => ({ current_state: '真实上下文：角色冲突升级', main_plot_lines: ['主线必须继续升级'] }))
 const mockContinuationContextV2 = vi.fn(async () => ({ last_chapter_tail: '上一章结尾停在冲突升级前夕。', relevant_foreshadowing: ['神秘来信'] }))
+const mockBranchesV2 = vi.fn(async () => ({
+  branches: [
+    {
+      id: 'branch-1',
+      title: '冲突升级线',
+      summary: '主角提前与反派正面碰撞。',
+      core_conflict: '信息暴露过早',
+      key_progressions: ['冲突升级'],
+      related_characters: ['主角'],
+      consistency_note: '注意前文铺垫',
+      risk_note: '节奏可能过快'
+    }
+  ]
+}))
 
 vi.mock('@/api', () => ({
   novelApi: {
@@ -21,7 +35,8 @@ vi.mock('@/api', () => ({
   },
   projectApi: {
     memoryViewV2: (...args) => mockMemoryViewV2(...args),
-    continuationContextV2: (...args) => mockContinuationContextV2(...args)
+    continuationContextV2: (...args) => mockContinuationContextV2(...args),
+    branchesV2: (...args) => mockBranchesV2(...args)
   }
 }))
 
@@ -121,6 +136,7 @@ describe('NovelWorkspace.vue', () => {
     mockRoute.query = {}
     mockMemoryViewV2.mockClear()
     mockContinuationContextV2.mockClear()
+    mockBranchesV2.mockClear()
     mountComponent()
   })
 
@@ -425,6 +441,51 @@ describe('NovelWorkspace.vue', () => {
 
     expect(wrapper.vm.copilotChatPrompts[0]).toContain('候选稿')
     expect(wrapper.vm.copilotObjectPromptCards[0].title).toBe('评估候选稿可用性')
+  })
+
+  it('builds dedicated inspire items for writing result objects', async () => {
+    store.currentView = 'writing'
+    store.currentObject = {
+      type: 'writing-result',
+      id: 'chapter-1::issues',
+      chapterId: 'chapter-1',
+      resultType: 'issues',
+      taskId: 'task-1',
+      title: '问题结果'
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.copilotInspireItems[0].title).toContain('修复顺序')
+    expect(wrapper.vm.copilotInspireItems[0].action).toMatchObject({
+      type: 'writing-result',
+      chapterId: 'chapter-1',
+      resultType: 'issues'
+    })
+  })
+
+  it('adds failed task recovery into dedicated inspire items', async () => {
+    store.currentView = 'overview'
+    store.currentObject = null
+    store.taskCenterSnapshot = {
+      tasks: [],
+      failedCount: 2,
+      runningCount: 0,
+      completedCount: 0,
+      auditCount: 1
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.copilotInspireItems.some((item) => item.key === 'inspire-failed-task-recovery')).toBe(true)
+  })
+
+  it('loads remote branch inspire items when inspire tab becomes active', async () => {
+    store.currentCopilotTab = 'inspire'
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(mockBranchesV2).toHaveBeenCalled()
+    expect(wrapper.vm.copilotInspireItems.some((item) => String(item.key).startsWith('remote-branch-'))).toBe(true)
   })
 
   it('builds current object command for structure section objects', async () => {

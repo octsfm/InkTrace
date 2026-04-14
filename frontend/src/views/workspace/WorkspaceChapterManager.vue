@@ -125,19 +125,33 @@
 
       <div v-else class="kanban-view">
         <div class="kanban-columns">
-          <div v-for="col in kanbanColumns" :key="col.status" class="kanban-column">
+          <div
+            v-for="col in kanbanColumns"
+            :key="col.status"
+            class="kanban-column"
+            :class="{ 'kanban-column-drop-active': dragOverStatus === col.status }"
+          >
             <div class="column-header">
               <span class="column-title">{{ col.label }}</span>
               <span class="column-count">{{ getFilteredChaptersByStatus(col.status).length }}</span>
             </div>
-            <div class="column-body">
+            <div
+              class="column-body"
+              @dragover.prevent="handleDragOver(col.status)"
+              @dragenter.prevent="handleDragOver(col.status)"
+              @dragleave="handleDragLeave(col.status)"
+              @drop.prevent="handleDrop(col.status)"
+            >
               <div 
                 v-for="chapter in getFilteredChaptersByStatus(col.status)" 
                 :key="chapter.id" 
                 class="kanban-card"
-                :class="{ focused: focusedChapterId === chapter.id }"
+                :class="{ focused: focusedChapterId === chapter.id, dragging: draggingChapterId === chapter.id }"
                 :ref="(el) => setChapterCardRef(chapter.id, el)"
                 :data-chapter-id="chapter.id"
+                draggable="true"
+                @dragstart="handleDragStart(chapter)"
+                @dragend="handleDragEnd"
                 @click="focusChapter(chapter)"
               >
                 <div class="card-number">第 {{ chapter.chapter_number }} 章</div>
@@ -164,7 +178,9 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import { novelApi } from '@/api'
 import WorkspaceActionBar from '@/components/workspace/WorkspaceActionBar.vue'
 import WorkspaceHeroChips from '@/components/workspace/WorkspaceHeroChips.vue'
 import WorkspaceInfoBanner from '@/components/workspace/WorkspaceInfoBanner.vue'
@@ -185,6 +201,8 @@ const viewMode = ref('list') // 'list' | 'kanban'
 const selectedStatusFilter = ref('all')
 const tableRef = ref(null)
 const chapterCardRefs = ref({})
+const draggingChapterId = ref('')
+const dragOverStatus = ref('')
 const workspaceActionItems = computed(() => ([
   {
     label: '回到概览',
@@ -450,12 +468,82 @@ const setChapterCardRef = (chapterId, el) => {
   chapterCardRefs.value[chapterId] = el
 }
 
+const patchChapterStatusLocally = (chapterId, nextStatus) => {
+  const chapterList = Array.isArray(workspace.state.chapters) ? workspace.state.chapters : []
+  const target = chapterList.find((item) => String(item.id) === String(chapterId))
+  if (!target) return null
+
+  const previousStatus = target.status
+  target.status = nextStatus
+  target.updated_at = new Date().toISOString()
+  return previousStatus
+}
+
+const persistChapterStatus = async (chapterId, nextStatus) => {
+  const novelId = workspace.state.novel?.id
+  if (!novelId || !chapterId) return
+  await novelApi.updateChapter(novelId, chapterId, { status: nextStatus })
+}
+
 const focusChapter = (chapter) => {
   if (!chapter?.id) return
   workspaceStore.focusChapterObject({
     id: chapter.id,
     title: chapter.title || ''
   }, { openView: false })
+}
+
+const handleDragStart = (chapter) => {
+  if (!chapter?.id) return
+  draggingChapterId.value = String(chapter.id)
+}
+
+const handleDragOver = (status) => {
+  dragOverStatus.value = String(status || '')
+}
+
+const handleDragLeave = (status) => {
+  if (dragOverStatus.value === String(status || '')) {
+    dragOverStatus.value = ''
+  }
+}
+
+const handleDragEnd = () => {
+  draggingChapterId.value = ''
+  dragOverStatus.value = ''
+}
+
+const handleDrop = async (status) => {
+  const chapterId = String(draggingChapterId.value || '')
+  const nextStatus = String(status || '')
+  if (!chapterId || !nextStatus) {
+    handleDragEnd()
+    return
+  }
+
+  const chapter = normalizedChapters.value.find((item) => String(item.id) === chapterId) || null
+  if (!chapter || chapter.normalizedStatus === nextStatus) {
+    handleDragEnd()
+    return
+  }
+
+  const previousStatus = patchChapterStatusLocally(chapterId, nextStatus)
+  focusChapter({
+    ...chapter,
+    status: nextStatus,
+    normalizedStatus: nextStatus
+  })
+  handleDragEnd()
+
+  try {
+    await persistChapterStatus(chapterId, nextStatus)
+    ElMessage.success(`已移动到${formatStatus(nextStatus)}`)
+  } catch (error) {
+    if (previousStatus !== null) {
+      patchChapterStatusLocally(chapterId, previousStatus)
+    }
+    ElMessage.error(error?.message || '章节状态更新失败')
+  }
 }
 
 const runChapterStateAction = (key) => {
@@ -780,6 +868,11 @@ watch(
   border: 1px solid #E5E7EB;
 }
 
+.kanban-column-drop-active {
+  border-color: #93C5FD;
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.18);
+}
+
 .column-header {
   display: flex;
   justify-content: space-between;
@@ -810,6 +903,7 @@ watch(
   gap: 12px;
   overflow-y: auto;
   flex: 1;
+  min-height: 220px;
 }
 
 .kanban-empty {
@@ -831,6 +925,11 @@ watch(
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   transition: all 0.2s;
+}
+
+.kanban-card.dragging {
+  opacity: 0.56;
+  transform: rotate(1deg);
 }
 
 .kanban-card:hover {

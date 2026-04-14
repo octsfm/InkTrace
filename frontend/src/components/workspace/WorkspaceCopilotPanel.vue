@@ -247,25 +247,61 @@
 
     <!-- Inspire Tab -->
     <div v-else class="panel-section inspire-section">
-      <div class="inspire-placeholder">
-        <p class="sub-text">这里将主动展示为你生成的：</p>
-        <ul class="suggestion-list">
-          <li>三种可能的剧情分支</li>
-          <li>下一章的写作方案</li>
-          <li>当前段落的改写方向</li>
-        </ul>
+      <div v-if="inspirePending" class="inspire-placeholder">
+        <p class="sub-text">正在整理当前对象的灵感推荐...</p>
       </div>
-      
-      <div
-        v-for="suggestion in suggestedActions"
-        :key="suggestion.key"
-        class="context-card suggestion-card"
-      >
-        <div class="card-title">{{ suggestion.title }}</div>
-        <p class="card-text">{{ suggestion.description }}</p>
-        <el-button type="primary" plain size="small" @click="$emit('trigger', suggestion.action || suggestion.key)">
-          {{ suggestion.cta }}
-        </el-button>
+
+      <div v-if="resolvedInspireItems.length" class="inspire-stream">
+        <article
+          v-for="item in resolvedInspireItems"
+          :key="item.key"
+          class="inspire-card"
+        >
+          <div class="inspire-top">
+            <div>
+              <div class="inspire-tag">{{ item.tag || '灵感' }}</div>
+              <div class="card-title">{{ item.title }}</div>
+            </div>
+            <div v-if="item.focus" class="inspire-focus">{{ item.focus }}</div>
+          </div>
+          <p class="card-text">{{ item.description }}</p>
+          <p v-if="item.rationale" class="inspire-rationale">{{ item.rationale }}</p>
+          <div class="inspire-actions">
+            <button
+              v-if="item.prompt"
+              type="button"
+              class="prompt-action-button"
+              @click="fillPrompt(item.prompt)"
+            >
+              注入灵感
+            </button>
+            <button
+              v-if="item.prompt"
+              type="button"
+              class="prompt-action-button primary"
+              @click="submitPrompt(item.prompt)"
+            >
+              立即发送
+            </button>
+            <button
+              v-if="item.action"
+              type="button"
+              class="prompt-action-button"
+              @click="$emit('trigger', item.action)"
+            >
+              {{ item.cta || '打开对象' }}
+            </button>
+          </div>
+        </article>
+      </div>
+
+      <div v-else class="inspire-placeholder">
+        <p class="sub-text">这里会主动展示围绕当前对象生成的灵感卡：</p>
+        <ul class="suggestion-list">
+          <li>下一章或下一段的推进分支</li>
+          <li>候选稿或改写结果的吸收方向</li>
+          <li>结构、任务、正文之间的切换建议</li>
+        </ul>
       </div>
     </div>
   </aside>
@@ -355,6 +391,14 @@ const props = defineProps({
   suggestedActions: {
     type: Array,
     default: () => []
+  },
+  inspireItems: {
+    type: Array,
+    default: () => []
+  },
+  inspirePending: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -386,6 +430,23 @@ const resolvedChatPrompts = computed(() => (
 const resolvedObjectPromptCards = computed(() => (
   Array.isArray(props.objectPromptCards) && props.objectPromptCards.length ? props.objectPromptCards : objectPromptCards.value
 ))
+const resolvedInspireItems = computed(() => {
+  if (Array.isArray(props.inspireItems) && props.inspireItems.length) {
+    return props.inspireItems
+  }
+
+  return (Array.isArray(props.suggestedActions) ? props.suggestedActions : []).map((item) => ({
+    key: item.key,
+    tag: '建议',
+    title: item.title,
+    focus: '',
+    description: item.description,
+    rationale: '',
+    prompt: '',
+    cta: item.cta,
+    action: item.action || item.key
+  }))
+})
 
 const progressText = computed(() => {
   const status = String(props.organizeProgress?.status || '').trim()
@@ -763,7 +824,8 @@ const clearChatMessages = () => {
 
 .chat-hero-card,
 .chat-suggestion-card,
-.inspire-placeholder {
+.inspire-placeholder,
+.inspire-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -838,6 +900,50 @@ const clearChatMessages = () => {
   font-size: 24px;
   color: #9CA3AF;
   margin-bottom: 4px;
+}
+
+.inspire-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.inspire-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inspire-tag {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9CA3AF;
+}
+
+.inspire-focus {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.inspire-rationale {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #F9FAFB;
+  color: #4B5563;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.inspire-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .suggestion-list {

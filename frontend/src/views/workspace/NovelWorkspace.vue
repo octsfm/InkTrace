@@ -103,6 +103,8 @@
       :story-model-action="copilotStoryModelAction"
       :chat-prompts="copilotChatPrompts"
       :object-prompt-cards="copilotObjectPromptCards"
+      :inspire-items="copilotInspireItems"
+      :inspire-pending="copilotInspirePending"
       :memory-view="state.memoryView"
       :organize-progress="state.organizeProgress"
       :suggested-actions="suggestedActions"
@@ -1425,6 +1427,233 @@ const copilotObjectPromptCards = computed(() => {
       prompt: '请根据当前工作区状态，告诉我下一步最适合进入哪个对象继续处理。'
     }
   ]
+})
+
+const copilotInspireRemoteItems = ref([])
+const copilotInspirePending = ref(false)
+const copilotInspireLastSignature = ref('')
+
+const buildCopilotInspireSignature = () => JSON.stringify({
+  tab: workspaceStore.currentCopilotTab,
+  view: workspaceStore.currentView,
+  chapterId: currentChapter.value?.id || '',
+  objectType: workspaceStore.currentObject?.type || '',
+  objectId: workspaceStore.currentObject?.id || workspaceStore.currentObject?.taskId || workspaceStore.currentObject?.arcId || '',
+  resultType: workspaceStore.currentObject?.resultType || '',
+  failedCount: taskCenterSnapshot.value.failedCount || 0,
+  projectId: state.projectId || state.project?.id || ''
+})
+
+const buildCopilotInspireDirectionHint = () => {
+  if (workspaceStore.currentObject?.type === 'writing-result') {
+    return `${copilotCurrentObjectTitle.value}，请给出更适合当前结果状态的推进方向`
+  }
+  if (workspaceStore.currentView === 'writing') {
+    return `${currentChapter.value?.title || '当前章节'}，请围绕下一段推进和冲突升级提供分支灵感`
+  }
+  if (workspaceStore.currentView === 'structure') {
+    return `${currentTargetArcText.value || '当前结构对象'}，请围绕剧情弧落地章节提供分支灵感`
+  }
+  if (workspaceStore.currentView === 'tasks') {
+    return `当前有 ${taskCenterSnapshot.value.failedCount || 0} 个失败任务，请围绕恢复顺序和对象切换提供灵感`
+  }
+  return `${copilotCurrentObjectTitle.value}，请给出下一步最值得推进的创作分支`
+}
+
+const buildRemoteBranchInspireItems = (branches = []) => {
+  return branches
+    .map((branch, index) => {
+      const title = String(branch?.title || '').trim()
+      const summary = String(branch?.summary || '').trim()
+      const conflict = String(branch?.core_conflict || '').trim()
+      const progressions = Array.isArray(branch?.key_progressions) ? branch.key_progressions.filter(Boolean) : []
+      if (!title && !summary && !conflict) return null
+
+      const focus = progressions[0] || (Array.isArray(branch?.related_characters) && branch.related_characters[0]) || ''
+      return {
+        key: `remote-branch-${branch?.id || index}`,
+        tag: '分支',
+        focus,
+        title: title || `剧情分支 ${index + 1}`,
+        description: summary || conflict || '来自项目分支仓库的当前候选方向。',
+        rationale: [
+          conflict ? `核心冲突：${conflict}` : '',
+          branch?.consistency_note ? `一致性提醒：${branch.consistency_note}` : '',
+          branch?.risk_note ? `风险提醒：${branch.risk_note}` : ''
+        ].filter(Boolean).join(' · '),
+        prompt: `请围绕这个剧情分支「${title || `剧情分支 ${index + 1}`}」继续展开，重点说明它与当前工作区对象的关系、最大收益和最大风险。`,
+        cta: '打开结构',
+        action: copilotStructureAction
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 2)
+}
+
+const loadCopilotInspireRemoteItems = async () => {
+  if (workspaceStore.currentCopilotTab !== 'inspire') {
+    return
+  }
+
+  const projectId = state.projectId || state.project?.id || ''
+  if (!projectId) {
+    copilotInspireRemoteItems.value = []
+    return
+  }
+
+  const signature = buildCopilotInspireSignature()
+  if (copilotInspireLastSignature.value === signature) {
+    return
+  }
+
+  copilotInspireLastSignature.value = signature
+  copilotInspirePending.value = true
+
+  try {
+    const response = await projectApi.branchesV2(projectId, {
+      direction_hint: buildCopilotInspireDirectionHint(),
+      branch_count: 3
+    })
+    copilotInspireRemoteItems.value = buildRemoteBranchInspireItems(response?.branches || [])
+  } catch (error) {
+    copilotInspireRemoteItems.value = []
+  } finally {
+    copilotInspirePending.value = false
+  }
+}
+
+const copilotInspireItems = computed(() => {
+  const items = [...copilotInspireRemoteItems.value]
+  const chapterTitle = currentChapter.value?.title || '当前章节'
+  const focusTitle = copilotCurrentObjectTitle.value
+
+  if (workspaceStore.currentObject?.type === 'writing-result') {
+    const resultType = workspaceStore.currentObject.resultType || 'candidate'
+    const resultLabel = getWritingResultLabel(resultType)
+
+    if (resultType === 'issues') {
+      items.push({
+        key: 'inspire-issues-repair',
+        tag: '修复',
+        focus: resultLabel,
+        title: `先规划 ${resultLabel} 的修复顺序`,
+        description: '先判断哪些问题最先影响剧情、信息一致性和人物状态，再决定回正文还是回结构页。',
+        rationale: '这类结果最适合先做优先级排序，而不是立即整体重写。',
+        prompt: `请围绕当前${resultLabel}「${focusTitle}」给我一个修复优先级列表，并说明每一项更适合在正文、结构还是任务台处理。`,
+        cta: '查看结果',
+        action: {
+          type: 'writing-result',
+          chapterId: workspaceStore.currentObject.chapterId || currentChapter.value?.id || '',
+          resultType,
+          taskId: workspaceStore.currentObject.taskId || '',
+          title: workspaceStore.currentObject.title || resultLabel
+        }
+      })
+    } else if (resultType === 'diff') {
+      items.push({
+        key: 'inspire-diff-merge',
+        tag: '改写',
+        focus: resultLabel,
+        title: '评估哪些改写值得吸收',
+        description: '对照当前正文与改写结果，先找高收益改动，再决定整体替换还是局部吸收。',
+        rationale: '改写结果更适合先筛价值点，而不是直接整段覆盖。',
+        prompt: `请围绕当前${resultLabel}「${focusTitle}」指出最值得采纳的三处变化，并说明各自应该整体替换还是局部吸收。`,
+        cta: '查看结果',
+        action: {
+          type: 'writing-result',
+          chapterId: workspaceStore.currentObject.chapterId || currentChapter.value?.id || '',
+          resultType,
+          taskId: workspaceStore.currentObject.taskId || '',
+          title: workspaceStore.currentObject.title || resultLabel
+        }
+      })
+    } else {
+      items.push({
+        key: 'inspire-candidate-landing',
+        tag: '候选',
+        focus: resultLabel,
+        title: '判断候选稿如何并入正文',
+        description: '先决定是追加、覆盖还是局部吸收，再回正文落地会更稳。',
+        rationale: '候选稿的风险通常不在内容缺失，而在并入方式不合适。',
+        prompt: `请围绕当前${resultLabel}「${focusTitle}」给我一个并入正文的建议：追加、覆盖还是局部吸收？并说明原因。`,
+        cta: '查看结果',
+        action: {
+          type: 'writing-result',
+          chapterId: workspaceStore.currentObject.chapterId || currentChapter.value?.id || '',
+          resultType,
+          taskId: workspaceStore.currentObject.taskId || '',
+          title: workspaceStore.currentObject.title || resultLabel
+        }
+      })
+    }
+  }
+
+  if (workspaceStore.currentView === 'writing' && currentChapter.value?.id) {
+    items.push({
+      key: 'inspire-next-scene',
+      tag: '续写',
+      focus: chapterTitle,
+      title: '生成下一段推进方案',
+      description: '给当前章节生成更具体的下一段承接方向，而不是只给抽象建议。',
+      rationale: '当前在写作视图时，最有价值的灵感通常是“下一段怎么写”。',
+      prompt: `请围绕当前章节「${chapterTitle}」给我三个下一段推进方案，分别偏向冲突升级、情绪沉淀和信息揭示。`,
+      cta: '打开写作',
+      action: {
+        type: 'chapter',
+        chapterId: currentChapter.value.id
+      }
+    })
+  }
+
+  if (workspaceStore.currentView === 'structure' || currentTargetArcText.value) {
+    items.push({
+      key: 'inspire-structure-landing',
+      tag: '结构',
+      focus: currentTargetArcText.value || '活跃剧情弧',
+      title: '反推还缺哪一章落地',
+      description: '从当前结构对象反推还缺哪些章节承接，避免结构停留在概念层。',
+      rationale: '结构灵感最有用的形式不是再抽象一次，而是给出落地章节方向。',
+      prompt: `请根据当前结构对象「${currentTargetArcText.value || focusTitle}」判断还缺哪些章节来落地，并给出优先顺序。`,
+      cta: '打开结构',
+      action: copilotStructureAction
+    })
+  }
+
+  if (taskCenterSnapshot.value.failedCount > 0) {
+    items.push({
+      key: 'inspire-failed-task-recovery',
+      tag: '恢复',
+      focus: `${taskCenterSnapshot.value.failedCount} 个失败任务`,
+      title: '先决定失败任务恢复顺序',
+      description: '失败任务会污染写作、结构和章节判断，先确定恢复顺序更稳。',
+      rationale: '任务恢复顺序明确后，后续对象切换和结果回流会更顺。',
+      prompt: `当前有 ${taskCenterSnapshot.value.failedCount} 个失败任务，请给我一个恢复顺序，并说明每个任务更适合回哪个对象处理。`,
+      cta: '打开任务',
+      action: {
+        type: 'task-filter',
+        filter: 'failed'
+      }
+    })
+  }
+
+  if (!items.length) {
+    items.push({
+      key: 'inspire-default-next-step',
+      tag: '概览',
+      focus: focusTitle,
+      title: '决定下一步最值得推进的对象',
+      description: '当没有明显失败项或结果对象时，直接让 Inspire 给出下一个最值得进入的对象。',
+      rationale: '概览态最适合做“下一步去哪”的决策，而不是继续堆信息。',
+      prompt: '请根据当前工作区状态，给我三个下一步最值得进入的对象或视图，并说明各自收益。',
+      cta: '打开概览',
+      action: {
+        type: 'section',
+        section: 'overview'
+      }
+    })
+  }
+
+  return items.slice(0, 4)
 })
 
 const overviewDecisionCards = computed(() => {
@@ -2846,6 +3075,25 @@ watch(
     workspaceStore.setActiveCopilotChatSession(sessionMeta.key)
   },
   { immediate: true, deep: true }
+)
+
+watch(
+  () => [
+    workspaceStore.currentCopilotTab,
+    workspaceStore.currentView,
+    workspaceStore.currentObject?.type,
+    workspaceStore.currentObject?.id,
+    workspaceStore.currentObject?.taskId,
+    workspaceStore.currentObject?.arcId,
+    workspaceStore.currentObject?.resultType,
+    currentChapter.value?.id,
+    state.projectId,
+    taskCenterSnapshot.value.failedCount
+  ],
+  () => {
+    void loadCopilotInspireRemoteItems()
+  },
+  { immediate: true }
 )
 
 watch(() => [state.loading, state.chapters], () => {

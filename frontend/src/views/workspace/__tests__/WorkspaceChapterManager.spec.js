@@ -6,11 +6,34 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import WorkspaceChapterManager from '../WorkspaceChapterManager.vue'
 
+const {
+  mockUpdateChapter,
+  mockMessageSuccess,
+  mockMessageError
+} = vi.hoisted(() => ({
+  mockUpdateChapter: vi.fn(() => Promise.resolve({})),
+  mockMessageSuccess: vi.fn(),
+  mockMessageError: vi.fn()
+}))
+
 const mockScrollIntoView = vi.fn()
 const mockOpenSection = vi.fn()
 const mockOpenChapter = vi.fn()
 const mockRouterPush = vi.fn()
 const mockExecuteWorkspaceAction = vi.fn()
+
+vi.mock('element-plus', () => ({
+  ElMessage: {
+    success: mockMessageSuccess,
+    error: mockMessageError
+  }
+}))
+
+vi.mock('@/api', () => ({
+  novelApi: {
+    updateChapter: mockUpdateChapter
+  }
+}))
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(() => ({
@@ -44,6 +67,9 @@ describe('WorkspaceChapterManager.vue', () => {
     mockOpenChapter.mockClear()
     mockRouterPush.mockClear()
     mockExecuteWorkspaceAction.mockClear()
+    mockUpdateChapter.mockClear()
+    mockMessageSuccess.mockClear()
+    mockMessageError.mockClear()
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: mockScrollIntoView
@@ -159,5 +185,19 @@ describe('WorkspaceChapterManager.vue', () => {
       taskId: 'task-ch-2',
       title: 'AI 审查'
     })
+  })
+
+  it('supports real kanban drag drop status transition', async () => {
+    wrapper.vm.viewMode = 'kanban'
+    await nextTick()
+
+    wrapper.vm.handleDragStart({ id: 'ch-1' })
+    wrapper.vm.handleDragOver('reviewed')
+    await wrapper.vm.handleDrop('reviewed')
+
+    expect(wrapper.vm.draggingChapterId).toBe('')
+    expect(wrapper.vm.dragOverStatus).toBe('')
+    expect(mockUpdateChapter).toHaveBeenCalledWith('novel-1', 'ch-1', { status: 'reviewed' })
+    expect(mockMessageSuccess).toHaveBeenCalled()
   })
 })
