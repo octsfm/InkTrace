@@ -23,6 +23,7 @@ from application.services.logging_service import (
     set_request_id,
     setup_logging,
 )
+from presentation.api.dependencies import warmup_singletons_for_startup
 from presentation.api.routers import novel, content, writing, export, chapter_editor
 from presentation.api.routers import project, template, character, worldview
 from presentation.api.routers import vector, rag, config
@@ -128,6 +129,12 @@ def create_app() -> FastAPI:
     app.include_router(config.router)
     app.include_router(projects_v2.router)
     logger.info("路由加载完成", extra=build_log_context(event="app_router_registered", module="app", version=APP_VERSION))
+
+    @app.on_event("startup")
+    async def _warmup_dependencies() -> None:
+        logger.info("启动预热开始", extra=build_log_context(event="app_startup_warmup_begin", module="app"))
+        warmup_singletons_for_startup()
+        logger.info("启动预热完成", extra=build_log_context(event="app_startup_warmup_done", module="app"))
 
     @app.exception_handler(FastAPIHTTPException)
     async def http_exception_handler(request: Request, exc: FastAPIHTTPException):

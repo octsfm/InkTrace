@@ -30,8 +30,6 @@ class SQLiteTemplateRepository(ITemplateRepository):
     def _init_table(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
-# 文件：模块：sqlite_template_repo
-
                 CREATE TABLE IF NOT EXISTS templates (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,

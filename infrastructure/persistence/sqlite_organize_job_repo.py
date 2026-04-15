@@ -7,6 +7,7 @@ from typing import Optional
 from domain.entities.organize_job import OrganizeJob
 from domain.repositories.organize_job_repository import IOrganizeJobRepository
 from domain.types import NovelId, OrganizeJobStatus
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
@@ -18,7 +19,7 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
         self._init_table()
 
     def _init_table(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS organize_jobs (
@@ -58,7 +59,7 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
         conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
     def find_by_novel_id(self, novel_id: NovelId) -> Optional[OrganizeJob]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM organize_jobs WHERE novel_id = ?",
@@ -70,7 +71,7 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
             return self._row_to_job(row)
 
     def save(self, job: OrganizeJob) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO organize_jobs
@@ -99,7 +100,7 @@ class SQLiteOrganizeJobRepository(IOrganizeJobRepository):
             conn.commit()
 
     def delete(self, novel_id: NovelId) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("DELETE FROM organize_jobs WHERE novel_id = ?", (str(novel_id),))
             conn.commit()
 

@@ -430,3 +430,50 @@ def get_global_analysis_service() -> GlobalAnalysisService:
 
 def get_chapter_memory_service() -> ChapterMemoryService:
     return ChapterMemoryService(get_chapter_ai_service())
+
+
+def warmup_singletons_for_startup() -> None:
+    """
+    Eagerly initialize repositories/config in startup phase, so request phase
+    does not trigger schema migration/DDL lazily under concurrency.
+    """
+    warmup_steps = [
+        ("novel_repo", get_novel_repo),
+        ("chapter_repo", get_chapter_repo),
+        ("character_repo", get_character_repo),
+        ("outline_repo", get_outline_repo),
+        ("project_repo", get_project_repo),
+        ("organize_job_repo", get_organize_job_repo),
+        ("chapter_outline_repo", get_chapter_outline_repo),
+        ("template_repo", get_template_repo),
+        ("worldview_repo", get_worldview_repo),
+        ("llm_config_repo", get_llm_config_repo),
+        ("global_constraints_repo", get_global_constraints_repo),
+        ("chapter_analysis_memory_repo", get_chapter_analysis_memory_repo),
+        ("chapter_continuation_memory_repo", get_chapter_continuation_memory_repo),
+        ("chapter_task_repo", get_chapter_task_repo),
+        ("structural_draft_repo", get_structural_draft_repo),
+        ("detemplated_draft_repo", get_detemplated_draft_repo),
+        ("draft_integrity_check_repo", get_draft_integrity_check_repo),
+        ("style_requirements_repo", get_style_requirements_repo),
+        ("continuation_context_snapshot_repo", get_continuation_context_snapshot_repo),
+        ("plot_arc_repo", get_plot_arc_repo),
+        ("arc_progress_snapshot_repo", get_arc_progress_snapshot_repo),
+        ("chapter_arc_binding_repo", get_chapter_arc_binding_repo),
+        ("v2_repo", get_v2_repo),
+        ("config_service", get_config_service),
+        ("llm_factory", get_llm_factory),
+    ]
+    for name, factory in warmup_steps:
+        logger.info("启动预热依赖", extra=build_log_context(event="dependency_warmup", dependency=name))
+        try:
+            factory()
+        except Exception as exc:
+            logger.exception(
+                "启动预热依赖失败，已跳过",
+                extra=build_log_context(
+                    event="dependency_warmup_failed",
+                    dependency=name,
+                    error=str(exc),
+                ),
+            )

@@ -752,6 +752,8 @@ onMounted(() => {
 .novel-actions {
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   margin-top: 18px;
 }
 

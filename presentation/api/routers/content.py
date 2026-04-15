@@ -285,57 +285,59 @@ def _validate_organize_model_capacity(
     content_service: ContentService,
     llm_factory,
     organize_job_repo: IOrganizeJobRepository,
-) -> None:
+) -> str:
     if str(mode or "").strip().lower() != "full_reanalyze":
-        return
+        return mode
     kimi_client_getter = getattr(llm_factory, "get_client_for_provider", None)
     kimi_client = kimi_client_getter("kimi") if callable(kimi_client_getter) else getattr(llm_factory, "kimi_client", None)
     if not kimi_client:
-        return
+        return mode
 
     model_name = str(getattr(kimi_client, "model_name", "") or getattr(getattr(llm_factory, "config", None), "kimi_model", "") or "")
     max_context_tokens = int(getattr(kimi_client, "max_context_tokens", 0) or 0)
     if max_context_tokens <= 0:
-        return
+        return mode
 
     try:
         novel_text = content_service.get_novel_text(novel_id)
     except Exception:
-        return
+        return mode
     text_length = len(novel_text or "")
     if text_length <= 0:
-        return
+        return mode
 
     # Full-book organize still needs a large global-analysis window.
     # We fail fast before starting the background job when the configured Kimi model
     # is clearly too small for the source corpus.
     safe_char_budget = max(max_context_tokens * 8, 60000)
     if text_length <= safe_char_budget:
-        return
+        return mode
 
     message = (
         f"当前 Kimi 模型 {model_name or 'unknown'} 上下文仅约 {max_context_tokens} tokens，"
         f"当前小说正文约 {text_length} 个字符，无法稳定执行整本整理。"
         "请切换到更大上下文的 Kimi 模型后再重试。"
     )
+    fallback_message = f"{message} 已自动降级为分章/全局重建流程。"
     job = organize_job_repo.find_by_novel_id(NovelId(novel_id)) or OrganizeJob(novel_id=NovelId(novel_id))
-    job.mark_error(message)
+    job.mark_running()
     organize_job_repo.save(job)
     _cache_progress(
         novel_id,
         _build_progress_payload(
             current=int(job.completed_chunks or 0),
             total=int(job.total_chunks or 0),
-            status=OrganizeJobStatus.ERROR.value,
-            stage="error",
-            message=message,
+            status=OrganizeJobStatus.RUNNING.value,
+            stage="prepare",
+            message=fallback_message,
             current_chapter_title=str(job.current_chapter_title or ""),
             resumable=True,
             source_hash=str(job.source_hash or ""),
-            last_error=message,
+            last_error="",
         ),
     )
-    raise HTTPException(status_code=400, detail=message)
+    logger.warning("[StructureAPI] model too small, fallback mode novel_id=%s mode=%s", novel_id, "rebuild_global")
+    return "rebuild_global"
 
 
 def _humanize_organize_error(error: Exception) -> str:
@@ -699,13 +701,24 @@ async def import_novel(
     try:
         novel = service.import_novel(request)
         project = project_service.ensure_project_for_novel(NovelId(request.novel_id))
-        organize_result = await v2_service.organize_project(project.id.value, "full_reanalyze", True)
+        memory_view = {}
+        analysis_status = "queued"
+        analysis_error = ""
+        try:
+            organize_result = await v2_service.organize_project(project.id.value, "full_reanalyze", True)
+            memory_view = organize_result.get("memory_view") or {}
+            analysis_status = "done"
+        except Exception as organize_exc:
+            analysis_status = "failed"
+            analysis_error = _humanize_organize_error(organize_exc)
+            logger.warning("[Import] organize failed after import novel_id=%s err=%s", request.novel_id, analysis_error)
         return {
             "novel": _to_dict(novel),
             "project_id": project.id.value,
             "memory": v2_service.get_memory(project.id.value),
-            "memory_view": organize_result.get("memory_view") or {},
-            "analysis_status": "done",
+            "memory_view": memory_view,
+            "analysis_status": analysis_status,
+            "analysis_error": analysis_error,
         }
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -775,13 +788,24 @@ async def import_novel_upload(
         request = ImportNovelRequest(novel_id=novel_id, file_path=novel_path, outline_path=outline_path)
         novel = service.import_novel(request)
         project = project_service.ensure_project_for_novel(NovelId(novel_id))
-        organize_result = await v2_service.organize_project(project.id.value, "full_reanalyze", True)
+        memory_view = {}
+        analysis_status = "queued"
+        analysis_error = ""
+        try:
+            organize_result = await v2_service.organize_project(project.id.value, "full_reanalyze", True)
+            memory_view = organize_result.get("memory_view") or {}
+            analysis_status = "done"
+        except Exception as organize_exc:
+            analysis_status = "failed"
+            analysis_error = _humanize_organize_error(organize_exc)
+            logger.warning("[ImportUpload] organize failed after import novel_id=%s err=%s", novel_id, analysis_error)
         return {
             "novel": _to_dict(novel),
             "project_id": project.id.value,
             "memory": v2_service.get_memory(project.id.value),
-            "memory_view": organize_result.get("memory_view") or {},
-            "analysis_status": "done",
+            "memory_view": memory_view,
+            "analysis_status": analysis_status,
+            "analysis_error": analysis_error,
             "outline_uploaded": bool(outline_path),
         }
     except UnicodeDecodeError:
@@ -966,7 +990,7 @@ async def start_organize_story_structure(
     lock = _get_lock(novel_id)
     async with lock:
         organize_mode = _normalize_organize_mode(mode, force_rebuild)
-        _validate_organize_model_capacity(novel_id, organize_mode, content_service, llm_factory, organize_job_repo)
+        organize_mode = _validate_organize_model_capacity(novel_id, organize_mode, content_service, llm_factory, organize_job_repo)
         running = _get_active_task(novel_id)
         if running:
             job = organize_job_repo.find_by_novel_id(NovelId(novel_id))
@@ -1051,7 +1075,7 @@ async def resume_organize_story_structure(
     async with lock:
         existed = organize_job_repo.find_by_novel_id(NovelId(novel_id))
         organize_mode = _normalize_organize_mode(mode or _organize_mode_from_job(existed), False)
-        _validate_organize_model_capacity(novel_id, organize_mode, content_service, llm_factory, organize_job_repo)
+        organize_mode = _validate_organize_model_capacity(novel_id, organize_mode, content_service, llm_factory, organize_job_repo)
         running = _get_active_task(novel_id)
         if running:
             progress = PROGRESS_CACHE.get(novel_id) or _build_progress_payload(

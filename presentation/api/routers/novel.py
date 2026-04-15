@@ -110,6 +110,7 @@ async def list_chapters(
             {
                 "id": str(chapter.id),
                 "number": chapter.number,
+                "chapter_number": chapter.number,
                 "title": chapter.title,
                 "word_count": chapter.word_count,
                 "status": chapter.status.value,

@@ -7,6 +7,7 @@ from typing import Optional
 from domain.entities.chapter_outline import ChapterOutline
 from domain.repositories.chapter_outline_repository import IChapterOutlineRepository
 from domain.types import ChapterId
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteChapterOutlineRepository(IChapterOutlineRepository):
@@ -18,7 +19,7 @@ class SQLiteChapterOutlineRepository(IChapterOutlineRepository):
         self._init_table()
 
     def _init_table(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS chapter_outlines (
@@ -47,7 +48,7 @@ class SQLiteChapterOutlineRepository(IChapterOutlineRepository):
         conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
     def find_by_chapter_id(self, chapter_id: ChapterId) -> Optional[ChapterOutline]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT * FROM chapter_outlines WHERE chapter_id = ?",
@@ -73,7 +74,7 @@ class SQLiteChapterOutlineRepository(IChapterOutlineRepository):
             )
 
     def save(self, outline: ChapterOutline) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO chapter_outlines

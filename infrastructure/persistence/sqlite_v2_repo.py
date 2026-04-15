@@ -15,6 +15,7 @@ from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 class SQLiteV2Repository:
     def __init__(self, db_path: str):
@@ -23,9 +24,7 @@ class SQLiteV2Repository:
         self._init_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+        return connect_sqlite(self.db_path, row_factory=sqlite3.Row)
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()
