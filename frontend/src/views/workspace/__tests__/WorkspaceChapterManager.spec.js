@@ -197,7 +197,25 @@ describe('WorkspaceChapterManager.vue', () => {
 
     expect(wrapper.vm.draggingChapterId).toBe('')
     expect(wrapper.vm.dragOverStatus).toBe('')
-    expect(mockUpdateChapter).toHaveBeenCalledWith('novel-1', 'ch-1', { status: 'reviewed' })
+    expect(mockUpdateChapter).toHaveBeenNthCalledWith(1, 'novel-1', 'ch-1', { status: 'reviewed' })
+    expect(mockUpdateChapter).toHaveBeenNthCalledWith(2, 'novel-1', 'ch-1', { chapter_number: 2 })
     expect(mockMessageSuccess).toHaveBeenCalled()
+  })
+
+  it('tracks kanban insertion position while dragging over cards', async () => {
+    wrapper.vm.viewMode = 'kanban'
+    await nextTick()
+
+    wrapper.vm.handleDragStart({ id: 'ch-1' })
+    wrapper.vm.handleCardDragOver('reviewed', { id: 'ch-2' }, {
+      clientY: 999,
+      currentTarget: {
+        getBoundingClientRect: () => ({ top: 0, height: 200 })
+      }
+    })
+
+    expect(wrapper.vm.dragOverStatus).toBe('reviewed')
+    expect(wrapper.vm.dragOverChapterId).toBe('ch-2')
+    expect(wrapper.vm.dragInsertPosition).toBe('after')
   })
 })

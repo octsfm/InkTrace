@@ -273,7 +273,23 @@ export const chapterEditorApi = {
   optimize: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/optimize`, buildChapterAIRequest(chapterId, 'optimize', data), { timeout: 0 }),
   continueWrite: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/continue`, buildChapterAIRequest(chapterId, 'continue', data), { timeout: 0 }),
   rewriteStyle: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/rewrite-style`, buildChapterAIRequest(chapterId, 'rewrite-style', data), { timeout: 0 }),
+  rewriteSelection: (chapterId, data) => api.post(
+    `/chapters/${chapterId}/ai/rewrite-selection`,
+    buildChapterAIRequest(chapterId, 'rewrite-selection', {
+      mode: 'selection',
+      ...data
+    }),
+    { timeout: 0 }
+  ),
   analyze: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/analyze`, buildChapterAIRequest(chapterId, 'analyze', data), { timeout: 0 }),
+  analyzeSelection: (chapterId, data) => api.post(
+    `/chapters/${chapterId}/ai/analyze-selection`,
+    buildChapterAIRequest(chapterId, 'analyze-selection', {
+      mode: 'selection',
+      ...data
+    }),
+    { timeout: 0 }
+  ),
   generateFromOutline: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/generate-from-outline`, buildChapterAIRequest(chapterId, 'generate-from-outline', data), { timeout: 0 })
 }
 

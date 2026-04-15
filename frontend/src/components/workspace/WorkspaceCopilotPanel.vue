@@ -291,6 +291,20 @@
             >
               {{ item.cta || '打开对象' }}
             </button>
+            <button
+              type="button"
+              class="prompt-action-button"
+              @click="emitInspireFeedback(item, 'accept')"
+            >
+              采纳
+            </button>
+            <button
+              type="button"
+              class="prompt-action-button subtle"
+              @click="emitInspireFeedback(item, 'dismiss')"
+            >
+              忽略
+            </button>
           </div>
         </article>
       </div>
@@ -402,7 +416,15 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'trigger', 'update:chatDraft', 'chat-submit', 'clear-chat', 'chat-session-change'])
+const emit = defineEmits([
+  'update:modelValue',
+  'trigger',
+  'update:chatDraft',
+  'chat-submit',
+  'clear-chat',
+  'chat-session-change',
+  'inspire-feedback'
+])
 
 const tabs = ['chat', 'context', 'inspire']
 const tabLabelMap = {
@@ -724,6 +746,16 @@ const submitChat = () => {
 
 const clearChatMessages = () => {
   emit('clear-chat')
+}
+
+const emitInspireFeedback = (item, signal) => {
+  emit('inspire-feedback', {
+    key: item?.key || '',
+    signal,
+    tag: item?.tag || '',
+    title: item?.title || '',
+    action: item?.action || null
+  })
 }
 </script>
 
@@ -1138,6 +1170,10 @@ const clearChatMessages = () => {
   background-color: #111827;
   border-color: #111827;
   color: #FFFFFF;
+}
+
+.prompt-action-button.subtle {
+  color: #6B7280;
 }
 
 .prompt-action-button:hover {

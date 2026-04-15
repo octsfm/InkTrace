@@ -134,6 +134,10 @@ class ChapterAIActionRequest(BaseRequest):
     chapter_task: Optional[Dict[str, Any]] = None
     style_requirements: Optional[Dict[str, Any]] = None
     target_word_count: int = Field(2000, ge=200, le=10000)
+    mode: str = ""
+    selection_context: Optional[Dict[str, Any]] = None
+    selected_text: str = ""
+    highlight_range: Optional[Dict[str, Any]] = None
 
 
 class ContinuationContextRequest(BaseRequest):

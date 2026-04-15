@@ -158,6 +158,32 @@ def test_chapter_editor_read_save_outline_and_ai_actions(caplog):
         assert "outline_draft" in analyze_resp.json()
         assert "used_fallback" in analyze_resp.json()
 
+        rewrite_selection_resp = client.post(
+            f"/api/chapters/{chapter_id}/ai/rewrite-selection",
+            json={
+                "chapter_id": chapter_id,
+                "action": "rewrite-selection",
+                "selected_text": "主角再次进入古城并发现新线索。",
+                "selection_context": {"text": "主角再次进入古城并发现新线索。", "range": {"from": 1, "to": 16}},
+            },
+        )
+        assert rewrite_selection_resp.status_code == 200
+        assert rewrite_selection_resp.json()["action"] == "rewrite-selection"
+        assert "result_text" in rewrite_selection_resp.json()
+
+        analyze_selection_resp = client.post(
+            f"/api/chapters/{chapter_id}/ai/analyze-selection",
+            json={
+                "chapter_id": chapter_id,
+                "action": "analyze-selection",
+                "selected_text": "主角再次进入古城并发现新线索。",
+                "selection_context": {"text": "主角再次进入古城并发现新线索。", "range": {"from": 1, "to": 16}},
+            },
+        )
+        assert analyze_selection_resp.status_code == 200
+        assert analyze_selection_resp.json()["action"] == "analyze-selection"
+        assert "analysis" in analyze_selection_resp.json()
+
         generate_resp = client.post(
             f"/api/chapters/{chapter_id}/ai/generate-from-outline",
             json={"chapter_id": chapter_id, "action": "generate-from-outline", "target_word_count": 1200},

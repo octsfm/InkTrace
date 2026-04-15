@@ -28,7 +28,19 @@
               class="diff-row"
               :class="rowToneClass(item.tone)"
             >
-              {{ item.before || ' ' }}
+              <template v-if="item.beforeTokens?.length">
+                <span
+                  v-for="(token, tokenIndex) in item.beforeTokens"
+                  :key="`before-token-${index}-${tokenIndex}`"
+                  class="diff-token"
+                  :class="tokenToneClass(token.tone)"
+                >
+                  {{ token.text }}
+                </span>
+              </template>
+              <template v-else>
+                {{ item.before || ' ' }}
+              </template>
             </div>
           </div>
         </div>
@@ -41,7 +53,19 @@
               class="diff-row"
               :class="rowToneClass(item.tone)"
             >
-              {{ item.after || ' ' }}
+              <template v-if="item.afterTokens?.length">
+                <span
+                  v-for="(token, tokenIndex) in item.afterTokens"
+                  :key="`after-token-${index}-${tokenIndex}`"
+                  class="diff-token"
+                  :class="tokenToneClass(token.tone)"
+                >
+                  {{ token.text }}
+                </span>
+              </template>
+              <template v-else>
+                {{ item.after || ' ' }}
+              </template>
             </div>
           </div>
         </div>
@@ -108,6 +132,62 @@ const splitParagraphs = (value) => String(value || '')
   .map((item) => item.trim())
   .filter(Boolean)
 
+const tokenizeDiffText = (value) => {
+  const normalized = String(value || '')
+  if (!normalized) return []
+  const matched = normalized.match(/[\u4E00-\u9FFF]|[A-Za-z0-9_]+|\s+|[^\sA-Za-z0-9_\u4E00-\u9FFF]/g)
+  return matched ? matched.filter((item) => item !== '') : []
+}
+
+const buildTokenDiff = (beforeText, afterText) => {
+  const beforeTokens = tokenizeDiffText(beforeText)
+  const afterTokens = tokenizeDiffText(afterText)
+  const rows = Array.from({ length: beforeTokens.length + 1 }, () => Array(afterTokens.length + 1).fill(0))
+
+  for (let i = beforeTokens.length - 1; i >= 0; i -= 1) {
+    for (let j = afterTokens.length - 1; j >= 0; j -= 1) {
+      rows[i][j] = beforeTokens[i] === afterTokens[j]
+        ? rows[i + 1][j + 1] + 1
+        : Math.max(rows[i + 1][j], rows[i][j + 1])
+    }
+  }
+
+  const beforeResult = []
+  const afterResult = []
+  let i = 0
+  let j = 0
+
+  while (i < beforeTokens.length && j < afterTokens.length) {
+    if (beforeTokens[i] === afterTokens[j]) {
+      beforeResult.push({ text: beforeTokens[i], tone: 'same' })
+      afterResult.push({ text: afterTokens[j], tone: 'same' })
+      i += 1
+      j += 1
+      continue
+    }
+
+    if (rows[i + 1][j] >= rows[i][j + 1]) {
+      beforeResult.push({ text: beforeTokens[i], tone: 'removed' })
+      i += 1
+    } else {
+      afterResult.push({ text: afterTokens[j], tone: 'added' })
+      j += 1
+    }
+  }
+
+  while (i < beforeTokens.length) {
+    beforeResult.push({ text: beforeTokens[i], tone: 'removed' })
+    i += 1
+  }
+
+  while (j < afterTokens.length) {
+    afterResult.push({ text: afterTokens[j], tone: 'added' })
+    j += 1
+  }
+
+  return { beforeTokens: beforeResult, afterTokens: afterResult }
+}
+
 const diffRows = computed(() => {
   const beforeList = splitParagraphs(props.originalText)
   const afterList = splitParagraphs(props.resultText)
@@ -123,7 +203,20 @@ const diffRows = computed(() => {
     else if (!before && after) tone = 'added'
     else if (before !== after) tone = 'changed'
 
-    rows.push({ before, after, tone })
+    const tokenDiff = tone === 'changed'
+      ? buildTokenDiff(before, after)
+      : {
+          beforeTokens: before ? [{ text: before, tone: 'same' }] : [],
+          afterTokens: after ? [{ text: after, tone: 'same' }] : []
+        }
+
+    rows.push({
+      before,
+      after,
+      tone,
+      beforeTokens: tokenDiff.beforeTokens,
+      afterTokens: tokenDiff.afterTokens
+    })
   }
 
   return rows.length ? rows : [{ before: '', after: '', tone: 'same' }]
@@ -135,6 +228,12 @@ const rowToneClass = (tone) => ({
   added: 'tone-added',
   removed: 'tone-removed'
 }[tone] || 'tone-same')
+
+const tokenToneClass = (tone) => ({
+  same: 'token-same',
+  added: 'token-added',
+  removed: 'token-removed'
+}[tone] || 'token-same')
 </script>
 
 <style scoped>
@@ -242,6 +341,21 @@ const rowToneClass = (tone) => ({
   line-height: 1.7;
   font-size: 13px;
   color: #1F2937;
+}
+
+.diff-token {
+  white-space: pre-wrap;
+}
+
+.token-added {
+  background: rgba(34, 197, 94, 0.16);
+  border-radius: 4px;
+}
+
+.token-removed {
+  background: rgba(239, 68, 68, 0.16);
+  border-radius: 4px;
+  text-decoration: line-through;
 }
 
 .tone-same {

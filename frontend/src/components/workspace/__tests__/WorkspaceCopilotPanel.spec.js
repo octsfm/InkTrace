@@ -302,6 +302,14 @@ describe('WorkspaceCopilotPanel.vue', () => {
     const openButton = wrapper.findAll('.inspire-card .prompt-action-button').find((node) => node.text().includes('查看结果'))
     await openButton.trigger('click')
     expect(wrapper.emitted('trigger')).toBeTruthy()
+
+    const acceptButton = wrapper.findAll('.inspire-card .prompt-action-button').find((node) => node.text().includes('采纳'))
+    const dismissButton = wrapper.findAll('.inspire-card .prompt-action-button').find((node) => node.text().includes('忽略'))
+    await acceptButton.trigger('click')
+    await dismissButton.trigger('click')
+    expect(wrapper.emitted('inspire-feedback')).toBeTruthy()
+    expect(wrapper.emitted('inspire-feedback')[0][0]).toMatchObject({ key: 'inspire-1', signal: 'accept' })
+    expect(wrapper.emitted('inspire-feedback')[1][0]).toMatchObject({ key: 'inspire-1', signal: 'dismiss' })
   })
 
   it('shows loading placeholder when inspire data is pending', () => {

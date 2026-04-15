@@ -6,10 +6,18 @@ import { useWorkspaceStore } from '../workspace'
 
 const mockContinueWrite = vi.fn()
 const mockChapterSave = vi.fn()
+const mockRewriteStyle = vi.fn()
+const mockRewriteSelection = vi.fn()
+const mockAnalyze = vi.fn()
+const mockAnalyzeSelection = vi.fn()
 
 vi.mock('@/api', () => ({
   chapterEditorApi: {
     continueWrite: (...args) => mockContinueWrite(...args),
+    rewriteStyle: (...args) => mockRewriteStyle(...args),
+    rewriteSelection: (...args) => mockRewriteSelection(...args),
+    analyze: (...args) => mockAnalyze(...args),
+    analyzeSelection: (...args) => mockAnalyzeSelection(...args),
     save: (...args) => mockChapterSave(...args)
   },
   contentApi: {},
@@ -21,6 +29,10 @@ describe('novelWorkspace store', () => {
   beforeEach(() => {
     mockContinueWrite.mockReset()
     mockChapterSave.mockReset()
+    mockRewriteStyle.mockReset()
+    mockRewriteSelection.mockReset()
+    mockAnalyze.mockReset()
+    mockAnalyzeSelection.mockReset()
     mockChapterSave.mockResolvedValue({})
     setActivePinia(createPinia())
   })
@@ -103,6 +115,42 @@ describe('novelWorkspace store', () => {
     expect(store.taskCenter.failedTasks[0]).toMatchObject({
       status: 'failed',
       reasonText: '模型异常'
+    })
+  })
+
+  it('passes selection context into rewrite ai action and stores selection-aware draft', async () => {
+    const store = useNovelWorkspaceStore()
+    store.editor.chapter = {
+      id: 'chapter-3',
+      title: '第三章',
+      content: '原始正文'
+    }
+
+    mockRewriteSelection.mockResolvedValueOnce({
+      result_text: '选区改写后的正文'
+    })
+
+    await store.runEditorAiAction('rewrite', {
+      contentOverride: '被选中的正文',
+      selectionContext: {
+        text: '被选中的正文',
+        range: { from: 5, to: 11 }
+      }
+    })
+
+    expect(mockRewriteSelection).toHaveBeenCalledWith('chapter-3', expect.objectContaining({
+      content: '被选中的正文',
+      selection_context: {
+        text: '被选中的正文',
+        range: { from: 5, to: 11 }
+      }
+    }))
+    expect(store.editor.detemplatedDraft).toMatchObject({
+      title: '第三章选区改写稿',
+      selection_context: {
+        text: '被选中的正文',
+        range: { from: 5, to: 11 }
+      }
     })
   })
 })

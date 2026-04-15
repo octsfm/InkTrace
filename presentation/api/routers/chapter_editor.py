@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -256,6 +257,10 @@ def _outline_dict(chapter_id: str, repo: IChapterOutlineRepository) -> dict:
     }
 
 
+def _resolve_selection_content(request: ChapterAIActionRequest) -> str:
+    return str(request.selected_text or request.content or "").strip()
+
+
 @router.post("/{chapter_id}/import")
 async def import_chapter_content(
     chapter_id: str,
@@ -435,6 +440,52 @@ async def ai_rewrite_style(
     return response
 
 
+@router.post("/{chapter_id}/ai/rewrite-selection", response_model=ChapterAIActionResponse)
+async def ai_rewrite_selection(
+    chapter_id: str,
+    request: ChapterAIActionRequest,
+    chapter_repo: IChapterRepository = Depends(get_chapter_repo),
+    outline_repo: IChapterOutlineRepository = Depends(get_chapter_outline_repo),
+    service: ChapterAIService = Depends(get_chapter_ai_service),
+):
+    chapter = _load_chapter(chapter_id, chapter_repo)
+    selection_text = _resolve_selection_content(request)
+    if not selection_text:
+        raise HTTPException(status_code=400, detail="选区内容不能为空")
+
+    selection_chapter = replace(chapter, content=selection_text)
+    logger.info(
+        "章节AI开始",
+        extra=build_log_context(event="chapter_ai_started", chapter_id=chapter.id.value, chapter_number=chapter.number, novel_id=chapter.novel_id.value, action="rewrite-selection"),
+    )
+    outline = request.outline if isinstance(request.outline, dict) else _outline_dict(chapter_id, outline_repo)
+    try:
+        result = await service.rewrite_style(
+            selection_chapter,
+            request.style,
+            outline,
+            global_memory_summary=request.global_memory_summary,
+            global_outline_summary=request.global_outline_summary,
+            recent_chapter_summaries=request.recent_chapter_summaries,
+        )
+    except Exception as exc:
+        logger.error("章节AI失败", extra=build_log_context(event="chapter_ai_failed", chapter_id=chapter.id.value, chapter_number=chapter.number, novel_id=chapter.novel_id.value, action="rewrite-selection", error=str(exc)))
+        raise
+    response = ChapterAIActionResponse(
+        chapter_id=chapter_id,
+        action="rewrite-selection",
+        result_text=str(result.get("result_text") or ""),
+        analysis=result.get("analysis") or {},
+        outline_draft=result.get("outline_draft") if isinstance(result.get("outline_draft"), dict) else None,
+        used_fallback=bool(result.get("used_fallback")),
+    )
+    logger.info(
+        "章节AI完成",
+        extra=build_log_context(event="chapter_ai_finished", chapter_id=chapter.id.value, chapter_number=chapter.number, novel_id=chapter.novel_id.value, action="rewrite-selection"),
+    )
+    return response
+
+
 @router.post("/{chapter_id}/ai/analyze", response_model=ChapterAIActionResponse)
 async def ai_analyze(
     chapter_id: str,
@@ -471,6 +522,51 @@ async def ai_analyze(
     logger.info(
         "章节AI完成",
         extra=build_log_context(event="chapter_ai_finished", chapter_id=chapter.id.value, chapter_number=chapter.number, novel_id=chapter.novel_id.value, action="analyze"),
+    )
+    return response
+
+
+@router.post("/{chapter_id}/ai/analyze-selection", response_model=ChapterAIActionResponse)
+async def ai_analyze_selection(
+    chapter_id: str,
+    request: ChapterAIActionRequest,
+    chapter_repo: IChapterRepository = Depends(get_chapter_repo),
+    outline_repo: IChapterOutlineRepository = Depends(get_chapter_outline_repo),
+    service: ChapterAIService = Depends(get_chapter_ai_service),
+):
+    chapter = _load_chapter(chapter_id, chapter_repo)
+    selection_text = _resolve_selection_content(request)
+    if not selection_text:
+        raise HTTPException(status_code=400, detail="选区内容不能为空")
+
+    selection_chapter = replace(chapter, content=selection_text)
+    logger.info(
+        "章节AI开始",
+        extra=build_log_context(event="chapter_ai_started", chapter_id=chapter.id.value, chapter_number=chapter.number, novel_id=chapter.novel_id.value, action="analyze-selection"),
+    )
+    outline = request.outline if isinstance(request.outline, dict) else _outline_dict(chapter_id, outline_repo)
+    try:
+        result = await service.analyze(
+            selection_chapter,
+            outline,
+            global_memory_summary=request.global_memory_summary,
+            global_outline_summary=request.global_outline_summary,
+            recent_chapter_summaries=request.recent_chapter_summaries,
+        )
+    except Exception as exc:
+        logger.error("章节AI失败", extra=build_log_context(event="chapter_ai_failed", chapter_id=chapter.id.value, chapter_number=chapter.number, novel_id=chapter.novel_id.value, action="analyze-selection", error=str(exc)))
+        raise
+    response = ChapterAIActionResponse(
+        chapter_id=chapter_id,
+        action="analyze-selection",
+        result_text=str(result.get("result_text") or ""),
+        analysis=result.get("analysis") or {},
+        outline_draft=result.get("outline_draft") if isinstance(result.get("outline_draft"), dict) else None,
+        used_fallback=bool(result.get("used_fallback")),
+    )
+    logger.info(
+        "章节AI完成",
+        extra=build_log_context(event="chapter_ai_finished", chapter_id=chapter.id.value, chapter_number=chapter.number, novel_id=chapter.novel_id.value, action="analyze-selection"),
     )
     return response
 

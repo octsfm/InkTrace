@@ -69,7 +69,7 @@ const buildIntegrityCheckFromResult = (result = {}) => {
   return normalizeIntegrityCheck({ risk_notes: notes })
 }
 
-const buildDraftPayload = ({ title, action, currentContent, resultText }) => {
+const buildDraftPayload = ({ title, action, currentContent, resultText, selectionContext = null }) => {
   const fullContent = String(resultText || '')
   const baseContent = String(currentContent || '')
 
@@ -79,7 +79,8 @@ const buildDraftPayload = ({ title, action, currentContent, resultText }) => {
       content: '',
       full_content: '',
       preview_mode: 'empty',
-      source_action: action
+      source_action: action,
+      selection_context: selectionContext
     }
   }
 
@@ -98,7 +99,8 @@ const buildDraftPayload = ({ title, action, currentContent, resultText }) => {
     content: shouldPreviewDelta ? appendedContent : fullContent,
     full_content: fullContent,
     preview_mode: shouldPreviewDelta ? 'delta' : 'full',
-    source_action: action
+    source_action: action,
+    selection_context: selectionContext
   }
 }
 
@@ -294,27 +296,30 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     }
   }
 
-  const buildEditorPayload = () => ({
+  const buildEditorPayload = (overrides = {}) => ({
     title: editor.chapter.title,
-    content: editor.chapter.content,
+    content: overrides.contentOverride ?? editor.chapter.content,
     outline: editor.outline,
     global_memory_summary: editor.contextMeta.last_chapter_tail || '',
     global_outline_summary: editor.contextMeta.chapter_outline?.goal || '',
     recent_chapter_summaries: (editor.contextMeta.recent_chapter_memories || []).map((item) => (
       item.scene_summary || item.chapter_title || ''
-    ))
+    )),
+    ...(overrides.extraRequestData || {})
   })
 
-  const runEditorAiAction = async (action) => {
+  const runEditorAiAction = async (action, options = {}) => {
     if (!editor.chapter.id) return null
 
     const workspaceStore = useWorkspaceStore()
+    const selectionContext = options.selectionContext || null
+    const selectionLabel = selectionContext?.text ? '选区' : ''
     const taskMetaMap = {
-      continue: { type: 'writing', label: 'AI 续写', resultType: 'candidate' },
-      optimize: { type: 'rewrite', label: 'AI 去模板化', resultType: 'diff' },
-      rewrite: { type: 'rewrite', label: 'AI 风格改写', resultType: 'diff' },
-      generate: { type: 'writing', label: '根据大纲生成', resultType: 'candidate' },
-      analyze: { type: 'audit', label: 'AI 审查', resultType: 'issues' }
+      continue: { type: 'writing', label: `${selectionLabel}AI 续写`.trim(), resultType: 'candidate' },
+      optimize: { type: 'rewrite', label: `${selectionLabel}AI 去模板化`.trim(), resultType: 'diff' },
+      rewrite: { type: 'rewrite', label: `${selectionLabel}AI 风格改写`.trim(), resultType: 'diff' },
+      generate: { type: 'writing', label: `${selectionLabel}根据大纲生成`.trim(), resultType: 'candidate' },
+      analyze: { type: 'audit', label: `${selectionLabel}AI 审查`.trim(), resultType: 'issues' }
     }
     const taskMeta = taskMetaMap[action] || { type: action, label: action, resultType: 'none' }
     const taskId = `editor-${action}-${Date.now()}`
@@ -353,38 +358,52 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
       resultType: taskMeta.resultType
     })
     try {
-      const payload = buildEditorPayload()
+      const payload = buildEditorPayload({
+        contentOverride: options.contentOverride,
+        extraRequestData: selectionContext
+          ? {
+              selection_context: selectionContext,
+              selected_text: selectionContext.text || '',
+              highlight_range: selectionContext.range || null
+            }
+          : {}
+      })
       let result = null
 
       if (action === 'continue') {
         result = await chapterEditorApi.continueWrite(editor.chapter.id, payload)
         editor.structuralDraft = buildDraftPayload({
-          title: editor.chapter.title || 'AI 续写稿',
+          title: selectionContext?.text ? `${editor.chapter.title || '当前章节'}选区续写稿` : (editor.chapter.title || 'AI 续写稿'),
           action: 'continue',
-          currentContent: editor.chapter.content,
-          resultText: result?.result_text || ''
+          currentContent: options.contentOverride ?? editor.chapter.content,
+          resultText: result?.result_text || '',
+          selectionContext
         })
         editor.activeDraftTab = 'structural'
       } else if (action === 'optimize') {
         result = await chapterEditorApi.optimize(editor.chapter.id, payload)
         editor.detemplatedDraft = {
           ...buildDraftPayload({
-            title: editor.chapter.title || 'AI 改写稿',
+            title: selectionContext?.text ? `${editor.chapter.title || '当前章节'}选区去模板化稿` : (editor.chapter.title || 'AI 改写稿'),
             action: 'optimize',
-            currentContent: editor.chapter.content,
-            resultText: result?.result_text || ''
+            currentContent: options.contentOverride ?? editor.chapter.content,
+            resultText: result?.result_text || '',
+            selectionContext
           }),
           display_fallback_to_structural: false
         }
         editor.activeDraftTab = 'detemplated'
       } else if (action === 'rewrite') {
-        result = await chapterEditorApi.rewriteStyle(editor.chapter.id, payload)
+        result = selectionContext?.text
+          ? await chapterEditorApi.rewriteSelection(editor.chapter.id, payload)
+          : await chapterEditorApi.rewriteStyle(editor.chapter.id, payload)
         editor.detemplatedDraft = {
           ...buildDraftPayload({
-            title: editor.chapter.title || 'AI 改写稿',
+            title: selectionContext?.text ? `${editor.chapter.title || '当前章节'}选区改写稿` : (editor.chapter.title || 'AI 改写稿'),
             action: 'rewrite',
-            currentContent: editor.chapter.content,
-            resultText: result?.result_text || ''
+            currentContent: options.contentOverride ?? editor.chapter.content,
+            resultText: result?.result_text || '',
+            selectionContext
           }),
           display_fallback_to_structural: false
         }
@@ -392,17 +411,20 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
       } else if (action === 'generate') {
         result = await chapterEditorApi.generateFromOutline(editor.chapter.id, payload)
         editor.structuralDraft = buildDraftPayload({
-          title: editor.chapter.title || 'AI 结构稿',
+          title: selectionContext?.text ? `${editor.chapter.title || '当前章节'}选区结构稿` : (editor.chapter.title || 'AI 结构稿'),
           action: 'generate',
-          currentContent: editor.chapter.content,
-          resultText: result?.result_text || ''
+          currentContent: options.contentOverride ?? editor.chapter.content,
+          resultText: result?.result_text || '',
+          selectionContext
         })
         if (result?.outline_draft) {
           editor.outline = { ...editor.outline, ...result.outline_draft }
         }
         editor.activeDraftTab = 'structural'
       } else if (action === 'analyze') {
-        result = await chapterEditorApi.analyze(editor.chapter.id, payload)
+        result = selectionContext?.text
+          ? await chapterEditorApi.analyzeSelection(editor.chapter.id, payload)
+          : await chapterEditorApi.analyze(editor.chapter.id, payload)
         editor.activeDraftTab = 'integrity'
       }
 

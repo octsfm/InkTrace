@@ -85,20 +85,25 @@
               <strong>当前定位问题：</strong>{{ activeIssueTitle }}
               <span v-if="activeIssueDetail"> · {{ activeIssueDetail }}</span>
             </div>
-            <WorkspaceInlineResultBlock
-              v-if="inlineResultBlock"
-              :result-type="inlineResultBlock.resultType"
-              :result-label="inlineResultBlock.resultLabel"
-              :title="inlineResultBlock.title"
-              :hint="inlineResultBlock.hint"
-              :description="inlineResultBlock.description"
-              :original-text="inlineResultBlock.originalText"
-              :result-text="inlineResultBlock.resultText"
-              :actions="inlineResultBlock.actions"
-              @action="handleInlineResultAction"
-            />
             <div class="editor-shell" :class="{ 'editor-shell-issue-focus': activeIssueIndex >= 0 }">
               <div class="editor-paper">
+                <div
+                  v-if="inlineResultBlock"
+                  class="editor-inline-result-anchor"
+                  :class="[`editor-inline-result-anchor-${inlineResultBlock.resultType}`]"
+                >
+                  <WorkspaceInlineResultBlock
+                    :result-type="inlineResultBlock.resultType"
+                    :result-label="inlineResultBlock.resultLabel"
+                    :title="inlineResultBlock.title"
+                    :hint="inlineResultBlock.hint"
+                    :description="inlineResultBlock.description"
+                    :original-text="inlineResultBlock.originalText"
+                    :result-text="inlineResultBlock.resultText"
+                    :actions="inlineResultBlock.actions"
+                    @action="handleInlineResultAction"
+                  />
+                </div>
                 <bubble-menu
                   v-if="editor && hasSelectionBubble"
                   class="selection-bubble-menu"
@@ -112,10 +117,10 @@
                       <button type="button" class="selection-bubble-action" @click="sendSelectionToCopilot('explain')">
                         解释片段
                       </button>
-                      <button type="button" class="selection-bubble-action" @click="sendSelectionToCopilot('rewrite')">
+                      <button type="button" class="selection-bubble-action" @click="runSelectionAiAction('rewrite')">
                         改写片段
                       </button>
-                      <button type="button" class="selection-bubble-action" @click="sendSelectionToCopilot('audit')">
+                      <button type="button" class="selection-bubble-action" @click="runSelectionAiAction('analyze')">
                         审查片段
                       </button>
                     </div>
@@ -228,17 +233,18 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Extension } from '@tiptap/core'
+import { Extension, Node } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { ElMessage } from 'element-plus'
-import { EditorContent, useEditor } from '@tiptap/vue-3'
+import { EditorContent, useEditor, VueNodeViewRenderer } from '@tiptap/vue-3'
 import { BubbleMenu } from '@tiptap/vue-3/menus'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { FullScreen } from '@element-plus/icons-vue'
 
 import WorkspaceActionBar from '@/components/workspace/WorkspaceActionBar.vue'
+import WorkspaceCandidateNodeView from '@/components/workspace/WorkspaceCandidateNodeView.vue'
 import WorkspaceInlineResultBlock from '@/components/workspace/WorkspaceInlineResultBlock.vue'
 import WorkspaceSummaryChips from '@/components/workspace/WorkspaceSummaryChips.vue'
 import DraftPreviewTabs from '@/components/story/DraftPreviewTabs.vue'
@@ -291,6 +297,44 @@ const IssueHighlightExtension = Extension.create({
   }
 })
 
+const WorkspaceCandidateBlockNode = Node.create({
+  name: 'workspaceCandidateBlock',
+  group: 'block',
+  atom: true,
+  selectable: true,
+
+  addOptions() {
+    return {
+      onAction: () => {}
+    }
+  },
+
+  addAttributes() {
+    return {
+      resultLabel: { default: '候选稿' },
+      title: { default: '' },
+      hint: { default: '' },
+      description: { default: '' },
+      resultText: { default: '' },
+      candidateIndex: { default: 1 },
+      candidateTotal: { default: 1 },
+      createdAtLabel: { default: '' }
+    }
+  },
+
+  parseHTML() {
+    return [{ tag: 'workspace-candidate-block' }]
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['workspace-candidate-block', HTMLAttributes]
+  },
+
+  addNodeView() {
+    return VueNodeViewRenderer(WorkspaceCandidateNodeView)
+  }
+})
+
 const route = useRoute()
 const workspace = useWorkspaceContext()
 const workspaceStore = useWorkspaceStore()
@@ -300,8 +344,16 @@ const draftPreviewSectionRef = ref(null)
 const issuePanelSectionRef = ref(null)
 const selectedText = ref('')
 const selectedTextRange = ref({ from: 0, to: 0 })
+const candidateQueue = ref([])
+const activeCandidateId = ref('')
 
 const selectedChapterId = computed(() => String(route.query.chapterId || workspace.currentChapterId.value || ''))
+const candidateQueueStorageKey = computed(() => {
+  const projectId = String(workspace.state.projectId || '')
+  const chapterId = String(selectedChapterId.value || '')
+  if (!projectId || !chapterId) return ''
+  return `inktrace:workspace:candidate-queue:${projectId}:${chapterId}`
+})
 
 const wordCount = computed(() => (editorState.chapter.content || '').replace(/\s+/g, '').length)
 const chapterArcs = computed(() => (Array.isArray(editorState.chapterArcs) ? editorState.chapterArcs : []))
@@ -539,41 +591,61 @@ const writingObjectActions = computed(() => {
   return actions
 })
 
-const inlineResultBlock = computed(() => {
+const candidateNodeBlock = computed(() => {
   const chapterTitle = editorState.chapter?.title || '当前章节'
   const currentContent = String(editorState.chapter?.content || '')
-
-  if (editorState.detemplatedDraft && resultState.value.latestResultType === 'diff') {
+  const currentCandidate = activeCandidate.value
+  const queue = Array.isArray(candidateQueue.value) ? candidateQueue.value : []
+  if (currentCandidate) {
+    const selectionText = String(currentCandidate.selectionText || '').trim()
+    const candidateIndex = Math.max(1, queue.findIndex((item) => item.id === currentCandidate.id) + 1)
     return {
-      resultType: 'diff',
-      resultLabel: buildWorkspaceResultLabel('diff', { rewriteVariant: 'draft' }),
-      title: `行内改写对照 · ${chapterTitle}`,
-      hint: '正文区内对照',
-      description: '这里直接对比当前正文与改写结果，先判断是否值得采纳，再决定覆盖、保存或跳到右侧结果区。',
-      originalText: currentContent,
-      resultText: editorState.detemplatedDraft.full_content || editorState.detemplatedDraft.content || '',
+      resultType: 'candidate',
+      resultLabel: buildWorkspaceResultLabel('candidate'),
+      title: `${selectionText ? '选区候选块' : '行内候选块'} · ${chapterTitle}`,
+      hint: selectionText
+        ? '选区级候选'
+        : (currentCandidate.previewMode === 'delta' ? '新增续写段' : '完整候选稿'),
+      description: selectionText
+        ? '当前候选块围绕选中文本生成，可先判断局部吸收方式，再决定是否写回正文。'
+        : currentCandidate.previewMode === 'delta'
+          ? '当前候选块展示新增续写段，可直接并入正文，也可继续在右侧结果区做更细操作。'
+          : '当前候选块展示完整候选稿，可先在正文区快速判断是否值得采用。',
+      originalText: selectionText || currentContent,
+      resultText: currentCandidate.resultText || '',
+      candidateIndex,
+      candidateTotal: queue.length,
+      createdAtLabel: currentCandidate.createdAtLabel,
       actions: [
-        { key: 'apply-detemplated-replace', label: '覆盖正文', primary: true },
-        { key: 'save-detemplated', label: '保存草稿' },
+        { key: 'apply-structural-append', label: '采纳并插入', primary: true },
+        { key: 'save-structural', label: '保存草稿' },
         { key: 'open-draft-panel', label: '查看右侧结果区' }
       ]
     }
   }
 
-  if (editorState.structuralDraft && resultState.value.latestResultType === 'candidate') {
+  return null
+})
+
+const inlineResultBlock = computed(() => {
+  const chapterTitle = editorState.chapter?.title || '当前章节'
+  const currentContent = String(editorState.chapter?.content || '')
+
+  if (editorState.detemplatedDraft && resultState.value.latestResultType === 'diff') {
+    const selectionText = String(editorState.detemplatedDraft.selection_context?.text || '').trim()
     return {
-      resultType: 'candidate',
-      resultLabel: buildWorkspaceResultLabel('candidate'),
-      title: `行内候选块 · ${chapterTitle}`,
-      hint: editorState.structuralDraft.preview_mode === 'delta' ? '新增续写段' : '完整候选稿',
-      description: editorState.structuralDraft.preview_mode === 'delta'
-        ? '当前候选块展示新增续写段，可直接并入正文，也可继续在右侧结果区做更细操作。'
-        : '当前候选块展示完整候选稿，可先在正文区快速判断是否值得采用。',
-      originalText: currentContent,
-      resultText: editorState.structuralDraft.content || '',
+      resultType: 'diff',
+      resultLabel: buildWorkspaceResultLabel('diff', { rewriteVariant: 'draft' }),
+      title: `${selectionText ? '选区改写对照' : '行内改写对照'} · ${chapterTitle}`,
+      hint: selectionText ? '选区级改写' : '正文区内对照',
+      description: selectionText
+        ? '这里直接对比当前选区与改写结果，可先判断是否值得吸收，再决定覆盖、保存或跳到右侧结果区。'
+        : '这里直接对比当前正文与改写结果，先判断是否值得采纳，再决定覆盖、保存或跳到右侧结果区。',
+      originalText: selectionText || currentContent,
+      resultText: editorState.detemplatedDraft.full_content || editorState.detemplatedDraft.content || '',
       actions: [
-        { key: 'apply-structural-append', label: '插入正文末尾', primary: true },
-        { key: 'save-structural', label: '保存草稿' },
+        { key: 'apply-detemplated-replace', label: '覆盖正文', primary: true },
+        { key: 'save-detemplated', label: '保存草稿' },
         { key: 'open-draft-panel', label: '查看右侧结果区' }
       ]
     }
@@ -592,6 +664,149 @@ const selectedTextPreview = computed(() => {
 const clearSelectionContext = () => {
   selectedText.value = ''
   selectedTextRange.value = { from: 0, to: 0 }
+}
+
+const formatCandidateTime = (value) => {
+  if (!value) return ''
+  try {
+    return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  } catch (error) {
+    return ''
+  }
+}
+
+const buildCandidateEntryFromDraft = (draft = {}, latestTaskId = '') => {
+  const resultText = String(draft.content || draft.full_content || '').trim()
+  if (!resultText) return null
+  const selectionText = String(draft.selection_context?.text || '').trim()
+  const sourceKey = String(latestTaskId || '').trim() || String(draft.source_action || '').trim()
+  const fingerprint = `${sourceKey}|${resultText}`
+  const createdAt = Date.now()
+  return {
+    id: `${sourceKey || 'candidate'}-${createdAt}-${Math.random().toString(36).slice(2, 7)}`,
+    fingerprint,
+    resultText,
+    selectionText,
+    previewMode: String(draft.preview_mode || 'full'),
+    title: String(draft.title || ''),
+    createdAt,
+    createdAtLabel: formatCandidateTime(createdAt),
+    draftSnapshot: JSON.parse(JSON.stringify(draft || {}))
+  }
+}
+
+const upsertCandidateQueue = () => {
+  const draft = editorState.structuralDraft
+  if (!draft || resultState.value.latestResultType !== 'candidate') return
+
+  const nextEntry = buildCandidateEntryFromDraft(draft, resultState.value.latestTaskId)
+  if (!nextEntry) return
+
+  const queue = Array.isArray(candidateQueue.value) ? [...candidateQueue.value] : []
+  if (queue.some((item) => item.fingerprint === nextEntry.fingerprint)) {
+    return
+  }
+
+  queue.unshift(nextEntry)
+  candidateQueue.value = queue.slice(0, 6)
+  activeCandidateId.value = nextEntry.id
+}
+
+const activeCandidate = computed(() => {
+  const queue = Array.isArray(candidateQueue.value) ? candidateQueue.value : []
+  if (!queue.length) return null
+  const matched = queue.find((item) => item.id === activeCandidateId.value)
+  return matched || queue[0]
+})
+
+const shiftCandidateCursor = (direction = 1) => {
+  const queue = Array.isArray(candidateQueue.value) ? candidateQueue.value : []
+  if (!queue.length) return
+  const currentIndex = Math.max(0, queue.findIndex((item) => item.id === activeCandidateId.value))
+  const nextIndex = (currentIndex + direction + queue.length) % queue.length
+  activeCandidateId.value = queue[nextIndex]?.id || queue[0]?.id || ''
+}
+
+const dismissCurrentCandidate = () => {
+  const queue = Array.isArray(candidateQueue.value) ? [...candidateQueue.value] : []
+  if (!queue.length) return false
+  const currentIndex = Math.max(0, queue.findIndex((item) => item.id === activeCandidateId.value))
+  queue.splice(currentIndex, 1)
+  candidateQueue.value = queue
+  activeCandidateId.value = queue[Math.min(currentIndex, queue.length - 1)]?.id || ''
+  return true
+}
+
+const withActiveCandidateDraft = async (runner) => {
+  const candidate = activeCandidate.value
+  if (!candidate?.draftSnapshot) return false
+  const previousDraft = editorState.structuralDraft
+  editorState.structuralDraft = JSON.parse(JSON.stringify(candidate.draftSnapshot))
+  try {
+    await runner()
+    return true
+  } finally {
+    if (editorState.structuralDraft?.content === candidate.draftSnapshot.content) {
+      editorState.structuralDraft = previousDraft
+    }
+  }
+}
+
+const persistCandidateQueue = () => {
+  const storageKey = candidateQueueStorageKey.value
+  if (!storageKey) return
+  try {
+    const payload = {
+      queue: candidateQueue.value || [],
+      activeCandidateId: activeCandidateId.value || ''
+    }
+    localStorage.setItem(storageKey, JSON.stringify(payload))
+  } catch (error) {
+    // ignore storage errors
+  }
+}
+
+const loadCandidateQueue = () => {
+  const storageKey = candidateQueueStorageKey.value
+  if (!storageKey) {
+    candidateQueue.value = []
+    activeCandidateId.value = ''
+    return
+  }
+
+  try {
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) {
+      candidateQueue.value = []
+      activeCandidateId.value = ''
+      return
+    }
+    const parsed = JSON.parse(raw)
+    const queue = Array.isArray(parsed?.queue) ? parsed.queue : []
+    candidateQueue.value = queue.slice(0, 6)
+    activeCandidateId.value = String(parsed?.activeCandidateId || queue[0]?.id || '')
+  } catch (error) {
+    candidateQueue.value = []
+    activeCandidateId.value = ''
+  }
+}
+
+const adoptCandidateSegment = (segmentText = '') => {
+  const text = String(segmentText || '').trim()
+  if (!text || !editor.value) return false
+
+  const from = Number(selectedTextRange.value.from || 0)
+  const to = Number(selectedTextRange.value.to || 0)
+  editor.value.commands.focus()
+  if (from > 0 && to > from) {
+    editor.value.commands.insertContentAt({ from, to }, text)
+  } else {
+    editor.value.commands.insertContentAt(editor.value.state.doc.content.size, `\n${text}`)
+  }
+  workspace.state.markEditorDirty?.()
+  clearSelectionContext()
+  ElMessage.success('已局部采纳候选片段')
+  return true
 }
 
 const syncSelectionContext = (nextEditor) => {
@@ -641,6 +856,14 @@ const buildSelectionPrompt = (mode) => {
   return `请解释章节《${chapterTitle}》中的这段正文当前承担的剧情、情绪和信息功能，并指出如果继续往下写，最自然的承接方向是什么。\n\n${selectionBlock}`
 }
 
+const buildSelectionContext = () => ({
+  text: selectedText.value,
+  range: {
+    from: selectedTextRange.value.from || 0,
+    to: selectedTextRange.value.to || 0
+  }
+})
+
 const sendSelectionToCopilot = (mode) => {
   if (!selectedText.value) {
     ElMessage.info('请先选中一段正文')
@@ -653,10 +876,27 @@ const sendSelectionToCopilot = (mode) => {
   ElMessage.success('已将选中文本送入 Copilot')
 }
 
+const runSelectionAiAction = async (action) => {
+  if (!selectedText.value) {
+    ElMessage.info('请先选中一段正文')
+    return
+  }
+
+  await runAiAction(action, {
+    contentOverride: selectedText.value,
+    selectionContext: buildSelectionContext()
+  })
+}
+
 const editor = useEditor({
   extensions: [
     StarterKit,
     IssueHighlightExtension,
+    WorkspaceCandidateBlockNode.configure({
+      onAction: (key, payload) => {
+        void handleInlineResultAction(key, payload)
+      }
+    }),
     Placeholder.configure({
       placeholder: '按 "/" 呼出智能命令，或直接开始写作...'
     })
@@ -679,6 +919,44 @@ const editor = useEditor({
   }
 })
 
+const findCandidateNodeRange = (nextEditor) => {
+  const matches = []
+  nextEditor?.state?.doc?.descendants?.((node, pos) => {
+    if (node?.type?.name === 'workspaceCandidateBlock') {
+      matches.push({ from: pos, to: pos + node.nodeSize })
+    }
+  })
+  return matches
+}
+
+const syncCandidateNodeInEditor = () => {
+  const nextEditor = editor.value
+  if (!nextEditor) return
+
+  const existingRanges = findCandidateNodeRange(nextEditor)
+  for (let index = existingRanges.length - 1; index >= 0; index -= 1) {
+    nextEditor.commands.deleteRange(existingRanges[index])
+  }
+
+  if (!candidateNodeBlock.value) {
+    return
+  }
+
+  nextEditor.commands.insertContentAt(nextEditor.state.doc.content.size, {
+    type: 'workspaceCandidateBlock',
+    attrs: {
+      resultLabel: candidateNodeBlock.value.resultLabel,
+      title: candidateNodeBlock.value.title,
+      hint: candidateNodeBlock.value.hint,
+      description: candidateNodeBlock.value.description,
+      resultText: candidateNodeBlock.value.resultText,
+      candidateIndex: candidateNodeBlock.value.candidateIndex,
+      candidateTotal: candidateNodeBlock.value.candidateTotal,
+      createdAtLabel: candidateNodeBlock.value.createdAtLabel
+    }
+  })
+}
+
 const syncEditorFromStore = (content = '') => {
   if (!editor.value) return
   const currentContent = normalizeEditorText(editor.value.getText({ blockSeparator: '\n' }))
@@ -687,6 +965,9 @@ const syncEditorFromStore = (content = '') => {
 
   editor.value.commands.setContent(plainTextToHtml(nextContent), false)
   clearSelectionContext()
+  nextTick(() => {
+    syncCandidateNodeInEditor()
+  })
 }
 
 const saveChapter = async () => {
@@ -694,8 +975,8 @@ const saveChapter = async () => {
   ElMessage.success('章节已保存')
 }
 
-const runAiAction = async (action) => {
-  await workspace.runEditorAiAction(action)
+const runAiAction = async (action, options = {}) => {
+  await workspace.runEditorAiAction(action, options)
   await revealAiResult(action)
   const messageMap = {
     continue: '智能续写结果已回流到右侧候选区',
@@ -703,6 +984,14 @@ const runAiAction = async (action) => {
     optimize: '去模板化结果已回流到右侧候选区',
     rewrite: '改写结果已回流到右侧候选区',
     analyze: '审查结果已回流到右侧问题区'
+  }
+  if (options.selectionContext?.text) {
+    const selectionMessageMap = {
+      rewrite: '选区改写结果已回流到正文区与结果区',
+      analyze: '选区审查结果已回流到问题区'
+    }
+    ElMessage.success(selectionMessageMap[action] || '选区智能结果已提交')
+    return
   }
   ElMessage.success(messageMap[action] || '智能任务已提交')
 }
@@ -953,9 +1242,32 @@ const handleWritingAction = async (payload) => {
   await handleObjectAction(payload)
 }
 
-const handleInlineResultAction = async (key) => {
+const handleInlineResultAction = async (key, payload = {}) => {
+  if (key === 'candidate-prev') {
+    shiftCandidateCursor(-1)
+    return
+  }
+  if (key === 'candidate-next') {
+    shiftCandidateCursor(1)
+    return
+  }
+  if (key === 'candidate-dismiss') {
+    if (dismissCurrentCandidate()) {
+      ElMessage.info('已忽略当前候选')
+    }
+    return
+  }
+  if (key === 'candidate-adopt-segment') {
+    adoptCandidateSegment(payload.segmentText || '')
+    return
+  }
   if (key === 'apply-structural-append') {
-    handleApplyDraft({ type: 'structural', mode: 'append' })
+    const applied = await withActiveCandidateDraft(async () => {
+      handleApplyDraft({ type: 'structural', mode: 'append' })
+    })
+    if (applied) {
+      dismissCurrentCandidate()
+    }
     return
   }
   if (key === 'apply-detemplated-replace') {
@@ -963,7 +1275,9 @@ const handleInlineResultAction = async (key) => {
     return
   }
   if (key === 'save-structural') {
-    await handleSaveDraft({ type: 'structural' })
+    await withActiveCandidateDraft(async () => {
+      await handleSaveDraft({ type: 'structural' })
+    })
     return
   }
   if (key === 'save-detemplated') {
@@ -971,6 +1285,7 @@ const handleInlineResultAction = async (key) => {
     return
   }
   if (key === 'open-draft-panel') {
+    await withActiveCandidateDraft(async () => {})
     await scrollInspectorTo(draftPreviewSectionRef)
   }
 }
@@ -1032,6 +1347,7 @@ const formatBindingRole = (value) => ({
 watch(
   () => [selectedChapterId.value, workspace.state.projectId],
   ([chapterId]) => {
+    loadCandidateQueue()
     clearIssueHighlight()
     clearSelectionContext()
     void workspace.loadEditorChapter(chapterId)
@@ -1050,6 +1366,14 @@ watch(
     void revealFocusedWorkspaceResult()
   },
   { immediate: true }
+)
+
+watch(
+  () => [candidateQueue.value, activeCandidateId.value, candidateQueueStorageKey.value],
+  () => {
+    persistCandidateQueue()
+  },
+  { deep: true }
 )
 
 watch(
@@ -1076,6 +1400,38 @@ watch(
   ([nextEditor, , content]) => {
     if (!nextEditor) return
     syncEditorFromStore(content)
+  },
+  { immediate: true }
+)
+
+watch(
+  () => [
+    editorState.structuralDraft?.content,
+    editorState.structuralDraft?.full_content,
+    editorState.structuralDraft?.preview_mode,
+    resultState.value.latestResultType,
+    resultState.value.latestTaskId,
+    editorState.chapter?.id
+  ],
+  () => {
+    upsertCandidateQueue()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => [
+    candidateNodeBlock.value?.title,
+    candidateNodeBlock.value?.hint,
+    candidateNodeBlock.value?.description,
+    candidateNodeBlock.value?.resultText,
+    resultState.value.latestResultType,
+    editorState.chapter?.id
+  ],
+  () => {
+    nextTick(() => {
+      syncCandidateNodeInEditor()
+    })
   },
   { immediate: true }
 )
@@ -1338,6 +1694,25 @@ onBeforeUnmount(() => {
   border: 1px solid #EEF2F7;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
   position: relative;
+}
+
+.editor-inline-result-anchor {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto 22px;
+  position: sticky;
+  top: 14px;
+  z-index: 4;
+}
+
+.editor-inline-result-anchor-candidate :deep(.inline-result-block) {
+  border-color: #93C5FD;
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.10);
+}
+
+.editor-inline-result-anchor-diff :deep(.inline-result-block) {
+  border-color: #86EFAC;
+  box-shadow: 0 14px 30px rgba(34, 197, 94, 0.10);
 }
 
 .selection-bubble-menu {

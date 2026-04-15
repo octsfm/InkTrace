@@ -8,6 +8,8 @@ import IssuePanelCard from '@/components/story/IssuePanelCard.vue'
 const mockSetContent = vi.fn()
 const mockFocus = vi.fn()
 const mockSetTextSelection = vi.fn()
+const mockInsertContentAt = vi.fn()
+const mockDeleteRange = vi.fn()
 const mockDispatch = vi.fn()
 const mockSetMeta = vi.fn()
 const mockTransaction = { meta: {} }
@@ -17,7 +19,9 @@ const mockEditorInstance = {
   commands: {
     setContent: mockSetContent,
     focus: mockFocus,
-    setTextSelection: mockSetTextSelection
+    setTextSelection: mockSetTextSelection,
+    insertContentAt: mockInsertContentAt,
+    deleteRange: mockDeleteRange
   },
   getText: vi.fn(() => 'test content'),
   state: {
@@ -30,6 +34,9 @@ const mockEditorInstance = {
       setMeta: mockSetMeta
     },
     doc: {
+      content: {
+        size: 12
+      },
       textBetween: vi.fn(() => ''),
       descendants: (callback) => {
         callback({ isText: true, text: 'test content' }, 0)
@@ -90,6 +97,8 @@ vi.mock('vue-router', () => ({
 // Mock TipTap
 vi.mock('@tiptap/vue-3', () => ({
   EditorContent: { template: '<div class="mock-editor-content"></div>' },
+  NodeViewWrapper: { template: '<div class="mock-node-view-wrapper"><slot /></div>' },
+  VueNodeViewRenderer: vi.fn(() => () => ({})),
   useEditor: vi.fn((options) => {
     lastEditorOptions = options
     return { value: mockEditorInstance }
@@ -111,9 +120,12 @@ describe('WorkspaceWritingStudio.vue', () => {
   let wrapper
 
   beforeEach(() => {
+    localStorage.clear()
     mockSetContent.mockClear()
     mockFocus.mockClear()
     mockSetTextSelection.mockClear()
+    mockInsertContentAt.mockClear()
+    mockDeleteRange.mockClear()
     mockDispatch.mockClear()
     mockSetMeta.mockClear()
     mockScrollIntoView.mockClear()
@@ -256,13 +268,59 @@ describe('WorkspaceWritingStudio.vue', () => {
     expect(wrapper.text()).toContain('改写片段')
     expect(wrapper.text()).toContain('审查片段')
 
-    const rewriteButton = wrapper.findAll('button').find((node) => node.text().includes('改写片段'))
-    await rewriteButton.trigger('click')
+    const explainButton = wrapper.findAll('button').find((node) => node.text().includes('解释片段'))
+    await explainButton.trigger('click')
 
     expect(workspaceStore.isCopilotOpen).toBe(true)
     expect(workspaceStore.currentCopilotTab).toBe('chat')
     expect(workspaceStore.copilotChatDraft).toContain('这是一段选中的正文')
-    expect(workspaceStore.copilotChatDraft).toContain('改写方案')
+    expect(workspaceStore.copilotChatDraft).toContain('剧情、情绪和信息功能')
+  })
+
+  it('routes selection rewrite through real editor ai action with selection context', async () => {
+    mockEditorInstance.state.selection = {
+      empty: false,
+      from: 2,
+      to: 8
+    }
+    mockEditorInstance.state.doc.textBetween.mockReturnValue('这是一段选中的正文')
+
+    lastEditorOptions.onSelectionUpdate({ editor: mockEditorInstance })
+    await wrapper.vm.$nextTick()
+
+    const rewriteButton = wrapper.findAll('button').find((node) => node.text().includes('改写片段'))
+    await rewriteButton.trigger('click')
+
+    expect(mockWorkspaceContext.runEditorAiAction).toHaveBeenCalledWith('rewrite', expect.objectContaining({
+      contentOverride: '这是一段选中的正文',
+      selectionContext: {
+        text: '这是一段选中的正文',
+        range: { from: 2, to: 8 }
+      }
+    }))
+  })
+
+  it('routes selection audit through real editor ai action with selection context', async () => {
+    mockEditorInstance.state.selection = {
+      empty: false,
+      from: 3,
+      to: 9
+    }
+    mockEditorInstance.state.doc.textBetween.mockReturnValue('需要审查的正文')
+
+    lastEditorOptions.onSelectionUpdate({ editor: mockEditorInstance })
+    await wrapper.vm.$nextTick()
+
+    const auditButton = wrapper.findAll('button').find((node) => node.text().includes('审查片段'))
+    await auditButton.trigger('click')
+
+    expect(mockWorkspaceContext.runEditorAiAction).toHaveBeenCalledWith('analyze', expect.objectContaining({
+      contentOverride: '需要审查的正文',
+      selectionContext: {
+        text: '需要审查的正文',
+        range: { from: 3, to: 9 }
+      }
+    }))
   })
 
   it('renders an inline candidate block inside the editor area', async () => {
@@ -300,9 +358,69 @@ describe('WorkspaceWritingStudio.vue', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('行内候选块')
-    expect(wrapper.text()).toContain('这是新增续写内容。')
-    expect(wrapper.text()).toContain('插入正文末尾')
+    expect(mockInsertContentAt).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      type: 'workspaceCandidateBlock',
+      attrs: expect.objectContaining({
+        title: expect.stringContaining('候选块'),
+        resultText: expect.any(String)
+      })
+    }))
+  })
+
+  it('loads persisted candidate queue for current project chapter', async () => {
+    mockWorkspaceContext.state.editor.structuralDraft = null
+    mockWorkspaceContext.state.editor.resultState.latestResultType = 'none'
+    localStorage.setItem('inktrace:workspace:candidate-queue:proj-1:1', JSON.stringify({
+      queue: [
+        {
+          id: 'persisted-1',
+          fingerprint: 'fp-1',
+          resultText: '已持久化候选',
+          selectionText: '',
+          previewMode: 'full',
+          title: '已持久化候选',
+          createdAt: Date.now(),
+          createdAtLabel: '10:30',
+          draftSnapshot: {
+            title: '已持久化候选',
+            content: '已持久化候选',
+            full_content: '已持久化候选',
+            preview_mode: 'full',
+            source_action: 'continue'
+          }
+        }
+      ],
+      activeCandidateId: 'persisted-1'
+    }))
+
+    wrapper = mount(WorkspaceWritingStudio, {
+      global: {
+        plugins: [createPinia()],
+        stubs: [
+          'el-button', 'el-skeleton', 'el-empty', 'el-icon', 'el-tooltip',
+          'el-card', 'el-tag', 'el-alert', 'el-tabs', 'el-tab-pane',
+          'el-descriptions', 'el-descriptions-item', 'el-collapse', 'el-collapse-item'
+        ],
+        directives: { loading: () => {} },
+        mocks: {
+          $route: { query: { chapterId: '1' } },
+          $router: { push: vi.fn() }
+        }
+      }
+    })
+
+    const setupState = wrapper.vm.$.setupState
+    expect(Array.isArray(setupState.candidateQueue)).toBe(true)
+    expect(setupState.candidateQueue[0]?.resultText).toBe('已持久化候选')
+    expect(setupState.activeCandidateId).toBe('persisted-1')
+  })
+
+  it('supports partial candidate adoption into current selection', async () => {
+    const setupState = wrapper.vm.$.setupState
+    setupState.selectedTextRange = { from: 4, to: 9 }
+    await setupState.handleInlineResultAction('candidate-adopt-segment', { segmentText: '局部采纳片段' })
+
+    expect(mockInsertContentAt).toHaveBeenLastCalledWith({ from: 4, to: 9 }, '局部采纳片段')
   })
 
   it('renders an inline diff block for detemplated drafts', async () => {
@@ -440,7 +558,7 @@ describe('WorkspaceWritingStudio.vue', () => {
     const analyzeButton = wrapper.findAll('button').find((node) => node.text().includes('重新审查'))
     expect(analyzeButton).toBeTruthy()
     await analyzeButton.trigger('click')
-    expect(mockWorkspaceContext.runEditorAiAction).toHaveBeenCalledWith('analyze')
+    expect(mockWorkspaceContext.runEditorAiAction).toHaveBeenCalledWith('analyze', {})
   })
 
   it('provides workspace-level action chips', async () => {

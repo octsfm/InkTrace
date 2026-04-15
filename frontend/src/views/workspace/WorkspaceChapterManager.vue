@@ -140,18 +140,25 @@
               @dragover.prevent="handleDragOver(col.status)"
               @dragenter.prevent="handleDragOver(col.status)"
               @dragleave="handleDragLeave(col.status)"
-              @drop.prevent="handleDrop(col.status)"
+              @drop.prevent="handleDrop(col.status, null)"
             >
               <div 
                 v-for="chapter in getFilteredChaptersByStatus(col.status)" 
                 :key="chapter.id" 
                 class="kanban-card"
-                :class="{ focused: focusedChapterId === chapter.id, dragging: draggingChapterId === chapter.id }"
+                :class="{
+                  focused: focusedChapterId === chapter.id,
+                  dragging: draggingChapterId === chapter.id,
+                  'drop-before': dragOverChapterId === String(chapter.id) && dragInsertPosition === 'before',
+                  'drop-after': dragOverChapterId === String(chapter.id) && dragInsertPosition === 'after'
+                }"
                 :ref="(el) => setChapterCardRef(chapter.id, el)"
                 :data-chapter-id="chapter.id"
                 draggable="true"
                 @dragstart="handleDragStart(chapter)"
                 @dragend="handleDragEnd"
+                @dragover.prevent="handleCardDragOver(col.status, chapter, $event)"
+                @drop.prevent="handleDrop(col.status, chapter)"
                 @click="focusChapter(chapter)"
               >
                 <div class="card-number">第 {{ chapter.chapter_number }} 章</div>
@@ -163,6 +170,12 @@
                 <div class="card-actions">
                   <el-button size="small" type="primary" plain @click.stop="workspace.openChapter(chapter.id)">进入写作</el-button>
                 </div>
+              </div>
+              <div
+                v-if="dragOverStatus === col.status && dragInsertPosition === 'end'"
+                class="kanban-drop-placeholder"
+              >
+                释放后插入到该列末尾
               </div>
               <div v-if="!getFilteredChaptersByStatus(col.status).length" class="kanban-empty">
                 当前筛选下没有{{ col.label }}章节
@@ -203,6 +216,8 @@ const tableRef = ref(null)
 const chapterCardRefs = ref({})
 const draggingChapterId = ref('')
 const dragOverStatus = ref('')
+const dragOverChapterId = ref('')
+const dragInsertPosition = ref('')
 const workspaceActionItems = computed(() => ([
   {
     label: '回到概览',
@@ -479,6 +494,38 @@ const patchChapterStatusLocally = (chapterId, nextStatus) => {
   return previousStatus
 }
 
+const reorderChapterLocally = (chapterId, nextStatus, targetChapterId, insertPosition) => {
+  const chapterList = Array.isArray(workspace.state.chapters) ? workspace.state.chapters : []
+  const sourceIndex = chapterList.findIndex((item) => String(item.id) === String(chapterId))
+  if (sourceIndex < 0) {
+    return null
+  }
+
+  const snapshot = chapterList.map((item) => ({
+    id: item.id,
+    status: item.status,
+    chapter_number: item.chapter_number
+  }))
+
+  const [source] = chapterList.splice(sourceIndex, 1)
+  source.status = nextStatus
+
+  let insertIndex = chapterList.length
+  if (targetChapterId) {
+    const targetIndex = chapterList.findIndex((item) => String(item.id) === String(targetChapterId))
+    if (targetIndex >= 0) {
+      insertIndex = insertPosition === 'after' ? targetIndex + 1 : targetIndex
+    }
+  }
+
+  chapterList.splice(insertIndex, 0, source)
+  chapterList.forEach((item, index) => {
+    item.chapter_number = index + 1
+    item.updated_at = item.id === source.id ? new Date().toISOString() : item.updated_at
+  })
+  return snapshot
+}
+
 const persistChapterStatus = async (chapterId, nextStatus) => {
   const novelId = workspace.state.novel?.id
   if (!novelId || !chapterId) return
@@ -500,20 +547,40 @@ const handleDragStart = (chapter) => {
 
 const handleDragOver = (status) => {
   dragOverStatus.value = String(status || '')
+  dragOverChapterId.value = ''
+  dragInsertPosition.value = 'end'
+}
+
+const handleCardDragOver = (status, chapter, event) => {
+  dragOverStatus.value = String(status || '')
+  dragOverChapterId.value = String(chapter?.id || '')
+
+  const cardElement = event?.currentTarget
+  const rect = cardElement?.getBoundingClientRect?.()
+  if (!rect) {
+    dragInsertPosition.value = 'before'
+    return
+  }
+  const offsetY = Number(event.clientY) - rect.top
+  dragInsertPosition.value = offsetY > rect.height / 2 ? 'after' : 'before'
 }
 
 const handleDragLeave = (status) => {
   if (dragOverStatus.value === String(status || '')) {
     dragOverStatus.value = ''
+    dragOverChapterId.value = ''
+    dragInsertPosition.value = ''
   }
 }
 
 const handleDragEnd = () => {
   draggingChapterId.value = ''
   dragOverStatus.value = ''
+  dragOverChapterId.value = ''
+  dragInsertPosition.value = ''
 }
 
-const handleDrop = async (status) => {
+const handleDrop = async (status, targetChapter = null) => {
   const chapterId = String(draggingChapterId.value || '')
   const nextStatus = String(status || '')
   if (!chapterId || !nextStatus) {
@@ -523,11 +590,15 @@ const handleDrop = async (status) => {
 
   const chapter = normalizedChapters.value.find((item) => String(item.id) === chapterId) || null
   if (!chapter || chapter.normalizedStatus === nextStatus) {
-    handleDragEnd()
-    return
+    if (!targetChapter || String(targetChapter.id || '') === chapterId) {
+      handleDragEnd()
+      return
+    }
   }
 
-  const previousStatus = patchChapterStatusLocally(chapterId, nextStatus)
+  const targetChapterId = String(targetChapter?.id || dragOverChapterId.value || '')
+  const insertPosition = dragInsertPosition.value || 'end'
+  const previousSnapshot = reorderChapterLocally(chapterId, nextStatus, targetChapterId, insertPosition)
   focusChapter({
     ...chapter,
     status: nextStatus,
@@ -536,11 +607,22 @@ const handleDrop = async (status) => {
   handleDragEnd()
 
   try {
+    const movedChapter = (workspace.state.chapters || []).find((item) => String(item.id) === chapterId)
     await persistChapterStatus(chapterId, nextStatus)
+    if (movedChapter?.chapter_number) {
+      await novelApi.updateChapter(workspace.state.novel?.id, chapterId, { chapter_number: movedChapter.chapter_number })
+    }
     ElMessage.success(`已移动到${formatStatus(nextStatus)}`)
   } catch (error) {
-    if (previousStatus !== null) {
-      patchChapterStatusLocally(chapterId, previousStatus)
+    if (Array.isArray(previousSnapshot)) {
+      const chapterList = Array.isArray(workspace.state.chapters) ? workspace.state.chapters : []
+      previousSnapshot.forEach((snapshot) => {
+        const target = chapterList.find((item) => String(item.id) === String(snapshot.id))
+        if (!target) return
+        target.status = snapshot.status
+        target.chapter_number = snapshot.chapter_number
+      })
+      chapterList.sort((a, b) => Number(a.chapter_number || 0) - Number(b.chapter_number || 0))
     }
     ElMessage.error(error?.message || '章节状态更新失败')
   }
@@ -930,6 +1012,24 @@ watch(
 .kanban-card.dragging {
   opacity: 0.56;
   transform: rotate(1deg);
+}
+
+.kanban-card.drop-before {
+  box-shadow: inset 0 3px 0 #3B82F6;
+}
+
+.kanban-card.drop-after {
+  box-shadow: inset 0 -3px 0 #3B82F6;
+}
+
+.kanban-drop-placeholder {
+  border: 1px dashed #93C5FD;
+  background: #EFF6FF;
+  color: #2563EB;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  text-align: center;
 }
 
 .kanban-card:hover {

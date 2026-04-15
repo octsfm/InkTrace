@@ -113,6 +113,7 @@
       @chat-submit="handleCopilotChatSubmit"
       @clear-chat="handleCopilotChatClear"
       @chat-session-change="handleCopilotChatSessionChange"
+      @inspire-feedback="handleInspireFeedback"
     />
 
     <WorkspaceCommandPalette
@@ -1432,6 +1433,85 @@ const copilotObjectPromptCards = computed(() => {
 const copilotInspireRemoteItems = ref([])
 const copilotInspirePending = ref(false)
 const copilotInspireLastSignature = ref('')
+const inspireFeedbackMap = ref({})
+
+const inspireFeedbackStorageKey = computed(() => {
+  const projectId = state.projectId || state.project?.id || ''
+  return projectId ? `inktrace:workspace:inspire-feedback:${projectId}` : ''
+})
+
+const loadInspireFeedback = () => {
+  const storageKey = inspireFeedbackStorageKey.value
+  if (!storageKey) return
+  try {
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) {
+      inspireFeedbackMap.value = {}
+      return
+    }
+    const parsed = JSON.parse(raw)
+    inspireFeedbackMap.value = parsed && typeof parsed === 'object' ? parsed : {}
+  } catch (error) {
+    inspireFeedbackMap.value = {}
+  }
+}
+
+const persistInspireFeedback = () => {
+  const storageKey = inspireFeedbackStorageKey.value
+  if (!storageKey) return
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(inspireFeedbackMap.value || {}))
+  } catch (error) {
+    // ignore storage failures in private mode
+  }
+}
+
+const getInspireSourcePriority = (item = {}) => {
+  const key = String(item.key || '')
+  if (key.startsWith('remote-plan-')) return 42
+  if (key.startsWith('remote-branch-')) return 36
+  if (item.tag === '修复') return 34
+  if (item.tag === '恢复') return 32
+  if (item.tag === '候选') return 30
+  if (item.tag === '改写') return 28
+  if (item.tag === '续写') return 26
+  if (item.tag === '结构') return 24
+  if (item.tag === '规划') return 22
+  return 18
+}
+
+const scoreInspireItem = (item = {}, index = 0) => {
+  const feedback = inspireFeedbackMap.value[String(item.key || '')] || {}
+  const accepted = Number(feedback.accepted || 0)
+  const dismissed = Number(feedback.dismissed || 0)
+  const sourcePriority = getInspireSourcePriority(item)
+  const freshness = Math.max(0, 8 - index)
+  return sourcePriority + freshness + accepted * 6 - dismissed * 4
+}
+
+const handleInspireFeedback = (payload = {}) => {
+  const key = String(payload.key || '').trim()
+  if (!key) return
+  const signal = String(payload.signal || '').trim()
+  if (!signal) return
+
+  const previous = inspireFeedbackMap.value[key] || { accepted: 0, dismissed: 0 }
+  inspireFeedbackMap.value = {
+    ...inspireFeedbackMap.value,
+    [key]: {
+      accepted: Number(previous.accepted || 0) + (signal === 'accept' ? 1 : 0),
+      dismissed: Number(previous.dismissed || 0) + (signal === 'dismiss' ? 1 : 0),
+      updatedAt: Date.now()
+    }
+  }
+  persistInspireFeedback()
+
+  if (signal === 'accept') {
+    ElMessage.success('已记录采纳偏好，后续会优先推荐类似灵感')
+  } else {
+    ElMessage.info('已记录忽略偏好，后续会降低类似灵感权重')
+  }
+}
 
 const buildCopilotInspireSignature = () => JSON.stringify({
   tab: workspaceStore.currentCopilotTab,
@@ -1490,6 +1570,40 @@ const buildRemoteBranchInspireItems = (branches = []) => {
     .slice(0, 2)
 }
 
+const buildRemotePlanInspireItems = (plans = [], branchTitle = '') => {
+  return plans
+    .map((plan, index) => {
+      const title = String(plan?.title || '').trim()
+      const goal = String(plan?.goal || '').trim()
+      const hook = String(plan?.ending_hook || '').trim()
+      const taskSeed = plan?.chapter_task_seed || {}
+      const chapterFunction = String(taskSeed?.chapter_function || '').trim()
+      const mustContinuePoints = Array.isArray(taskSeed?.must_continue_points) ? taskSeed.must_continue_points.filter(Boolean) : []
+      if (!title && !goal && !hook) return null
+
+      return {
+        key: `remote-plan-${plan?.id || index}`,
+        tag: '规划',
+        focus: branchTitle || `第 ${index + 1} 章规划`,
+        title: title || `章节规划 ${index + 1}`,
+        description: goal || hook || '来自章节规划服务的落地建议。',
+        rationale: [
+          chapterFunction ? `章节功能：${chapterFunction}` : '',
+          mustContinuePoints[0] ? `必须承接：${mustContinuePoints[0]}` : '',
+          hook ? `结尾钩子：${hook}` : ''
+        ].filter(Boolean).join(' · '),
+        prompt: `请围绕这个章节规划「${title || `章节规划 ${index + 1}`}」继续展开，说明这一章最适合如何承接当前对象、如何制造推进，以及结尾钩子该怎么落。`,
+        cta: '打开章节',
+        action: {
+          type: 'section',
+          section: 'chapters'
+        }
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 2)
+}
+
 const loadCopilotInspireRemoteItems = async () => {
   if (workspaceStore.currentCopilotTab !== 'inspire') {
     return
@@ -1514,7 +1628,25 @@ const loadCopilotInspireRemoteItems = async () => {
       direction_hint: buildCopilotInspireDirectionHint(),
       branch_count: 3
     })
-    copilotInspireRemoteItems.value = buildRemoteBranchInspireItems(response?.branches || [])
+    const branches = response?.branches || []
+    const branchItems = buildRemoteBranchInspireItems(branches)
+    const primaryBranch = branches[0] || null
+
+    let planItems = []
+    if (primaryBranch?.id) {
+      try {
+        const planResponse = await projectApi.chapterPlanV2(projectId, {
+          branch_id: primaryBranch.id,
+          chapter_count: 2,
+          target_words_per_chapter: 1800
+        })
+        planItems = buildRemotePlanInspireItems(planResponse?.plans || [], String(primaryBranch.title || '').trim())
+      } catch (error) {
+        planItems = []
+      }
+    }
+
+    copilotInspireRemoteItems.value = [...branchItems, ...planItems]
   } catch (error) {
     copilotInspireRemoteItems.value = []
   } finally {
@@ -1653,7 +1785,22 @@ const copilotInspireItems = computed(() => {
     })
   }
 
-  return items.slice(0, 4)
+  const seen = new Set()
+  const dedupedItems = items.filter((item) => {
+    const key = String(item?.key || '')
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  const rankedItems = dedupedItems
+    .map((item, index) => ({
+      ...item,
+      score: scoreInspireItem(item, index)
+    }))
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+
+  return rankedItems.slice(0, 4)
 })
 
 const overviewDecisionCards = computed(() => {
@@ -3096,6 +3243,14 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => inspireFeedbackStorageKey.value,
+  () => {
+    loadInspireFeedback()
+  },
+  { immediate: true }
+)
+
 watch(() => [state.loading, state.chapters], () => {
   void ensureWorkspaceEntry()
 }, { deep: true })
@@ -3113,6 +3268,7 @@ onMounted(() => {
       hasStructure: Boolean((state.activeArcs || []).length || Object.keys(state.memoryView || {}).length)
     })
   }
+  loadInspireFeedback()
   void ensureWorkspaceEntry()
   window.addEventListener('keydown', handleGlobalKeydown)
 })

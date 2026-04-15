@@ -27,6 +27,20 @@ const mockBranchesV2 = vi.fn(async () => ({
     }
   ]
 }))
+const mockChapterPlanV2 = vi.fn(async () => ({
+  plans: [
+    {
+      id: 'plan-1',
+      title: '第一章推进方案',
+      goal: '让主角被迫提前行动',
+      ending_hook: '反派留下反向线索',
+      chapter_task_seed: {
+        chapter_function: '冲突升级',
+        must_continue_points: ['必须承接门后异响']
+      }
+    }
+  ]
+}))
 
 vi.mock('@/api', () => ({
   novelApi: {
@@ -36,7 +50,8 @@ vi.mock('@/api', () => ({
   projectApi: {
     memoryViewV2: (...args) => mockMemoryViewV2(...args),
     continuationContextV2: (...args) => mockContinuationContextV2(...args),
-    branchesV2: (...args) => mockBranchesV2(...args)
+    branchesV2: (...args) => mockBranchesV2(...args),
+    chapterPlanV2: (...args) => mockChapterPlanV2(...args)
   }
 }))
 
@@ -137,6 +152,7 @@ describe('NovelWorkspace.vue', () => {
     mockMemoryViewV2.mockClear()
     mockContinuationContextV2.mockClear()
     mockBranchesV2.mockClear()
+    mockChapterPlanV2.mockClear()
     mountComponent()
   })
 
@@ -478,6 +494,28 @@ describe('NovelWorkspace.vue', () => {
     expect(wrapper.vm.copilotInspireItems.some((item) => item.key === 'inspire-failed-task-recovery')).toBe(true)
   })
 
+  it('applies inspire feedback to ranking scores', async () => {
+    store.currentView = 'overview'
+    store.currentObject = null
+    store.taskCenterSnapshot = {
+      tasks: [],
+      failedCount: 1,
+      runningCount: 0,
+      completedCount: 0,
+      auditCount: 0
+    }
+    await wrapper.vm.$nextTick()
+
+    const before = wrapper.vm.copilotInspireItems.find((item) => item.key === 'inspire-failed-task-recovery')
+    expect(before).toBeTruthy()
+
+    wrapper.vm.handleInspireFeedback({ key: 'inspire-failed-task-recovery', signal: 'accept' })
+    await wrapper.vm.$nextTick()
+
+    const after = wrapper.vm.copilotInspireItems.find((item) => item.key === 'inspire-failed-task-recovery')
+    expect(Number(after.score)).toBeGreaterThan(Number(before.score))
+  })
+
   it('loads remote branch inspire items when inspire tab becomes active', async () => {
     store.currentCopilotTab = 'inspire'
     await wrapper.vm.$nextTick()
@@ -485,7 +523,9 @@ describe('NovelWorkspace.vue', () => {
     await wrapper.vm.$nextTick()
 
     expect(mockBranchesV2).toHaveBeenCalled()
+    expect(mockChapterPlanV2).toHaveBeenCalled()
     expect(wrapper.vm.copilotInspireItems.some((item) => String(item.key).startsWith('remote-branch-'))).toBe(true)
+    expect(wrapper.vm.copilotInspireItems.some((item) => String(item.key).startsWith('remote-plan-'))).toBe(true)
   })
 
   it('builds current object command for structure section objects', async () => {
