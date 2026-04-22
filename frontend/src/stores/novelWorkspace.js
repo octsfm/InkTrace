@@ -119,6 +119,49 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
   const activeArcs = ref([])
   const copilotTab = ref('context')
   const editor = reactive(createEmptyEditorState())
+  const requestControllers = new Map()
+
+  const isRequestCanceled = (error) => (
+    error?.code === 'ERR_CANCELED'
+    || error?.name === 'CanceledError'
+    || String(error?.message || '').toLowerCase().includes('canceled')
+    || String(error?.message || '').toLowerCase().includes('aborted')
+  )
+
+  const createRequestConfig = (key, timeoutMs = 12000) => {
+    const requestKey = String(key || '').trim()
+    if (requestKey && requestControllers.has(requestKey)) {
+      requestControllers.get(requestKey)?.abort?.()
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      controller.abort(`timeout:${requestKey}`)
+    }, Math.max(1000, Number(timeoutMs || 0)))
+
+    if (requestKey) {
+      requestControllers.set(requestKey, controller)
+    }
+
+    const finalize = () => {
+      clearTimeout(timer)
+      if (requestKey && requestControllers.get(requestKey) === controller) {
+        requestControllers.delete(requestKey)
+      }
+    }
+
+    return {
+      signal: controller.signal,
+      timeout: Math.max(1000, Number(timeoutMs || 0)),
+      __finalize: finalize
+    }
+  }
+
+  const cancelPendingRequests = () => {
+    Array.from(requestControllers.values()).forEach((controller) => {
+      controller?.abort?.('workspace-cancel')
+    })
+    requestControllers.clear()
+  }
 
   const resetEditor = () => {
     Object.assign(editor, createEmptyEditorState())
@@ -165,7 +208,7 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     chapters: chapters.value
   }))
 
-  const loadStructure = async () => {
+  const loadStructure = async ({ silent = true } = {}) => {
     if (!projectId.value) {
       memoryView.value = {}
       activeArcs.value = []
@@ -173,14 +216,28 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     }
 
     structureLoading.value = true
+    const memoryConfig = createRequestConfig(`memory-view:${projectId.value}`, 10000)
+    const arcsConfig = createRequestConfig(`active-arcs:${projectId.value}`, 10000)
     try {
       const [nextMemoryView, arcResult] = await Promise.all([
-        projectApi.memoryViewV2(projectId.value).catch(() => ({})),
-        projectApi.activePlotArcsV2(projectId.value).catch(() => ({}))
+        projectApi.memoryViewV2(projectId.value, memoryConfig).catch((error) => {
+          if (!isRequestCanceled(error) && !silent) throw error
+          return {}
+        }),
+        projectApi.activePlotArcsV2(projectId.value, arcsConfig).catch((error) => {
+          if (!isRequestCanceled(error) && !silent) throw error
+          return {}
+        })
       ])
       memoryView.value = nextMemoryView || {}
       activeArcs.value = arcResult?.plot_arcs || []
+    } catch (error) {
+      if (!isRequestCanceled(error)) {
+        errorMessage.value = error?.message || '结构数据加载失败。'
+      }
     } finally {
+      memoryConfig.__finalize?.()
+      arcsConfig.__finalize?.()
       structureLoading.value = false
     }
   }
@@ -188,12 +245,16 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
   const loadBase = async (novelId) => {
     loading.value = true
     errorMessage.value = ''
+    const nextNovelConfig = createRequestConfig(`novel:${novelId}`, 8000)
+    const chaptersConfig = createRequestConfig(`novel-chapters:${novelId}`, 8000)
+    const projectConfig = createRequestConfig(`novel-project:${novelId}`, 8000)
+    const progressConfig = createRequestConfig(`novel-progress:${novelId}`, 8000)
     try {
       const [nextNovel, nextChapters, nextProject, nextProgress] = await Promise.all([
-        novelApi.get(novelId),
-        novelApi.listChapters(novelId),
-        projectApi.getByNovel(novelId).catch(() => null),
-        contentApi.organizeProgress(novelId).catch(() => ({}))
+        novelApi.get(novelId, nextNovelConfig),
+        novelApi.listChapters(novelId, chaptersConfig),
+        projectApi.getByNovel(novelId, projectConfig).catch(() => null),
+        contentApi.organizeProgress(novelId, progressConfig).catch(() => ({}))
       ])
 
       novel.value = nextNovel
@@ -201,14 +262,35 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
       project.value = nextProject
       projectId.value = nextProject?.id || ''
       organizeProgress.value = nextProgress || {}
-      chapterTasks.value = projectId.value
-        ? await projectApi.chapterTasksV2(projectId.value).catch(() => [])
-        : []
 
-      await loadStructure()
+      // Keep first-screen responsive: heavy data is loaded in background.
+      if (projectId.value) {
+        const tasksConfig = createRequestConfig(`chapter-tasks:${projectId.value}`, 12000)
+        void projectApi.chapterTasksV2(projectId.value, tasksConfig)
+          .then((tasks) => {
+            chapterTasks.value = tasks || []
+          })
+          .catch((error) => {
+            if (!isRequestCanceled(error)) {
+              chapterTasks.value = []
+            }
+          })
+          .finally(() => {
+            tasksConfig.__finalize?.()
+          })
+      } else {
+        chapterTasks.value = []
+      }
+      void loadStructure({ silent: true })
     } catch (error) {
-      errorMessage.value = error?.message || '加载新工作区失败。'
+      if (!isRequestCanceled(error)) {
+        errorMessage.value = error?.message || '加载新工作区失败。'
+      }
     } finally {
+      nextNovelConfig.__finalize?.()
+      chaptersConfig.__finalize?.()
+      projectConfig.__finalize?.()
+      progressConfig.__finalize?.()
       loading.value = false
     }
   }
@@ -220,20 +302,27 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     }
 
     editor.loading = true
+    const chapterConfig = createRequestConfig(`chapter:${chapterId}`, 10000)
+    const outlineConfig = createRequestConfig(`chapter-outline:${chapterId}`, 10000)
+    const contextConfig = createRequestConfig(`chapter-context:${chapterId}`, 10000)
     try {
       const [chapter, nextOutline, nextContext] = await Promise.all([
-        chapterEditorApi.get(chapterId),
-        chapterEditorApi.getOutline(chapterId).catch(() => ({})),
-        chapterEditorApi.getContext(chapterId).catch(() => ({}))
+        chapterEditorApi.get(chapterId, chapterConfig),
+        chapterEditorApi.getOutline(chapterId, outlineConfig).catch(() => ({})),
+        chapterEditorApi.getContext(chapterId, contextConfig).catch(() => ({}))
       ])
 
       let nextTask = nextContext?.chapter_task_seed || {}
       let nextArcs = []
       if (projectId.value) {
+        const tasksConfig = createRequestConfig(`chapter-tasks:${projectId.value}`, 10000)
+        const arcsConfig = createRequestConfig(`chapter-arcs:${chapterId}`, 10000)
         const [tasks, arcBindings] = await Promise.all([
-          projectApi.chapterTasksV2(projectId.value).catch(() => []),
-          projectApi.chapterArcsV2(chapterId).catch(() => ({}))
+          projectApi.chapterTasksV2(projectId.value, tasksConfig).catch(() => []),
+          projectApi.chapterArcsV2(chapterId, arcsConfig).catch(() => ({}))
         ])
+        tasksConfig.__finalize?.()
+        arcsConfig.__finalize?.()
 
         nextTask = (tasks || []).find((item) => (
           item.chapter_id === chapterId || item.chapter_number === nextContext?.chapter_number
@@ -267,7 +356,14 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
       })
       editor.activeDraftTab = editor.detemplatedDraft ? 'detemplated' : 'structural'
       editor.dirty = false
+    } catch (error) {
+      if (!isRequestCanceled(error)) {
+        errorMessage.value = error?.message || '章节加载失败。'
+      }
     } finally {
+      chapterConfig.__finalize?.()
+      outlineConfig.__finalize?.()
+      contextConfig.__finalize?.()
       editor.loading = false
     }
   }
@@ -558,6 +654,7 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     resetEditor,
     syncChapterSnapshot,
     markEditorDirty,
+    cancelPendingRequests,
     loadBase,
     loadStructure,
     loadEditorChapter,

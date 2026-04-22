@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class _SQLiteRepoSupport:
@@ -12,7 +13,7 @@ class _SQLiteRepoSupport:
             os.makedirs(db_dir, exist_ok=True)
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = connect_sqlite(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 

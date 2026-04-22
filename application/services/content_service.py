@@ -8,6 +8,7 @@
 
 
 import os
+import hashlib
 from datetime import datetime
 from typing import List, Optional
 import uuid
@@ -21,11 +22,13 @@ from domain.repositories.novel_repository import INovelRepository
 from domain.repositories.chapter_repository import IChapterRepository
 from domain.repositories.character_repository import ICharacterRepository
 from domain.repositories.outline_repository import IOutlineRepository
+from domain.repositories.outline_document_repository import IOutlineDocumentRepository
 from domain.services.style_analyzer import StyleAnalyzer
 from domain.services.plot_analyzer import PlotAnalyzer
 from infrastructure.file.txt_parser import TxtParser
 from application.dto.request_dto import ImportNovelRequest
 from application.dto.response_dto import NovelResponse, StyleAnalysisResponse, PlotAnalysisResponse
+from application.services.outline_digest_service import OutlineDigestService
 
 
 class ContentService:
@@ -41,13 +44,17 @@ class ContentService:
         chapter_repo: IChapterRepository,
         character_repo: ICharacterRepository,
         outline_repo: IOutlineRepository,
-        txt_parser: TxtParser
+        txt_parser: TxtParser,
+        outline_document_repo: Optional[IOutlineDocumentRepository] = None,
+        outline_digest_service: Optional[OutlineDigestService] = None,
     ):
         self.novel_repo = novel_repo
         self.chapter_repo = chapter_repo
         self.character_repo = character_repo
         self.outline_repo = outline_repo
         self.txt_parser = txt_parser
+        self.outline_document_repo = outline_document_repo
+        self.outline_digest_service = outline_digest_service or OutlineDigestService()
         self.style_analyzer = StyleAnalyzer()
         self.plot_analyzer = PlotAnalyzer()
         self.logger = get_logger(__name__)
@@ -173,23 +180,16 @@ class ContentService:
                     file_path=request.outline_path,
                 ),
             )
+            raw_outline_text = str(outline_text.get("raw_content") or "") if isinstance(outline_text, dict) else str(outline_text or "")
+            digest = self.outline_digest_service.build_digest(raw_outline_text)
             if isinstance(outline_text, dict):
-                premise = str(outline_text.get("raw_content") or "")[:1200]
-                story_background = str(
-                    outline_text.get("story_background")
-                    or outline_text.get("raw_content")
-                    or ""
-                )[:2400]
-                world_setting = str(
-                    outline_text.get("world_setting")
-                    or outline_text.get("story_background")
-                    or outline_text.get("raw_content")
-                    or ""
-                )[:2400]
+                premise = str(digest.get("premise") or outline_text.get("raw_content") or "")[:1200]
+                story_background = str(digest.get("summary") or outline_text.get("story_background") or outline_text.get("raw_content") or "")[:2400]
+                world_setting = str(digest.get("style_guidance") or outline_text.get("world_setting") or outline_text.get("story_background") or "")[:2400]
             else:
-                premise = str(outline_text or "")[:1200]
-                story_background = str(outline_text or "")[:2400]
-                world_setting = str(outline_text or "")[:2400]
+                premise = str(digest.get("premise") or raw_outline_text)[:1200]
+                story_background = str(digest.get("summary") or raw_outline_text)[:2400]
+                world_setting = str(digest.get("style_guidance") or raw_outline_text)[:2400]
             outline = Outline(
                 id=OutlineId(str(uuid.uuid4())),
                 novel_id=novel.id,
@@ -200,6 +200,14 @@ class ContentService:
                 updated_at=now
             )
             self.outline_repo.save(outline)
+            if self.outline_document_repo is not None:
+                self.outline_document_repo.save_document(
+                    novel_id=str(novel.id.value),
+                    raw_content=raw_outline_text,
+                    digest_json=digest,
+                    raw_hash=hashlib.sha256(raw_outline_text.encode("utf-8")).hexdigest(),
+                    digest_version=getattr(self.outline_digest_service, "digest_version", "v1"),
+                )
             novel.set_outline(outline, now)
             self.novel_repo.save(novel)
         self.logger.info(
@@ -289,9 +297,39 @@ class ContentService:
         novel = self.novel_repo.find_by_id(NovelId(novel_id))
         if not novel:
             raise ValueError(f"小说不存在: {novel_id}")
+        if self.outline_document_repo is not None:
+            stored = self.outline_document_repo.find_by_novel_id(str(novel.id.value))
+            if isinstance(stored, dict):
+                digest = stored.get("digest_json") if isinstance(stored.get("digest_json"), dict) else {}
+                if digest:
+                    return {
+                        "premise": str(digest.get("premise") or ""),
+                        "story_background": str(digest.get("summary") or ""),
+                        "world_setting": str(digest.get("style_guidance") or ""),
+                        "summary": [str(x).strip() for x in (digest.get("main_plot_lines") or []) if str(x).strip()][:8],
+                        "outline_digest": digest,
+                    }
         outline = self.outline_repo.find_by_novel(novel.id)
         if not outline:
             return {}
+        if self.outline_document_repo is not None:
+            raw_fallback = "\n".join([str(outline.premise or ""), str(outline.story_background or ""), str(outline.world_setting or "")]).strip()
+            if raw_fallback:
+                digest = self.outline_digest_service.build_digest(raw_fallback)
+                self.outline_document_repo.save_document(
+                    novel_id=str(novel.id.value),
+                    raw_content=raw_fallback,
+                    digest_json=digest,
+                    raw_hash=hashlib.sha256(raw_fallback.encode("utf-8")).hexdigest(),
+                    digest_version=getattr(self.outline_digest_service, "digest_version", "v1"),
+                )
+                return {
+                    "premise": str(digest.get("premise") or outline.premise or ""),
+                    "story_background": str(digest.get("summary") or outline.story_background or ""),
+                    "world_setting": str(digest.get("style_guidance") or outline.world_setting or ""),
+                    "summary": [str(x).strip() for x in (digest.get("main_plot_lines") or []) if str(x).strip()][:8],
+                    "outline_digest": digest,
+                }
         summary = [outline.premise, outline.story_background, outline.world_setting]
         summary = [str(x) for x in summary if str(x).strip()]
         return {

@@ -188,6 +188,15 @@ export const buildWorkspaceTaskTraceItems = (task = {}, chapterTitle = '') => {
   if (task?.current && task?.total) {
     items.push({ label: '批次', value: `${task.current}/${task.total}` })
   }
+  if (String(task?.strategy || '').trim()) {
+    items.push({ label: '策略', value: String(task.strategy).trim() })
+  }
+  if (Number(task?.batch_total || 0) > 0) {
+    items.push({ label: '批摘要', value: `${Number(task?.batch_no || 0)}/${Number(task?.batch_total || 0)}` })
+  }
+  if (Number(task?.chunked_chapter_count || 0) > 0) {
+    items.push({ label: '分块章节', value: String(task.chunked_chapter_count) })
+  }
   if (String(task?.current_chapter_title || '').trim()) {
     items.push({ label: '当前章节', value: task.current_chapter_title })
   } else if (chapterTitle) {
@@ -212,7 +221,7 @@ export const buildWorkspaceTaskTraceItems = (task = {}, chapterTitle = '') => {
     items.push({ label: '审查', value: String(task.description).trim(), tone: 'primary' })
   }
 
-  return items.slice(0, 4)
+  return items.slice(0, 6)
 }
 
 export const buildWorkspaceTaskRecord = (task = {}, options = {}) => {

@@ -28,7 +28,17 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [3/3] 完成：打包成功且接口冒烟通过
+echo [3/4] 执行Workspace卡死回归（10次进入/返回）...
+python ".\scripts\workspace_enter_exit_replay.py" --base-url http://127.0.0.1:9527 --loops 10 --max-p95-ms 800
+if %errorlevel% neq 0 (
+  echo.
+  echo [ERROR] Workspace卡死回归失败，错误码=%errorlevel%
+  pause
+  exit /b %errorlevel%
+)
+
+echo.
+echo [4/4] 完成：打包成功 + 冒烟通过 + 卡死回归通过
 echo 可执行文件请查看 dist 目录
 echo ========================================
 pause

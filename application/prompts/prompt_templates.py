@@ -73,6 +73,7 @@ def build_continuation_memory_prompt(payload: Dict[str, Any]) -> str:
     return (
         "You are the continuation-memory extractor. Return exactly one JSON object and no markdown.\n"
         "Required fields: scene_summary, scene_state, protagonist_state, active_characters, active_conflicts, immediate_threads, long_term_threads, recent_reveals, must_continue_points, forbidden_jumps, tone_and_pacing, last_hook, used_fallback.\n"
+        "Use strict JSON punctuation and ASCII double quotes only. Do not use full-width punctuation like ： ， ｛ ｝.\n"
         f"Rules: {json.dumps({PROMPT_SECTION_CONTINUATION_RULES: CONTINUATION_MEMORY_RULES}, ensure_ascii=False)}\n"
         f"Input: {json.dumps(payload, ensure_ascii=False)}"
     )

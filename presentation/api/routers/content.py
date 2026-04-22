@@ -1,4 +1,5 @@
 import asyncio
+import math
 import time
 from typing import Any, Dict, Optional
 import hashlib
@@ -16,16 +17,24 @@ from application.dto.response_dto import PlotAnalysisResponse, StyleAnalysisResp
 from application.services.content_service import ContentService
 from application.services.logging_service import build_log_context
 from application.services.project_service import ProjectService
+from application.services.runtime_metrics_service import (
+    record_batch_resume,
+    record_budget_block,
+    record_token_limit_error,
+    reset_budget_block_streak,
+)
 from application.services.v2_workflow_service import V2WorkflowService
 from domain.entities.organize_job import OrganizeJob
 from domain.exceptions import APIKeyError, LLMClientError, NetworkError, RateLimitError, TokenLimitError
 from domain.repositories.organize_job_repository import IOrganizeJobRepository
 from domain.types import NovelId, OrganizeJobStatus
 from presentation.api.dependencies import (
+    get_capacity_planner_service,
     get_content_service,
     get_llm_factory,
     get_organize_job_repo,
     get_project_service,
+    get_token_budget_manager,
     get_txt_parser,
     get_v2_workflow_service,
 )
@@ -36,6 +45,10 @@ logger = logging.getLogger(__name__)
 PROGRESS_CACHE: Dict[str, Dict[str, Any]] = {}
 ACTIVE_ORGANIZE_TASKS: Dict[str, asyncio.Task] = {}
 ORGANIZE_LOCKS: Dict[str, asyncio.Lock] = {}
+
+
+def _new_organize_task_id(novel_id: str) -> str:
+    return f"organize-{novel_id}-{int(time.time() * 1000)}"
 
 
 class OrganizePauseRequested(Exception):
@@ -80,6 +93,11 @@ def _build_progress_payload(
     resumable: bool = False,
     source_hash: str = "",
     last_error: str = "",
+    task_id: str = "",
+    strategy: str = "",
+    batch_no: int = 0,
+    batch_total: int = 0,
+    chunked_chapter_count: int = 0,
 ) -> Dict[str, Any]:
     percent = 0 if total <= 0 else int(current / total * 100)
     return {
@@ -93,6 +111,11 @@ def _build_progress_payload(
         "resumable": resumable,
         "source_hash": source_hash,
         "last_error": last_error,
+        "task_id": task_id,
+        "strategy": strategy,
+        "batch_no": int(batch_no or 0),
+        "batch_total": int(batch_total or 0),
+        "chunked_chapter_count": int(chunked_chapter_count or 0),
     }
 
 
@@ -124,6 +147,8 @@ def _running_progress(
     current: int = 0,
     total: int = 0,
     current_chapter_title: str = "",
+    task_id: str = "",
+    strategy: str = "",
 ) -> Dict[str, Any]:
     return _cache_progress(
         novel_id,
@@ -136,6 +161,8 @@ def _running_progress(
                 stage=stage,
                 current_chapter_title=current_chapter_title,
                 resumable=False,
+                task_id=task_id,
+                strategy=strategy,
             ),
             "started_ts": int(time.time()),
         },
@@ -148,6 +175,8 @@ def _paused_progress(
     current: int = 0,
     total: int = 0,
     current_chapter_title: str = "",
+    task_id: str = "",
+    strategy: str = "",
 ) -> Dict[str, Any]:
     return _cache_progress(
         novel_id,
@@ -159,6 +188,8 @@ def _paused_progress(
             stage="paused",
             current_chapter_title=current_chapter_title,
             resumable=True,
+            task_id=task_id,
+            strategy=strategy,
         ),
     )
 
@@ -169,6 +200,8 @@ def _cancelled_progress(
     current: int = 0,
     total: int = 0,
     current_chapter_title: str = "",
+    task_id: str = "",
+    strategy: str = "",
 ) -> Dict[str, Any]:
     return _cache_progress(
         novel_id,
@@ -180,6 +213,8 @@ def _cancelled_progress(
             stage="cancelled",
             current_chapter_title=current_chapter_title,
             resumable=False,
+            task_id=task_id,
+            strategy=strategy,
         ),
     )
 
@@ -234,6 +269,11 @@ def _job_to_progress(job: Optional[OrganizeJob]) -> Dict[str, Any]:
         resumable=resumable,
         source_hash=job.source_hash,
         last_error=job.last_error,
+        task_id=str(checkpoint.get("task_id") or ""),
+        strategy=str(persisted_progress.get("strategy") or ""),
+        batch_no=int(persisted_progress.get("batch_no") or 0),
+        batch_total=int(persisted_progress.get("batch_total") or 0),
+        chunked_chapter_count=int(persisted_progress.get("chunked_chapter_count") or 0),
     )
 
 
@@ -279,65 +319,95 @@ def _organize_mode_from_job(job: Optional[OrganizeJob]) -> str:
     return str(organize_meta.get("mode") or "")
 
 
-def _validate_organize_model_capacity(
-    novel_id: str,
-    mode: str,
-    content_service: ContentService,
-    llm_factory,
-    organize_job_repo: IOrganizeJobRepository,
-) -> str:
+def _build_capacity_plan(mode: str, llm_factory, capacity_planner_service, token_budget_manager) -> Dict[str, Any]:
+    ff_budget_v2 = str(os.environ.get("FF_TOKEN_BUDGET_V2", "1")).strip() not in {"0", "false", "False"}
     if str(mode or "").strip().lower() != "full_reanalyze":
-        return mode
+        base_plan = {
+            "strategy": "reuse_artifact_first",
+            "enable_chunking": False,
+            "batch_size_chapters": 12,
+            "chapter_soft_limit_chars": 30000,
+            "chunk_size_chars": 9000,
+            "need_outline_digest": True,
+            "chunked_chapter_count": 0,
+            "stage_cap_tokens": {"global_analysis": 3200},
+            "budget_tokens": 3200,
+            "reserve_tokens": 800,
+        }
+        return base_plan
     kimi_client_getter = getattr(llm_factory, "get_client_for_provider", None)
     kimi_client = kimi_client_getter("kimi") if callable(kimi_client_getter) else getattr(llm_factory, "kimi_client", None)
     if not kimi_client:
-        return mode
+        return token_budget_manager.build_capacity_plan("", 8000)
 
     model_name = str(getattr(kimi_client, "model_name", "") or getattr(getattr(llm_factory, "config", None), "kimi_model", "") or "")
     max_context_tokens = int(getattr(kimi_client, "max_context_tokens", 0) or 0)
-    if max_context_tokens <= 0:
-        return mode
+    if not ff_budget_v2:
+        return capacity_planner_service.build_plan(model_name, max_context_tokens)
+    # 新预算服务为主，保留旧字段兼容既有流程。
+    plan = token_budget_manager.build_capacity_plan(model_name, max_context_tokens)
+    legacy_plan = capacity_planner_service.build_plan(model_name, max_context_tokens)
+    plan.update({k: v for k, v in (legacy_plan or {}).items() if k not in plan})
+    if str((legacy_plan or {}).get("strategy") or "").strip():
+        plan["strategy"] = str(legacy_plan.get("strategy"))
+    return plan
 
-    try:
-        novel_text = content_service.get_novel_text(novel_id)
-    except Exception:
-        return mode
-    text_length = len(novel_text or "")
-    if text_length <= 0:
-        return mode
 
-    # Full-book organize still needs a large global-analysis window.
-    # We fail fast before starting the background job when the configured Kimi model
-    # is clearly too small for the source corpus.
-    safe_char_budget = max(max_context_tokens * 8, 60000)
-    if text_length <= safe_char_budget:
-        return mode
+def _validate_organize_model_capacity(
+    *,
+    novel_id: str,
+    organize_mode: str,
+    content_service: ContentService,
+    token_budget_manager,
+    capacity_plan: Dict[str, Any],
+) -> None:
+    if str(organize_mode or "").strip().lower() not in {"full_reanalyze", "rebuild_global"}:
+        return
+    outline_context = _safe_get_outline_context(content_service, novel_id)
+    novel_text = content_service.get_novel_text(novel_id)
+    total_chars = len(str(novel_text or ""))
+    chapter_soft_limit = max(6000, int((capacity_plan or {}).get("chapter_soft_limit_chars") or 12000))
+    estimated_chapters = max(1, int(math.ceil(total_chars / max(1, chapter_soft_limit * 0.75))))
+    batch_size = max(1, int((capacity_plan or {}).get("batch_size_chapters") or (capacity_plan or {}).get("batch_size") or 8))
+    estimated_batches = max(1, int(math.ceil(estimated_chapters / batch_size)))
 
-    message = (
-        f"当前 Kimi 模型 {model_name or 'unknown'} 上下文仅约 {max_context_tokens} tokens，"
-        f"当前小说正文约 {text_length} 个字符，无法稳定执行整本整理。"
-        "请切换到更大上下文的 Kimi 模型后再重试。"
+    digest_payload = {
+        "outline_digest": outline_context.get("outline_digest") if isinstance(outline_context, dict) else {},
+        "estimated_batches": estimated_batches,
+        "estimated_chapters": estimated_chapters,
+        "mode": organize_mode,
+    }
+    estimated_tokens = int(token_budget_manager.estimate_stage_tokens(digest_payload))
+    estimated_tokens += estimated_batches * 180
+    estimated_tokens += min(1800, estimated_chapters * 12)
+    stage_caps = (capacity_plan or {}).get("stage_cap_tokens") or {}
+    budget_tokens = int(stage_caps.get("global_analysis") or (capacity_plan or {}).get("budget_tokens") or 0)
+    if budget_tokens > 0 and estimated_tokens <= budget_tokens:
+        reset_budget_block_streak()
+        return
+
+    suggested_batch = max(2, batch_size // 2)
+    record_budget_block()
+    detail = _error_detail(
+        "ORGANIZE_BUDGET_BLOCK",
+        "全局分析阶段预算不足",
+        "当前模型预算不足以完成全局分析，请调整模型或批次策略后重试。",
     )
-    fallback_message = f"{message} 已自动降级为分章/全局重建流程。"
-    job = organize_job_repo.find_by_novel_id(NovelId(novel_id)) or OrganizeJob(novel_id=NovelId(novel_id))
-    job.mark_running()
-    organize_job_repo.save(job)
-    _cache_progress(
-        novel_id,
-        _build_progress_payload(
-            current=int(job.completed_chunks or 0),
-            total=int(job.total_chunks or 0),
-            status=OrganizeJobStatus.RUNNING.value,
-            stage="prepare",
-            message=fallback_message,
-            current_chapter_title=str(job.current_chapter_title or ""),
-            resumable=True,
-            source_hash=str(job.source_hash or ""),
-            last_error="",
-        ),
+    detail.update(
+        {
+            "stage": "global_analysis",
+            "model_name": str((capacity_plan or {}).get("model_name") or ""),
+            "estimated_tokens": estimated_tokens,
+            "budget_tokens": budget_tokens,
+            "input_units": {"chars": total_chars, "estimated_chapters": estimated_chapters, "estimated_batches": estimated_batches},
+            "suggestion": {
+                "suggested_model": str((capacity_plan or {}).get("suggested_model") or "moonshot-v1-32k"),
+                "suggested_batch_size": suggested_batch,
+                "continue_strategies": list((capacity_plan or {}).get("suggested_continue_strategy") or ["reduce_batch_size", "raise_digest_abstraction", "enable_two_level_summary"]),
+            },
+        }
     )
-    logger.warning("[StructureAPI] model too small, fallback mode novel_id=%s mode=%s", novel_id, "rebuild_global")
-    return "rebuild_global"
+    raise HTTPException(status_code=409, detail=detail)
 
 
 def _humanize_organize_error(error: Exception) -> str:
@@ -352,13 +422,16 @@ def _humanize_organize_error(error: Exception) -> str:
         return "模型 API Key 无效或未配置，请在模型配置页更新后重新整理。"
 
     if isinstance(error, RateLimitError) or "限流" in raw_message or "rate limit" in lowered or "429" in lowered:
+        retry_after = getattr(error, "retry_after", None)
+        retry_hint = f"{int(retry_after)}秒后" if isinstance(retry_after, int) and retry_after > 0 else "稍后"
         if "kimi" in lowered:
-            return "Kimi 当前触发限流，整理已停止，请稍后重试。"
+            return f"Kimi 触发限流，系统已自动退避重试但仍未恢复。请在{retry_hint}点击“继续整理/重试整理”，或切换模型后再试。"
         if "deepseek" in lowered:
-            return "DeepSeek 当前触发限流，整理已停止，请稍后重试。"
-        return "模型调用触发限流，整理已停止，请稍后重试。"
+            return f"DeepSeek 触发限流，系统已自动退避重试但仍未恢复。请在{retry_hint}点击“继续整理/重试整理”，或切换模型后再试。"
+        return f"模型调用触发限流，系统已自动退避重试但仍未恢复。请在{retry_hint}点击“继续整理/重试整理”，或切换模型后再试。"
 
     if isinstance(error, TokenLimitError) or "token" in lowered:
+        record_token_limit_error()
         return "整理内容过长，已超过模型上下文限制，请拆分内容或调整后重试。"
 
     if isinstance(error, NetworkError) or "超时" in raw_message or "network" in lowered or "timeout" in lowered:
@@ -370,6 +443,29 @@ def _humanize_organize_error(error: Exception) -> str:
     return raw_message or "整理失败，请稍后重试。"
 
 
+def _ensure_rebuild_mode_ready(
+    novel_id: str,
+    organize_mode: str,
+    project_service: ProjectService,
+    v2_service: V2WorkflowService,
+) -> None:
+    if str(organize_mode or "").strip().lower() != "rebuild_global":
+        return
+    project = project_service.ensure_project_for_novel(NovelId(novel_id))
+    can_rebuild = bool(getattr(v2_service, "can_rebuild_global", lambda _pid: False)(project.id.value))
+    if can_rebuild:
+        return
+    message = "当前项目没有可复用章节分析结果，无法执行 rebuild_global。请先执行一次 full_reanalyze 完整整理。"
+    raise HTTPException(
+        status_code=409,
+        detail=_error_detail(
+            "REBUILD_BASELINE_MISSING",
+            message,
+            "请先执行完整整理（full_reanalyze）后再使用增量重建。",
+        ),
+    )
+
+
 async def _run_v2_organize_task(
     novel_id: str,
     mode: str,
@@ -377,9 +473,12 @@ async def _run_v2_organize_task(
     project_service: ProjectService,
     organize_job_repo: IOrganizeJobRepository,
     v2_service: V2WorkflowService,
+    task_id: str = "",
+    capacity_plan: Optional[Dict[str, Any]] = None,
 ) -> None:
     novel_vo = NovelId(novel_id)
     job = organize_job_repo.find_by_novel_id(novel_vo) or OrganizeJob(novel_id=novel_vo)
+    was_resume = False
 
     def _raise_if_control_requested() -> None:
         latest = organize_job_repo.find_by_novel_id(novel_vo) or job
@@ -400,6 +499,7 @@ async def _run_v2_organize_task(
             job.reset(source_hash=f"v2:{int(time.time())}", total_chapters=0)
             job.update_checkpoint(0, 0, {})
         resume_from = max(0, int(job.completed_chapters or 0))
+        was_resume = resume_from > 0
         checkpoint = job.checkpoint_memory if isinstance(job.checkpoint_memory, dict) else {}
         checkpoint_memory = checkpoint.get("memory") if isinstance(checkpoint.get("memory"), dict) else {}
         organize_job_repo.save(job)
@@ -409,6 +509,8 @@ async def _run_v2_organize_task(
             stage="prepare",
             current=resume_from,
             total=int(job.total_chapters or 0),
+            task_id=task_id,
+            strategy=str((capacity_plan or {}).get("strategy") or ""),
         )
         async def _on_progress(progress: Dict[str, Any]) -> None:
             latest = organize_job_repo.find_by_novel_id(novel_vo) or job
@@ -424,11 +526,12 @@ async def _run_v2_organize_task(
             snapshot = progress.get("memory_snapshot") if isinstance(progress.get("memory_snapshot"), dict) else checkpoint_memory
             job.checkpoint_memory = {
                 "memory": snapshot or {},
-                "progress": {k: v for k, v in progress.items() if k != "memory_snapshot"},
+                "progress": {**{k: v for k, v in progress.items() if k != "memory_snapshot"}, "task_id": task_id},
                 "organize_meta": {"mode": organize_mode},
+                "task_id": task_id,
             }
             organize_job_repo.save(job)
-            _cache_progress(novel_id, {k: v for k, v in progress.items() if k != "memory_snapshot"})
+            _cache_progress(novel_id, {**{k: v for k, v in progress.items() if k != "memory_snapshot"}, "task_id": task_id})
             _raise_if_control_requested()
         await v2_service.organize_project(
             project.id.value,
@@ -437,6 +540,7 @@ async def _run_v2_organize_task(
             progress_callback=_on_progress,
             resume_from=resume_from,
             checkpoint_memory=checkpoint_memory,
+            capacity_plan=capacity_plan,
         )
         memory = v2_service.get_memory(project.id.value) or {}
         final_progress = _build_progress_payload(
@@ -447,11 +551,13 @@ async def _run_v2_organize_task(
             message=f"整理完成（{job.total_chapters}/{job.total_chapters}）",
             current_chapter_title="",
             resumable=False,
+            task_id=task_id,
+            strategy=str((capacity_plan or {}).get("strategy") or ""),
         )
         job.update_checkpoint(
             job.total_chapters,
             job.total_chapters,
-            {"memory": memory, "progress": final_progress, "organize_meta": {"mode": organize_mode}},
+            {"memory": memory, "progress": final_progress, "organize_meta": {"mode": organize_mode}, "task_id": task_id},
         )
         job.mark_done()
         organize_job_repo.save(job)
@@ -473,12 +579,16 @@ async def _run_v2_organize_task(
             current=job.completed_chapters,
             total=job.total_chapters,
             current_chapter_title=job.current_chapter_title,
+            task_id=task_id,
+            strategy=str((capacity_plan or {}).get("strategy") or ""),
         )
         logger.info(
             "整理任务已暂停",
             extra=build_log_context(event="organize_task_paused", novel_id=novel_id, project_id=project.id.value if 'project' in locals() else "", current=job.completed_chapters, total=job.total_chapters, chapter_title=str(job.current_chapter_title or "")),
         )
     except OrganizeCancelRequested:
+        if was_resume:
+            record_batch_resume(False)
         latest = organize_job_repo.find_by_novel_id(novel_vo) or job
         job.completed_chapters = int(latest.completed_chapters or job.completed_chapters or 0)
         job.total_chapters = int(latest.total_chapters or job.total_chapters or 0)
@@ -491,6 +601,8 @@ async def _run_v2_organize_task(
             current=job.completed_chapters,
             total=job.total_chapters,
             current_chapter_title=job.current_chapter_title,
+            task_id=task_id,
+            strategy=str((capacity_plan or {}).get("strategy") or ""),
         )
         logger.info(
             "整理任务已取消",
@@ -505,9 +617,13 @@ async def _run_v2_organize_task(
             current=job.completed_chapters,
             total=job.total_chapters,
             current_chapter_title=str((PROGRESS_CACHE.get(novel_id) or {}).get("current_chapter_title") or ""),
+            task_id=task_id,
+            strategy=str((capacity_plan or {}).get("strategy") or ""),
         )
         raise
     except Exception as e:
+        if was_resume:
+            record_batch_resume(False)
         message = _humanize_organize_error(e)
         job.mark_error(message)
         organize_job_repo.save(job)
@@ -521,6 +637,7 @@ async def _run_v2_organize_task(
                 message=message or "整理失败",
                 resumable=True,
                 last_error=message,
+                task_id=task_id,
             ),
         )
         logger.error(
@@ -883,11 +1000,22 @@ async def organize_story_structure(
     content_service: ContentService = Depends(get_content_service),
     project_service: ProjectService = Depends(get_project_service),
     llm_factory=Depends(get_llm_factory),
+    capacity_planner_service=Depends(get_capacity_planner_service),
+    token_budget_manager=Depends(get_token_budget_manager),
     organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
     v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     try:
         organize_mode = _normalize_organize_mode(mode, force_rebuild)
+        _ensure_rebuild_mode_ready(novel_id, organize_mode, project_service, v2_service)
+        capacity_plan = _build_capacity_plan(organize_mode, llm_factory, capacity_planner_service, token_budget_manager)
+        _validate_organize_model_capacity(
+            novel_id=novel_id,
+            organize_mode=organize_mode,
+            content_service=content_service,
+            token_budget_manager=token_budget_manager,
+            capacity_plan=capacity_plan,
+        )
         logger.info("[StructureAPI] request novel_id=%s force_rebuild=%s mode=%s", novel_id, force_rebuild, organize_mode)
         project = project_service.ensure_project_for_novel(NovelId(novel_id))
         async def _on_progress(progress: Dict[str, Any]) -> None:
@@ -915,6 +1043,7 @@ async def organize_story_structure(
             organize_mode,
             force_rebuild,
             progress_callback=_on_progress,
+            capacity_plan=capacity_plan,
         )
         progress = PROGRESS_CACHE.get(novel_id) or _job_to_progress(organize_job_repo.find_by_novel_id(NovelId(novel_id)))
         if progress.get("status") != OrganizeJobStatus.DONE.value:
@@ -957,6 +1086,8 @@ async def organize_story_structure(
             status_code=400,
             detail=_error_detail("STRUCTURE_INPUT_INVALID", message, "Story organize failed. Please review the content and try again."),
         )
+    except HTTPException:
+        raise
     except Exception as e:
         message = _humanize_organize_error(e)
         job = organize_job_repo.find_by_novel_id(NovelId(novel_id))
@@ -983,6 +1114,8 @@ async def start_organize_story_structure(
     mode: str = Query("full_reanalyze"),
     content_service: ContentService = Depends(get_content_service),
     llm_factory=Depends(get_llm_factory),
+    capacity_planner_service=Depends(get_capacity_planner_service),
+    token_budget_manager=Depends(get_token_budget_manager),
     project_service: ProjectService = Depends(get_project_service),
     organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
     v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
@@ -990,7 +1123,15 @@ async def start_organize_story_structure(
     lock = _get_lock(novel_id)
     async with lock:
         organize_mode = _normalize_organize_mode(mode, force_rebuild)
-        organize_mode = _validate_organize_model_capacity(novel_id, organize_mode, content_service, llm_factory, organize_job_repo)
+        capacity_plan = _build_capacity_plan(organize_mode, llm_factory, capacity_planner_service, token_budget_manager)
+        _validate_organize_model_capacity(
+            novel_id=novel_id,
+            organize_mode=organize_mode,
+            content_service=content_service,
+            token_budget_manager=token_budget_manager,
+            capacity_plan=capacity_plan,
+        )
+        _ensure_rebuild_mode_ready(novel_id, organize_mode, project_service, v2_service)
         running = _get_active_task(novel_id)
         if running:
             job = organize_job_repo.find_by_novel_id(NovelId(novel_id))
@@ -1004,15 +1145,26 @@ async def start_organize_story_structure(
             organize_job_repo.delete(NovelId(novel_id))
             PROGRESS_CACHE.pop(novel_id, None)
             existed = None
+        task_id = _new_organize_task_id(novel_id)
         _running_progress(
             novel_id,
             "整理任务已启动",
             stage="prepare",
             current=int(existed.completed_chunks or 0) if existed else 0,
             total=int(existed.total_chunks or 0) if existed else 0,
+            task_id=task_id,
         )
         task = asyncio.create_task(
-            _run_v2_organize_task(novel_id, organize_mode, force_rebuild, project_service, organize_job_repo, v2_service)
+            _run_v2_organize_task(
+                novel_id,
+                organize_mode,
+                force_rebuild,
+                project_service,
+                organize_job_repo,
+                v2_service,
+                task_id=task_id,
+                capacity_plan=capacity_plan,
+            )
         )
         ACTIVE_ORGANIZE_TASKS[novel_id] = task
         return {"status": "started", "progress": PROGRESS_CACHE[novel_id]}
@@ -1067,6 +1219,8 @@ async def resume_organize_story_structure(
     mode: str = Query(""),
     content_service: ContentService = Depends(get_content_service),
     llm_factory=Depends(get_llm_factory),
+    capacity_planner_service=Depends(get_capacity_planner_service),
+    token_budget_manager=Depends(get_token_budget_manager),
     project_service: ProjectService = Depends(get_project_service),
     organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
     v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
@@ -1075,7 +1229,15 @@ async def resume_organize_story_structure(
     async with lock:
         existed = organize_job_repo.find_by_novel_id(NovelId(novel_id))
         organize_mode = _normalize_organize_mode(mode or _organize_mode_from_job(existed), False)
-        organize_mode = _validate_organize_model_capacity(novel_id, organize_mode, content_service, llm_factory, organize_job_repo)
+        capacity_plan = _build_capacity_plan(organize_mode, llm_factory, capacity_planner_service, token_budget_manager)
+        _validate_organize_model_capacity(
+            novel_id=novel_id,
+            organize_mode=organize_mode,
+            content_service=content_service,
+            token_budget_manager=token_budget_manager,
+            capacity_plan=capacity_plan,
+        )
+        _ensure_rebuild_mode_ready(novel_id, organize_mode, project_service, v2_service)
         running = _get_active_task(novel_id)
         if running:
             progress = PROGRESS_CACHE.get(novel_id) or _build_progress_payload(
@@ -1089,15 +1251,26 @@ async def resume_organize_story_structure(
                 "整理任务已请求继续",
                 extra=build_log_context(event="organize_task_resumed", novel_id=novel_id, project_id="", current=existed.completed_chapters, total=existed.total_chapters, chapter_title=str(existed.current_chapter_title or "")),
             )
+        task_id = _new_organize_task_id(novel_id)
         _running_progress(
             novel_id,
             f"从第{int((existed.completed_chunks or 0) + 1)}章继续整理" if existed and existed.total_chunks else "继续整理任务已启动",
             stage="prepare",
             current=int(existed.completed_chunks or 0) if existed else 0,
             total=int(existed.total_chunks or 0) if existed else 0,
+            task_id=task_id,
         )
         task = asyncio.create_task(
-            _run_v2_organize_task(novel_id, organize_mode, False, project_service, organize_job_repo, v2_service)
+            _run_v2_organize_task(
+                novel_id,
+                organize_mode,
+                False,
+                project_service,
+                organize_job_repo,
+                v2_service,
+                task_id=task_id,
+                capacity_plan=capacity_plan,
+            )
         )
         ACTIVE_ORGANIZE_TASKS[novel_id] = task
         return {"status": "resumed", "progress": PROGRESS_CACHE[novel_id]}
@@ -1147,9 +1320,11 @@ async def cancel_organize_story_structure(
 @router.post("/organize/retry/{novel_id}")
 async def retry_organize_story_structure(
     novel_id: str,
-    mode: str = Query("rebuild_global"),
+    mode: str = Query("full_reanalyze"),
     content_service: ContentService = Depends(get_content_service),
     llm_factory=Depends(get_llm_factory),
+    capacity_planner_service=Depends(get_capacity_planner_service),
+    token_budget_manager=Depends(get_token_budget_manager),
     project_service: ProjectService = Depends(get_project_service),
     organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
     v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
@@ -1158,38 +1333,65 @@ async def retry_organize_story_structure(
         "整理任务重新开始",
         extra=build_log_context(event="organize_task_restarted", novel_id=novel_id, project_id="", current=0, total=0, chapter_title=""),
     )
-    return await start_organize_story_structure(novel_id, True, mode, content_service, llm_factory, project_service, organize_job_repo, v2_service)
+    return await start_organize_story_structure(
+        novel_id=novel_id,
+        force_rebuild=True,
+        mode=mode,
+        content_service=content_service,
+        llm_factory=llm_factory,
+        capacity_planner_service=capacity_planner_service,
+        token_budget_manager=token_budget_manager,
+        project_service=project_service,
+        organize_job_repo=organize_job_repo,
+        v2_service=v2_service,
+    )
 
 
 @router.get("/organize/progress/{novel_id}")
 async def get_organize_progress(
     novel_id: str,
     organize_job_repo: IOrganizeJobRepository = Depends(get_organize_job_repo),
+    project_service: ProjectService = Depends(get_project_service),
+    v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
+    can_rebuild_global = False
+    try:
+        project = project_service.ensure_project_for_novel(NovelId(novel_id))
+        can_rebuild_global = bool(getattr(v2_service, "can_rebuild_global", lambda _pid: False)(project.id.value))
+    except Exception:
+        can_rebuild_global = False
+
     job = organize_job_repo.find_by_novel_id(NovelId(novel_id))
     if job and _is_transient_organize_status(job.status) and not _has_live_organize_task(novel_id):
         if job.status == OrganizeJobStatus.CANCELLING:
             job.mark_cancelled()
             organize_job_repo.save(job)
-            return _cancelled_progress(
+            payload = _cancelled_progress(
                 novel_id,
                 current=int(job.completed_chunks or 0),
                 total=int(job.total_chunks or 0),
                 current_chapter_title=str(job.current_chapter_title or ""),
             )
+            payload["can_rebuild_global"] = can_rebuild_global
+            return payload
         job.mark_paused("整理任务未在运行，可继续整理")
         organize_job_repo.save(job)
-        return _paused_progress(
+        payload = _paused_progress(
             novel_id,
             "整理任务未在运行，可继续整理",
             current=int(job.completed_chunks or 0),
             total=int(job.total_chunks or 0),
             current_chapter_title=str(job.current_chapter_title or ""),
         )
+        payload["can_rebuild_global"] = can_rebuild_global
+        return payload
     cached = PROGRESS_CACHE.get(novel_id)
     if cached:
-        return cached
+        payload = dict(cached)
+        payload["can_rebuild_global"] = can_rebuild_global
+        return payload
     progress = _job_to_progress(job)
+    progress["can_rebuild_global"] = can_rebuild_global
     if job:
         PROGRESS_CACHE[novel_id] = progress
     return progress

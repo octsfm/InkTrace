@@ -9,12 +9,9 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-import os
 
 from application.services.config_service import ConfigService
-from domain.entities.llm_config import LLMConfig
-from domain.services.config_encryption_service import ConfigEncryptionService
-from infrastructure.persistence.sqlite_llm_config_repo import SQLiteLLMConfigRepository
+from presentation.api.dependencies import get_config_service
 
 
 # 数据模型
@@ -51,22 +48,6 @@ class ConfigTestResponse(BaseModel):
 
 # 创建路由
 router = APIRouter(prefix="/api/config", tags=["配置管理"])
-
-
-# 依赖注入
-def get_config_service() -> ConfigService:
-    """获取配置服务实例"""
-    # 使用固定的加密密钥（生产环境应从安全位置获取）
-    encryption_key = b"inktrace_default_encryption_key_32bytes!"[:32]
-    
-    # 创建仓储实例
-    db_path = os.environ.get("INKTRACE_DB_PATH", "data/inktrace.db")
-    db_dir = os.path.dirname(db_path)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-    config_repository = SQLiteLLMConfigRepository(db_path)
-    
-    return ConfigService(config_repository, encryption_key)
 
 
 @router.get("/llm", response_model=LLMConfigResponse)

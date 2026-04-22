@@ -1,7 +1,8 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
+import { contentApi } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 import WorkspaceTasksAudit from '../WorkspaceTasksAudit.vue'
 
@@ -20,13 +21,14 @@ vi.mock('@/api', () => ({
 
 const mockOpenSection = vi.fn()
 const mockOpenChapter = vi.fn()
+const mockWorkspaceState = {
+  novel: { id: 'novel-1' },
+  organizeProgress: { status: 'failed', progress: 60, error_message: '大纲写回失败', can_rebuild_global: false }
+}
 
 vi.mock('@/composables/useWorkspaceContext', async () => ({
   useWorkspaceContext: vi.fn(() => ({
-    state: {
-      novel: { id: 'novel-1' },
-      organizeProgress: { status: 'failed', progress: 60, error_message: '大纲写回失败' }
-    },
+    state: mockWorkspaceState,
     refreshStructure: vi.fn(),
     openSection: mockOpenSection,
     openChapter: mockOpenChapter,
@@ -67,6 +69,14 @@ describe('WorkspaceTasksAudit.vue', () => {
       title: '全书整理任务',
       status: 'failed'
     }
+    mockWorkspaceState.novel = { id: 'novel-1' }
+    mockWorkspaceState.organizeProgress = { status: 'failed', progress: 60, error_message: '大纲写回失败', can_rebuild_global: false }
+    contentApi.organizeProgress.mockReset()
+    contentApi.retryOrganize.mockReset()
+    contentApi.resumeOrganize.mockReset()
+    contentApi.organizeProgress.mockResolvedValue({ status: 'failed', progress: 60, error_message: '大纲写回失败', can_rebuild_global: false })
+    contentApi.retryOrganize.mockResolvedValue({})
+    contentApi.resumeOrganize.mockResolvedValue({})
 
     wrapper = mount(WorkspaceTasksAudit, {
       props: {
@@ -278,5 +288,23 @@ describe('WorkspaceTasksAudit.vue', () => {
       type: 'task',
       taskId: 'editor-analyze-1'
     })
+  })
+
+  it('uses rebuild_global mode for retry when backend marks baseline available', async () => {
+    contentApi.organizeProgress.mockResolvedValue({ status: 'failed', progress: 60, can_rebuild_global: true })
+    const retryButton = wrapper.findAll('button').find((node) => node.text().includes('重新整理'))
+    await retryButton.trigger('click')
+    await flushPromises()
+    expect(contentApi.retryOrganize).toHaveBeenCalledWith('novel-1', 'rebuild_global')
+  })
+
+  it('uses full_reanalyze mode for resume when backend marks baseline unavailable', async () => {
+    contentApi.organizeProgress.mockResolvedValue({ status: 'paused', progress: 60, can_rebuild_global: false })
+    await wrapper.setProps({ statusText: '整理已暂停' })
+    await flushPromises()
+    const resumeButton = wrapper.findAll('button').find((node) => node.text().includes('恢复任务'))
+    await resumeButton.trigger('click')
+    await flushPromises()
+    expect(contentApi.resumeOrganize).toHaveBeenCalledWith('novel-1', 'full_reanalyze')
   })
 })

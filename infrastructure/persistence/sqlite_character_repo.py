@@ -15,6 +15,7 @@ from datetime import datetime
 from domain.types import CharacterId, NovelId, CharacterRole, ChapterId
 from domain.entities.character import Character, CharacterRelationship
 from domain.repositories.character_repository import ICharacterRepository
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteCharacterRepository(ICharacterRepository):
@@ -32,7 +33,7 @@ class SQLiteCharacterRepository(ICharacterRepository):
 
     def _init_db(self):
         """初始化数据库表"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS characters (
                     id TEXT PRIMARY KEY,
@@ -55,7 +56,7 @@ class SQLiteCharacterRepository(ICharacterRepository):
 
     def save(self, character: Character) -> None:
         """保存人物"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('''
                 INSERT OR REPLACE INTO characters 
                 (id, novel_id, name, role, background, personality, aliases, abilities, 
@@ -80,7 +81,7 @@ class SQLiteCharacterRepository(ICharacterRepository):
 
     def find_by_id(self, character_id: CharacterId) -> Optional[Character]:
         """根据ID查找人物"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 'SELECT * FROM characters WHERE id = ?', 
@@ -94,7 +95,7 @@ class SQLiteCharacterRepository(ICharacterRepository):
 
     def find_by_novel(self, novel_id: NovelId) -> List[Character]:
         """查找小说的所有人物"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 'SELECT * FROM characters WHERE novel_id = ?',
@@ -105,7 +106,7 @@ class SQLiteCharacterRepository(ICharacterRepository):
 
     def delete(self, character_id: CharacterId) -> None:
         """删除人物"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('DELETE FROM characters WHERE id = ?', (character_id.value,))
 
     def _row_to_character(self, row: sqlite3.Row) -> Character:

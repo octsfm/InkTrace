@@ -15,6 +15,7 @@ from datetime import datetime
 from domain.types import OutlineId, NovelId, PlotType, PlotStatus
 from domain.entities.outline import Outline, VolumeOutline, PlotNode
 from domain.repositories.outline_repository import IOutlineRepository
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteOutlineRepository(IOutlineRepository):
@@ -32,7 +33,7 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def _init_db(self):
         """初始化数据库表"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS outlines (
                     id TEXT PRIMARY KEY,
@@ -51,7 +52,7 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def save(self, outline: Outline) -> None:
         """保存大纲"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('''
                 INSERT OR REPLACE INTO outlines 
                 (id, novel_id, premise, story_background, world_setting, main_plots, sub_plots, volumes, created_at, updated_at)
@@ -71,7 +72,7 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def find_by_id(self, outline_id: OutlineId) -> Optional[Outline]:
         """根据ID查找大纲"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 'SELECT * FROM outlines WHERE id = ?', 
@@ -85,7 +86,7 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def find_by_novel(self, novel_id: NovelId) -> Optional[Outline]:
         """查找小说的大纲"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 'SELECT * FROM outlines WHERE novel_id = ?',
@@ -99,7 +100,7 @@ class SQLiteOutlineRepository(IOutlineRepository):
 
     def delete(self, outline_id: OutlineId) -> None:
         """删除大纲"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('DELETE FROM outlines WHERE id = ?', (outline_id.value,))
 
     def _row_to_outline(self, row: sqlite3.Row) -> Outline:

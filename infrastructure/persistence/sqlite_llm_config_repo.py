@@ -13,6 +13,7 @@ from typing import Optional
 
 from domain.entities.llm_config import LLMConfig
 from domain.repositories.llm_config_repository import ILLMConfigRepository
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteLLMConfigRepository(ILLMConfigRepository):
@@ -25,7 +26,7 @@ class SQLiteLLMConfigRepository(ILLMConfigRepository):
     
     def _get_connection(self) -> sqlite3.Connection:
         """获取数据库连接"""
-        conn = sqlite3.connect(self.db_path)
+        conn = connect_sqlite(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
     

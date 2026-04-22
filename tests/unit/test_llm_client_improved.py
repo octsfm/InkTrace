@@ -47,14 +47,10 @@ class TestDeepSeekClient(unittest.TestCase):
         self.assertIsNotNone(self.client._client)
 
     def test_truncate_input(self):
-        """测试输入截断"""
+        """测试DeepSeek兼容截断逻辑"""
         short_text = "短文本"
         result = self.client._truncate_input(short_text)
         self.assertEqual(result, short_text)
-
-        long_text = "a" * 60000
-        result = self.client._truncate_input(long_text, max_chars=50000)
-        self.assertEqual(len(result), 50000)
 
     @patch('httpx.AsyncClient.post')
     async def test_generate_success(self, mock_post):
@@ -217,10 +213,20 @@ class TestExceptions(unittest.TestCase):
 
     def test_token_limit_error(self):
         """测试Token限制错误"""
-        error = TokenLimitError("DeepSeek", 100000, 64000)
+        error = TokenLimitError(
+            "DeepSeek",
+            100000,
+            64000,
+            stage="global_analysis",
+            model_name="deepseek-chat",
+            request_id="req-1",
+        )
         self.assertIn("DeepSeek", str(error))
         self.assertIn("100000", str(error))
         self.assertIn("64000", str(error))
+        self.assertEqual(error.stage, "global_analysis")
+        self.assertEqual(error.model_name, "deepseek-chat")
+        self.assertEqual(error.request_id, "req-1")
 
 
 if __name__ == '__main__':

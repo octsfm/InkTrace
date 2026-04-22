@@ -19,12 +19,16 @@ class GlobalAnalysisService:
         chapters: List[Dict[str, Any]],
         require_model_success: bool = False,
         chapter_artifacts: List[Dict[str, Any]] | None = None,
+        outline_digest: Dict[str, Any] | None = None,
+        batch_digests: List[Dict[str, Any]] | None = None,
     ) -> Dict[str, object]:
         payload = PromptInputBuilder.build_global_analysis_input(
             project_name,
             outline_context or {},
             chapters or [],
             chapter_artifacts=chapter_artifacts or [],
+            outline_digest=outline_digest or {},
+            batch_digests=batch_digests or [],
         )
         payload["project_id"] = project_id
         payload["require_model_success"] = bool(require_model_success)
@@ -33,7 +37,14 @@ class GlobalAnalysisService:
         if require_model_success:
             raise RuntimeError("kimi 全书分析失败，已停止整理，请检查模型配置后重试")
         summaries = []
-        source_items = chapter_artifacts or chapters or []
+        digest_items = [item for item in (batch_digests or []) if isinstance(item, dict)]
+        if digest_items:
+            for item in digest_items:
+                digest_text = str(item.get("digest") or "").strip().replace("\n", " ")
+                if digest_text:
+                    summaries.append(digest_text)
+        source_items = [item for item in (chapter_artifacts or []) if isinstance(item, dict)]
+        source_items.extend([item for item in (chapters or []) if isinstance(item, dict)])
         for item in source_items:
             if not isinstance(item, dict):
                 continue
@@ -45,7 +56,9 @@ class GlobalAnalysisService:
                 or item.get("content")
                 or ""
             ).strip().replace("\n", " ")
-            summaries.append(f"{title}:{content[:80]}".strip(":"))
+            snippet = f"{title}:{content}".strip(":")
+            if snippet:
+                summaries.append(snippet)
         premise = str((outline_context or {}).get("premise") or "").strip()
         background = str((outline_context or {}).get("story_background") or "").strip()
         world = str((outline_context or {}).get("world_setting") or "").strip()

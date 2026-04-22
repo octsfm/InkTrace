@@ -90,10 +90,58 @@ class NetworkError(LLMClientError):
 class TokenLimitError(LLMClientError):
     """Token限制错误"""
     
-    def __init__(self, provider: str, current_tokens: int, max_tokens: int):
+    def __init__(
+        self,
+        provider: str,
+        current_tokens: int | str | None = None,
+        max_tokens: int | None = None,
+        *,
+        stage: str = "",
+        model_name: str = "",
+        request_id: str = "",
+        message: str = "",
+    ):
         self.provider = provider
-        self.current_tokens = current_tokens
-        self.max_tokens = max_tokens
-        super().__init__(
-            f"{provider} Token超限: 当前{current_tokens}tokens, 最大{max_tokens}tokens"
-        )
+        self.stage = str(stage or "").strip()
+        self.model_name = str(model_name or "").strip()
+        self.request_id = str(request_id or "").strip()
+
+        # 向后兼容旧调用：TokenLimitError("Kimi", "请求超过上下文限制")
+        inferred_message = ""
+        normalized_current_tokens: int | None = None
+        normalized_max_tokens: int | None = None
+        if isinstance(current_tokens, str) and max_tokens is None:
+            inferred_message = current_tokens.strip()
+        else:
+            if current_tokens is not None:
+                try:
+                    normalized_current_tokens = int(current_tokens)
+                except Exception:
+                    normalized_current_tokens = None
+            if max_tokens is not None:
+                try:
+                    normalized_max_tokens = int(max_tokens)
+                except Exception:
+                    normalized_max_tokens = None
+
+        self.current_tokens = normalized_current_tokens
+        self.max_tokens = normalized_max_tokens
+
+        final_message = str(message or "").strip() or inferred_message
+        if not final_message:
+            details = []
+            if self.current_tokens is not None:
+                details.append(f"current_tokens={self.current_tokens}")
+            if self.max_tokens is not None:
+                details.append(f"max_tokens={self.max_tokens}")
+            if self.stage:
+                details.append(f"stage={self.stage}")
+            if self.model_name:
+                details.append(f"model={self.model_name}")
+            if self.request_id:
+                details.append(f"request_id={self.request_id}")
+            detail_text = ", ".join(details)
+            final_message = f"{provider} Token超限"
+            if detail_text:
+                final_message += f": {detail_text}"
+        super().__init__(final_message)

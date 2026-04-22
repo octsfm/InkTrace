@@ -16,6 +16,7 @@ from typing import Optional, List
 from domain.entities.template import Template, CharacterTemplate, PlotTemplate
 from domain.repositories.template_repository import ITemplateRepository
 from domain.types import TemplateId, GenreType
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteTemplateRepository(ITemplateRepository):
@@ -28,7 +29,7 @@ class SQLiteTemplateRepository(ITemplateRepository):
         self._load_builtin_templates()
     
     def _init_table(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS templates (
                     id TEXT PRIMARY KEY,
@@ -48,8 +49,6 @@ class SQLiteTemplateRepository(ITemplateRepository):
     
     def _load_builtin_templates(self) -> None:
         """加载内置模板"""
-# 文件：模块：sqlite_template_repo
-
         if not os.path.exists(self.templates_dir):
             return
         
@@ -63,7 +62,7 @@ class SQLiteTemplateRepository(ITemplateRepository):
                     self.save(template)
     
     def find_by_id(self, template_id: TemplateId) -> Optional[Template]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM templates WHERE id = ?", (str(template_id),)
@@ -74,7 +73,7 @@ class SQLiteTemplateRepository(ITemplateRepository):
         return None
     
     def find_by_genre(self, genre: GenreType) -> List[Template]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM templates WHERE genre = ?", (genre.value,)
@@ -82,7 +81,7 @@ class SQLiteTemplateRepository(ITemplateRepository):
             return [self._row_to_template(row) for row in cursor.fetchall()]
     
     def find_all(self, include_builtin: bool = True) -> List[Template]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             if include_builtin:
                 cursor = conn.execute("SELECT * FROM templates ORDER BY name")
@@ -93,7 +92,7 @@ class SQLiteTemplateRepository(ITemplateRepository):
             return [self._row_to_template(row) for row in cursor.fetchall()]
     
     def find_builtin(self) -> List[Template]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM templates WHERE is_builtin = 1 ORDER BY name"
@@ -101,7 +100,7 @@ class SQLiteTemplateRepository(ITemplateRepository):
             return [self._row_to_template(row) for row in cursor.fetchall()]
     
     def find_custom(self) -> List[Template]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM templates WHERE is_builtin = 0 ORDER BY name"
@@ -109,15 +108,13 @@ class SQLiteTemplateRepository(ITemplateRepository):
             return [self._row_to_template(row) for row in cursor.fetchall()]
     
     def save(self, template: Template) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO templates 
                 (id, name, genre, description, worldview_framework, character_templates, 
                  plot_templates, style_reference, is_builtin, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-# 文件：模块：sqlite_template_repo
-
                 str(template.id),
                 template.name,
                 template.genre.value,
@@ -133,7 +130,7 @@ class SQLiteTemplateRepository(ITemplateRepository):
             conn.commit()
     
     def delete(self, template_id: TemplateId) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 "DELETE FROM templates WHERE id = ? AND is_builtin = 0",
                 (str(template_id),)

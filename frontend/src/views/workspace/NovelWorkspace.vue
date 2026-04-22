@@ -80,7 +80,15 @@
         @action="handleWorkspaceAction"
         @open-command-palette="openCommandPalette"
       />
-      <component :is="activeComponent" v-bind="activeComponentProps" />
+      <div v-if="mainViewError" class="workspace-main-fallback">
+        <h3>当前视图加载失败</h3>
+        <p>{{ mainViewError }}</p>
+        <div class="fallback-actions">
+          <el-button type="primary" @click="recoverMainView">恢复到概览</el-button>
+          <el-button plain @click="clearMainViewError">重试当前视图</el-button>
+        </div>
+      </div>
+      <component v-else :is="activeComponent" v-bind="activeComponentProps" />
     </main>
 
     <!-- 右侧：AI Copilot 区 -->
@@ -128,7 +136,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onErrorCaptured, onMounted, provide, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
@@ -166,6 +174,7 @@ const workspaceStore = useWorkspaceStore()
 const state = useNovelWorkspaceStore()
 const commandPaletteVisible = ref(false)
 const commandPaletteQuery = ref('')
+const mainViewError = ref('')
 
 const viewMetaMap = {
   writing: {
@@ -209,6 +218,7 @@ const activeComponent = computed(() => {
 })
 
 const goToDashboard = () => {
+  state.cancelPendingRequests?.()
   router.push('/')
 }
 
@@ -605,7 +615,7 @@ const taskSummaryCounts = computed(() => {
 const activeComponentProps = computed(() => {
   if (workspaceStore.currentView === 'tasks') {
     return {
-      filterOptions: taskFilterOptions,
+      filterOptions: taskFilterOptions.value,
       statusText: taskPanelStatusText.value,
       progressText: taskPanelProgressText.value,
       statusHint: taskPanelStatusHint.value,
@@ -2817,7 +2827,9 @@ const suggestedActions = computed(() => {
 
 const buildRouteQuery = (extraQuery = {}) => {
   const query = { ...route.query, ...extraQuery }
-  if (!query.section && workspaceStore.currentView) {
+  if (Object.prototype.hasOwnProperty.call(extraQuery, 'section')) {
+    query.section = String(extraQuery.section || '').trim()
+  } else if (!query.section && workspaceStore.currentView) {
     query.section = workspaceStore.currentView
   }
   if (!query.chapterId && workspaceStore.currentChapterId) {
@@ -2826,7 +2838,7 @@ const buildRouteQuery = (extraQuery = {}) => {
   if (!query.chapterId) {
     delete query.chapterId
   }
-  if (!query.section) {
+  if (!['overview', 'writing', 'structure', 'chapters', 'tasks', 'settings'].includes(String(query.section || ''))) {
     delete query.section
   }
   return query
@@ -2854,7 +2866,7 @@ const openSection = (section, extraQuery = {}) => {
   }
   router.replace({
     path: route.path,
-    query: buildRouteQuery(extraQuery)
+    query: buildRouteQuery({ ...extraQuery, section })
   })
 }
 
@@ -3064,9 +3076,27 @@ const openChapter = async (chapterId, section = 'writing') => {
   }
   await router.replace({
     path: route.path,
-    query: buildRouteQuery({ chapterId })
+    query: buildRouteQuery({ chapterId, section })
   })
 }
+
+const clearMainViewError = () => {
+  mainViewError.value = ''
+}
+
+const recoverMainView = () => {
+  mainViewError.value = ''
+  workspaceStore.switchView('overview')
+  router.replace({
+    path: route.path,
+    query: buildRouteQuery({ section: 'overview' })
+  })
+}
+
+onErrorCaptured((error) => {
+  mainViewError.value = error?.message || '视图渲染时发生异常'
+  return false
+})
 
 const createChapter = async () => {
   if (!route.params.id) return
@@ -3183,6 +3213,7 @@ watch(() => route.query.chapterId, (chapterId) => {
 })
 
 watch(() => route.query.section, () => {
+  mainViewError.value = ''
   void ensureWorkspaceEntry()
 })
 
@@ -3274,6 +3305,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  state.cancelPendingRequests?.()
   window.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
@@ -3339,6 +3371,21 @@ onBeforeUnmount(() => {
   overflow: hidden;
   position: relative;
   min-width: 0;
+}
+
+.workspace-main-fallback {
+  margin: 20px;
+  padding: 16px;
+  border: 1px solid #FECACA;
+  background: #FEF2F2;
+  border-radius: 12px;
+  color: #991B1B;
+}
+
+.fallback-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
 }
 
 .workspace-copilot {

@@ -117,8 +117,11 @@
         <div class="organize-progress-meta">
           <span>状态：{{ formatOrganizeStatus(organizeProgress.status) }}</span>
           <span>阶段：{{ organizeProgress.stage || '暂无' }}</span>
+          <span>策略：{{ organizeProgress.strategy || 'chapter_first' }}</span>
           <span>进度：{{ organizeProgress.current || 0 }} / {{ organizeProgress.total || 0 }}</span>
           <span>百分比：{{ organizeProgress.percent || 0 }}%</span>
+          <span v-if="organizeProgress.batch_total > 0">当前批次：{{ organizeProgress.batch_no || 0 }} / {{ organizeProgress.batch_total || 0 }}</span>
+          <span v-if="organizeProgress.chunked_chapter_count > 0">分块章节：{{ organizeProgress.chunked_chapter_count }}</span>
           <span v-if="organizeProgress.current_chapter_title">当前章节：{{ organizeProgress.current_chapter_title }}</span>
         </div>
         <el-progress :percentage="organizeProgress.percent" :stroke-width="10" />
@@ -168,6 +171,8 @@ const organizeProgress = ref({
   last_error: ''
 })
 let organizePollTimer = null
+let organizePollController = null
+let organizePollSeq = 0
 const lastOrganizeNoticeKey = ref('')
 const activeOrganizeStatuses = ['running', 'pause_requested', 'resume_requested', 'cancelling']
 const terminalOrganizeStatuses = ['paused', 'cancelled', 'error', 'done']
@@ -190,7 +195,7 @@ const notifyOrganizeTerminalStatus = () => {
   const status = String(organizeProgress.value.status || '')
   const message = organizeTerminalMessage.value
   if (!terminalOrganizeStatuses.includes(status) || !message) return
-  const noticeKey = `${status}:${message}`
+  const noticeKey = `${organizeProgress.value?.task_id || ''}:${status}:${message}`
   if (lastOrganizeNoticeKey.value === noticeKey) return
   lastOrganizeNoticeKey.value = noticeKey
   if (status === 'error') {
@@ -411,8 +416,17 @@ const handleImport = async () => {
 
 const fetchOrganizeProgress = async () => {
   if (!createdNovelId.value) return
+  const currentSeq = ++organizePollSeq
+  if (organizePollController) {
+    organizePollController.abort()
+  }
+  organizePollController = new AbortController()
   try {
-    const progress = await contentApi.organizeProgress(createdNovelId.value)
+    const progress = await contentApi.organizeProgress(createdNovelId.value, {
+      signal: organizePollController.signal,
+      timeout: 8000
+    })
+    if (currentSeq !== organizePollSeq) return
     organizeProgress.value = progress || organizeProgress.value
     if (organizeProgress.value.status === 'done') {
       currentStep.value = 3
@@ -428,9 +442,16 @@ const fetchOrganizeProgress = async () => {
       notifyOrganizeTerminalStatus()
     }
   } catch (error) {
+    if (error?.code === 'ERR_CANCELED' || String(error?.message || '').toLowerCase().includes('canceled')) {
+      return
+    }
     importing.value = false
     stopOrganizePolling()
     console.error('读取整理进度失败:', error)
+  } finally {
+    if (organizePollController?.signal?.aborted !== true) {
+      organizePollController = null
+    }
   }
 }
 
@@ -448,6 +469,10 @@ const stopOrganizePolling = () => {
   if (organizePollTimer) {
     clearInterval(organizePollTimer)
     organizePollTimer = null
+  }
+  if (organizePollController) {
+    organizePollController.abort()
+    organizePollController = null
   }
 }
 

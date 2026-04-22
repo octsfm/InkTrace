@@ -14,6 +14,7 @@ from datetime import datetime
 from domain.types import ChapterId, NovelId, ChapterStatus
 from domain.entities.chapter import Chapter
 from domain.repositories.chapter_repository import IChapterRepository
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteChapterRepository(IChapterRepository):
@@ -31,7 +32,7 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def _init_db(self):
         """初始化数据库表"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS chapters (
                     id TEXT PRIMARY KEY,
@@ -50,7 +51,7 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def save(self, chapter: Chapter) -> None:
         """保存章节"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('''
                 INSERT OR REPLACE INTO chapters 
                 (id, novel_id, number, title, content, word_count, summary, status, created_at, updated_at)
@@ -70,7 +71,7 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def find_by_id(self, chapter_id: ChapterId) -> Optional[Chapter]:
         """根据ID查找章节"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 'SELECT * FROM chapters WHERE id = ?', 
@@ -84,7 +85,7 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def find_by_novel(self, novel_id: NovelId) -> List[Chapter]:
         """查找小说的所有章节"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 'SELECT * FROM chapters WHERE novel_id = ? ORDER BY number',
@@ -95,7 +96,7 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def find_latest(self, novel_id: NovelId, count: int) -> List[Chapter]:
         """查找小说的最新N个章节"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 'SELECT * FROM chapters WHERE novel_id = ? ORDER BY number DESC LIMIT ?',
@@ -106,7 +107,7 @@ class SQLiteChapterRepository(IChapterRepository):
 
     def delete(self, chapter_id: ChapterId) -> None:
         """删除章节"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('DELETE FROM chapters WHERE id = ?', (chapter_id.value,))
 
     def _row_to_chapter(self, row: sqlite3.Row) -> Chapter:

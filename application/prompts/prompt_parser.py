@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def strip_code_fence(text: str) -> str:
@@ -67,22 +67,57 @@ def repair_json_string(text: str) -> str:
     content = str(text or "").strip()
     if not content:
         return ""
-    content = content.replace("“", "\"").replace("”", "\"").replace("‘", "'").replace("’", "'")
+    content = (
+        content.replace("“", "\"")
+        .replace("”", "\"")
+        .replace("‘", "'")
+        .replace("’", "'")
+        .replace("｛", "{")
+        .replace("｝", "}")
+        .replace("［", "[")
+        .replace("］", "]")
+        .replace("：", ":")
+        .replace("，", ",")
+    )
     content = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", content)
     content = re.sub(r",(\s*[}\]])", r"\1", content)
     return content
 
 
 def parse_json_object(text: str) -> Optional[Dict[str, Any]]:
-    for item in _candidate_json_strings(text):
+    value, _ = parse_json_object_with_diagnostics(text)
+    return value
+
+
+def parse_json_object_with_diagnostics(text: str) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+    candidates = _candidate_json_strings(text)
+    attempts = 0
+    errors: List[str] = []
+    for item in candidates:
         for candidate in (item, repair_json_string(item)):
+            attempts += 1
             try:
                 value = json.loads(candidate)
                 if isinstance(value, dict):
-                    return value
-            except Exception:
+                    return value, {
+                        "ok": True,
+                        "reason": "success",
+                        "candidate_count": len(candidates),
+                        "attempt_count": attempts,
+                    }
+            except Exception as exc:
+                if len(errors) < 4:
+                    errors.append(str(exc))
                 continue
-    return None
+    has_json_shape = any("{" in item and "}" in item for item in candidates)
+    reason = "parser_fallback_failed" if has_json_shape else "model_output_noncompliant"
+    return None, {
+        "ok": False,
+        "reason": reason,
+        "candidate_count": len(candidates),
+        "attempt_count": attempts,
+        "errors": errors,
+    }
 
 
 def parse_json_array(text: str) -> List[Dict[str, Any]]:

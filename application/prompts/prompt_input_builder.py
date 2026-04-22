@@ -40,6 +40,8 @@ class PromptInputBuilder:
         outline_context: Dict[str, Any],
         chapters: List[Dict[str, Any]],
         chapter_artifacts: List[Dict[str, Any]] | None = None,
+        outline_digest: Dict[str, Any] | None = None,
+        batch_digests: List[Dict[str, Any]] | None = None,
     ) -> Dict[str, Any]:
         normalized_chapters = []
         for item in chapters or []:
@@ -50,7 +52,7 @@ class PromptInputBuilder:
                     "chapter_id": str(item.get("id") or "").strip(),
                     "chapter_number": int(item.get("index") or item.get("chapter_number") or 0),
                     "title": str(item.get("title") or "").strip(),
-                    "content_preview": str(item.get("content") or "").strip()[:900],
+                    "content_preview": str(item.get("content_preview") or item.get("content") or "").strip(),
                 }
             )
         normalized_artifacts = []
@@ -73,8 +75,15 @@ class PromptInputBuilder:
         return {
             "project_name": project_name or "",
             "outline_context": outline_context or {},
-            "chapters": normalized_chapters[:60],
-            "chapter_artifacts": normalized_artifacts[:120],
+            "chapters": normalized_chapters,
+            "chapter_artifacts": normalized_artifacts,
+            "outline_digest": outline_digest or {},
+            "batch_digests": [item for item in (batch_digests or []) if isinstance(item, dict)],
+            "input_counts": {
+                "chapter_count": len(normalized_chapters),
+                "artifact_count": len(normalized_artifacts),
+                "batch_digest_count": len([item for item in (batch_digests or []) if isinstance(item, dict)]),
+            },
         }
 
     @staticmethod

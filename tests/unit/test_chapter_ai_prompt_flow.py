@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from application.services.chapter_ai_service import ChapterAIService
 
 
@@ -60,3 +62,36 @@ def test_check_draft_integrity_parse_failure_is_not_fatal():
     service = _build_service([{"ok": True, "text": "not-json"}])
     result = asyncio.run(service.check_draft_integrity({"project_id": "p1", "chapter_id": "c1", "chapter_number": 4}, {"content": "改写稿"}, {}))
     assert result is None
+
+
+def test_extract_continuation_memory_parses_chinese_quotes_payload():
+    service = _build_service(
+        [
+            {
+                "ok": True,
+                "text": '｛“scene_summary”：“雨夜追逐”，“scene_state”：{}，“protagonist_state”：{}，“active_characters”：[]，“active_conflicts”：[]，“immediate_threads”：[]，“long_term_threads”：[]，“recent_reveals”：[]，“must_continue_points”：["门后的脚步声"]，“forbidden_jumps”：[]，“tone_and_pacing”：{}，“last_hook”：“门后有人”，“used_fallback”：false｝',
+            }
+        ]
+    )
+    result = asyncio.run(service.extract_continuation_memory("第三章", "正文", [], {}))
+    assert result["used_fallback"] is False
+    assert result["scene_summary"] == "雨夜追逐"
+    assert result["must_continue_points"] == ["门后的脚步声"]
+
+
+def test_extract_continuation_memory_logs_parser_fallback_failed(caplog: pytest.LogCaptureFixture):
+    service = _build_service([{"ok": True, "text": '{"scene_summary":"x","scene_state":{bad},"must_continue_points":[]}' }])
+    with caplog.at_level("WARNING"):
+        result = asyncio.run(service.extract_continuation_memory("第三章", "正文", [], {}))
+    assert result["used_fallback"] is True
+    events = [getattr(record, "event", "") for record in caplog.records]
+    assert "continuation_memory_extracted_parser_fallback_failed" in events
+
+
+def test_extract_continuation_memory_logs_model_output_noncompliant(caplog: pytest.LogCaptureFixture):
+    service = _build_service([{"ok": True, "text": "我先解释一下本章，不返回JSON。"}])
+    with caplog.at_level("WARNING"):
+        result = asyncio.run(service.extract_continuation_memory("第三章", "正文", [], {}))
+    assert result["used_fallback"] is True
+    events = [getattr(record, "event", "") for record in caplog.records]
+    assert "continuation_memory_extracted_model_output_noncompliant" in events

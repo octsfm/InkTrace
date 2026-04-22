@@ -5,6 +5,7 @@ from typing import List
 
 from domain.entities.arc_progress_snapshot import ArcProgressSnapshot
 from domain.repositories.arc_progress_snapshot_repository import IArcProgressSnapshotRepository
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteArcProgressSnapshotRepository(IArcProgressSnapshotRepository):
@@ -13,7 +14,7 @@ class SQLiteArcProgressSnapshotRepository(IArcProgressSnapshotRepository):
         self._init_table()
 
     def _init_table(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS arc_progress_snapshots (
@@ -35,7 +36,7 @@ class SQLiteArcProgressSnapshotRepository(IArcProgressSnapshotRepository):
             conn.commit()
 
     def save(self, snapshot: ArcProgressSnapshot) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO arc_progress_snapshots (
@@ -60,7 +61,7 @@ class SQLiteArcProgressSnapshotRepository(IArcProgressSnapshotRepository):
             conn.commit()
 
     def list_by_arc(self, arc_id: str) -> List[ArcProgressSnapshot]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM arc_progress_snapshots WHERE arc_id = ? ORDER BY created_at DESC",

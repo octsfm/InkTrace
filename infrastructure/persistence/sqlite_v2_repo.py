@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -63,6 +64,45 @@ class SQLiteV2Repository:
             self._ensure_column(conn, "chapter_plans", "opening_continuation", "TEXT DEFAULT ''")
             self._ensure_column(conn, "chapter_plans", "chapter_payoff", "TEXT DEFAULT ''")
             self._ensure_column(conn, "chapter_plans", "style_bias", "TEXT DEFAULT ''")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS organize_batch_digests (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    batch_no INTEGER NOT NULL,
+                    chapter_from INTEGER NOT NULL,
+                    chapter_to INTEGER NOT NULL,
+                    digest_json TEXT NOT NULL,
+                    token_estimate INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_organize_batch_digests_project_batch ON organize_batch_digests(project_id, batch_no)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS organize_stage_metrics (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    stage TEXT NOT NULL,
+                    model_name TEXT NOT NULL,
+                    estimated_tokens INTEGER NOT NULL DEFAULT 0,
+                    budget_tokens INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL,
+                    duration_ms INTEGER NOT NULL DEFAULT 0,
+                    input_units INTEGER NOT NULL DEFAULT 0,
+                    batch_no INTEGER NOT NULL DEFAULT 0,
+                    batch_total INTEGER NOT NULL DEFAULT 0,
+                    degrade_path TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_organize_stage_metrics_project_stage ON organize_stage_metrics(project_id, stage, created_at)"
+            )
             conn.commit()
 
     def save_project_memory(self, payload: Dict[str, Any]) -> None:
@@ -503,3 +543,137 @@ class SQLiteV2Repository:
                 "created_at": row["created_at"] or "",
                 "updated_at": row["updated_at"] or "",
             }
+
+    def save_organize_batch_digest(
+        self,
+        *,
+        project_id: str,
+        batch_no: int,
+        chapter_from: int,
+        chapter_to: int,
+        digest_json: Dict[str, Any],
+        token_estimate: int = 0,
+    ) -> None:
+        now = self._now()
+        digest_id = f"obd_{project_id}_{int(batch_no)}"
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO organize_batch_digests
+                (id, project_id, batch_no, chapter_from, chapter_to, digest_json, token_estimate, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  chapter_from=excluded.chapter_from,
+                  chapter_to=excluded.chapter_to,
+                  digest_json=excluded.digest_json,
+                  token_estimate=excluded.token_estimate
+                """,
+                (
+                    digest_id,
+                    project_id,
+                    int(batch_no),
+                    int(chapter_from),
+                    int(chapter_to),
+                    json.dumps(digest_json or {}, ensure_ascii=False),
+                    int(token_estimate or 0),
+                    now,
+                ),
+            )
+            conn.commit()
+
+    def list_organize_batch_digests(self, project_id: str) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM organize_batch_digests WHERE project_id=? ORDER BY batch_no ASC",
+                (project_id,),
+            ).fetchall()
+            return [
+                {
+                    "id": row["id"],
+                    "project_id": row["project_id"],
+                    "batch_no": int(row["batch_no"] or 0),
+                    "chapter_from": int(row["chapter_from"] or 0),
+                    "chapter_to": int(row["chapter_to"] or 0),
+                    "digest_json": json.loads(row["digest_json"] or "{}"),
+                    "token_estimate": int(row["token_estimate"] or 0),
+                    "created_at": row["created_at"] or "",
+                }
+                for row in rows
+            ]
+
+    def delete_organize_batch_digests(self, project_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM organize_batch_digests WHERE project_id=?", (project_id,))
+            conn.commit()
+
+    def save_organize_stage_metric(
+        self,
+        *,
+        project_id: str,
+        stage: str,
+        model_name: str,
+        estimated_tokens: int,
+        budget_tokens: int,
+        status: str,
+        duration_ms: int = 0,
+        input_units: int = 0,
+        batch_no: int = 0,
+        batch_total: int = 0,
+        degrade_path: str = "",
+    ) -> None:
+        now = self._now()
+        metric_id = f"osm_{project_id}_{int(time.time() * 1000)}_{os.urandom(3).hex()}"
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO organize_stage_metrics
+                (id, project_id, stage, model_name, estimated_tokens, budget_tokens, status, duration_ms, input_units, batch_no, batch_total, degrade_path, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    metric_id,
+                    project_id,
+                    str(stage or ""),
+                    str(model_name or ""),
+                    int(estimated_tokens or 0),
+                    int(budget_tokens or 0),
+                    str(status or "ok"),
+                    int(duration_ms or 0),
+                    int(input_units or 0),
+                    int(batch_no or 0),
+                    int(batch_total or 0),
+                    str(degrade_path or ""),
+                    now,
+                ),
+            )
+            conn.commit()
+
+    def list_organize_stage_metrics(self, project_id: str, limit: int = 200) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM organize_stage_metrics
+                WHERE project_id=?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (project_id, int(limit)),
+            ).fetchall()
+            return [
+                {
+                    "id": row["id"],
+                    "project_id": row["project_id"],
+                    "stage": row["stage"],
+                    "model_name": row["model_name"],
+                    "estimated_tokens": int(row["estimated_tokens"] or 0),
+                    "budget_tokens": int(row["budget_tokens"] or 0),
+                    "status": row["status"],
+                    "duration_ms": int(row["duration_ms"] or 0),
+                    "input_units": int(row["input_units"] or 0),
+                    "batch_no": int(row["batch_no"] or 0),
+                    "batch_total": int(row["batch_total"] or 0),
+                    "degrade_path": row["degrade_path"] or "",
+                    "created_at": row["created_at"] or "",
+                }
+                for row in rows
+            ]

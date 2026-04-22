@@ -355,3 +355,5 @@ dist/
 /codeline_report_20260403_172359.txt
 /plaintext.md
 /plaintext.py
+/data/inktrace.db-shm
+/data/inktrace.db-wal

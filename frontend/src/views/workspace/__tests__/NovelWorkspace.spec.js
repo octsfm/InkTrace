@@ -10,6 +10,8 @@ import {
 } from '../workspaceTaskModel'
 
 const mockRoute = { params: { id: '1' }, query: {} }
+const mockRouterPush = vi.fn()
+const mockRouterReplace = vi.fn()
 
 const mockMemoryViewV2 = vi.fn(async () => ({ current_state: '真实上下文：角色冲突升级', main_plot_lines: ['主线必须继续升级'] }))
 const mockContinuationContextV2 = vi.fn(async () => ({ last_chapter_tail: '上一章结尾停在冲突升级前夕。', relevant_foreshadowing: ['神秘来信'] }))
@@ -58,7 +60,7 @@ vi.mock('@/api', () => ({
 // Mock vue-router
 vi.mock('vue-router', () => ({
   useRoute: vi.fn(() => mockRoute),
-  useRouter: vi.fn(() => ({ push: vi.fn(), replace: vi.fn() }))
+  useRouter: vi.fn(() => ({ push: mockRouterPush, replace: mockRouterReplace }))
 }))
 
 // Mock child components
@@ -147,6 +149,8 @@ describe('NovelWorkspace.vue', () => {
   }
 
   beforeEach(() => {
+    mockRouterPush.mockClear()
+    mockRouterReplace.mockClear()
     mockRoute.params = { id: '1' }
     mockRoute.query = {}
     mockMemoryViewV2.mockClear()
@@ -197,6 +201,20 @@ describe('NovelWorkspace.vue', () => {
     expect(wrapper.find('.workspace-settings-mock').exists()).toBe(true)
     expect(wrapper.find('.workspace-overview-mock').exists()).toBe(false)
     expect(wrapper.vm.sidebarOverviewCards[0].label).toBe('项目编号')
+  })
+
+  it('passes array filterOptions to tasks view instead of computed ref object', async () => {
+    store.currentView = 'tasks'
+    await wrapper.vm.$nextTick()
+    expect(Array.isArray(wrapper.vm.activeComponentProps.filterOptions)).toBe(true)
+  })
+
+  it('forces section query when switching section to avoid route query backflow', async () => {
+    mockRoute.query = { section: 'tasks' }
+    await wrapper.vm.openSection('structure')
+    expect(mockRouterReplace).toHaveBeenCalled()
+    const payload = mockRouterReplace.mock.calls.at(-1)?.[0] || {}
+    expect(payload.query.section).toBe('structure')
   })
 
   it('builds actionable overview sidebar cards and topbar actions', async () => {

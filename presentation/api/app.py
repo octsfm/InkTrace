@@ -11,6 +11,7 @@ FastAPI应用配置模块
 import time
 import traceback
 import uuid
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +24,12 @@ from application.services.logging_service import (
     set_request_id,
     setup_logging,
 )
+from application.services.runtime_metrics_service import (
+    get_runtime_metrics_snapshot,
+    mark_request_finish,
+    mark_request_start,
+)
+from infrastructure.persistence.sqlite_utils import get_sqlite_metrics_snapshot
 from presentation.api.dependencies import warmup_singletons_for_startup
 from presentation.api.routers import novel, content, writing, export, chapter_editor
 from presentation.api.routers import project, template, character, worldview
@@ -36,10 +43,19 @@ APP_VERSION = "3.0.0"
 def create_app() -> FastAPI:
     setup_logging()
     logger.info("应用启动开始", extra=build_log_context(event="app_starting", module="app", version=APP_VERSION))
+
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        logger.info("启动预热开始", extra=build_log_context(event="app_startup_warmup_begin", module="app"))
+        warmup_singletons_for_startup()
+        logger.info("启动预热完成", extra=build_log_context(event="app_startup_warmup_done", module="app"))
+        yield
+
     app = FastAPI(
         title="InkTrace Novel AI",
         description="AI小说自动编写助手API",
-        version=APP_VERSION
+        version=APP_VERSION,
+        lifespan=_lifespan,
     )
     
     app.add_middleware(
@@ -54,6 +70,7 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def request_log_middleware(request: Request, call_next):
         started_at = time.perf_counter()
+        mark_request_start()
         header_request_id = request.headers.get("X-Request-Id", "").strip()
         request_id = header_request_id or f"req_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         token = set_request_id(request_id)
@@ -73,7 +90,22 @@ def create_app() -> FastAPI:
         try:
             response = await call_next(request)
             duration_ms = int((time.perf_counter() - started_at) * 1000)
+            mark_request_finish(request.url.path, getattr(response, "status_code", 200), duration_ms)
             response.headers["X-Request-Id"] = request_id
+            if duration_ms >= 800:
+                logger.warning(
+                    "请求耗时偏高",
+                    extra=build_log_context(
+                        event="request_slow",
+                        request_id=request_id,
+                        method=request.method,
+                        path=request.url.path,
+                        status_code=getattr(response, "status_code", 200),
+                        duration_ms=duration_ms,
+                        client_ip=client_ip,
+                        module="app",
+                    ),
+                )
             logger.info(
                 "请求完成",
                 extra=build_log_context(
@@ -90,6 +122,7 @@ def create_app() -> FastAPI:
             return response
         except Exception as exc:
             duration_ms = int((time.perf_counter() - started_at) * 1000)
+            mark_request_finish(request.url.path, 500, duration_ms)
             logger.exception(
                 "请求异常",
                 extra=build_log_context(
@@ -129,12 +162,6 @@ def create_app() -> FastAPI:
     app.include_router(config.router)
     app.include_router(projects_v2.router)
     logger.info("路由加载完成", extra=build_log_context(event="app_router_registered", module="app", version=APP_VERSION))
-
-    @app.on_event("startup")
-    async def _warmup_dependencies() -> None:
-        logger.info("启动预热开始", extra=build_log_context(event="app_startup_warmup_begin", module="app"))
-        warmup_singletons_for_startup()
-        logger.info("启动预热完成", extra=build_log_context(event="app_startup_warmup_done", module="app"))
 
     @app.exception_handler(FastAPIHTTPException)
     async def http_exception_handler(request: Request, exc: FastAPIHTTPException):
@@ -183,6 +210,13 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health():
         return {"status": "healthy"}
+
+    @app.get("/metrics/runtime")
+    async def runtime_metrics():
+        return {
+            "runtime": get_runtime_metrics_snapshot(),
+            "sqlite": get_sqlite_metrics_snapshot(),
+        }
     
     logger.info("应用启动成功", extra=build_log_context(event="app_started", module="app", version=APP_VERSION))
     return app

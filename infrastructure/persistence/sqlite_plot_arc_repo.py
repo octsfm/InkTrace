@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from domain.entities.plot_arc import PlotArc
 from domain.repositories.plot_arc_repository import IPlotArcRepository
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLitePlotArcRepository(IPlotArcRepository):
@@ -13,7 +14,7 @@ class SQLitePlotArcRepository(IPlotArcRepository):
         self._init_table()
 
     def _init_table(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS plot_arcs (
@@ -49,7 +50,7 @@ class SQLitePlotArcRepository(IPlotArcRepository):
             conn.commit()
 
     def save(self, arc: PlotArc) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO plot_arcs (
@@ -91,7 +92,7 @@ class SQLitePlotArcRepository(IPlotArcRepository):
             conn.commit()
 
     def find_by_project(self, project_id: str) -> List[PlotArc]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM plot_arcs WHERE project_id = ? ORDER BY updated_at DESC",
@@ -100,13 +101,13 @@ class SQLitePlotArcRepository(IPlotArcRepository):
         return [self._row_to_entity(row) for row in rows]
 
     def find_by_id(self, arc_id: str) -> Optional[PlotArc]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT * FROM plot_arcs WHERE arc_id = ?", (arc_id,)).fetchone()
         return self._row_to_entity(row) if row else None
 
     def delete_by_project(self, project_id: str) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("DELETE FROM plot_arcs WHERE project_id = ?", (project_id,))
             conn.commit()
 

@@ -8,7 +8,11 @@ from typing import Any, Dict, List, Optional
 from application.agent_mvp.model_router import ModelRouter
 from application.agent_mvp.model_role_router import ModelRoleRouter
 from application.prompts.prompt_input_builder import PromptInputBuilder
-from application.prompts.prompt_parser import parse_json_object, strip_code_fence
+from application.prompts.prompt_parser import (
+    parse_json_object,
+    parse_json_object_with_diagnostics,
+    strip_code_fence,
+)
 from application.prompts.prompt_templates import (
     build_chapter_ai_json_prompt,
     build_chapter_outline_prompt,
@@ -217,23 +221,48 @@ class ChapterAIService:
         if not text:
             self.logger.warning("Prompt空响应", extra=build_log_context(event=f"{prompt_type}_prompt_failed", **context, error="empty_response", used_fallback=True, response_parse_failed=False))
             return None
-        payload = self._parse_json_from_text(text)
+        payload, parse_meta = parse_json_object_with_diagnostics(text)
         if not payload:
-            self.logger.warning(
-                "Prompt解析失败",
-                extra=build_log_context(
-                    event=f"{prompt_type}_parse_failed",
-                    **context,
-                    response_parse_failed=True,
-                    used_fallback=True,
-                    response_length=len(text),
-                    response_prefix=text[:240],
-                    response_suffix=text[-240:],
-                ),
-            )
+            parse_reason = str(parse_meta.get("reason") or "parse_failed")
+            if parse_reason == "model_output_noncompliant":
+                self.logger.warning(
+                    "Prompt模型返回不合规",
+                    extra=build_log_context(
+                        event=f"{prompt_type}_model_output_noncompliant",
+                        **context,
+                        parse_failure_reason=parse_reason,
+                        response_parse_failed=True,
+                        used_fallback=True,
+                        response_length=len(text),
+                        response_prefix=text[:240],
+                        response_suffix=text[-240:],
+                    ),
+                )
+            else:
+                self.logger.warning(
+                    "Prompt解析器兜底失败",
+                    extra=build_log_context(
+                        event=f"{prompt_type}_parser_fallback_failed",
+                        **context,
+                        parse_failure_reason=parse_reason,
+                        parse_attempt_count=int(parse_meta.get("attempt_count") or 0),
+                        response_parse_failed=True,
+                        used_fallback=True,
+                        response_length=len(text),
+                        response_prefix=text[:240],
+                        response_suffix=text[-240:],
+                    ),
+                )
             self.logger.warning(
                 f"Prompt解析失败原始响应={self._format_parse_failed_response(text)}",
-                extra=build_log_context(event=f"{prompt_type}_parse_failed_payload", **context, response_parse_failed=True, used_fallback=True),
+                extra=build_log_context(
+                    event=f"{prompt_type}_parse_failed_payload",
+                    **context,
+                    parse_failure_reason=parse_reason,
+                    parse_attempt_count=int(parse_meta.get("attempt_count") or 0),
+                    response_parse_failed=True,
+                    used_fallback=True,
+                ),
             )
             return None
         return payload
@@ -900,18 +929,25 @@ class ChapterAIService:
         }
 
     def _fallback_global_analysis(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        batch_digests = [item for item in (payload.get("batch_digests") or []) if isinstance(item, dict)]
         chapters = [item for item in (payload.get("chapters") or []) if isinstance(item, dict)]
         summaries = []
-        for item in chapters[:120]:
-            title = str(item.get("title") or "").strip()
-            preview = str(item.get("content_preview") or "").strip().replace("\n", " ")
-            text = f"{title}：{preview[:80]}".strip("：")
-            if text:
-                summaries.append(text)
+        for item in batch_digests:
+            digest_text = str(item.get("digest") or "").strip().replace("\n", " ")
+            if digest_text:
+                summaries.append(digest_text)
+        if not summaries:
+            for item in chapters[:120]:
+                title = str(item.get("title") or "").strip()
+                preview = str(item.get("content_preview") or "").strip().replace("\n", " ")
+                text = f"{title}：{preview}".strip("：")
+                if text:
+                    summaries.append(text)
         outline_context = payload.get("outline_context") if isinstance(payload.get("outline_context"), dict) else {}
-        main_plot = str(outline_context.get("premise") or "").strip()
-        hidden_plot = str(outline_context.get("story_background") or "").strip()
-        world_setting = str(outline_context.get("world_setting") or "").strip()
+        outline_digest = payload.get("outline_digest") if isinstance(payload.get("outline_digest"), dict) else {}
+        main_plot = str(outline_digest.get("premise") or outline_context.get("premise") or "").strip()
+        hidden_plot = str(outline_digest.get("summary") or outline_context.get("story_background") or "").strip()
+        world_setting = str(outline_digest.get("style_guidance") or outline_context.get("world_setting") or "").strip()
         return {
             "characters": [],
             "world_facts": {

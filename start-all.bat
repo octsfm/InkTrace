@@ -12,6 +12,7 @@ echo.
 set INKTRACE_PORT=9527
 set INKTRACE_HOST=127.0.0.1
 set FRONTEND_PORT=3000
+set INKTRACE_DEBUG=false
 
 echo [1/5] Checking Python...
 py -3 --version >nul 2>&1

@@ -16,6 +16,7 @@ from domain.types import NovelId
 from domain.entities.novel import Novel
 from domain.repositories.novel_repository import INovelRepository
 from domain.utils import repair_mojibake
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteNovelRepository(INovelRepository):
@@ -33,7 +34,7 @@ class SQLiteNovelRepository(INovelRepository):
 
     def _init_db(self):
         """初始化数据库表"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS novels (
                     id TEXT PRIMARY KEY,
@@ -50,7 +51,7 @@ class SQLiteNovelRepository(INovelRepository):
 
     def save(self, novel: Novel) -> None:
         """保存小说"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('''
                 INSERT OR REPLACE INTO novels 
                 (id, title, author, genre, target_word_count, current_word_count, created_at, updated_at)
@@ -68,7 +69,7 @@ class SQLiteNovelRepository(INovelRepository):
 
     def find_by_id(self, novel_id: NovelId) -> Optional[Novel]:
         """根据ID查找小说"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 'SELECT * FROM novels WHERE id = ?', 
@@ -91,7 +92,7 @@ class SQLiteNovelRepository(INovelRepository):
 
     def find_all(self) -> List[Novel]:
         """查找所有小说"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute('SELECT * FROM novels ORDER BY created_at DESC')
             rows = cursor.fetchall()
@@ -112,5 +113,5 @@ class SQLiteNovelRepository(INovelRepository):
 
     def delete(self, novel_id: NovelId) -> None:
         """删除小说"""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute('DELETE FROM novels WHERE id = ?', (novel_id.value,))

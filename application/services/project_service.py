@@ -10,12 +10,15 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import uuid
+import os
 
 from domain.entities.project import Project, ProjectConfig
 from domain.entities.novel import Novel
 from domain.repositories.project_repository import IProjectRepository
 from domain.repositories.novel_repository import INovelRepository
+from domain.repositories.project_cleanup_repository import IProjectCleanupRepository
 from domain.types import ProjectId, NovelId, ProjectStatus, GenreType
+from infrastructure.persistence.sqlite_project_cleanup_repo import SQLiteProjectCleanupRepository
 
 
 class ProjectService:
@@ -24,10 +27,12 @@ class ProjectService:
     def __init__(
         self,
         project_repo: IProjectRepository,
-        novel_repo: INovelRepository
+        novel_repo: INovelRepository,
+        cleanup_repo: Optional[IProjectCleanupRepository] = None,
     ):
         self.project_repo = project_repo
         self.novel_repo = novel_repo
+        self.cleanup_repo = cleanup_repo
     
     def create_project(
         self,
@@ -183,14 +188,20 @@ class ProjectService:
     
     def delete_project(self, project_id: ProjectId) -> None:
         """删除项目"""
-# 文件：模块：project_service
-
         project = self.project_repo.find_by_id(project_id)
         if not project:
             raise ValueError(f"项目不存在: {project_id}")
-        
+
+        self._hard_cleanup_project_payloads(str(project.id), str(project.novel_id))
         self.project_repo.delete(project_id)
         self.novel_repo.delete(project.novel_id)
+
+    def _hard_cleanup_project_payloads(self, project_id: str, novel_id: str) -> None:
+        cleanup_repo = self.cleanup_repo
+        if cleanup_repo is None:
+            db_path = os.environ.get("INKTRACE_DB_PATH", "data/inktrace.db")
+            cleanup_repo = SQLiteProjectCleanupRepository(db_path)
+        cleanup_repo.cleanup_project_payloads(project_id, novel_id)
     
     def get_project_count(self, status: Optional[ProjectStatus] = None) -> int:
         """获取项目数量"""

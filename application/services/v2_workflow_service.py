@@ -9,6 +9,7 @@ from datetime import datetime, UTC
 import json
 import os
 import re
+import time
 import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
@@ -29,9 +30,11 @@ from application.services.draft_integrity_checker import DraftIntegrityChecker
 from application.services.chapter_allocation_service import ChapterAllocationService
 from application.services.chapter_ai_service import ChapterAIService
 from application.services.chapter_memory_service import ChapterMemoryService
+from application.services.chapter_chunk_analysis_service import ChapterChunkAnalysisService
 from application.services.chapter_planning_service import ChapterPlanningService
 from application.services.global_analysis_service import GlobalAnalysisService
 from application.services.logging_service import build_log_context, get_logger
+from application.services.runtime_metrics_service import record_batch_resume, record_global_analysis_duration
 from application.services.memory_writeback_service import MemoryWritebackService
 from application.services.arc_planning_service import ArcPlanningService
 from application.services.arc_writeback_service import ArcWritebackService
@@ -127,6 +130,7 @@ class V2WorkflowService:
         chapter_arc_binding_repo: Optional[IChapterArcBindingRepository] = None,
         arc_planning_service: Optional[ArcPlanningService] = None,
         arc_writeback_service: Optional[ArcWritebackService] = None,
+        chapter_chunk_analysis_service: Optional[ChapterChunkAnalysisService] = None,
     ):
         self.project_service = project_service
         self.content_service = content_service
@@ -184,6 +188,7 @@ class V2WorkflowService:
         self.prompt_ai_service = ChapterAIService(llm_factory)
         self.global_analysis_service = GlobalAnalysisService(self.prompt_ai_service)
         self.chapter_memory_service = ChapterMemoryService(self.prompt_ai_service)
+        self.chapter_chunk_analysis_service = chapter_chunk_analysis_service or ChapterChunkAnalysisService()
         self.validation_service_v2 = ValidationServiceV2(self)
         self.writing_service_v2 = WritingServiceV2(self, self.validation_service_v2)
         self.chapter_planning_service = ChapterPlanningService(self)
@@ -395,6 +400,7 @@ class V2WorkflowService:
         progress_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
         resume_from: int = 0,
         checkpoint_memory: Optional[Dict[str, Any]] = None,
+        capacity_plan: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         project = self.project_service.get_project(ProjectId(project_id))
         organize_mode = self._normalize_organize_mode(mode, rebuild_memory)
@@ -408,8 +414,78 @@ class V2WorkflowService:
                 novel_id=str(project.novel_id),
                 mode=organize_mode,
                 rebuild_memory=bool(rebuild_memory),
+                strategy=str((capacity_plan or {}).get("strategy") or ""),
             ),
         )
+        active_capacity_plan = {
+            "strategy": "chapter_first",
+            "chapter_soft_limit_chars": 30000,
+            "chunk_size_chars": 9000,
+            "batch_size_chapters": 12,
+            "enable_chunking": True,
+        }
+        ff_batch_global = str(os.environ.get("FF_BATCH_GLOBAL_ANALYSIS", "1")).strip() not in {"0", "false", "False"}
+        ff_chunking = str(os.environ.get("FF_CHAPTER_CHUNKING", "1")).strip() not in {"0", "false", "False"}
+        ff_outline_digest = str(os.environ.get("FF_OUTLINE_DIGEST", "1")).strip() not in {"0", "false", "False"}
+        if isinstance(capacity_plan, dict):
+            active_capacity_plan.update({k: v for k, v in capacity_plan.items() if v is not None})
+        strategy = str(active_capacity_plan.get("strategy") or "chapter_first")
+        stage_caps = active_capacity_plan.get("stage_cap_tokens") if isinstance(active_capacity_plan.get("stage_cap_tokens"), dict) else {}
+        model_name = str(active_capacity_plan.get("model_name") or "")
+        chunked_chapter_count = 0
+        batch_digests: List[Dict[str, Any]] = []
+        batch_artifacts_buffer: List[Dict[str, Any]] = []
+        batch_size = max(1, int(active_capacity_plan.get("batch_size_chapters") or 12))
+        batch_total = 1
+        def _estimate_tokens(payload: Dict[str, Any]) -> int:
+            try:
+                payload_text = json.dumps(payload or {}, ensure_ascii=False, separators=(",", ":"))
+            except Exception:
+                payload_text = str(payload or "")
+            return int(len(payload_text) / 3) + 80
+
+        def _record_stage_metric(
+            *,
+            stage: str,
+            status: str,
+            estimated_tokens: int,
+            input_units: int,
+            duration_ms: int = 0,
+            batch_no: int = 0,
+            batch_total_value: int = 0,
+            degrade_path: str = "",
+        ) -> None:
+            budget_tokens = int(stage_caps.get(stage) or 0)
+            self.logger.info(
+                "整理阶段指标",
+                extra=build_log_context(
+                    event="organize_stage_metric",
+                    project_id=project_id,
+                    stage=stage,
+                    model_name=model_name,
+                    budget_tokens=budget_tokens,
+                    estimated_tokens=int(estimated_tokens or 0),
+                    input_units=int(input_units or 0),
+                    batch_no=int(batch_no or 0),
+                    batch_total=int(batch_total_value or 0),
+                    degrade_path=str(degrade_path or ""),
+                    status=status,
+                    duration_ms=int(duration_ms or 0),
+                ),
+            )
+            self.v2_repo.save_organize_stage_metric(
+                project_id=project_id,
+                stage=stage,
+                model_name=model_name,
+                estimated_tokens=int(estimated_tokens or 0),
+                budget_tokens=budget_tokens,
+                status=status,
+                duration_ms=int(duration_ms or 0),
+                input_units=int(input_units or 0),
+                batch_no=int(batch_no or 0),
+                batch_total=int(batch_total_value or 0),
+                degrade_path=str(degrade_path or ""),
+            )
         async def _emit_progress(
             stage: str,
             current: int,
@@ -419,6 +495,9 @@ class V2WorkflowService:
             status: str = "running",
             resumable: bool = False,
             memory_snapshot: Optional[Dict[str, Any]] = None,
+            batch_no: int = 0,
+            batch_total_value: int = 0,
+            chunked_chapter_count_value: int = 0,
         ) -> None:
             if progress_callback is None:
                 return
@@ -434,6 +513,10 @@ class V2WorkflowService:
                 "message": self.clean_text(message) or message,
                 "current_chapter_title": self.clean_text(current_chapter_title),
                 "resumable": resumable,
+                "strategy": strategy,
+                "batch_no": int(batch_no or 0),
+                "batch_total": int(batch_total_value or 0),
+                "chunked_chapter_count": int(chunked_chapter_count_value or 0),
             }
             if isinstance(memory_snapshot, dict):
                 payload["memory_snapshot"] = memory_snapshot
@@ -444,23 +527,81 @@ class V2WorkflowService:
             input_payload={"mode": organize_mode, "rebuild_memory": rebuild_memory},
         )
         novel_id = str(project.novel_id)
-        outline = self.outline_repo.find_by_novel(project.novel_id)
-        outline_context = {
-            "premise": outline.premise if outline else "",
-            "story_background": outline.story_background if outline else "",
-            "world_setting": outline.world_setting if outline else "",
-            "summary": [outline.premise, outline.story_background] if outline else [],
-        }
+        outline_context = self._get_outline_context(project.novel_id)
         chapters = self._build_chapter_units(project.novel_id, "chapter_first")
         total_chapters = len(chapters)
+        batch_total = max(1, (max(1, total_chapters) + batch_size - 1) // batch_size)
         self.logger.info(
             "整理准备完成",
             extra=build_log_context(event="organize_prepare_done", project_id=project_id, total_chapters=total_chapters),
         )
         resume_cursor = 0 if rebuild_memory or organize_mode != "full_reanalyze" else max(0, min(int(resume_from or 0), total_chapters))
+        _record_stage_metric(
+            stage="prepare",
+            status="ok",
+            estimated_tokens=_estimate_tokens({"outline": outline_context, "total_chapters": total_chapters}),
+            input_units=total_chapters,
+            batch_no=0,
+            batch_total_value=batch_total,
+        )
+        if rebuild_memory:
+            self.v2_repo.delete_organize_batch_digests(project_id)
+        elif organize_mode == "full_reanalyze" and resume_cursor > 0:
+            persisted_batches = self.v2_repo.list_organize_batch_digests(project_id)
+            batch_digests = [
+                {
+                    "batch_no": int(item.get("batch_no") or 0),
+                    "chapter_start": int(item.get("chapter_from") or 0),
+                    "chapter_end": int(item.get("chapter_to") or 0),
+                    "digest": str((item.get("digest_json") or {}).get("digest") or ""),
+                    "token_estimate": int(item.get("token_estimate") or 0),
+                }
+                for item in persisted_batches
+                if int(item.get("batch_no") or 0) > 0
+            ]
         global_analysis_service = GlobalAnalysisService(self.prompt_ai_service)
         chapter_memory_service = ChapterMemoryService(self.prompt_ai_service)
         project_name = str(getattr(project, "name", "") or project_id)
+        was_resume_run = resume_cursor > 0
+
+        def _compact_batch_digests(items: List[Dict[str, Any]], per_item_limit: int) -> List[Dict[str, Any]]:
+            compacted: List[Dict[str, Any]] = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                compacted.append(
+                    {
+                        "batch_no": int(item.get("batch_no") or 0),
+                        "chapter_start": int(item.get("chapter_start") or 0),
+                        "chapter_end": int(item.get("chapter_end") or 0),
+                        "digest": str(item.get("digest") or "").strip()[:per_item_limit],
+                        "token_estimate": int(item.get("token_estimate") or 0),
+                    }
+                )
+            return [item for item in compacted if str(item.get("digest") or "").strip()]
+
+        def _two_level_batch_summaries(items: List[Dict[str, Any]], group_size: int = 4) -> List[Dict[str, Any]]:
+            grouped: List[Dict[str, Any]] = []
+            if not items:
+                return grouped
+            cursor = 0
+            batch_no = 1
+            while cursor < len(items):
+                part = items[cursor : cursor + max(2, int(group_size))]
+                digest_text = "；".join([str(item.get("digest") or "").strip() for item in part if str(item.get("digest") or "").strip()])[:1200]
+                if digest_text:
+                    grouped.append(
+                        {
+                            "batch_no": batch_no,
+                            "chapter_start": int(part[0].get("chapter_start") or 0),
+                            "chapter_end": int(part[-1].get("chapter_end") or 0),
+                            "digest": digest_text,
+                            "token_estimate": max(0, int(len(digest_text) / 3)),
+                        }
+                    )
+                    batch_no += 1
+                cursor += max(2, int(group_size))
+            return grouped
         if organize_mode == "refresh_view":
             memory = self._load_structured_memory(project_id, project.novel_id, outline_context)
             await _emit_progress(
@@ -489,6 +630,8 @@ class V2WorkflowService:
                 status="done",
                 resumable=False,
             )
+            if was_resume_run:
+                record_batch_resume(True)
             return {
                 "project_id": project_id,
                 "organized_chapter_count": len(chapters),
@@ -500,7 +643,7 @@ class V2WorkflowService:
             merged_memory = self._prepare_memory_for_global_rebuild(loaded_memory, outline_context)
             chapter_artifacts: List[Dict[str, Any]] = self._build_chapter_artifacts_from_memory(loaded_memory, chapters)
             if not chapter_artifacts:
-                raise ValueError("缺少可复用的章节分析结果，请先执行一次完整整理。")
+                raise ValueError("缺少可复用的章节分析结果，当前模式无法继续。请先执行一次 full_reanalyze 完整整理。")
         else:
             merged_memory = self._empty_structured_memory(outline_context)
             if not rebuild_memory and resume_cursor > 0 and isinstance(checkpoint_memory, dict) and checkpoint_memory:
@@ -558,6 +701,24 @@ class V2WorkflowService:
                     recent_chapter_summaries=self._build_recent_outline_summaries(merged_memory),
                     require_model_success=legacy_analysis_tool is None,
                 )
+                chapter_text = str(chapter.get("content") or "")
+                if (
+                    ff_chunking
+                    and bool(active_capacity_plan.get("enable_chunking"))
+                    and len(chapter_text) > int(active_capacity_plan.get("chapter_soft_limit_chars") or 0)
+                ):
+                    bundle = await self.chapter_chunk_analysis_service.analyze_by_chunks(
+                        chapter_memory_service=chapter_memory_service,
+                        chapter_title=str(chapter.get("title") or ""),
+                        chapter_content=chapter_text,
+                        constraints=merged_memory.get("global_constraints") or {},
+                        global_memory_summary=self._build_outline_memory_summary(merged_memory),
+                        global_outline_summary=self._build_outline_summary_text(outline_context, merged_memory),
+                        recent_chapter_summaries=self._build_recent_outline_summaries(merged_memory),
+                        require_model_success=legacy_analysis_tool is None,
+                        chunk_size_chars=int(active_capacity_plan.get("chunk_size_chars") or 9000),
+                    )
+                    chunked_chapter_count += 1
             except Exception as error:
                 self.logger.error(
                     "绔犺妭鍒嗘瀽澶辫触",
@@ -593,6 +754,38 @@ class V2WorkflowService:
                     "must_continue_points": list((bundle.get("continuation_memory") or {}).get("must_continue_points") or []),
                 }
             )
+            if ff_batch_global:
+                batch_artifacts_buffer.append(chapter_artifacts[-1])
+            if ff_batch_global and (len(batch_artifacts_buffer) >= batch_size or index == total_chapters):
+                batch_no = len(batch_digests) + 1
+                batch_digest_text = "；".join(
+                    [
+                        str(item.get("analysis_summary") or item.get("scene_summary") or "").strip()
+                        for item in batch_artifacts_buffer
+                        if str(item.get("analysis_summary") or item.get("scene_summary") or "").strip()
+                    ]
+                )
+                batch_payload = {
+                    "batch_no": batch_no,
+                    "chapter_start": int(batch_artifacts_buffer[0].get("chapter_number") or 0),
+                    "chapter_end": int(batch_artifacts_buffer[-1].get("chapter_number") or 0),
+                    "digest": batch_digest_text,
+                    "token_estimate": max(0, int(len(batch_digest_text) / 3)),
+                }
+                batch_digests.append(batch_payload)
+                self.v2_repo.save_organize_batch_digest(
+                    project_id=project_id,
+                    batch_no=batch_no,
+                    chapter_from=batch_payload["chapter_start"],
+                    chapter_to=batch_payload["chapter_end"],
+                    digest_json={"digest": batch_payload["digest"]},
+                    token_estimate=batch_payload["token_estimate"],
+                )
+                merged_memory["organize_state"] = {
+                    "last_success_batch": int(batch_no),
+                    "batch_total": int(batch_total),
+                }
+                batch_artifacts_buffer = []
             self.logger.info(
                 "绔犺妭鍒嗘瀽瀹屾垚",
                 extra=build_log_context(
@@ -610,6 +803,29 @@ class V2WorkflowService:
                 current_chapter_title=self.clean_text(str(chapter.get("title") or f"Chapter {index}")) or f"Chapter {index}",
                 resumable=index < total_chapters,
                 memory_snapshot=merged_memory,
+                batch_no=len(batch_digests),
+                batch_total_value=batch_total,
+                chunked_chapter_count_value=chunked_chapter_count,
+            )
+        if ff_batch_global:
+            _record_stage_metric(
+                stage="batch_digest",
+                status="ok",
+                estimated_tokens=_estimate_tokens({"batch_digests": batch_digests}),
+                input_units=len(batch_digests),
+                batch_no=len(batch_digests),
+                batch_total_value=batch_total,
+            )
+            await _emit_progress(
+                stage="batch_digest",
+                current=len(batch_digests),
+                total=max(1, batch_total),
+                message=f"批次摘要完成（{len(batch_digests)}/{max(1, batch_total)}）",
+                resumable=False,
+                memory_snapshot=merged_memory,
+                batch_no=len(batch_digests),
+                batch_total_value=batch_total,
+                chunked_chapter_count_value=chunked_chapter_count,
             )
         await _emit_progress(
             stage="global_analysis",
@@ -619,14 +835,111 @@ class V2WorkflowService:
             resumable=False,
             memory_snapshot=merged_memory,
         )
-        global_analysis = await global_analysis_service.analyze_story(
-            project_id=project_id,
-            project_name=project_name,
-            outline_context=outline_context,
-            chapters=[],
-            chapter_artifacts=chapter_artifacts,
-            require_model_success=has_prompt_global_analysis and (organize_mode != "full_reanalyze" or legacy_analysis_tool is None),
+        outline_digest_payload = (
+            outline_context.get("outline_digest")
+            if ff_outline_digest and isinstance(outline_context, dict)
+            else {}
         )
+        digest_candidates = [item for item in batch_digests if isinstance(item, dict)] if ff_batch_global else []
+        if not digest_candidates:
+            digest_candidates = _compact_batch_digests(
+                [
+                    {
+                        "batch_no": idx + 1,
+                        "chapter_start": int(item.get("chapter_number") or 0),
+                        "chapter_end": int(item.get("chapter_number") or 0),
+                        "digest": str(item.get("analysis_summary") or item.get("scene_summary") or ""),
+                        "token_estimate": 0,
+                    }
+                    for idx, item in enumerate(chapter_artifacts)
+                ],
+                per_item_limit=320,
+            )
+        degrade_plans = [
+            ("none", digest_candidates),
+            ("reduce_batch_size", _compact_batch_digests(digest_candidates, per_item_limit=240)),
+            ("raise_digest_abstraction", _compact_batch_digests(digest_candidates, per_item_limit=120)),
+            ("two_level_summary", _two_level_batch_summaries(_compact_batch_digests(digest_candidates, per_item_limit=120), group_size=4)),
+        ]
+        minimal_source = _compact_batch_digests(digest_candidates, per_item_limit=80)
+        if minimal_source:
+            latest = minimal_source[-1]
+            degrade_plans.append(
+                (
+                    "force_minimal",
+                    [
+                        {
+                            "batch_no": int(latest.get("batch_no") or 0),
+                            "chapter_start": int(latest.get("chapter_start") or 0),
+                            "chapter_end": int(latest.get("chapter_end") or 0),
+                            "digest": str(latest.get("digest") or "").strip()[:80],
+                            "token_estimate": int(latest.get("token_estimate") or 0),
+                        }
+                    ],
+                )
+            )
+        global_budget = int(stage_caps.get("global_analysis") or 0)
+        global_analysis = None
+        global_error: Exception | None = None
+        for degrade_path, candidate in degrade_plans:
+            payload_for_estimate = {
+                "outline_digest": outline_digest_payload,
+                "batch_digests": candidate,
+                "constraints": merged_memory.get("global_constraints") or {},
+            }
+            estimated_tokens = _estimate_tokens(payload_for_estimate)
+            input_units = len(candidate)
+            if global_budget > 0 and estimated_tokens > global_budget and degrade_path != "force_minimal":
+                _record_stage_metric(
+                    stage="global_analysis",
+                    status="budget_block",
+                    estimated_tokens=estimated_tokens,
+                    input_units=input_units,
+                    batch_no=input_units,
+                    batch_total_value=max(1, batch_total),
+                    degrade_path=degrade_path,
+                )
+                continue
+            started_at = time.perf_counter()
+            try:
+                global_analysis = await global_analysis_service.analyze_story(
+                    project_id=project_id,
+                    project_name=project_name,
+                    outline_context=outline_context,
+                    chapters=[],
+                    chapter_artifacts=chapter_artifacts,
+                    outline_digest=outline_digest_payload if isinstance(outline_digest_payload, dict) else {},
+                    batch_digests=candidate,
+                    require_model_success=has_prompt_global_analysis and (organize_mode != "full_reanalyze" or legacy_analysis_tool is None),
+                )
+                duration_ms = int((time.perf_counter() - started_at) * 1000)
+                record_global_analysis_duration(duration_ms)
+                _record_stage_metric(
+                    stage="global_analysis",
+                    status="ok",
+                    estimated_tokens=estimated_tokens,
+                    input_units=input_units,
+                    duration_ms=duration_ms,
+                    batch_no=input_units,
+                    batch_total_value=max(1, batch_total),
+                    degrade_path=degrade_path,
+                )
+                break
+            except Exception as exc:
+                global_error = exc
+                duration_ms = int((time.perf_counter() - started_at) * 1000)
+                _record_stage_metric(
+                    stage="global_analysis",
+                    status="failed",
+                    estimated_tokens=estimated_tokens,
+                    input_units=input_units,
+                    duration_ms=duration_ms,
+                    batch_no=input_units,
+                    batch_total_value=max(1, batch_total),
+                    degrade_path=degrade_path,
+                )
+        if global_analysis is None:
+            raise global_error or ValueError("全局分析在预算与降载策略下仍失败。")
         merged_memory = self._merge_structured_memory(merged_memory, global_analysis, "global_analysis")
         merged_memory["chapter_summaries"] = list(dict.fromkeys(merged_memory.get("chapter_summaries") or []))[-300:]
         if self.plot_arc_service:
@@ -704,6 +1017,8 @@ class V2WorkflowService:
             status="done",
             resumable=False,
         )
+        if was_resume_run:
+            record_batch_resume(True)
         return {
             "project_id": project_id,
             "organized_chapter_count": len(chapters),
@@ -714,6 +1029,12 @@ class V2WorkflowService:
     def get_memory(self, project_id: str) -> Dict[str, Any]:
         payload = self.v2_repo.find_active_project_memory(project_id) or {}
         return self._hydrate_memory_from_primary_sources(project_id, payload)
+
+    def can_rebuild_global(self, project_id: str) -> bool:
+        try:
+            return len(self.chapter_task_repo.find_by_project_id(project_id) or []) > 0
+        except Exception:
+            return False
 
     def get_memory_view(self, project_id: str) -> Dict[str, Any]:
         cached = self.v2_repo.find_memory_view(project_id) or {}
@@ -1788,6 +2109,14 @@ class V2WorkflowService:
         }
 
     def _get_outline_context(self, novel_id: NovelId) -> Dict[str, Any]:
+        content_getter = getattr(self.content_service, "get_outline_context", None)
+        if callable(content_getter):
+            try:
+                payload = content_getter(str(novel_id.value))
+                if isinstance(payload, dict) and payload:
+                    return payload
+            except Exception:
+                pass
         outline = self.outline_repo.find_by_novel(novel_id)
         summary = []
         if outline:

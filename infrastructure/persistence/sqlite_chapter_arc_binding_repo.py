@@ -4,6 +4,7 @@ from typing import List
 
 from domain.entities.chapter_arc_binding import ChapterArcBinding
 from domain.repositories.chapter_arc_binding_repository import IChapterArcBindingRepository
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteChapterArcBindingRepository(IChapterArcBindingRepository):
@@ -12,7 +13,7 @@ class SQLiteChapterArcBindingRepository(IChapterArcBindingRepository):
         self._init_table()
 
     def _init_table(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS chapter_arc_bindings (
@@ -32,7 +33,7 @@ class SQLiteChapterArcBindingRepository(IChapterArcBindingRepository):
             conn.commit()
 
     def save(self, binding: ChapterArcBinding) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO chapter_arc_bindings (
@@ -53,7 +54,7 @@ class SQLiteChapterArcBindingRepository(IChapterArcBindingRepository):
             conn.commit()
 
     def list_by_project(self, project_id: str) -> List[ChapterArcBinding]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM chapter_arc_bindings WHERE project_id = ? ORDER BY created_at DESC",
@@ -62,7 +63,7 @@ class SQLiteChapterArcBindingRepository(IChapterArcBindingRepository):
         return [self._row_to_entity(row) for row in rows]
 
     def list_by_chapter(self, chapter_id: str) -> List[ChapterArcBinding]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM chapter_arc_bindings WHERE chapter_id = ? ORDER BY created_at DESC",
@@ -71,7 +72,7 @@ class SQLiteChapterArcBindingRepository(IChapterArcBindingRepository):
         return [self._row_to_entity(row) for row in rows]
 
     def delete_by_project(self, project_id: str) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("DELETE FROM chapter_arc_bindings WHERE project_id = ?", (project_id,))
             conn.commit()
 

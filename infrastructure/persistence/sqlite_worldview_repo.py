@@ -19,6 +19,7 @@ from domain.entities.location import Location
 from domain.entities.item import Item
 from domain.repositories.worldview_repository import IWorldviewRepository
 from domain.types import WorldviewId, NovelId, TechniqueId, FactionId, LocationId, ItemId
+from infrastructure.persistence.sqlite_utils import connect_sqlite
 
 
 class SQLiteWorldviewRepository(IWorldviewRepository):
@@ -29,10 +30,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
         self._init_tables()
     
     def _init_tables(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("""
-# 文件：模块：sqlite_worldview_repo
-
                 CREATE TABLE IF NOT EXISTS worldviews (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -47,8 +46,6 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             """)
             
             conn.execute("""
-# 文件：模块：sqlite_worldview_repo
-
                 CREATE TABLE IF NOT EXISTS techniques (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -65,8 +62,6 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             """)
             
             conn.execute("""
-# 文件：模块：sqlite_worldview_repo
-
                 CREATE TABLE IF NOT EXISTS factions (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -84,8 +79,6 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             """)
             
             conn.execute("""
-# 文件：模块：sqlite_worldview_repo
-
                 CREATE TABLE IF NOT EXISTS locations (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -101,8 +94,6 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             """)
             
             conn.execute("""
-# 文件：模块：sqlite_worldview_repo
-
                 CREATE TABLE IF NOT EXISTS items (
                     id TEXT PRIMARY KEY,
                     novel_id TEXT NOT NULL,
@@ -122,7 +113,7 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             conn.commit()
     
     def find_by_id(self, worldview_id: WorldviewId) -> Optional[Worldview]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM worldviews WHERE id = ?", (str(worldview_id),)
@@ -133,7 +124,7 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
         return None
     
     def find_by_novel_id(self, novel_id: NovelId) -> Optional[Worldview]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM worldviews WHERE novel_id = ?", (str(novel_id),)
@@ -144,10 +135,8 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
         return None
     
     def save(self, worldview: Worldview) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("""
-# 文件：模块：sqlite_worldview_repo
-
                 INSERT OR REPLACE INTO worldviews 
                 (id, novel_id, name, power_system, currency_system, timeline, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -177,12 +166,12 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             conn.commit()
     
     def delete(self, worldview_id: WorldviewId) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("DELETE FROM worldviews WHERE id = ?", (str(worldview_id),))
             conn.commit()
     
     def find_technique_by_id(self, technique_id: TechniqueId) -> Optional[Technique]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM techniques WHERE id = ?", (str(technique_id),)
@@ -193,7 +182,7 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
         return None
     
     def find_techniques_by_novel(self, novel_id: NovelId) -> List[Technique]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM techniques WHERE novel_id = ?", (str(novel_id),)
@@ -201,17 +190,17 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             return [self._row_to_technique(row) for row in cursor.fetchall()]
     
     def save_technique(self, technique: Technique) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             self._save_technique(conn, technique)
             conn.commit()
     
     def delete_technique(self, technique_id: TechniqueId) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("DELETE FROM techniques WHERE id = ?", (str(technique_id),))
             conn.commit()
     
     def find_faction_by_id(self, faction_id: FactionId) -> Optional[Faction]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM factions WHERE id = ?", (str(faction_id),)
@@ -222,7 +211,7 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
         return None
     
     def find_factions_by_novel(self, novel_id: NovelId) -> List[Faction]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM factions WHERE novel_id = ?", (str(novel_id),)
@@ -230,17 +219,17 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             return [self._row_to_faction(row) for row in cursor.fetchall()]
     
     def save_faction(self, faction: Faction) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             self._save_faction(conn, faction)
             conn.commit()
     
     def delete_faction(self, faction_id: FactionId) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("DELETE FROM factions WHERE id = ?", (str(faction_id),))
             conn.commit()
     
     def find_location_by_id(self, location_id: LocationId) -> Optional[Location]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM locations WHERE id = ?", (str(location_id),)
@@ -251,7 +240,7 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
         return None
     
     def find_locations_by_novel(self, novel_id: NovelId) -> List[Location]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM locations WHERE novel_id = ?", (str(novel_id),)
@@ -259,17 +248,17 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             return [self._row_to_location(row) for row in cursor.fetchall()]
     
     def save_location(self, location: Location) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             self._save_location(conn, location)
             conn.commit()
     
     def delete_location(self, location_id: LocationId) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("DELETE FROM locations WHERE id = ?", (str(location_id),))
             conn.commit()
     
     def find_item_by_id(self, item_id: ItemId) -> Optional[Item]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM items WHERE id = ?", (str(item_id),)
@@ -280,7 +269,7 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
         return None
     
     def find_items_by_novel(self, novel_id: NovelId) -> List[Item]:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM items WHERE novel_id = ?", (str(novel_id),)
@@ -288,19 +277,17 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
             return [self._row_to_item(row) for row in cursor.fetchall()]
     
     def save_item(self, item: Item) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             self._save_item(conn, item)
             conn.commit()
     
     def delete_item(self, item_id: ItemId) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with connect_sqlite(self.db_path) as conn:
             conn.execute("DELETE FROM items WHERE id = ?", (str(item_id),))
             conn.commit()
     
     def _save_technique(self, conn: sqlite3.Connection, technique: Technique) -> None:
         conn.execute("""
-# 文件：模块：sqlite_worldview_repo
-
             INSERT OR REPLACE INTO techniques 
             (id, novel_id, name, level, description, effect, requirement, creator, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -319,8 +306,6 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
     
     def _save_faction(self, conn: sqlite3.Connection, faction: Faction) -> None:
         conn.execute("""
-# 文件：模块：sqlite_worldview_repo
-
             INSERT OR REPLACE INTO factions 
             (id, novel_id, name, level, description, territory, leader, headquarters, relations, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -340,8 +325,6 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
     
     def _save_location(self, conn: sqlite3.Connection, location: Location) -> None:
         conn.execute("""
-# 文件：模块：sqlite_worldview_repo
-
             INSERT OR REPLACE INTO locations 
             (id, novel_id, name, description, faction_id, parent_id, importance, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -359,8 +342,6 @@ class SQLiteWorldviewRepository(IWorldviewRepository):
     
     def _save_item(self, conn: sqlite3.Connection, item: Item) -> None:
         conn.execute("""
-# 文件：模块：sqlite_worldview_repo
-
             INSERT OR REPLACE INTO items 
             (id, novel_id, name, type, description, effect, rarity, owner, origin, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

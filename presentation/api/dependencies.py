@@ -10,7 +10,9 @@ from domain.repositories.novel_repository import INovelRepository
 from domain.repositories.chapter_repository import IChapterRepository
 from domain.repositories.character_repository import ICharacterRepository
 from domain.repositories.outline_repository import IOutlineRepository
+from domain.repositories.outline_document_repository import IOutlineDocumentRepository
 from domain.repositories.project_repository import IProjectRepository
+from domain.repositories.project_cleanup_repository import IProjectCleanupRepository
 from domain.repositories.organize_job_repository import IOrganizeJobRepository
 from domain.repositories.chapter_outline_repository import IChapterOutlineRepository
 from domain.repositories.template_repository import ITemplateRepository
@@ -33,7 +35,9 @@ from infrastructure.persistence.sqlite_novel_repo import SQLiteNovelRepository
 from infrastructure.persistence.sqlite_chapter_repo import SQLiteChapterRepository
 from infrastructure.persistence.sqlite_character_repo import SQLiteCharacterRepository
 from infrastructure.persistence.sqlite_outline_repo import SQLiteOutlineRepository
+from infrastructure.persistence.sqlite_outline_document_repo import SQLiteOutlineDocumentRepository
 from infrastructure.persistence.sqlite_project_repo import SQLiteProjectRepository
+from infrastructure.persistence.sqlite_project_cleanup_repo import SQLiteProjectCleanupRepository
 from infrastructure.persistence.sqlite_organize_job_repo import SQLiteOrganizeJobRepository
 from infrastructure.persistence.sqlite_chapter_outline_repo import SQLiteChapterOutlineRepository
 from infrastructure.persistence.sqlite_template_repo import SQLiteTemplateRepository
@@ -67,6 +71,10 @@ from application.services.vector_index_service import VectorIndexService
 from application.services.rag_retrieval_service import RAGRetrievalService
 from application.services.config_service import ConfigService
 from application.services.v2_workflow_service import V2WorkflowService
+from application.services.capacity_planner_service import CapacityPlannerService
+from application.services.chapter_chunk_analysis_service import ChapterChunkAnalysisService
+from application.services.outline_digest_service import OutlineDigestService
+from application.services.token_budget_manager import TokenBudgetManager
 from application.services.chapter_ai_service import ChapterAIService
 from application.services.chapter_import_workflow_service import ChapterImportWorkflowService
 from application.services.plot_arc_service import PlotArcService
@@ -112,10 +120,22 @@ def get_outline_repo() -> IOutlineRepository:
 
 
 @lru_cache()
+def get_outline_document_repo() -> IOutlineDocumentRepository:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    return SQLiteOutlineDocumentRepository(DB_PATH)
+
+
+@lru_cache()
 def get_project_repo() -> IProjectRepository:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     logger.info("仓储初始化", extra=build_log_context(event="repo_initialized", repo="project", db_path=DB_PATH))
     return SQLiteProjectRepository(DB_PATH)
+
+
+@lru_cache()
+def get_project_cleanup_repo() -> IProjectCleanupRepository:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    return SQLiteProjectCleanupRepository(DB_PATH)
 
 
 @lru_cache()
@@ -307,7 +327,7 @@ def get_rag_context_builder() -> RAGContextBuilder:
 
 
 def get_project_service() -> ProjectService:
-    return ProjectService(get_project_repo(), get_novel_repo())
+    return ProjectService(get_project_repo(), get_novel_repo(), get_project_cleanup_repo())
 
 
 def get_content_service() -> ContentService:
@@ -317,7 +337,29 @@ def get_content_service() -> ContentService:
         get_character_repo(),
         get_outline_repo(),
         get_txt_parser(),
+        get_outline_document_repo(),
+        get_outline_digest_service(),
     )
+
+
+@lru_cache()
+def get_outline_digest_service() -> OutlineDigestService:
+    return OutlineDigestService()
+
+
+@lru_cache()
+def get_capacity_planner_service() -> CapacityPlannerService:
+    return CapacityPlannerService()
+
+
+@lru_cache()
+def get_chapter_chunk_analysis_service() -> ChapterChunkAnalysisService:
+    return ChapterChunkAnalysisService()
+
+
+@lru_cache()
+def get_token_budget_manager() -> TokenBudgetManager:
+    return TokenBudgetManager()
 
 
 def get_writing_service() -> WritingService:
@@ -370,6 +412,7 @@ def get_v2_repo() -> SQLiteV2Repository:
     return SQLiteV2Repository(DB_PATH)
 
 
+@lru_cache()
 def get_v2_workflow_service() -> V2WorkflowService:
     logger.info("创建工作流服务", extra=build_log_context(event="dependency_initialized", dependency="v2_workflow_service"))
     return V2WorkflowService(
@@ -395,6 +438,7 @@ def get_v2_workflow_service() -> V2WorkflowService:
         chapter_arc_binding_repo=get_chapter_arc_binding_repo(),
         arc_planning_service=get_arc_planning_service(),
         arc_writeback_service=get_arc_writeback_service(),
+        chapter_chunk_analysis_service=get_chapter_chunk_analysis_service(),
     )
 
 
@@ -442,6 +486,7 @@ def warmup_singletons_for_startup() -> None:
         ("chapter_repo", get_chapter_repo),
         ("character_repo", get_character_repo),
         ("outline_repo", get_outline_repo),
+        ("outline_document_repo", get_outline_document_repo),
         ("project_repo", get_project_repo),
         ("organize_job_repo", get_organize_job_repo),
         ("chapter_outline_repo", get_chapter_outline_repo),
@@ -461,6 +506,10 @@ def warmup_singletons_for_startup() -> None:
         ("arc_progress_snapshot_repo", get_arc_progress_snapshot_repo),
         ("chapter_arc_binding_repo", get_chapter_arc_binding_repo),
         ("v2_repo", get_v2_repo),
+        ("capacity_planner_service", get_capacity_planner_service),
+        ("chapter_chunk_analysis_service", get_chapter_chunk_analysis_service),
+        ("outline_digest_service", get_outline_digest_service),
+        ("token_budget_manager", get_token_budget_manager),
         ("config_service", get_config_service),
         ("llm_factory", get_llm_factory),
     ]

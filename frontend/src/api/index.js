@@ -149,7 +149,7 @@ export const contentApi = {
   stopOrganize: (novelId) => api.post(`/content/organize/stop/${novelId}`),
   resumeOrganize: (novelId, mode = '') => api.post(`/content/organize/resume/${novelId}${mode ? `?mode=${encodeURIComponent(mode)}` : ''}`),
   cancelOrganize: (novelId) => api.post(`/content/organize/cancel/${novelId}`),
-  retryOrganize: (novelId, mode = 'rebuild_global') => api.post(`/content/organize/retry/${novelId}?mode=${encodeURIComponent(mode)}`),
+  retryOrganize: (novelId, mode = 'full_reanalyze') => api.post(`/content/organize/retry/${novelId}?mode=${encodeURIComponent(mode)}`),
   organizeProgress: (novelId, config = {}) => api.get(`/content/organize/progress/${novelId}`, config),
   analyzeStyle: (novelId) => api.get(`/content/style/${novelId}`),
   analyzePlot: (novelId) => api.get(`/content/plot/${novelId}`)
@@ -213,10 +213,10 @@ export const projectApi = {
   extractStyleRequirements: (projectId, data) => api.post(`/projects/${projectId}/style-requirements/extract`, data || { sample_chapter_count: DEFAULT_CHAPTER_COUNT }),
   branchesV2: (projectId, data) => api.post(`/projects/${projectId}/branches`, data),
   chapterPlanV2: (projectId, data) => api.post(`/projects/${projectId}/chapter-plan`, data),
-  chapterTasksV2: (projectId) => api.get(`/projects/${projectId}/chapter-tasks`),
+  chapterTasksV2: (projectId, config = {}) => api.get(`/projects/${projectId}/chapter-tasks`, config),
   plotArcsV2: (projectId) => api.get(`/projects/${projectId}/plot-arcs`),
   activePlotArcsV2: (projectId, config = {}) => api.get(`/projects/${projectId}/plot-arcs/active`, config),
-  chapterArcsV2: (chapterId) => api.get(`/projects/chapters/${chapterId}/arcs`),
+  chapterArcsV2: (chapterId, config = {}) => api.get(`/projects/chapters/${chapterId}/arcs`, config),
   writePreviewV2: (projectId, data) => api.post(`/projects/${projectId}/write/preview`, data, { timeout: 0 }),
   writeCommitV2: (projectId, data) => api.post(`/projects/${projectId}/write/commit`, data, { timeout: 0 }),
   writeV2: (projectId, data) => api.post(`/projects/${projectId}/write`, data, { timeout: 0 }),
@@ -264,10 +264,10 @@ const buildChapterAIRequest = (chapterId, action, data = {}) => ({
 })
 
 export const chapterEditorApi = {
-  get: (chapterId) => api.get(`/chapters/${chapterId}`),
-  getContext: (chapterId) => api.get(`/chapters/${chapterId}/continuation-context`),
+  get: (chapterId, config = {}) => api.get(`/chapters/${chapterId}`, config),
+  getContext: (chapterId, config = {}) => api.get(`/chapters/${chapterId}/continuation-context`, config),
   save: (chapterId, data) => api.put(`/chapters/${chapterId}`, data),
-  getOutline: (chapterId) => api.get(`/chapters/${chapterId}/outline`),
+  getOutline: (chapterId, config = {}) => api.get(`/chapters/${chapterId}/outline`, config),
   saveOutline: (chapterId, data) => api.put(`/chapters/${chapterId}/outline`, { chapter_id: chapterId, ...data }),
   importChapter: (chapterId, data) => api.post(`/chapters/${chapterId}/import`, buildChapterAIRequest(chapterId, 'import', data)),
   optimize: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/optimize`, buildChapterAIRequest(chapterId, 'optimize', data), { timeout: 0 }),

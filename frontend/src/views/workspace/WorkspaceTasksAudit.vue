@@ -50,7 +50,7 @@
           <div class="status-value">{{ item.value }}</div>
           <el-progress
             v-if="item.label === '最近进度'"
-            :percentage="workspace.state.organizeProgress?.progress || 0"
+            :percentage="workspace.state.organizeProgress?.percent || workspace.state.organizeProgress?.progress || 0"
             :status="getProgressStatus(props.statusText)"
             :show-text="false"
             class="progress-bar"
@@ -61,6 +61,11 @@
 
       <div class="action-panel">
         <h3>任务控制台</h3>
+        <div v-if="workspace.state.organizeProgress?.strategy || workspace.state.organizeProgress?.batch_total || workspace.state.organizeProgress?.chunked_chapter_count" class="task-strategy-meta">
+          <span>策略：{{ workspace.state.organizeProgress?.strategy || 'chapter_first' }}</span>
+          <span v-if="workspace.state.organizeProgress?.batch_total > 0">批次：{{ workspace.state.organizeProgress?.batch_no || 0 }}/{{ workspace.state.organizeProgress?.batch_total || 0 }}</span>
+          <span v-if="workspace.state.organizeProgress?.chunked_chapter_count > 0">分块章节：{{ workspace.state.organizeProgress?.chunked_chapter_count }}</span>
+        </div>
         <div class="task-actions">
           <el-button :loading="runningAction === 'refresh'" @click="refreshStatus">
             <el-icon><Refresh /></el-icon>刷新状态
@@ -474,13 +479,27 @@ const runAction = async (name, executor) => {
   }
 }
 
+const canUseRebuildGlobal = computed(() => {
+  return Boolean(workspace.state.organizeProgress?.can_rebuild_global)
+})
+
+const resolveOrganizeMode = () => (canUseRebuildGlobal.value ? 'rebuild_global' : 'full_reanalyze')
+
+const syncOrganizeProgress = async () => {
+  const latest = await contentApi.organizeProgress(workspace.state.novel?.id)
+  workspace.state.organizeProgress = latest || {}
+  return workspace.state.organizeProgress
+}
+
 const refreshStatus = async () => {
   await runAction('refresh', async () => {})
 }
 
 const retryOrganize = async () => {
   await runAction('retry', async () => {
-    await contentApi.retryOrganize(workspace.state.novel?.id, 'rebuild_global')
+    await syncOrganizeProgress()
+    const mode = resolveOrganizeMode()
+    await contentApi.retryOrganize(workspace.state.novel?.id, mode)
     ElMessage.success('已重新发起整理任务')
   })
 }
@@ -494,7 +513,9 @@ const pauseOrganize = async () => {
 
 const resumeOrganize = async () => {
   await runAction('resume', async () => {
-    await contentApi.resumeOrganize(workspace.state.novel?.id, 'rebuild_global')
+    await syncOrganizeProgress()
+    const mode = resolveOrganizeMode()
+    await contentApi.resumeOrganize(workspace.state.novel?.id, mode)
     ElMessage.success('已恢复整理任务')
   })
 }
@@ -1159,6 +1180,15 @@ watch(
   font-weight: 600;
   color: #374151;
   margin: 0 0 16px 0;
+}
+
+.task-strategy-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #6B7280;
 }
 
 .task-actions {
