@@ -51,6 +51,34 @@ def looks_garbled_text(text: str) -> bool:
     return False
 
 
+def is_probably_garbled_message(text: str) -> bool:
+    if not isinstance(text, str):
+        return False
+    value = text.strip()
+    if not value:
+        return False
+    mojibake_markers = (
+        "Ã",
+        "Â",
+        "â€",
+        "�",
+        "瑙",
+        "锛",
+        "缁",
+        "閸",
+        "绔",
+        "妭",
+        "鍒",
+        "辫",
+        "璇",
+        "湇",
+        "鍔",
+    )
+    if any(token in value for token in mojibake_markers):
+        return True
+    return looks_garbled_text(value)
+
+
 def sanitize_display_text(text: str) -> str:
     if not isinstance(text, str):
         return ""

@@ -8,7 +8,17 @@ echo InkTrace 一键打包 + 冒烟检查
 echo ========================================
 
 echo.
-echo [1/3] 执行桌面打包...
+echo [0/4] 执行乱码字面量预检...
+call ".\scripts\preflight_mojibake_guard.bat"
+if %errorlevel% neq 0 (
+  echo.
+  echo [ERROR] 乱码预检失败，错误码=%errorlevel%
+  pause
+  exit /b %errorlevel%
+)
+
+echo.
+echo [1/4] 执行桌面打包...
 call build-desktop.bat
 if %errorlevel% neq 0 (
   echo.
@@ -18,7 +28,7 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [2/3] 清理9527残留并启动后端...
+echo [2/4] 清理9527残留并启动后端...
 call ".\scripts\one_click_recover_9527.bat"
 if %errorlevel% neq 0 (
   echo.

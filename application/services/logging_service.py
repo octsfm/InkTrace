@@ -8,6 +8,8 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict
 
+from domain.utils import is_probably_garbled_message
+
 
 _request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="")
 _logging_inited = False
@@ -32,6 +34,18 @@ class _RequestIdFilter(logging.Filter):
             record.request_id = _request_id_ctx.get("")
         if not hasattr(record, "event"):
             record.event = ""
+        return True
+
+
+class _MessageEncodingGuardFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:
+            message = str(getattr(record, "msg", "") or "")
+        if is_probably_garbled_message(message):
+            record.msg = "[garbled_message]"
+            record.args = ()
         return True
 
 
@@ -77,21 +91,25 @@ def setup_logging() -> None:
     root_logger.handlers.clear()
 
     request_filter = _RequestIdFilter()
+    encoding_guard_filter = _MessageEncodingGuardFilter()
 
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     console_handler.addFilter(request_filter)
+    console_handler.addFilter(encoding_guard_filter)
 
     info_file = RotatingFileHandler(logs_dir / "backend.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
     info_file.setLevel(logging.INFO)
     info_file.setFormatter(formatter)
     info_file.addFilter(request_filter)
+    info_file.addFilter(encoding_guard_filter)
 
     error_file = RotatingFileHandler(logs_dir / "backend-error.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
     error_file.setLevel(logging.ERROR)
     error_file.setFormatter(formatter)
     error_file.addFilter(request_filter)
+    error_file.addFilter(encoding_guard_filter)
 
     root_logger.addHandler(console_handler)
     root_logger.addHandler(info_file)

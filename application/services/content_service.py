@@ -74,7 +74,7 @@ class ContentService:
         novel = self.novel_repo.find_by_id(NovelId(request.novel_id))
         if not novel:
             self.logger.error(
-                "导入失败，小说不存在",
+                "import failed: novel not found",
                 extra=build_log_context(event="import_failed", novel_id=request.novel_id, error="novel_not_found"),
             )
             raise ValueError(f"小说不存在: {request.novel_id}")
@@ -86,7 +86,7 @@ class ContentService:
         if import_mode not in {"full", "empty", "chapter_items"}:
             import_mode = "full"
         self.logger.info(
-            "导入开始",
+            "import started",
             extra=build_log_context(
                 event="import_started",
                 novel_id=request.novel_id,
@@ -123,13 +123,13 @@ class ContentService:
         else:
             if not os.path.exists(request.file_path):
                 self.logger.error(
-                    "导入失败，文件不存在",
+                    "import failed: source file not found",
                     extra=build_log_context(event="import_failed", novel_id=request.novel_id, file_path=request.file_path, error="file_not_found"),
                 )
                 raise FileNotFoundError(f"文件不存在: {request.file_path}")
             parsed = self.txt_parser.parse_novel_file(request.file_path)
         self.logger.info(
-            "导入解析完成",
+            "import parse finished",
             extra=build_log_context(
                 event="import_parsed",
                 novel_id=request.novel_id,
@@ -162,7 +162,7 @@ class ContentService:
                 outline_text = self.txt_parser.parse_outline_file(request.outline_path)
             except Exception as exc:
                 self.logger.error(
-                    "导入失败，大纲解析异常",
+                    "import failed: outline parse error",
                     extra=build_log_context(
                         event="import_failed",
                         novel_id=request.novel_id,
@@ -172,7 +172,7 @@ class ContentService:
                 )
                 raise
             self.logger.info(
-                "导入大纲读取成功",
+                "import outline loaded",
                 extra=build_log_context(
                     event="import_outline_loaded",
                     novel_id=request.novel_id,
@@ -211,7 +211,7 @@ class ContentService:
             novel.set_outline(outline, now)
             self.novel_repo.save(novel)
         self.logger.info(
-            "导入保存完成",
+            "import save finished",
             extra=build_log_context(
                 event="import_saved",
                 novel_id=request.novel_id,
@@ -286,7 +286,7 @@ class ContentService:
         chapters = self.chapter_repo.find_by_novel(novel.id)
         text = "\n\n".join([chapter.content for chapter in chapters if chapter.content])
         self.logger.info(
-            "[ContentService] 获取小说文本 novel_id=%s chapters=%d text_length=%d",
+            "[ContentService] novel text loaded novel_id=%s chapters=%d text_length=%d",
             novel_id,
             len(chapters),
             len(text)

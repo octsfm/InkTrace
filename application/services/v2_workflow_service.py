@@ -212,7 +212,7 @@ class V2WorkflowService:
         primary = self.llm_factory.get_client_for_provider(provider)
         backup = None if mode == "strict" else self.llm_factory.get_fallback_client_for_provider(provider)
         self.logger.info(
-            "模型职责路由完成",
+            "model role dispatch finished",
             extra=build_log_context(
                 event="model_role_dispatched",
                 project_id=project_id,
@@ -226,7 +226,7 @@ class V2WorkflowService:
         )
         if mode == "degraded":
             self.logger.warning(
-                "模型职责进入降级模式",
+                "model role degraded mode enabled",
                 extra=build_log_context(
                     event="model_role_degraded",
                     project_id=project_id,
@@ -343,7 +343,7 @@ class V2WorkflowService:
         auto_organize: bool = True,
     ) -> Dict[str, Any]:
         self.logger.info(
-            "导入项目开始",
+            "workflow import started",
             extra=build_log_context(
                 event="workflow_import_started",
                 project_name=project_name,
@@ -376,7 +376,7 @@ class V2WorkflowService:
             organized = await self.organize_project(project.id.value, mode="full_reanalyze", rebuild_memory=True)
             memory_view = organized.get("memory_view") or {}
         self.logger.info(
-            "导入项目完成",
+            "workflow import finished",
             extra=build_log_context(
                 event="workflow_import_finished",
                 project_id=project.id.value,
@@ -407,7 +407,7 @@ class V2WorkflowService:
         if not project:
             raise ValueError("项目不存在")
         self.logger.info(
-            "整理开始",
+            "organize started",
             extra=build_log_context(
                 event="organize_started",
                 project_id=project_id,
@@ -457,7 +457,7 @@ class V2WorkflowService:
         ) -> None:
             budget_tokens = int(stage_caps.get(stage) or 0)
             self.logger.info(
-                "整理阶段指标",
+                "organize stage metric",
                 extra=build_log_context(
                     event="organize_stage_metric",
                     project_id=project_id,
@@ -532,7 +532,7 @@ class V2WorkflowService:
         total_chapters = len(chapters)
         batch_total = max(1, (max(1, total_chapters) + batch_size - 1) // batch_size)
         self.logger.info(
-            "整理准备完成",
+            "organize preparation finished",
             extra=build_log_context(event="organize_prepare_done", project_id=project_id, total_chapters=total_chapters),
         )
         resume_cursor = 0 if rebuild_memory or organize_mode != "full_reanalyze" else max(0, min(int(resume_from or 0), total_chapters))
@@ -674,7 +674,7 @@ class V2WorkflowService:
             if index <= resume_cursor:
                 continue
             self.logger.info(
-                "章节分析开始",
+                "chapter analysis started",
                 extra=build_log_context(
                     event="chapter_analysis_started",
                     project_id=project_id,
@@ -721,7 +721,7 @@ class V2WorkflowService:
                     chunked_chapter_count += 1
             except Exception as error:
                 self.logger.error(
-                    "绔犺妭鍒嗘瀽澶辫触",
+                    "chapter analysis failed",
                     extra=build_log_context(
                         event="chapter_analysis_failed",
                         project_id=project_id,
@@ -787,7 +787,7 @@ class V2WorkflowService:
                 }
                 batch_artifacts_buffer = []
             self.logger.info(
-                "绔犺妭鍒嗘瀽瀹屾垚",
+                "chapter analysis finished",
                 extra=build_log_context(
                     event="chapter_analysis_finished",
                     project_id=project_id,
@@ -969,7 +969,7 @@ class V2WorkflowService:
             message="正在合并章节记忆",
             resumable=False,
         )
-        self.logger.info("开始合并记忆", extra=build_log_context(event="memory_merge_started", project_id=project_id))
+        self.logger.info("memory merge started", extra=build_log_context(event="memory_merge_started", project_id=project_id))
         memory = dict(merged_memory)
         if self.plot_arc_service:
             chapter_ids = [str(item.get("id") or "") for item in chapters if str(item.get("id") or "").strip()]
@@ -979,7 +979,7 @@ class V2WorkflowService:
             current_state = memory.get("current_state") if isinstance(memory.get("current_state"), dict) else {}
             current_state["active_arc_ids"] = [arc.arc_id for arc in arcs if arc.status == "active"][:5]
             memory["current_state"] = current_state
-        self.logger.info("记忆合并完成", extra=build_log_context(event="memory_merge_finished", project_id=project_id))
+        self.logger.info("memory merge finished", extra=build_log_context(event="memory_merge_finished", project_id=project_id))
         await _emit_progress(
             stage="memory_view_build",
             current=total_chapters,
@@ -987,21 +987,21 @@ class V2WorkflowService:
             message="正在生成结构摘要",
             resumable=False,
         )
-        self.logger.info("开始构建摘要视图", extra=build_log_context(event="memory_view_build_started", project_id=project_id))
+        self.logger.info("memory view build started", extra=build_log_context(event="memory_view_build_started", project_id=project_id))
         self.project_service.bind_memory_to_novel(NovelId(novel_id), memory)
         memory_payload = self._to_project_memory_payload(project_id, memory)
         self.v2_repo.save_project_memory(memory_payload)
         self._sync_primary_repositories(project_id, memory_payload)
         view_payload = self._to_memory_view_payload(project_id, memory_payload)
         self.v2_repo.save_memory_view(view_payload)
-        self.logger.info("摘要视图构建完成", extra=build_log_context(event="memory_view_build_finished", project_id=project_id))
+        self.logger.info("memory view build finished", extra=build_log_context(event="memory_view_build_finished", project_id=project_id))
         self.v2_repo.finish_workflow_job(
             job_id,
             "success",
             result_payload={"organized_chapter_count": len(chapters), "memory_id": memory_payload["id"]},
         )
         self.logger.info(
-            "整理完成",
+            "organize finished",
             extra=build_log_context(
                 event="organize_finished",
                 project_id=project_id,
@@ -1138,7 +1138,7 @@ class V2WorkflowService:
         if not project:
             raise ValueError("项目不存在")
         self.logger.info(
-            "加载章节编辑上下文",
+            "chapter context loaded",
             extra=build_log_context(
                 event="chapter_context_loaded",
                 project_id=project_id,
@@ -1427,7 +1427,7 @@ class V2WorkflowService:
         if not project:
             raise ValueError("项目不存在")
         self.logger.info(
-            "分支生成开始",
+            "branch generation started",
             extra=build_log_context(event="branches_started", project_id=project_id, branch_count=branch_count),
         )
         outline_context = self._get_outline_context(project.novel_id)
@@ -1446,9 +1446,9 @@ class V2WorkflowService:
             },
         )
         if result.status != "success":
-            self.logger.error("分支生成失败", extra=build_log_context(event="branches_failed", project_id=project_id, branch_count=branch_count))
+            self.logger.error("branch generation failed", extra=build_log_context(event="branches_failed", project_id=project_id, branch_count=branch_count))
             self.logger.error(
-                "模型职责执行失败",
+                "model role execution failed",
                 extra=build_log_context(
                     event="model_role_failed",
                     project_id=project_id,
@@ -1482,7 +1482,7 @@ class V2WorkflowService:
                 }
             )
         self.v2_repo.replace_branches(project_id, branches)
-        self.logger.info("分支生成完成", extra=build_log_context(event="branches_finished", project_id=project_id, branch_count=len(branches)))
+        self.logger.info("branch generation finished", extra=build_log_context(event="branches_finished", project_id=project_id, branch_count=len(branches)))
         return {"project_id": project_id, "branches": branches}
 
     async def create_chapter_plan(
@@ -1578,7 +1578,7 @@ class V2WorkflowService:
         if not project:
             raise ValueError("项目不存在")
         self.logger.info(
-            "刷新记忆开始",
+            "refresh memory started",
             extra=build_log_context(
                 event="refresh_memory_started",
                 project_id=project_id,
@@ -1664,7 +1664,7 @@ class V2WorkflowService:
         view_payload = self._to_memory_view_payload(project_id, memory_payload)
         self.v2_repo.save_memory_view(view_payload)
         self.logger.info(
-            "刷新记忆完成",
+            "refresh memory finished",
             extra=build_log_context(
                 event="refresh_memory_finished",
                 project_id=project_id,
@@ -2471,7 +2471,7 @@ class V2WorkflowService:
             )
         )
         self.logger.info(
-            "章节大纲生成完成",
+            "chapter outline generation finished",
             extra=build_log_context(
                 event="chapter_outline_generation_finished",
                 project_id=project_id,

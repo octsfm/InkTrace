@@ -24,7 +24,7 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 logger = get_logger(__name__)
-logger.info("InkTrace后端服务启动中...")
+logger.info("inktrace backend startup")
 
 
 if __name__ == "__main__":
