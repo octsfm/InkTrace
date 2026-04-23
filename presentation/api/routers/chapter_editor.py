@@ -5,19 +5,27 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from application.dto.request_dto import ChapterAIActionRequest, ChapterOutlineRequest, UpdateChapterRequest
+from application.dto.request_dto import (
+    ChapterAIActionRequest,
+    ChapterDetailOutlineRequest,
+    ChapterOutlineRequest,
+    UpdateChapterRequest,
+)
 from application.dto.response_dto import ChapterAIActionResponse, ContinuationContextResponse
 from application.services.chapter_ai_service import ChapterAIService
 from application.services.chapter_import_workflow_service import ChapterImportWorkflowService
 from application.services.logging_service import build_log_context, get_logger
 from application.services.project_service import ProjectService
 from application.services.v2_workflow_service import V2WorkflowService
+from domain.entities.chapter_detail_outline import ChapterDetailOutline, ChapterDetailOutlineScene
 from domain.entities.chapter_outline import ChapterOutline
+from domain.repositories.chapter_detail_outline_repository import IChapterDetailOutlineRepository
 from domain.repositories.chapter_outline_repository import IChapterOutlineRepository
 from domain.repositories.chapter_repository import IChapterRepository
 from domain.types import ChapterId
 from presentation.api.dependencies import (
     get_chapter_ai_service,
+    get_chapter_detail_outline_repo,
     get_chapter_import_workflow_service,
     get_chapter_outline_repo,
     get_chapter_repo,
@@ -43,11 +51,64 @@ class ChapterImportPayload(BaseModel):
     recent_chapter_summaries: list[str] = Field(default_factory=list)
 
 
+class ChapterOrganizeRequest(BaseModel):
+    rebuild_memory: bool = True
+    refresh_range: str = "self"
+
+
+class ChapterDetailOutlineGenerateRequest(BaseModel):
+    source: str = "chapter_content"
+
+
 def _load_chapter(chapter_id: str, chapter_repo: IChapterRepository):
     chapter = chapter_repo.find_by_id(ChapterId(chapter_id))
     if not chapter:
         raise HTTPException(status_code=404, detail="章节不存在")
     return chapter
+
+
+def _detail_outline_payload(chapter_id: str, outline: ChapterDetailOutline | None) -> dict:
+    if not outline:
+        return {"chapter_id": chapter_id, "scenes": [], "notes": ""}
+    scenes = []
+    for scene in (outline.scenes or []):
+        scenes.append(
+            {
+                "scene_no": int(scene.scene_no or 0),
+                "goal": str(scene.goal or ""),
+                "conflict": str(scene.conflict or ""),
+                "turning_point": str(scene.turning_point or ""),
+                "hook": str(scene.hook or ""),
+                "foreshadow": str(scene.foreshadow or ""),
+                "target_words": int(scene.target_words or 0),
+            }
+        )
+    return {
+        "chapter_id": chapter_id,
+        "scenes": scenes,
+        "notes": str(outline.notes or ""),
+        "updated_at": outline.updated_at.isoformat(),
+    }
+
+
+def _outline_events_to_scenes(events: list[str]) -> list[dict]:
+    scene_payloads = []
+    for index, event in enumerate(events or [], 1):
+        event_text = str(event or "").strip()
+        if not event_text:
+            continue
+        scene_payloads.append(
+            {
+                "scene_no": index,
+                "goal": event_text,
+                "conflict": "",
+                "turning_point": "",
+                "hook": "",
+                "foreshadow": "",
+                "target_words": 1200,
+            }
+        )
+    return scene_payloads
 
 
 @router.get("/{chapter_id}")
@@ -96,6 +157,7 @@ async def get_chapter_continuation_context(
         "relevant_foreshadowing": context.relevant_foreshadowing,
         "global_constraints": context.global_constraints,
         "chapter_outline": context.chapter_outline,
+        "detail_outline": context.detail_outline,
         "chapter_task_seed": context.chapter_task_seed,
         "style_requirements": context.style_requirements,
         "created_at": context.created_at.isoformat(),
@@ -240,6 +302,106 @@ async def save_chapter_outline(
         ),
     )
     return payload
+
+
+@router.post("/{chapter_id}/organize")
+async def organize_single_chapter(
+    chapter_id: str,
+    request: ChapterOrganizeRequest,
+    chapter_repo: IChapterRepository = Depends(get_chapter_repo),
+    v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
+):
+    chapter = _load_chapter(chapter_id, chapter_repo)
+    try:
+        result = await v2_service.organize_single_chapter(
+            chapter_id=chapter_id,
+            rebuild_memory=bool(request.rebuild_memory),
+            refresh_range=str(request.refresh_range or "self"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    logger.info(
+        "单章整理完成",
+        extra=build_log_context(
+            event="chapter_single_organized",
+            chapter_id=chapter.id.value,
+            chapter_number=chapter.number,
+            novel_id=chapter.novel_id.value,
+        ),
+    )
+    return result
+
+
+@router.get("/{chapter_id}/detail-outline")
+async def get_chapter_detail_outline(
+    chapter_id: str,
+    repo: IChapterDetailOutlineRepository = Depends(get_chapter_detail_outline_repo),
+):
+    outline = repo.find_by_chapter_id(ChapterId(chapter_id))
+    return _detail_outline_payload(chapter_id, outline)
+
+
+@router.put("/{chapter_id}/detail-outline")
+async def save_chapter_detail_outline(
+    chapter_id: str,
+    request: ChapterDetailOutlineRequest,
+    repo: IChapterDetailOutlineRepository = Depends(get_chapter_detail_outline_repo),
+):
+    now = datetime.now()
+    existed = repo.find_by_chapter_id(ChapterId(chapter_id))
+    scenes = [
+        ChapterDetailOutlineScene(
+            scene_no=int(scene.scene_no or 0),
+            goal=str(scene.goal or ""),
+            conflict=str(scene.conflict or ""),
+            turning_point=str(scene.turning_point or ""),
+            hook=str(scene.hook or ""),
+            foreshadow=str(scene.foreshadow or ""),
+            target_words=int(scene.target_words or 0),
+        )
+        for scene in (request.scenes or [])
+    ]
+    outline = ChapterDetailOutline(
+        chapter_id=ChapterId(chapter_id),
+        scenes=scenes,
+        notes=str(request.notes or ""),
+        created_at=existed.created_at if existed else now,
+        updated_at=now,
+    )
+    repo.save(outline)
+    logger.info("章节细纲已保存", extra=build_log_context(event="chapter_detail_outline_saved", chapter_id=chapter_id))
+    return _detail_outline_payload(chapter_id, outline)
+
+
+@router.post("/{chapter_id}/detail-outline/generate")
+async def generate_chapter_detail_outline(
+    chapter_id: str,
+    request: ChapterDetailOutlineGenerateRequest,
+    chapter_repo: IChapterRepository = Depends(get_chapter_repo),
+    outline_repo: IChapterOutlineRepository = Depends(get_chapter_outline_repo),
+    v2_service: V2WorkflowService = Depends(get_v2_workflow_service),
+):
+    chapter = _load_chapter(chapter_id, chapter_repo)
+    context = v2_service.get_chapter_editor_context(
+        str(v2_service.project_service.ensure_project_for_novel(chapter.novel_id).id.value),
+        int(chapter.number or 0),
+    )
+    outline = outline_repo.find_by_chapter_id(ChapterId(chapter_id))
+    base_outline = _outline_dict(chapter_id, outline_repo) if outline else {}
+    source = str(request.source or "chapter_content").strip().lower()
+    if source == "outline" and base_outline:
+        scenes = _outline_events_to_scenes(base_outline.get("events") or [])
+    else:
+        ai_result = await v2_service.prompt_ai_service.analyze_to_outline(
+            chapter_title=str(chapter.title or f"第{chapter.number}章"),
+            chapter_content=str(chapter.content or ""),
+            global_memory_summary=str(context.get("global_memory_summary") or ""),
+            global_outline_summary=str(context.get("global_outline_summary") or ""),
+            recent_chapter_summaries=[str(x) for x in (context.get("recent_chapter_summaries") or [])],
+        )
+        outline_draft = ai_result.get("outline_draft") if isinstance(ai_result, dict) else {}
+        scenes = _outline_events_to_scenes((outline_draft or {}).get("events") or [])
+    return {"chapter_id": chapter_id, "source": source, "scenes": scenes, "notes": ""}
 
 
 def _outline_dict(chapter_id: str, repo: IChapterOutlineRepository) -> dict:

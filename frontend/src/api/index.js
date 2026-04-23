@@ -42,6 +42,14 @@ const buildRequestId = () => {
   return `req_${ts}_${rand}`
 }
 
+const appendBatchSizeQuery = (basePath, batchSizeChapters) => {
+  const size = Number(batchSizeChapters)
+  if (!Number.isInteger(size) || size < 2 || size > 20) {
+    return basePath
+  }
+  return `${basePath}&batch_size_chapters=${encodeURIComponent(size)}`
+}
+
 api.interceptors.request.use((config) => {
   const requestId = buildRequestId()
   config.headers = config.headers || {}
@@ -141,15 +149,31 @@ export const contentApi = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   memory: (novelId) => api.get(`/content/memory/${novelId}`),
-  organize: (novelId, forceRebuild = false, mode = 'full_reanalyze') =>
-    api.post(`/content/organize/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}&mode=${encodeURIComponent(mode)}`, {}, { timeout: 0 }),
-  startOrganize: (novelId, forceRebuild = false, mode = 'full_reanalyze') =>
-    api.post(`/content/organize/start/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}&mode=${encodeURIComponent(mode)}`),
+  organize: (novelId, forceRebuild = false, mode = 'full_reanalyze', batchSizeChapters = null) =>
+    api.post(
+      appendBatchSizeQuery(
+        `/content/organize/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}&mode=${encodeURIComponent(mode)}`,
+        batchSizeChapters
+      ),
+      {},
+      { timeout: 0 }
+    ),
+  startOrganize: (novelId, forceRebuild = false, mode = 'full_reanalyze', batchSizeChapters = null) =>
+    api.post(
+      appendBatchSizeQuery(
+        `/content/organize/start/${novelId}?force_rebuild=${forceRebuild ? 'true' : 'false'}&mode=${encodeURIComponent(mode)}`,
+        batchSizeChapters
+      )
+    ),
   pauseOrganize: (novelId) => api.post(`/content/organize/pause/${novelId}`),
   stopOrganize: (novelId) => api.post(`/content/organize/stop/${novelId}`),
-  resumeOrganize: (novelId, mode = '') => api.post(`/content/organize/resume/${novelId}${mode ? `?mode=${encodeURIComponent(mode)}` : ''}`),
+  resumeOrganize: (novelId, mode = '', batchSizeChapters = null) => {
+    const basePath = `/content/organize/resume/${novelId}${mode ? `?mode=${encodeURIComponent(mode)}` : '?mode='}`
+    return api.post(appendBatchSizeQuery(basePath, batchSizeChapters))
+  },
   cancelOrganize: (novelId) => api.post(`/content/organize/cancel/${novelId}`),
-  retryOrganize: (novelId, mode = 'full_reanalyze') => api.post(`/content/organize/retry/${novelId}?mode=${encodeURIComponent(mode)}`),
+  retryOrganize: (novelId, mode = 'full_reanalyze', batchSizeChapters = null) =>
+    api.post(appendBatchSizeQuery(`/content/organize/retry/${novelId}?mode=${encodeURIComponent(mode)}`, batchSizeChapters)),
   organizeProgress: (novelId, config = {}) => api.get(`/content/organize/progress/${novelId}`, config),
   analyzeStyle: (novelId) => api.get(`/content/style/${novelId}`),
   analyzePlot: (novelId) => api.get(`/content/plot/${novelId}`)
@@ -269,6 +293,10 @@ export const chapterEditorApi = {
   save: (chapterId, data) => api.put(`/chapters/${chapterId}`, data),
   getOutline: (chapterId, config = {}) => api.get(`/chapters/${chapterId}/outline`, config),
   saveOutline: (chapterId, data) => api.put(`/chapters/${chapterId}/outline`, { chapter_id: chapterId, ...data }),
+  organizeChapter: (chapterId, data = {}) => api.post(`/chapters/${chapterId}/organize`, data),
+  getDetailOutline: (chapterId, config = {}) => api.get(`/chapters/${chapterId}/detail-outline`, config),
+  saveDetailOutline: (chapterId, data) => api.put(`/chapters/${chapterId}/detail-outline`, { chapter_id: chapterId, ...data }),
+  generateDetailOutline: (chapterId, data = { source: 'chapter_content' }) => api.post(`/chapters/${chapterId}/detail-outline/generate`, data),
   importChapter: (chapterId, data) => api.post(`/chapters/${chapterId}/import`, buildChapterAIRequest(chapterId, 'import', data)),
   optimize: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/optimize`, buildChapterAIRequest(chapterId, 'optimize', data), { timeout: 0 }),
   continueWrite: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/continue`, buildChapterAIRequest(chapterId, 'continue', data), { timeout: 0 }),

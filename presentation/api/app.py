@@ -11,6 +11,7 @@ FastAPI应用配置模块
 import time
 import traceback
 import uuid
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
@@ -38,6 +39,11 @@ from presentation.api.routers import projects_v2
 
 logger = get_logger(__name__)
 APP_VERSION = "3.0.0"
+SUPPRESS_PROGRESS_POLL = str(os.getenv("INKTRACE_LOG_SUPPRESS_PROGRESS_POLL", "1")).strip().lower() not in {"0", "false"}
+
+
+def _is_progress_poll_request(method: str, path: str) -> bool:
+    return str(method).upper() == "GET" and str(path or "").startswith("/api/content/organize/progress/")
 
 
 def create_app() -> FastAPI:
@@ -76,17 +82,19 @@ def create_app() -> FastAPI:
         token = set_request_id(request_id)
         request.state.request_id = request_id
         client_ip = request.client.host if request.client else ""
-        logger.info(
-            "请求开始",
-            extra=build_log_context(
-                event="request_started",
-                request_id=request_id,
-                method=request.method,
-                path=request.url.path,
-                client_ip=client_ip,
-                module="app",
-            ),
-        )
+        suppress_poll_info = SUPPRESS_PROGRESS_POLL and _is_progress_poll_request(request.method, request.url.path)
+        if not suppress_poll_info:
+            logger.info(
+                "请求开始",
+                extra=build_log_context(
+                    event="request_started",
+                    request_id=request_id,
+                    method=request.method,
+                    path=request.url.path,
+                    client_ip=client_ip,
+                    module="app",
+                ),
+            )
         try:
             response = await call_next(request)
             duration_ms = int((time.perf_counter() - started_at) * 1000)
@@ -106,19 +114,20 @@ def create_app() -> FastAPI:
                         module="app",
                     ),
                 )
-            logger.info(
-                "请求完成",
-                extra=build_log_context(
-                    event="request_finished",
-                    request_id=request_id,
-                    method=request.method,
-                    path=request.url.path,
-                    status_code=getattr(response, "status_code", 200),
-                    duration_ms=duration_ms,
-                    client_ip=client_ip,
-                    module="app",
-                ),
-            )
+            if not suppress_poll_info:
+                logger.info(
+                    "请求完成",
+                    extra=build_log_context(
+                        event="request_finished",
+                        request_id=request_id,
+                        method=request.method,
+                        path=request.url.path,
+                        status_code=getattr(response, "status_code", 200),
+                        duration_ms=duration_ms,
+                        client_ip=client_ip,
+                        module="app",
+                    ),
+                )
             return response
         except Exception as exc:
             duration_ms = int((time.perf_counter() - started_at) * 1000)

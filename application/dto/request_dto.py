@@ -176,6 +176,23 @@ class ImportProjectRequest(BaseRequest):
 class OrganizeRequest(BaseRequest):
     mode: str = "full_reanalyze"
     rebuild_memory: bool = True
+    batch_size_chapters: Optional[int] = Field(default=None, ge=2, le=20)
+
+
+class ChapterDetailOutlineSceneRequest(BaseModel):
+    scene_no: int = Field(default=0, ge=0)
+    goal: str = ""
+    conflict: str = ""
+    turning_point: str = ""
+    hook: str = ""
+    foreshadow: str = ""
+    target_words: int = Field(default=0, ge=0)
+
+
+class ChapterDetailOutlineRequest(BaseRequest):
+    chapter_id: str = Field(..., min_length=1)
+    scenes: List[ChapterDetailOutlineSceneRequest] = Field(default_factory=list)
+    notes: str = ""
 
 
 class BranchesRequest(BaseRequest):

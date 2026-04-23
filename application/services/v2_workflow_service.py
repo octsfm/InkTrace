@@ -50,6 +50,7 @@ from domain.entities.chapter_analysis_memory import ChapterAnalysisMemory
 from domain.entities.chapter_arc_binding import ChapterArcBinding
 from domain.entities.chapter_continuation_memory import ChapterContinuationMemory
 from domain.entities.chapter_outline import ChapterOutline
+from domain.entities.chapter_detail_outline import ChapterDetailOutline, ChapterDetailOutlineScene
 from domain.entities.chapter_task import ChapterTask
 from domain.entities.model_role import ModelRole
 from domain.entities.continuation_context_snapshot import ContinuationContextSnapshot
@@ -63,6 +64,7 @@ from domain.repositories.chapter_analysis_memory_repository import IChapterAnaly
 from domain.repositories.chapter_arc_binding_repository import IChapterArcBindingRepository
 from domain.repositories.chapter_continuation_memory_repository import IChapterContinuationMemoryRepository
 from domain.repositories.chapter_outline_repository import IChapterOutlineRepository
+from domain.repositories.chapter_detail_outline_repository import IChapterDetailOutlineRepository
 from domain.repositories.chapter_repository import IChapterRepository
 from domain.repositories.chapter_task_repository import IChapterTaskRepository
 from domain.repositories.continuation_context_snapshot_repository import IContinuationContextSnapshotRepository
@@ -119,6 +121,7 @@ class V2WorkflowService:
         chapter_analysis_memory_repo: IChapterAnalysisMemoryRepository,
         chapter_continuation_memory_repo: IChapterContinuationMemoryRepository,
         chapter_outline_repo: IChapterOutlineRepository,
+        chapter_detail_outline_repo: IChapterDetailOutlineRepository,
         chapter_task_repo: IChapterTaskRepository,
         structural_draft_repo: IStructuralDraftRepository,
         detemplated_draft_repo: IDetemplatedDraftRepository,
@@ -143,6 +146,7 @@ class V2WorkflowService:
         self.chapter_analysis_memory_repo = chapter_analysis_memory_repo
         self.chapter_continuation_memory_repo = chapter_continuation_memory_repo
         self.chapter_outline_repo = chapter_outline_repo
+        self.chapter_detail_outline_repo = chapter_detail_outline_repo
         self.chapter_task_repo = chapter_task_repo
         self.structural_draft_repo = structural_draft_repo
         self.detemplated_draft_repo = detemplated_draft_repo
@@ -469,6 +473,7 @@ class V2WorkflowService:
                     batch_no=int(batch_no or 0),
                     batch_total=int(batch_total_value or 0),
                     degrade_path=str(degrade_path or ""),
+                    effective_batch_size=int(batch_size or 0),
                     status=status,
                     duration_ms=int(duration_ms or 0),
                 ),
@@ -516,11 +521,28 @@ class V2WorkflowService:
                 "strategy": strategy,
                 "batch_no": int(batch_no or 0),
                 "batch_total": int(batch_total_value or 0),
+                "effective_batch_size": int(batch_size or 0),
                 "chunked_chapter_count": int(chunked_chapter_count_value or 0),
             }
             if isinstance(memory_snapshot, dict):
                 payload["memory_snapshot"] = memory_snapshot
             await progress_callback(payload)
+            if stage == "chapter_analysis" and safe_current > 0:
+                self.logger.info(
+                    "organize chapter progress",
+                    extra=build_log_context(
+                        event="organize_chapter_progress",
+                        project_id=project_id,
+                        current=safe_current,
+                        total=safe_total,
+                        percent=percent,
+                        chapter_number=safe_current,
+                        chapter_title=self.clean_text(current_chapter_title) or f"Chapter {safe_current}",
+                        batch_no=int(batch_no or 0),
+                        batch_total=int(batch_total_value or 0),
+                        effective_batch_size=int(batch_size or 0),
+                    ),
+                )
         job_id = self.v2_repo.start_workflow_job(
             project_id=project_id,
             workflow_type="organize_novel",
@@ -533,7 +555,12 @@ class V2WorkflowService:
         batch_total = max(1, (max(1, total_chapters) + batch_size - 1) // batch_size)
         self.logger.info(
             "organize preparation finished",
-            extra=build_log_context(event="organize_prepare_done", project_id=project_id, total_chapters=total_chapters),
+            extra=build_log_context(
+                event="organize_prepare_done",
+                project_id=project_id,
+                total_chapters=total_chapters,
+                effective_batch_size=int(batch_size or 0),
+            ),
         )
         resume_cursor = 0 if rebuild_memory or organize_mode != "full_reanalyze" else max(0, min(int(resume_from or 0), total_chapters))
         _record_stage_metric(
@@ -680,6 +707,9 @@ class V2WorkflowService:
                     project_id=project_id,
                     chapter_number=index,
                     chapter_title=chapter.get("title") or f"第{index}章",
+                    batch_no=max(1, (index + batch_size - 1) // max(1, batch_size)),
+                    batch_total=batch_total,
+                    effective_batch_size=int(batch_size or 0),
                     current=index,
                     total=total_chapters,
                 ),
@@ -793,6 +823,9 @@ class V2WorkflowService:
                     project_id=project_id,
                     chapter_number=index,
                     chapter_title=self.clean_text(str(chapter.get("title") or f"Chapter {index}")) or f"Chapter {index}",
+                    batch_no=max(1, (index + batch_size - 1) // max(1, batch_size)),
+                    batch_total=batch_total,
+                    effective_batch_size=int(batch_size or 0),
                 ),
             )
             await _emit_progress(
@@ -1172,12 +1205,15 @@ class V2WorkflowService:
             global_memory_summary = self.clean_text(str(memory_view.get("current_progress") or ""))
         current_chapter = next((ch for ch in chapters if int(ch.number or 0) == int(chapter_number or 0)), None)
         chapter_outline = {}
+        detail_outline = {"scenes": [], "notes": ""}
         chapter_task_seed = {}
         continuation_summary = {}
         chapter_arcs: List[Dict[str, Any]] = []
         if current_chapter:
             outline_entity = self.chapter_outline_repo.find_by_chapter_id(current_chapter.id)
             chapter_outline = self._chapter_outline_to_dict(outline_entity) if outline_entity else {}
+            detail_entity = self.chapter_detail_outline_repo.find_by_chapter_id(current_chapter.id)
+            detail_outline = self._chapter_detail_outline_to_dict(detail_entity)
             task_entity = next((item for item in (self.chapter_task_repo.find_by_project_id(project_id) or []) if int(getattr(item, "chapter_number", 0) or 0) == int(chapter_number or 0)), None)
             chapter_task_seed = self._chapter_task_to_dict(task_entity) if task_entity else {}
             continuation_entity = next((item for item in (self.chapter_continuation_memory_repo.find_by_chapter_id(current_chapter.id.value) or [])), None)
@@ -1192,6 +1228,7 @@ class V2WorkflowService:
             "global_memory_summary": global_memory_summary,
             "global_outline_summary": "；".join([str(x).strip() for x in outline_summary[:6] if str(x).strip()]),
             "chapter_outline": chapter_outline,
+            "detail_outline": detail_outline,
             "chapter_task_seed": chapter_task_seed,
             "continuation_summary": continuation_summary,
             "chapter_arcs": chapter_arcs,
@@ -1299,6 +1336,76 @@ class V2WorkflowService:
             "continuation_summary": self._chapter_continuation_memory_to_dict(continuation_entity),
         }
 
+    async def organize_single_chapter(
+        self,
+        chapter_id: str,
+        rebuild_memory: bool = True,
+        refresh_range: str = "self",
+    ) -> Dict[str, Any]:
+        chapter = self.chapter_repo.find_by_id(ChapterId(chapter_id))
+        if not chapter:
+            raise ValueError("章节不存在")
+        project = self.project_service.get_project_by_novel(chapter.novel_id)
+        if not project:
+            raise ValueError("章节所属项目不存在")
+        project_id = str(project.id.value)
+        chapter_title = self.clean_text(str(chapter.title or f"第{int(chapter.number or 0)}章")) or f"第{int(chapter.number or 0)}章"
+        outline_context = self._get_outline_context(chapter.novel_id)
+        memory = self._load_structured_memory(project_id, chapter.novel_id, outline_context)
+        chapter_memory_service = ChapterMemoryService(self.prompt_ai_service)
+        bundle = await chapter_memory_service.build_memories(
+            chapter_title=chapter_title,
+            chapter_content=str(chapter.content or ""),
+            constraints=memory.get("global_constraints") or {},
+            global_memory_summary=self._build_outline_memory_summary(memory),
+            global_outline_summary=self._build_outline_summary_text(outline_context, memory),
+            recent_chapter_summaries=self._build_recent_outline_summaries(memory),
+            require_model_success=True,
+        )
+        chapter_payload = {
+            "id": str(chapter.id.value),
+            "index": int(chapter.number or 0),
+            "title": chapter_title,
+            "content": str(chapter.content or ""),
+        }
+        analysis_payload = self._chapter_bundle_to_analysis_payload(bundle, chapter_payload, int(chapter.number or 0))
+        merged_memory = self._merge_structured_memory(
+            memory,
+            analysis_payload,
+            chapter_title,
+            chapter_number=int(chapter.number or 0),
+            chapter_id=str(chapter.id.value),
+            chapter_content=str(chapter.content or ""),
+        )
+        self._save_chapter_memory_bundle(project_id, chapter_payload, int(chapter.number or 0), bundle, merged_memory)
+        memory_payload = self._to_project_memory_payload(project_id, merged_memory)
+        self.v2_repo.save_project_memory(memory_payload)
+        self._sync_primary_repositories(project_id, memory_payload)
+        self.v2_repo.save_memory_view(self._to_memory_view_payload(project_id, memory_payload))
+        memory_refreshed = False
+        if str(refresh_range or "").strip().lower() == "self":
+            await self.refresh_memory(project_id, int(chapter.number or 0), int(chapter.number or 0))
+            memory_refreshed = True
+        self.logger.info(
+            "single chapter organize finished",
+            extra=build_log_context(
+                event="single_chapter_organized",
+                project_id=project_id,
+                chapter_id=str(chapter.id.value),
+                chapter_number=int(chapter.number or 0),
+                chapter_title=chapter_title,
+            ),
+        )
+        return {
+            "project_id": project_id,
+            "chapter_id": str(chapter.id.value),
+            "status": "done",
+            "analysis_summary": bundle.get("analysis_summary") if isinstance(bundle.get("analysis_summary"), dict) else {},
+            "outline_draft": bundle.get("outline_draft") if isinstance(bundle.get("outline_draft"), dict) else {},
+            "continuation_memory": bundle.get("continuation_memory") if isinstance(bundle.get("continuation_memory"), dict) else {},
+            "memory_refreshed": memory_refreshed,
+        }
+
     def build_continuation_context(self, project_id: str, chapter_id: str, chapter_number: int = 0) -> ContinuationContext:
         memory = self.get_memory(project_id) or {}
         chapters = []
@@ -1314,12 +1421,16 @@ class V2WorkflowService:
             if chapter_memories:
                 recent_memories.append(self._chapter_continuation_memory_to_dict(chapter_memories[0]))
         chapter_outline = {}
+        detail_outline = {"scenes": [], "notes": ""}
         if chapter_id:
             try:
                 chapter_outline_entity = self._get_chapter_outline_entity(chapter_id)
                 chapter_outline = self._chapter_outline_to_dict(chapter_outline_entity) if chapter_outline_entity else {}
+                detail_outline_entity = self.chapter_detail_outline_repo.find_by_chapter_id(ChapterId(chapter_id))
+                detail_outline = self._chapter_detail_outline_to_dict(detail_outline_entity)
             except Exception:
                 chapter_outline = {}
+                detail_outline = {"scenes": [], "notes": ""}
         tail_chars = max(LAST_CHAPTER_TAIL_MIN_CHARS, min(DEFAULT_LAST_CHAPTER_TAIL_CHARS, LAST_CHAPTER_TAIL_MAX_CHARS))
         last_tail_source = recent_real_chapters[-1].content if recent_real_chapters else (chapters[-1].content if chapters else "")
         last_tail = str(last_tail_source or "")[-tail_chars:]
@@ -1371,6 +1482,7 @@ class V2WorkflowService:
             relevant_foreshadowing=self.normalize_text_list(relevant_foreshadowing, 12),
             global_constraints=memory.get("global_constraints") or {},
             chapter_outline=chapter_outline,
+            detail_outline=detail_outline,
             chapter_task_seed=task_seed if isinstance(task_seed, dict) else {},
             active_arcs=active_arcs,
             target_arc=target_arc,
@@ -1899,9 +2011,9 @@ class V2WorkflowService:
                 for item in (payload.get("main_characters") or [])
                 if isinstance(item, dict) and self.clean_text(str(item.get("name") or ""))
             ][:5]
-        world_summary = self.normalize_text_list(self._build_world_summary(payload.get("world_facts") or {}), 8)
+        world_summary = self._normalize_structure_list(self._build_world_summary(payload.get("world_facts") or {}), 8, 72)
         if not world_summary:
-            world_summary = self.normalize_text_list([str(x) for x in (payload.get("world_summary") or []) if str(x).strip()], 8)
+            world_summary = self._normalize_structure_list((payload.get("world_summary") or []), 8, 72)
         style = payload.get("style_profile") or {}
         style_tags: List[str] = []
         if isinstance(style, dict):
@@ -1912,7 +2024,7 @@ class V2WorkflowService:
             ]
         elif isinstance(style, str):
             style_tags = [x for x in re.split(r"[；;]", style) if x]
-        style_tags = self.normalize_text_list(style_tags, 6)
+        style_tags = self._normalize_structure_list(style_tags, 6, 48)
         outline_context = payload.get("outline_context") or {}
         outline_summary = [str(x) for x in (outline_context.get("summary") or []) if str(x)]
         if not outline_summary:
@@ -1922,11 +2034,50 @@ class V2WorkflowService:
                 str(outline_context.get("world_setting") or ""),
             ]
             outline_summary = [x for x in outline_summary if x]
-        outline_summary = self.normalize_text_list(outline_summary, 5)
-        current_progress = self.clean_text(str((payload.get("current_state") or {}).get("latest_summary") or payload.get("current_progress") or ""))
-        main_plot_lines = self._build_plot_lines(payload)
+        outline_summary = self._normalize_structure_list(outline_summary, 5, 84)
+        current_progress = self._normalize_structure_text(
+            (payload.get("current_state") or {}).get("latest_summary") or payload.get("current_progress") or "",
+            max_length=140,
+        )
+        main_plot_lines = self._normalize_structure_list(self._build_plot_lines(payload), 8, 120)
         if not main_plot_lines:
-            main_plot_lines = self.normalize_text_list([str(x) for x in (payload.get("main_plot_lines") or []) if str(x).strip()], 12)
+            main_plot_lines = self._normalize_structure_list((payload.get("main_plot_lines") or []), 8, 120)
+        current_state_text = self._normalize_structure_text(
+            (payload.get("current_state") or {}).get("next_writing_focus")
+            or payload.get("current_state")
+            or payload.get("current_state_text")
+            or "",
+            max_length=140,
+        )
+        focus_arc_id = self._select_focus_arc_id(payload)
+        risk_summary = self._build_risk_summary(payload)
+        chapter_arc_bindings = [self._to_chapter_arc_binding_dict(item) for item in self.chapter_arc_binding_repo.list_by_project(project_id)]
+        recent_arc_progress = self._load_recent_arc_progress(
+            list(((payload.get("current_state") or {}).get("active_arc_ids") or [])),
+            limit=12,
+        )
+        next_actions = self._build_next_actions(
+            payload=payload,
+            project_id=project_id,
+            focus_arc_id=focus_arc_id,
+            chapter_arc_bindings=chapter_arc_bindings,
+            recent_arc_progress=recent_arc_progress,
+        )
+        lens_cards = self._build_lens_cards(
+            payload=payload,
+            main_plot_lines=main_plot_lines,
+            current_progress=current_progress,
+            current_state_text=current_state_text,
+            risk_summary=risk_summary,
+            focus_arc_id=focus_arc_id,
+            recent_arc_progress=recent_arc_progress,
+        )
+        structure_quality = self._build_structure_quality(
+            main_plot_lines=main_plot_lines,
+            current_progress=current_progress,
+            current_state=current_state_text,
+            next_actions=next_actions,
+        )
         return {
             "id": f"view_{uuid.uuid4().hex[:12]}",
             "project_id": project_id,
@@ -1936,12 +2087,254 @@ class V2WorkflowService:
             "main_plot_lines": main_plot_lines,
             "style_tags": style_tags,
             "current_progress": current_progress,
+            "current_state": current_state_text,
             "outline_summary": outline_summary,
             "plot_arcs": payload.get("plot_arcs") or [],
             "active_arc_ids": list(((payload.get("current_state") or {}).get("active_arc_ids") or [])),
-            "chapter_arc_bindings": [self._to_chapter_arc_binding_dict(item) for item in self.chapter_arc_binding_repo.list_by_project(project_id)],
-            "recent_arc_progress": self._load_recent_arc_progress(list(((payload.get("current_state") or {}).get("active_arc_ids") or [])), limit=12),
+            "chapter_arc_bindings": chapter_arc_bindings,
+            "recent_arc_progress": recent_arc_progress,
+            "structure_quality": structure_quality,
+            "next_actions": next_actions,
+            "lens_cards": lens_cards,
+            "risk_summary": risk_summary,
+            "focus_arc_id": focus_arc_id,
         }
+
+    def _normalize_structure_text(self, value: Any, max_length: int = 120) -> str:
+        candidates = self._extract_structure_text_candidates(value)
+        for candidate in candidates:
+            normalized = self.clean_text(candidate)
+            if not normalized:
+                continue
+            if self.looks_garbled_text(normalized):
+                continue
+            compact = re.sub(r"\s+", " ", normalized).strip()
+            if not compact:
+                continue
+            lowered = compact.lower()
+            if "chunk=" in lowered or "分析完成" in compact:
+                continue
+            if re.search(r"\{[^}]*[:：][^}]*\}", compact):
+                continue
+            if "{'" in compact or '{"' in compact:
+                continue
+            if len(compact) > max(24, int(max_length or 120)):
+                compact = compact[: max(24, int(max_length or 120))].strip()
+            if compact:
+                return compact
+        return ""
+
+    def _normalize_structure_list(self, values: Any, limit: int = 8, max_item_length: int = 120) -> List[str]:
+        normalized: List[str] = []
+        source = values if isinstance(values, list) else [values]
+        for value in source:
+            text = self._normalize_structure_text(value, max_item_length)
+            if text and text not in normalized:
+                normalized.append(text)
+            if len(normalized) >= max(1, int(limit or 1)):
+                break
+        return normalized
+
+    def _extract_structure_text_candidates(self, value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            picked: List[str] = []
+            preferred_keys = [
+                "summary",
+                "latest_summary",
+                "current_progress",
+                "current_state",
+                "title",
+                "goal",
+                "conflict",
+                "description",
+                "reason",
+                "text",
+                "next_writing_focus",
+            ]
+            for key in preferred_keys:
+                if key in value:
+                    picked.extend(self._extract_structure_text_candidates(value.get(key)))
+            for key, item in value.items():
+                key_text = str(key or "").lower()
+                if any(token in key_text for token in ("summary", "title", "goal", "conflict", "reason", "state")):
+                    picked.extend(self._extract_structure_text_candidates(item))
+            return picked[:12]
+        if isinstance(value, (list, tuple, set)):
+            picked: List[str] = []
+            for item in list(value)[:12]:
+                picked.extend(self._extract_structure_text_candidates(item))
+            return picked[:24]
+        if isinstance(value, (int, float, bool)):
+            return []
+        return [str(value)]
+
+    def _select_focus_arc_id(self, payload: Dict[str, Any]) -> str:
+        current_state = payload.get("current_state") or {}
+        if isinstance(current_state, dict):
+            active_ids = [str(x).strip() for x in (current_state.get("active_arc_ids") or []) if str(x).strip()]
+            if active_ids:
+                return active_ids[0]
+        for arc in (payload.get("plot_arcs") or []):
+            if isinstance(arc, dict):
+                arc_id = str(arc.get("arc_id") or "").strip()
+                if arc_id:
+                    return arc_id
+        return ""
+
+    def _build_risk_summary(self, payload: Dict[str, Any]) -> str:
+        candidates: List[Any] = []
+        for item in (payload.get("continuity_flags") or [])[:5]:
+            candidates.append(item)
+        current_state = payload.get("current_state") or {}
+        if isinstance(current_state, dict):
+            candidates.extend(list(current_state.get("recent_conflicts") or [])[:5])
+        for item in (payload.get("chapter_summaries") or [])[-2:]:
+            candidates.append(item)
+        risk = self._normalize_structure_text(candidates, 140)
+        return risk or "当前暂无高置信度结构风险，请继续推进并关注最新审查结果。"
+
+    def _build_next_actions(
+        self,
+        payload: Dict[str, Any],
+        project_id: str,
+        focus_arc_id: str,
+        chapter_arc_bindings: List[Dict[str, Any]],
+        recent_arc_progress: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        actions: List[Dict[str, Any]] = []
+        chapter_id = ""
+        if chapter_arc_bindings:
+            chapter_id = str(chapter_arc_bindings[0].get("chapter_id") or "").strip()
+        if not chapter_id and recent_arc_progress:
+            chapter_id = str(recent_arc_progress[0].get("chapter_id") or "").strip()
+        if chapter_id:
+            actions.append(
+                {
+                    "type": "go_chapter",
+                    "label": "回到章节继续写作",
+                    "chapter_id": chapter_id,
+                    "reason": "该章节与当前结构焦点直接关联，适合立即落地推进。",
+                }
+            )
+        has_failed_flags = bool(payload.get("continuity_flags"))
+        actions.append(
+            {
+                "type": "go_task_filter",
+                "label": "查看失败任务",
+                "task_filter": "failed" if has_failed_flags else "all",
+                "reason": "先确认任务与审查状态，可避免旧问题继续污染结构判断。",
+            }
+        )
+        if focus_arc_id:
+            actions.append(
+                {
+                    "type": "focus_arc",
+                    "label": "聚焦当前剧情弧",
+                    "arc_id": focus_arc_id,
+                    "reason": "该剧情弧是当前结构视角的主要推进对象。",
+                }
+            )
+        deduped: List[Dict[str, Any]] = []
+        seen = set()
+        for item in actions:
+            key = f"{item.get('type')}::{item.get('chapter_id') or item.get('task_filter') or item.get('arc_id') or ''}"
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+            if len(deduped) >= 4:
+                break
+        return deduped
+
+    def _build_lens_cards(
+        self,
+        payload: Dict[str, Any],
+        main_plot_lines: List[str],
+        current_progress: str,
+        current_state_text: str,
+        risk_summary: str,
+        focus_arc_id: str,
+        recent_arc_progress: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        evidence_chapters = [
+            int(item.get("chapter_number") or 0)
+            for item in (recent_arc_progress or [])
+            if int(item.get("chapter_number") or 0) > 0
+        ][:6]
+        cards = [
+            {
+                "lens": "story_model",
+                "title": "故事模型",
+                "summary": main_plot_lines[0] if main_plot_lines else current_progress,
+                "evidence_chapters": evidence_chapters,
+            },
+            {
+                "lens": "plot_arc",
+                "title": "剧情弧",
+                "summary": self._normalize_structure_text((payload.get("plot_arcs") or []), 120),
+                "evidence_chapters": evidence_chapters,
+            },
+            {
+                "lens": "character",
+                "title": "角色视角",
+                "summary": current_state_text,
+                "evidence_chapters": evidence_chapters,
+            },
+            {
+                "lens": "worldview",
+                "title": "世界观",
+                "summary": (self._normalize_structure_list(payload.get("world_summary") or self._build_world_summary(payload.get("world_facts") or {}), 1, 120) or [""])[0],
+                "evidence_chapters": evidence_chapters,
+            },
+            {
+                "lens": "risk",
+                "title": "风险点",
+                "summary": risk_summary,
+                "evidence_chapters": evidence_chapters,
+            },
+        ]
+        normalized_cards: List[Dict[str, Any]] = []
+        for card in cards:
+            summary = self._normalize_structure_text(card.get("summary") or "", 140)
+            if not summary:
+                continue
+            normalized_cards.append(
+                {
+                    "lens": card["lens"],
+                    "title": card["title"],
+                    "summary": summary,
+                    "evidence_chapters": list(card.get("evidence_chapters") or []),
+                    "focus_arc_id": focus_arc_id or "",
+                }
+            )
+        return normalized_cards[:5]
+
+    def _build_structure_quality(
+        self,
+        main_plot_lines: List[str],
+        current_progress: str,
+        current_state: str,
+        next_actions: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        issues: List[str] = []
+        score = 100
+        if not main_plot_lines:
+            score -= 30
+            issues.append("主线摘要不足，建议先补充可执行主线信息。")
+        if not current_progress:
+            score -= 25
+            issues.append("当前进度为空，建议回写最近章节推进结论。")
+        if not current_state:
+            score -= 20
+            issues.append("当前状态不足，建议补充角色/冲突状态摘要。")
+        if len(next_actions or []) < 3:
+            score -= 10
+            issues.append("下一步动作不足，建议补齐章节/任务/剧情弧入口。")
+        return {"score": max(0, min(100, int(score))), "issues": issues[:6]}
 
     def _to_plot_arc_dict(self, arc: Any) -> Dict[str, Any]:
         return {
@@ -2106,6 +2499,28 @@ class V2WorkflowService:
             "ending_hook": getattr(outline, "ending_hook", "") or "",
             "opening_continuation": getattr(outline, "opening_continuation", "") or "",
             "notes": getattr(outline, "notes", "") or "",
+        }
+
+    def _chapter_detail_outline_to_dict(self, outline: Optional[ChapterDetailOutline]) -> Dict[str, Any]:
+        if not outline:
+            return {"scenes": [], "notes": ""}
+        scenes = []
+        for scene in (outline.scenes or []):
+            scenes.append(
+                {
+                    "scene_no": int(getattr(scene, "scene_no", 0) or 0),
+                    "goal": self.clean_text(str(getattr(scene, "goal", "") or "")),
+                    "conflict": self.clean_text(str(getattr(scene, "conflict", "") or "")),
+                    "turning_point": self.clean_text(str(getattr(scene, "turning_point", "") or "")),
+                    "hook": self.clean_text(str(getattr(scene, "hook", "") or "")),
+                    "foreshadow": self.clean_text(str(getattr(scene, "foreshadow", "") or "")),
+                    "target_words": int(getattr(scene, "target_words", 0) or 0),
+                }
+            )
+        return {
+            "scenes": scenes,
+            "notes": self.clean_text(str(getattr(outline, "notes", "") or "")),
+            "updated_at": getattr(outline, "updated_at", datetime.now()).isoformat(),
         }
 
     def _get_outline_context(self, novel_id: NovelId) -> Dict[str, Any]:

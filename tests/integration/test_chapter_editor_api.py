@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from presentation.api.app import app
 from presentation.api.dependencies import get_chapter_ai_service
+from presentation.api.dependencies import get_v2_workflow_service
 
 
 class _FakeChapterAIService:
@@ -53,6 +54,19 @@ class _FakeChapterAIService:
         return {"result_text": "目标：生成正文", "analysis": {}, "outline_draft": None, "used_fallback": False}
 
 
+class _FakeV2WorkflowService:
+    async def organize_single_chapter(self, chapter_id: str, rebuild_memory: bool = True, refresh_range: str = "self"):
+        return {
+            "project_id": "proj_test",
+            "chapter_id": chapter_id,
+            "status": "done",
+            "analysis_summary": {"summary": "章节分析摘要"},
+            "outline_draft": {"goal": "推进剧情"},
+            "continuation_memory": {"scene_summary": "承接上章"},
+            "memory_refreshed": bool(rebuild_memory),
+        }
+
+
 def test_chapter_editor_read_save_outline_and_ai_actions(caplog):
     app.dependency_overrides[get_chapter_ai_service] = lambda: _FakeChapterAIService()
     client = TestClient(app)
@@ -81,6 +95,8 @@ def test_chapter_editor_read_save_outline_and_ai_actions(caplog):
         continuation_context_resp = client.get(f"/api/chapters/{chapter_id}/continuation-context")
         assert continuation_context_resp.status_code == 200
         assert continuation_context_resp.json()["chapter_id"] == chapter_id
+        assert "detail_outline" in continuation_context_resp.json()
+
 
         save_resp = client.put(
             f"/api/chapters/{chapter_id}",
@@ -201,8 +217,62 @@ def test_chapter_editor_read_save_outline_and_ai_actions(caplog):
         read_after_apply = client.get(f"/api/chapters/{chapter_id}")
         assert read_after_apply.status_code == 200
         assert "目标：" in read_after_apply.json()["content"]
+
+        detail_outline_save = client.put(
+            f"/api/chapters/{chapter_id}/detail-outline",
+            json={
+                "chapter_id": chapter_id,
+                "notes": "章节细纲备注",
+                "scenes": [
+                    {
+                        "scene_no": 1,
+                        "goal": "潜入古城",
+                        "conflict": "守卫排查",
+                        "turning_point": "发现密道",
+                        "hook": "黑影出现",
+                        "foreshadow": "残页线索",
+                        "target_words": 1200,
+                    }
+                ],
+            },
+        )
+        assert detail_outline_save.status_code == 200
+        assert detail_outline_save.json()["chapter_id"] == chapter_id
+        detail_outline_get = client.get(f"/api/chapters/{chapter_id}/detail-outline")
+        assert detail_outline_get.status_code == 200
+        assert "scenes" in detail_outline_get.json()
         events = [getattr(rec, "event", "") for rec in caplog.records]
         assert "chapter_ai_started" in events
         assert "chapter_ai_finished" in events
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_chapter_editor_single_organize_endpoint():
+    client = TestClient(app)
+    try:
+        files = {
+            "novel_file": ("novel.txt", "第1章 起始\n主角进入古城。", "text/plain"),
+        }
+        upload = client.post(
+            "/api/projects/import/upload",
+            data={"project_name": "单章整理接口测试", "author": "测试作者", "genre": "xuanhuan", "auto_organize": "false"},
+            files=files,
+        )
+        assert upload.status_code == 200
+        novel_id = upload.json()["novel_id"]
+        detail = client.get(f"/api/novels/{novel_id}")
+        assert detail.status_code == 200
+        chapter_id = detail.json()["chapters"][0]["id"]
+        app.dependency_overrides[get_v2_workflow_service] = lambda: _FakeV2WorkflowService()
+        resp = client.post(
+            f"/api/chapters/{chapter_id}/organize",
+            json={"rebuild_memory": True, "refresh_range": "self"},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["chapter_id"] == chapter_id
+        assert payload["status"] == "done"
+        assert payload["memory_refreshed"] is True
     finally:
         app.dependency_overrides.clear()

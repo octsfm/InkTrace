@@ -17,6 +17,10 @@ const createEmptyEditorState = () => ({
     content: ''
   },
   outline: {},
+  detailOutline: {
+    scenes: [],
+    notes: ''
+  },
   chapterTask: {},
   chapterArcs: [],
   contextMeta: {},
@@ -101,6 +105,62 @@ const buildDraftPayload = ({ title, action, currentContent, resultText, selectio
     preview_mode: shouldPreviewDelta ? 'delta' : 'full',
     source_action: action,
     selection_context: selectionContext
+  }
+}
+
+const normalizeMemoryViewText = (value, maxLength = 140) => {
+  if (value === null || value === undefined) return ''
+  let text = ''
+  if (typeof value === 'string') {
+    text = value
+  } else if (Array.isArray(value)) {
+    text = value
+      .map((item) => (typeof item === 'string' ? item : ''))
+      .filter(Boolean)
+      .join('；')
+  } else if (typeof value === 'object') {
+    const keys = ['summary', 'latest_summary', 'title', 'goal', 'description', 'reason', 'next_writing_focus']
+    for (const key of keys) {
+      const candidate = value?.[key]
+      if (typeof candidate === 'string' && candidate.trim()) {
+        text = candidate
+        break
+      }
+    }
+  }
+  text = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!text) return ''
+  if (text.includes("{'") || text.includes('{"') || /\{[^}]*[:：][^}]*\}/.test(text)) return ''
+  if (text.toLowerCase().includes('chunk=') || text.includes('分析完成')) return ''
+  if (text.length > maxLength) return text.slice(0, maxLength).trim()
+  return text
+}
+
+const normalizeMemoryViewList = (value, limit = 8, maxLength = 120) => {
+  const source = Array.isArray(value) ? value : [value]
+  const result = []
+  source.forEach((item) => {
+    if (result.length >= limit) return
+    const text = normalizeMemoryViewText(item, maxLength)
+    if (!text) return
+    if (!result.includes(text)) result.push(text)
+  })
+  return result
+}
+
+const normalizeMemoryView = (payload = {}) => {
+  const mainPlotLines = normalizeMemoryViewList(payload?.main_plot_lines, 8, 120)
+  const currentProgress = normalizeMemoryViewText(payload?.current_progress, 140)
+  const currentState = normalizeMemoryViewText(payload?.current_state, 140)
+  return {
+    ...payload,
+    main_plot_lines: mainPlotLines,
+    current_progress: currentProgress,
+    current_state: currentState,
+    world_summary: normalizeMemoryViewList(payload?.world_summary, 8, 72),
+    outline_summary: normalizeMemoryViewList(payload?.outline_summary, 6, 84),
+    next_actions: Array.isArray(payload?.next_actions) ? payload.next_actions : [],
+    lens_cards: Array.isArray(payload?.lens_cards) ? payload.lens_cards : []
   }
 }
 
@@ -229,7 +289,7 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
           return {}
         })
       ])
-      memoryView.value = nextMemoryView || {}
+      memoryView.value = normalizeMemoryView(nextMemoryView || {})
       activeArcs.value = arcResult?.plot_arcs || []
     } catch (error) {
       if (!isRequestCanceled(error)) {
@@ -304,11 +364,13 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     editor.loading = true
     const chapterConfig = createRequestConfig(`chapter:${chapterId}`, 10000)
     const outlineConfig = createRequestConfig(`chapter-outline:${chapterId}`, 10000)
+    const detailOutlineConfig = createRequestConfig(`chapter-detail-outline:${chapterId}`, 10000)
     const contextConfig = createRequestConfig(`chapter-context:${chapterId}`, 10000)
     try {
-      const [chapter, nextOutline, nextContext] = await Promise.all([
+      const [chapter, nextOutline, nextDetailOutline, nextContext] = await Promise.all([
         chapterEditorApi.get(chapterId, chapterConfig),
         chapterEditorApi.getOutline(chapterId, outlineConfig).catch(() => ({})),
+        chapterEditorApi.getDetailOutline(chapterId, detailOutlineConfig).catch(() => ({ scenes: [], notes: '' })),
         chapterEditorApi.getContext(chapterId, contextConfig).catch(() => ({}))
       ])
 
@@ -336,6 +398,7 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
         content: chapter.content || ''
       }
       editor.outline = nextOutline || {}
+      editor.detailOutline = nextDetailOutline || { scenes: [], notes: '' }
       editor.contextMeta = nextContext || {}
       editor.chapterTask = nextTask || {}
       editor.chapterArcs = nextArcs
@@ -363,8 +426,32 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     } finally {
       chapterConfig.__finalize?.()
       outlineConfig.__finalize?.()
+      detailOutlineConfig.__finalize?.()
       contextConfig.__finalize?.()
       editor.loading = false
+    }
+  }
+
+  const organizeSingleChapter = async (chapterId, options = {}) => {
+    if (!chapterId) return null
+    editor.aiRunning = true
+    try {
+      const result = await chapterEditorApi.organizeChapter(chapterId, {
+        rebuild_memory: options.rebuildMemory !== false,
+        refresh_range: options.refreshRange || 'self'
+      })
+      const [nextOutline, nextDetailOutline, nextContext] = await Promise.all([
+        chapterEditorApi.getOutline(chapterId).catch(() => ({})),
+        chapterEditorApi.getDetailOutline(chapterId).catch(() => ({ scenes: [], notes: '' })),
+        chapterEditorApi.getContext(chapterId).catch(() => ({}))
+      ])
+      editor.outline = nextOutline || {}
+      editor.detailOutline = nextDetailOutline || { scenes: [], notes: '' }
+      editor.contextMeta = nextContext || {}
+      await loadStructure({ silent: true })
+      return result
+    } finally {
+      editor.aiRunning = false
     }
   }
 
@@ -658,6 +745,7 @@ export const useNovelWorkspaceStore = defineStore('novelWorkspace', () => {
     loadBase,
     loadStructure,
     loadEditorChapter,
+    organizeSingleChapter,
     saveEditorChapter,
     runEditorAiAction,
     applyDraftToEditor,

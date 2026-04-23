@@ -20,6 +20,7 @@
       </div>
       <div class="actions-area">
         <div class="action-cluster">
+          <el-button text @click="runSingleChapterOrganize" :loading="editorState.aiRunning" :disabled="!editorState.chapter.id">单独整理</el-button>
           <el-button text @click="runAiAction('continue')" :loading="editorState.aiRunning">智能续写</el-button>
           <el-button text @click="runAiAction('generate')" :loading="editorState.aiRunning">按大纲生成</el-button>
           <el-button text @click="runAiAction('optimize')" :loading="editorState.aiRunning">去模板化</el-button>
@@ -186,6 +187,31 @@
 
         <ContextSourcePanel :context="editorState.contextMeta" :task="editorState.chapterTask" />
 
+        <div class="inspector-card">
+          <div class="card-header-row">
+            <h3>章节细纲</h3>
+            <span class="card-meta-text">{{ detailOutlineSceneCountText }}</span>
+          </div>
+          <div class="detail-outline-actions">
+            <el-button size="small" @click="addDetailOutlineScene">新增场景</el-button>
+            <el-button size="small" @click="generateDetailOutline" :loading="editorState.aiRunning">AI 生成</el-button>
+            <el-button size="small" type="primary" @click="saveDetailOutline" :loading="editorState.saving">保存细纲</el-button>
+          </div>
+          <div v-if="detailOutlineScenes.length" class="detail-outline-list">
+            <div v-for="(scene, idx) in detailOutlineScenes" :key="`scene-${idx}`" class="detail-outline-item">
+              <div class="detail-outline-item-header">
+                <strong>场景 {{ idx + 1 }}</strong>
+                <el-button size="small" text @click="removeDetailOutlineScene(idx)">删除</el-button>
+              </div>
+              <input v-model="scene.goal" class="detail-input" type="text" placeholder="场景目标" />
+              <input v-model="scene.conflict" class="detail-input" type="text" placeholder="场景冲突" />
+              <input v-model="scene.turning_point" class="detail-input" type="text" placeholder="转折点" />
+              <input v-model="scene.hook" class="detail-input" type="text" placeholder="钩子" />
+            </div>
+          </div>
+          <div v-else class="empty-copy">暂无细纲场景，可手动新增或点击 AI 生成。</div>
+        </div>
+
         <div ref="issuePanelSectionRef">
           <IssuePanelCard
             :issues="issueList"
@@ -242,6 +268,7 @@ import { BubbleMenu } from '@tiptap/vue-3/menus'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { FullScreen } from '@element-plus/icons-vue'
+import { chapterEditorApi } from '@/api'
 
 import WorkspaceActionBar from '@/components/workspace/WorkspaceActionBar.vue'
 import WorkspaceCandidateNodeView from '@/components/workspace/WorkspaceCandidateNodeView.vue'
@@ -357,6 +384,14 @@ const candidateQueueStorageKey = computed(() => {
 
 const wordCount = computed(() => (editorState.chapter.content || '').replace(/\s+/g, '').length)
 const chapterArcs = computed(() => (Array.isArray(editorState.chapterArcs) ? editorState.chapterArcs : []))
+const detailOutlineScenes = computed(() => {
+  const scenes = editorState.detailOutline?.scenes
+  if (!Array.isArray(scenes)) return []
+  return scenes
+})
+const detailOutlineSceneCountText = computed(() => (
+  detailOutlineScenes.value.length ? `${detailOutlineScenes.value.length} 个场景` : '未配置'
+))
 const issueList = computed(() => (Array.isArray(editorState.integrityCheck?.issue_list) ? editorState.integrityCheck.issue_list : []))
 const issueCount = computed(() => issueList.value.length)
 const blockingIssueCount = computed(() => issueList.value.filter((item) => item?.severity === 'high').length)
@@ -973,6 +1008,78 @@ const syncEditorFromStore = (content = '') => {
 const saveChapter = async () => {
   await workspace.saveEditorChapter()
   ElMessage.success('章节已保存')
+}
+
+const runSingleChapterOrganize = async () => {
+  if (!editorState.chapter.id) {
+    ElMessage.info('请先选择一个章节')
+    return
+  }
+  await workspace.organizeSingleChapter(editorState.chapter.id, {
+    rebuildMemory: true,
+    refreshRange: 'self'
+  })
+  ElMessage.success('单章整理完成')
+}
+
+const addDetailOutlineScene = () => {
+  const scenes = Array.isArray(editorState.detailOutline?.scenes)
+    ? [...editorState.detailOutline.scenes]
+    : []
+  scenes.push({
+    scene_no: scenes.length + 1,
+    goal: '',
+    conflict: '',
+    turning_point: '',
+    hook: '',
+    foreshadow: '',
+    target_words: 1200
+  })
+  editorState.detailOutline = {
+    ...(editorState.detailOutline || {}),
+    scenes
+  }
+}
+
+const removeDetailOutlineScene = (index) => {
+  const scenes = Array.isArray(editorState.detailOutline?.scenes)
+    ? [...editorState.detailOutline.scenes]
+    : []
+  if (index < 0 || index >= scenes.length) return
+  scenes.splice(index, 1)
+  editorState.detailOutline = {
+    ...(editorState.detailOutline || {}),
+    scenes: scenes.map((item, idx) => ({ ...item, scene_no: idx + 1 }))
+  }
+}
+
+const saveDetailOutline = async () => {
+  if (!editorState.chapter.id) return
+  const payload = {
+    scenes: (editorState.detailOutline?.scenes || []).map((item, idx) => ({
+      scene_no: idx + 1,
+      goal: String(item.goal || ''),
+      conflict: String(item.conflict || ''),
+      turning_point: String(item.turning_point || ''),
+      hook: String(item.hook || ''),
+      foreshadow: String(item.foreshadow || ''),
+      target_words: Number(item.target_words || 0)
+    })),
+    notes: String(editorState.detailOutline?.notes || '')
+  }
+  const saved = await chapterEditorApi.saveDetailOutline(editorState.chapter.id, payload)
+  editorState.detailOutline = saved || { scenes: [], notes: '' }
+  ElMessage.success('章节细纲已保存')
+}
+
+const generateDetailOutline = async () => {
+  if (!editorState.chapter.id) return
+  const generated = await chapterEditorApi.generateDetailOutline(editorState.chapter.id, { source: 'chapter_content' })
+  editorState.detailOutline = {
+    ...(editorState.detailOutline || {}),
+    scenes: Array.isArray(generated?.scenes) ? generated.scenes : []
+  }
+  ElMessage.success('已生成章节细纲草案')
 }
 
 const runAiAction = async (action, options = {}) => {
@@ -1895,6 +2002,45 @@ onBeforeUnmount(() => {
   font-size: 13px;
   line-height: 1.6;
   color: #9CA3AF;
+}
+
+.detail-outline-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.detail-outline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-outline-item {
+  padding: 12px;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  background: #F9FAFB;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-outline-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.detail-input {
+  width: 100%;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: #374151;
+  background: #FFFFFF;
 }
 
 .writing-footer {

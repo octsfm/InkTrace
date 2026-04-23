@@ -21,6 +21,7 @@ const mockOpenSection = vi.fn()
 const mockOpenChapter = vi.fn()
 const mockRouterPush = vi.fn()
 const mockExecuteWorkspaceAction = vi.fn()
+const mockOrganizeSingleChapter = vi.fn(() => Promise.resolve({ status: 'done' }))
 
 vi.mock('element-plus', () => ({
   ElMessage: {
@@ -53,7 +54,8 @@ vi.mock('@/composables/useWorkspaceContext', () => ({
     createChapter: vi.fn(),
     openChapter: mockOpenChapter,
     openSection: mockOpenSection,
-    executeWorkspaceAction: mockExecuteWorkspaceAction
+    executeWorkspaceAction: mockExecuteWorkspaceAction,
+    organizeSingleChapter: (...args) => mockOrganizeSingleChapter(...args)
   }))
 }))
 
@@ -67,6 +69,7 @@ describe('WorkspaceChapterManager.vue', () => {
     mockOpenChapter.mockClear()
     mockRouterPush.mockClear()
     mockExecuteWorkspaceAction.mockClear()
+    mockOrganizeSingleChapter.mockClear()
     mockUpdateChapter.mockClear()
     mockMessageSuccess.mockClear()
     mockMessageError.mockClear()
@@ -217,5 +220,13 @@ describe('WorkspaceChapterManager.vue', () => {
     expect(wrapper.vm.dragOverStatus).toBe('reviewed')
     expect(wrapper.vm.dragOverChapterId).toBe('ch-2')
     expect(wrapper.vm.dragInsertPosition).toBe('after')
+  })
+
+  it('triggers single chapter organize from action', async () => {
+    await wrapper.vm.organizeSingleChapter({ id: 'ch-1' })
+    expect(mockOrganizeSingleChapter).toHaveBeenCalledWith('ch-1', expect.objectContaining({
+      rebuildMemory: true,
+      refreshRange: 'self'
+    }))
   })
 })

@@ -5,9 +5,11 @@ import { ElMessage } from 'element-plus'
 import NovelImport from '../NovelImport.vue'
 
 const mockOrganizeProgress = vi.fn()
+const mockStartOrganize = vi.fn()
 const mockPauseOrganize = vi.fn()
 const mockResumeOrganize = vi.fn()
 const mockCancelOrganize = vi.fn()
+const mockRetryOrganize = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() })
@@ -22,11 +24,11 @@ vi.mock('@/api', () => ({
     importTxt: vi.fn().mockResolvedValue({ novel_id: 'novel_1', project_id: 'project_1' })
   },
   contentApi: {
-    startOrganize: vi.fn().mockResolvedValue({}),
+    startOrganize: (...args) => mockStartOrganize(...args),
     pauseOrganize: (...args) => mockPauseOrganize(...args),
     resumeOrganize: (...args) => mockResumeOrganize(...args),
     cancelOrganize: (...args) => mockCancelOrganize(...args),
-    retryOrganize: vi.fn().mockResolvedValue({}),
+    retryOrganize: (...args) => mockRetryOrganize(...args),
     organizeProgress: (...args) => mockOrganizeProgress(...args)
   },
   projectApi: {}
@@ -77,8 +79,10 @@ describe('NovelImport 整理进度与控制', () => {
       message: '整理任务已暂停'
     })
     mockPauseOrganize.mockResolvedValue({})
+    mockStartOrganize.mockResolvedValue({})
     mockResumeOrganize.mockResolvedValue({})
     mockCancelOrganize.mockResolvedValue({})
+    mockRetryOrganize.mockResolvedValue({})
   })
 
   it('展示真实整理进度与暂停继续取消按钮', async () => {
@@ -105,8 +109,22 @@ describe('NovelImport 整理进度与控制', () => {
     await flushPromises()
 
     expect(mockPauseOrganize).toHaveBeenCalledWith('novel_1')
-    expect(mockResumeOrganize).toHaveBeenCalledWith('novel_1')
+    expect(mockResumeOrganize).toHaveBeenCalledWith('novel_1', '', null)
     expect(mockCancelOrganize).toHaveBeenCalledWith('novel_1')
+  })
+
+  it('批次配置会透传到开始/继续/重试整理接口', async () => {
+    const wrapper = await mountPage()
+    wrapper.vm.createdNovelId = 'novel_1'
+    wrapper.vm.form.batch_size_chapters = 3
+    await wrapper.vm.startOrganize(true)
+    await wrapper.vm.resumeOrganize()
+    await wrapper.vm.retryOrganize()
+    await flushPromises()
+
+    expect(mockStartOrganize).toHaveBeenCalledWith('novel_1', true, 'full_reanalyze', 3)
+    expect(mockResumeOrganize).toHaveBeenCalledWith('novel_1', '', 3)
+    expect(mockRetryOrganize).toHaveBeenCalledWith('novel_1', 'full_reanalyze', 3)
   })
 
   it('鏁寸悊澶辫触鏃朵細寮瑰嚭閿欒鎻愮ず', async () => {

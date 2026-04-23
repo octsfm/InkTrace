@@ -51,6 +51,13 @@
           <el-input v-model="form.tagsText" placeholder="可选，多个标签用逗号分隔" />
         </el-form-item>
 
+        <el-form-item label="整理批次">
+          <el-select v-model="form.batch_size_chapters" style="width: 100%">
+            <el-option :value="null" label="自动（推荐）" />
+            <el-option :value="3" label="每批 3 章" />
+          </el-select>
+        </el-form-item>
+
         <el-form-item v-if="form.import_mode !== 'empty'" label="小说文件" prop="file_path">
           <el-input v-model="form.file_path" placeholder="请输入小说文件路径">
             <template #append>
@@ -74,6 +81,47 @@
           <el-button type="primary" :loading="importing" @click="handleImport">开始导入</el-button>
         </el-form-item>
       </el-form>
+    </el-card>
+
+    <el-card v-if="importing || createdNovelId" class="progress-card">
+      <template #header>
+        <span>导入与整理进度</span>
+      </template>
+      <el-steps :active="currentStep" finish-status="success">
+        <el-step title="创建项目" />
+        <el-step title="解析文件" />
+        <el-step title="整理结构" />
+        <el-step title="完成" />
+      </el-steps>
+      <div v-if="organizeProgress.total > 0" class="organize-progress">
+        <div class="organize-progress-text">{{ organizeProgress.message }}</div>
+        <div class="organize-progress-meta">
+          <span>状态：{{ formatOrganizeStatus(organizeProgress.status) }}</span>
+          <span>阶段：{{ organizeProgress.stage || '暂无' }}</span>
+          <span>策略：{{ organizeProgress.strategy || 'chapter_first' }}</span>
+          <span>进度：{{ organizeProgress.current || 0 }} / {{ organizeProgress.total || 0 }}</span>
+          <span>百分比：{{ organizeProgress.percent || 0 }}%</span>
+          <span v-if="organizeProgress.effective_batch_size > 0">实际批次：{{ organizeProgress.effective_batch_size }}</span>
+          <span v-if="organizeProgress.batch_total > 0">当前批次：{{ organizeProgress.batch_no || 0 }} / {{ organizeProgress.batch_total || 0 }}</span>
+          <span v-if="organizeProgress.chunked_chapter_count > 0">分块章节：{{ organizeProgress.chunked_chapter_count }}</span>
+          <span v-if="organizeProgress.current_chapter_title">当前章节：{{ organizeProgress.current_chapter_title }}</span>
+        </div>
+        <el-progress :percentage="organizeProgress.percent" :stroke-width="10" />
+        <el-alert
+          v-if="terminalOrganizeStatuses.includes(organizeProgress.status) && organizeTerminalMessage"
+          class="status-alert"
+          :type="organizeTerminalAlertType"
+          :closable="false"
+          :title="organizeTerminalMessage"
+        />
+      </div>
+      <div v-if="createdNovelId" class="progress-actions">
+        <el-button size="small" type="warning" @click="pauseOrganize" :disabled="!['running', 'resume_requested'].includes(organizeProgress.status)">暂停整理</el-button>
+        <el-button size="small" type="primary" @click="resumeOrganize" :disabled="!['paused', 'pause_requested'].includes(organizeProgress.status)">继续整理</el-button>
+        <el-button size="small" type="danger" @click="cancelOrganize" :disabled="!['running', 'paused', 'pause_requested', 'resume_requested'].includes(organizeProgress.status)">取消整理</el-button>
+        <el-button size="small" @click="retryOrganize" :disabled="!['done', 'error', 'cancelled', 'paused'].includes(organizeProgress.status)">重新整理</el-button>
+        <el-button size="small" @click="goToDetail">查看小说详情</el-button>
+      </div>
     </el-card>
 
     <el-card v-if="chapterPreview.length > 0" class="import-card">
@@ -100,46 +148,6 @@
         <li>大纲文件可包含人物设定、故事背景等信息</li>
         <li>导入后会自动整理故事结构，并可继续创作下一章</li>
       </ul>
-    </el-card>
-
-    <el-card v-if="importing || createdNovelId" class="progress-card">
-      <template #header>
-        <span>导入与整理进度</span>
-      </template>
-      <el-steps :active="currentStep" finish-status="success">
-        <el-step title="创建项目" />
-        <el-step title="解析文件" />
-        <el-step title="整理结构" />
-        <el-step title="完成" />
-      </el-steps>
-      <div v-if="organizeProgress.total > 0" class="organize-progress">
-        <div class="organize-progress-text">{{ organizeProgress.message }}</div>
-        <div class="organize-progress-meta">
-          <span>状态：{{ formatOrganizeStatus(organizeProgress.status) }}</span>
-          <span>阶段：{{ organizeProgress.stage || '暂无' }}</span>
-          <span>策略：{{ organizeProgress.strategy || 'chapter_first' }}</span>
-          <span>进度：{{ organizeProgress.current || 0 }} / {{ organizeProgress.total || 0 }}</span>
-          <span>百分比：{{ organizeProgress.percent || 0 }}%</span>
-          <span v-if="organizeProgress.batch_total > 0">当前批次：{{ organizeProgress.batch_no || 0 }} / {{ organizeProgress.batch_total || 0 }}</span>
-          <span v-if="organizeProgress.chunked_chapter_count > 0">分块章节：{{ organizeProgress.chunked_chapter_count }}</span>
-          <span v-if="organizeProgress.current_chapter_title">当前章节：{{ organizeProgress.current_chapter_title }}</span>
-        </div>
-        <el-progress :percentage="organizeProgress.percent" :stroke-width="10" />
-        <el-alert
-          v-if="terminalOrganizeStatuses.includes(organizeProgress.status) && organizeTerminalMessage"
-          class="status-alert"
-          :type="organizeTerminalAlertType"
-          :closable="false"
-          :title="organizeTerminalMessage"
-        />
-      </div>
-      <div v-if="createdNovelId" class="progress-actions">
-        <el-button size="small" type="warning" @click="pauseOrganize" :disabled="!['running', 'resume_requested'].includes(organizeProgress.status)">暂停整理</el-button>
-        <el-button size="small" type="primary" @click="resumeOrganize" :disabled="!['paused', 'pause_requested'].includes(organizeProgress.status)">继续整理</el-button>
-        <el-button size="small" type="danger" @click="cancelOrganize" :disabled="!['running', 'paused', 'pause_requested', 'resume_requested'].includes(organizeProgress.status)">取消整理</el-button>
-        <el-button size="small" @click="retryOrganize" :disabled="!['done', 'error', 'cancelled', 'paused'].includes(organizeProgress.status)">重新整理</el-button>
-        <el-button size="small" @click="goToDetail">查看小说详情</el-button>
-      </div>
     </el-card>
   </div>
 </template>
@@ -217,7 +225,8 @@ const form = reactive({
   file_path: '',
   outline_path: '',
   selectedFile: null,
-  selectedOutline: null
+  selectedOutline: null,
+  batch_size_chapters: null
 })
 const chapterPreview = ref([])
 
@@ -478,7 +487,12 @@ const stopOrganizePolling = () => {
 
 const startOrganize = async (forceRebuild = false) => {
   if (!createdNovelId.value) return
-  await contentApi.startOrganize(createdNovelId.value, forceRebuild, 'full_reanalyze')
+  await contentApi.startOrganize(
+    createdNovelId.value,
+    forceRebuild,
+    'full_reanalyze',
+    form.batch_size_chapters
+  )
   await fetchOrganizeProgress()
   startOrganizePolling()
 }
@@ -493,7 +507,7 @@ const pauseOrganize = async () => {
 
 const resumeOrganize = async () => {
   if (!createdNovelId.value) return
-  await contentApi.resumeOrganize(createdNovelId.value)
+  await contentApi.resumeOrganize(createdNovelId.value, '', form.batch_size_chapters)
   await fetchOrganizeProgress()
   startOrganizePolling()
   ElMessage.success('已继续整理')
@@ -509,7 +523,7 @@ const cancelOrganize = async () => {
 
 const retryOrganize = async () => {
   if (!createdNovelId.value) return
-  await contentApi.retryOrganize(createdNovelId.value, 'full_reanalyze')
+  await contentApi.retryOrganize(createdNovelId.value, 'full_reanalyze', form.batch_size_chapters)
   await fetchOrganizeProgress()
   startOrganizePolling()
   ElMessage.success('已重新开始整理')

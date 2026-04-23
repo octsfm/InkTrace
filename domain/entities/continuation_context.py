@@ -14,6 +14,7 @@ class ContinuationContext:
     relevant_foreshadowing: List[str] = field(default_factory=list)
     global_constraints: Dict[str, Any] = field(default_factory=dict)
     chapter_outline: Dict[str, Any] = field(default_factory=dict)
+    detail_outline: Dict[str, Any] = field(default_factory=dict)
     chapter_task_seed: Dict[str, Any] = field(default_factory=dict)
     active_arcs: List[Dict[str, Any]] = field(default_factory=list)
     target_arc: Dict[str, Any] = field(default_factory=dict)

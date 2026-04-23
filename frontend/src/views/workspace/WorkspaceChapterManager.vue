@@ -117,6 +117,7 @@
             <template #default="{ row }">
               <el-button size="small" @click.stop="focusChapter(row)">聚焦</el-button>
               <el-button size="small" type="primary" plain @click.stop="workspace.openChapter(row.id)">进入写作</el-button>
+              <el-button size="small" text type="success" @click.stop="organizeSingleChapter(row)">单独整理</el-button>
               <el-button size="small" text @click.stop="openChapterWorkspace(row.id)">章节编辑</el-button>
             </template>
           </el-table-column>
@@ -169,6 +170,7 @@
                 </div>
                 <div class="card-actions">
                   <el-button size="small" type="primary" plain @click.stop="workspace.openChapter(chapter.id)">进入写作</el-button>
+                  <el-button size="small" text type="success" @click.stop="organizeSingleChapter(chapter)">单独整理</el-button>
                 </div>
               </div>
               <div
@@ -737,6 +739,22 @@ const openChapterWorkspace = (chapterId) => {
       chapterId
     }
   })
+}
+
+const organizeSingleChapter = async (chapter) => {
+  const chapterId = String(chapter?.id || '')
+  if (!chapterId || typeof workspace.organizeSingleChapter !== 'function') {
+    return
+  }
+  try {
+    await workspace.organizeSingleChapter(chapterId, {
+      rebuildMemory: true,
+      refreshRange: 'self'
+    })
+    ElMessage.success('单章整理完成')
+  } catch (error) {
+    ElMessage.error(error?.message || '单章整理失败')
+  }
 }
 
 watch(

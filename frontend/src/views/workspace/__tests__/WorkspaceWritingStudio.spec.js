@@ -5,6 +5,9 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import WorkspaceWritingStudio from '../WorkspaceWritingStudio.vue'
 import IssuePanelCard from '@/components/story/IssuePanelCard.vue'
 
+const mockSaveDetailOutline = vi.fn()
+const mockGenerateDetailOutline = vi.fn()
+
 const mockSetContent = vi.fn()
 const mockFocus = vi.fn()
 const mockSetTextSelection = vi.fn()
@@ -58,6 +61,7 @@ const mockWorkspaceContext = {
       dirty: false,
       chapterTask: { chapter_function: 'advance_investigation', goals: ['追踪线索'] },
       chapterArcs: [{ arc_id: 'arc-1', title: '主线追踪', binding_role: 'primary', arc_type: 'main_arc', current_stage: 'escalation', status: 'active' }],
+      detailOutline: { scenes: [], notes: '' },
       contextMeta: {},
       integrityCheck: {
         issue_list: [
@@ -83,6 +87,7 @@ const mockWorkspaceContext = {
   },
   currentChapterId: { value: '1' },
   loadEditorChapter: vi.fn(),
+  organizeSingleChapter: vi.fn().mockResolvedValue({ status: 'done' }),
   saveEditorChapter: vi.fn(),
   runEditorAiAction: vi.fn(),
   openSection: vi.fn()
@@ -116,6 +121,13 @@ vi.mock('@/composables/useWorkspaceContext', () => ({
   useWorkspaceContext: vi.fn(() => mockWorkspaceContext)
 }))
 
+vi.mock('@/api', () => ({
+  chapterEditorApi: {
+    saveDetailOutline: (...args) => mockSaveDetailOutline(...args),
+    generateDetailOutline: (...args) => mockGenerateDetailOutline(...args)
+  }
+}))
+
 describe('WorkspaceWritingStudio.vue', () => {
   let wrapper
 
@@ -142,6 +154,11 @@ describe('WorkspaceWritingStudio.vue', () => {
       value: mockScrollIntoView
     })
     mockWorkspaceContext.runEditorAiAction.mockClear()
+    mockWorkspaceContext.organizeSingleChapter.mockClear()
+    mockSaveDetailOutline.mockClear()
+    mockSaveDetailOutline.mockResolvedValue({ chapter_id: '1', scenes: [], notes: '' })
+    mockGenerateDetailOutline.mockClear()
+    mockGenerateDetailOutline.mockResolvedValue({ chapter_id: '1', scenes: [], notes: '' })
     const pinia = createPinia()
     setActivePinia(pinia)
     const workspaceStore = useWorkspaceStore()
@@ -565,5 +582,21 @@ describe('WorkspaceWritingStudio.vue', () => {
     const tasksChip = wrapper.findAll('.workspace-action-chip').find((node) => node.text().includes('打开任务台'))
     await tasksChip.trigger('click')
     expect(mockWorkspaceContext.openSection).toHaveBeenCalledWith('tasks')
+  })
+
+  it('runs single chapter organize from header action', async () => {
+    await wrapper.vm.$.setupState.runSingleChapterOrganize()
+    expect(mockWorkspaceContext.organizeSingleChapter).toHaveBeenCalledWith('1', expect.objectContaining({
+      rebuildMemory: true,
+      refreshRange: 'self'
+    }))
+  })
+
+  it('saves detail outline from inspector card', async () => {
+    await wrapper.vm.$.setupState.saveDetailOutline()
+    expect(mockSaveDetailOutline).toHaveBeenCalledWith('1', expect.objectContaining({
+      scenes: expect.any(Array),
+      notes: expect.any(String)
+    }))
   })
 })

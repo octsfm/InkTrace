@@ -49,6 +49,15 @@ class _FakeV2Repo:
     def find_active_project_memory(self, project_id: str):
         return self._active.get(project_id)
 
+    def save_organize_stage_metric(self, *args, **kwargs):
+        return None
+
+    def delete_organize_batch_digests(self, *args, **kwargs):
+        return None
+
+    def save_organize_batch_digest(self, *args, **kwargs):
+        return None
+
 
 class _FakeChapterOutlineRepo:
     def __init__(self):
@@ -59,6 +68,14 @@ class _FakeChapterOutlineRepo:
 
     def save(self, outline):
         self.saved[str(outline.chapter_id)] = outline
+
+
+class _FakeChapterDetailOutlineRepo:
+    def find_by_chapter_id(self, *_args, **_kwargs):
+        return None
+
+    def save(self, *_args, **_kwargs):
+        return None
 
 
 class _EmptyRepo:
@@ -88,6 +105,7 @@ def _build_service(**kwargs):
         chapter_analysis_memory_repo=kwargs.get("chapter_analysis_memory_repo", _EmptyRepo()),
         chapter_continuation_memory_repo=kwargs.get("chapter_continuation_memory_repo", _EmptyRepo()),
         chapter_outline_repo=kwargs.get("chapter_outline_repo", _FakeChapterOutlineRepo()),
+        chapter_detail_outline_repo=kwargs.get("chapter_detail_outline_repo", _FakeChapterDetailOutlineRepo()),
         chapter_task_repo=kwargs.get("chapter_task_repo", _EmptyRepo()),
         structural_draft_repo=kwargs.get("structural_draft_repo", _EmptyRepo()),
         detemplated_draft_repo=kwargs.get("detemplated_draft_repo", _EmptyRepo()),
@@ -208,6 +226,15 @@ def test_organize_logs_started_and_finished(monkeypatch):
         def save_memory_view(self, payload):
             return None
 
+        def save_organize_stage_metric(self, *args, **kwargs):
+            return None
+
+        def delete_organize_batch_digests(self, *args, **kwargs):
+            return None
+
+        def save_organize_batch_digest(self, *args, **kwargs):
+            return None
+
     class _Analyzer:
         async def execute_async(self, ctx, payload):
             return SimpleNamespace(status="success", payload={"chapter_summaries": ["ok"]})
@@ -258,6 +285,15 @@ def test_organize_logs_failed_chapter(monkeypatch):
             return None
 
         def save_memory_view(self, payload):
+            return None
+
+        def save_organize_stage_metric(self, *args, **kwargs):
+            return None
+
+        def delete_organize_batch_digests(self, *args, **kwargs):
+            return None
+
+        def save_organize_batch_digest(self, *args, **kwargs):
             return None
 
     class _Analyzer:
@@ -312,6 +348,15 @@ def test_organize_generates_and_saves_chapter_outlines(monkeypatch):
             return None
 
         def save_memory_view(self, payload):
+            return None
+
+        def save_organize_stage_metric(self, *args, **kwargs):
+            return None
+
+        def delete_organize_batch_digests(self, *args, **kwargs):
+            return None
+
+        def save_organize_batch_digest(self, *args, **kwargs):
             return None
 
     class _Analyzer:

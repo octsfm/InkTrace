@@ -97,6 +97,7 @@ def _build_progress_payload(
     strategy: str = "",
     batch_no: int = 0,
     batch_total: int = 0,
+    effective_batch_size: int = 0,
     chunked_chapter_count: int = 0,
 ) -> Dict[str, Any]:
     percent = 0 if total <= 0 else int(current / total * 100)
@@ -115,6 +116,7 @@ def _build_progress_payload(
         "strategy": strategy,
         "batch_no": int(batch_no or 0),
         "batch_total": int(batch_total or 0),
+        "effective_batch_size": int(effective_batch_size or 0),
         "chunked_chapter_count": int(chunked_chapter_count or 0),
     }
 
@@ -273,6 +275,7 @@ def _job_to_progress(job: Optional[OrganizeJob]) -> Dict[str, Any]:
         strategy=str(persisted_progress.get("strategy") or ""),
         batch_no=int(persisted_progress.get("batch_no") or 0),
         batch_total=int(persisted_progress.get("batch_total") or 0),
+        effective_batch_size=int(persisted_progress.get("effective_batch_size") or 0),
         chunked_chapter_count=int(persisted_progress.get("chunked_chapter_count") or 0),
     )
 
@@ -350,6 +353,14 @@ def _build_capacity_plan(mode: str, llm_factory, capacity_planner_service, token
     plan.update({k: v for k, v in (legacy_plan or {}).items() if k not in plan})
     if str((legacy_plan or {}).get("strategy") or "").strip():
         plan["strategy"] = str(legacy_plan.get("strategy"))
+    return plan
+
+
+def _apply_batch_size_override(capacity_plan: Dict[str, Any], batch_size_chapters: Optional[int]) -> Dict[str, Any]:
+    plan = dict(capacity_plan or {})
+    if batch_size_chapters is None:
+        return plan
+    plan["batch_size_chapters"] = int(batch_size_chapters)
     return plan
 
 
@@ -997,6 +1008,7 @@ async def organize_story_structure(
     novel_id: str,
     force_rebuild: bool = Query(False),
     mode: str = Query("full_reanalyze"),
+    batch_size_chapters: Optional[int] = Query(default=None, ge=2, le=20),
     content_service: ContentService = Depends(get_content_service),
     project_service: ProjectService = Depends(get_project_service),
     llm_factory=Depends(get_llm_factory),
@@ -1009,6 +1021,7 @@ async def organize_story_structure(
         organize_mode = _normalize_organize_mode(mode, force_rebuild)
         _ensure_rebuild_mode_ready(novel_id, organize_mode, project_service, v2_service)
         capacity_plan = _build_capacity_plan(organize_mode, llm_factory, capacity_planner_service, token_budget_manager)
+        capacity_plan = _apply_batch_size_override(capacity_plan, batch_size_chapters)
         _validate_organize_model_capacity(
             novel_id=novel_id,
             organize_mode=organize_mode,
@@ -1112,6 +1125,7 @@ async def start_organize_story_structure(
     novel_id: str,
     force_rebuild: bool = Query(False),
     mode: str = Query("full_reanalyze"),
+    batch_size_chapters: Optional[int] = Query(default=None, ge=2, le=20),
     content_service: ContentService = Depends(get_content_service),
     llm_factory=Depends(get_llm_factory),
     capacity_planner_service=Depends(get_capacity_planner_service),
@@ -1124,6 +1138,7 @@ async def start_organize_story_structure(
     async with lock:
         organize_mode = _normalize_organize_mode(mode, force_rebuild)
         capacity_plan = _build_capacity_plan(organize_mode, llm_factory, capacity_planner_service, token_budget_manager)
+        capacity_plan = _apply_batch_size_override(capacity_plan, batch_size_chapters)
         _validate_organize_model_capacity(
             novel_id=novel_id,
             organize_mode=organize_mode,
@@ -1217,6 +1232,7 @@ async def stop_organize_story_structure(
 async def resume_organize_story_structure(
     novel_id: str,
     mode: str = Query(""),
+    batch_size_chapters: Optional[int] = Query(default=None, ge=2, le=20),
     content_service: ContentService = Depends(get_content_service),
     llm_factory=Depends(get_llm_factory),
     capacity_planner_service=Depends(get_capacity_planner_service),
@@ -1230,6 +1246,7 @@ async def resume_organize_story_structure(
         existed = organize_job_repo.find_by_novel_id(NovelId(novel_id))
         organize_mode = _normalize_organize_mode(mode or _organize_mode_from_job(existed), False)
         capacity_plan = _build_capacity_plan(organize_mode, llm_factory, capacity_planner_service, token_budget_manager)
+        capacity_plan = _apply_batch_size_override(capacity_plan, batch_size_chapters)
         _validate_organize_model_capacity(
             novel_id=novel_id,
             organize_mode=organize_mode,
@@ -1321,6 +1338,7 @@ async def cancel_organize_story_structure(
 async def retry_organize_story_structure(
     novel_id: str,
     mode: str = Query("full_reanalyze"),
+    batch_size_chapters: Optional[int] = Query(default=None, ge=2, le=20),
     content_service: ContentService = Depends(get_content_service),
     llm_factory=Depends(get_llm_factory),
     capacity_planner_service=Depends(get_capacity_planner_service),
@@ -1337,6 +1355,7 @@ async def retry_organize_story_structure(
         novel_id=novel_id,
         force_rebuild=True,
         mode=mode,
+        batch_size_chapters=batch_size_chapters,
         content_service=content_service,
         llm_factory=llm_factory,
         capacity_planner_service=capacity_planner_service,

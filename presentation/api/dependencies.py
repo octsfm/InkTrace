@@ -15,6 +15,7 @@ from domain.repositories.project_repository import IProjectRepository
 from domain.repositories.project_cleanup_repository import IProjectCleanupRepository
 from domain.repositories.organize_job_repository import IOrganizeJobRepository
 from domain.repositories.chapter_outline_repository import IChapterOutlineRepository
+from domain.repositories.chapter_detail_outline_repository import IChapterDetailOutlineRepository
 from domain.repositories.template_repository import ITemplateRepository
 from domain.repositories.worldview_repository import IWorldviewRepository
 from domain.repositories.vector_repository import IVectorRepository
@@ -40,6 +41,7 @@ from infrastructure.persistence.sqlite_project_repo import SQLiteProjectReposito
 from infrastructure.persistence.sqlite_project_cleanup_repo import SQLiteProjectCleanupRepository
 from infrastructure.persistence.sqlite_organize_job_repo import SQLiteOrganizeJobRepository
 from infrastructure.persistence.sqlite_chapter_outline_repo import SQLiteChapterOutlineRepository
+from infrastructure.persistence.sqlite_chapter_detail_outline_repo import SQLiteChapterDetailOutlineRepository
 from infrastructure.persistence.sqlite_template_repo import SQLiteTemplateRepository
 from infrastructure.persistence.sqlite_worldview_repo import SQLiteWorldviewRepository
 from infrastructure.persistence.chromadb_vector_repo import ChromaDBVectorRepository
@@ -149,6 +151,12 @@ def get_organize_job_repo() -> IOrganizeJobRepository:
 def get_chapter_outline_repo() -> IChapterOutlineRepository:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     return SQLiteChapterOutlineRepository(DB_PATH)
+
+
+@lru_cache()
+def get_chapter_detail_outline_repo() -> IChapterDetailOutlineRepository:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    return SQLiteChapterDetailOutlineRepository(DB_PATH)
 
 
 @lru_cache()
@@ -427,6 +435,7 @@ def get_v2_workflow_service() -> V2WorkflowService:
         chapter_analysis_memory_repo=get_chapter_analysis_memory_repo(),
         chapter_continuation_memory_repo=get_chapter_continuation_memory_repo(),
         chapter_outline_repo=get_chapter_outline_repo(),
+        chapter_detail_outline_repo=get_chapter_detail_outline_repo(),
         chapter_task_repo=get_chapter_task_repo(),
         structural_draft_repo=get_structural_draft_repo(),
         detemplated_draft_repo=get_detemplated_draft_repo(),
@@ -490,6 +499,7 @@ def warmup_singletons_for_startup() -> None:
         ("project_repo", get_project_repo),
         ("organize_job_repo", get_organize_job_repo),
         ("chapter_outline_repo", get_chapter_outline_repo),
+        ("chapter_detail_outline_repo", get_chapter_detail_outline_repo),
         ("template_repo", get_template_repo),
         ("worldview_repo", get_worldview_repo),
         ("llm_config_repo", get_llm_config_repo),

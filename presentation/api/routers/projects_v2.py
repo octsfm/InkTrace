@@ -157,7 +157,15 @@ async def organize_project(
     service: V2WorkflowService = Depends(get_v2_workflow_service),
 ):
     try:
-        return await service.organize_project(project_id, request.mode, request.rebuild_memory)
+        capacity_plan = {}
+        if request.batch_size_chapters is not None:
+            capacity_plan["batch_size_chapters"] = int(request.batch_size_chapters)
+        return await service.organize_project(
+            project_id,
+            request.mode,
+            request.rebuild_memory,
+            capacity_plan=capacity_plan or None,
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

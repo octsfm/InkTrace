@@ -2910,6 +2910,29 @@ const handleCopilotTrigger = async (payload) => {
     return
   }
 
+  if (payload.type === 'go_task_filter') {
+    workspaceStore.focusTaskFilter(payload.task_filter || payload.filter || 'all', { openView: false })
+    openSection('tasks')
+    return
+  }
+
+  if (payload.type === 'go_chapter') {
+    const chapterId = payload.chapter_id || payload.chapterId || ''
+    if (chapterId) {
+      await openChapter(chapterId, 'writing')
+      return
+    }
+  }
+
+  if (payload.type === 'focus_arc') {
+    workspaceStore.focusPlotArc({
+      arcId: payload.arc_id || payload.arcId || '',
+      title: payload.title || ''
+    }, { openView: false, section: 'plot_arc' })
+    openSection('structure')
+    return
+  }
+
   if (payload.type === 'task' && payload.taskId) {
     workspaceStore.focusTask({
       id: payload.taskId,
@@ -3180,6 +3203,7 @@ provide(WORKSPACE_CONTEXT_KEY, {
   refreshStructure: state.loadStructure,
   syncChapterSnapshot: state.syncChapterSnapshot,
   loadEditorChapter: state.loadEditorChapter,
+  organizeSingleChapter: state.organizeSingleChapter,
   saveEditorChapter: state.saveEditorChapter,
   runEditorAiAction: state.runEditorAiAction,
   applyDraftToEditor: state.applyDraftToEditor,

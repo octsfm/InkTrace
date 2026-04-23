@@ -184,6 +184,23 @@ def test_content_organize_proxy_to_v2():
         app.dependency_overrides.clear()
 
 
+def test_content_organize_batch_size_is_forwarded():
+    app.dependency_overrides[get_content_service] = lambda: _FakeContentQueryService()
+    app.dependency_overrides[get_project_service] = lambda: _FakeProjectService()
+    app.dependency_overrides[get_capacity_planner_service] = lambda: _FakeCapacityPlannerService()
+    service = _FakeV2Service()
+    app.dependency_overrides[get_v2_workflow_service] = lambda: service
+    app.dependency_overrides[get_organize_job_repo] = lambda: _FakeOrganizeJobRepo()
+    client = TestClient(app)
+    try:
+        resp = client.post("/api/content/organize/novel_batch?mode=full_reanalyze&batch_size_chapters=3")
+        assert resp.status_code == 200
+        assert service.calls
+        assert int(service.calls[-1]["capacity_plan"].get("batch_size_chapters") or 0) == 3
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_content_retry_defaults_to_full_reanalyze():
     repo = _FakeOrganizeJobRepo()
     service = _FakeV2Service()

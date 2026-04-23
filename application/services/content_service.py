@@ -29,6 +29,7 @@ from infrastructure.file.txt_parser import TxtParser
 from application.dto.request_dto import ImportNovelRequest
 from application.dto.response_dto import NovelResponse, StyleAnalysisResponse, PlotAnalysisResponse
 from application.services.outline_digest_service import OutlineDigestService
+from domain.utils import repair_mojibake, sanitize_display_text
 
 
 class ContentService:
@@ -141,20 +142,52 @@ class ContentService:
         )
         
         now = datetime.now()
-        
+        saved_chapter_count = 0
+        first_chapter_title = ""
+        last_chapter_title = ""
         for chapter_data in parsed.get('chapters', []):
+            chapter_number = int(chapter_data["number"])
+            chapter_title = str(chapter_data["title"] or f"第{chapter_number}章")
+            chapter_content = str(chapter_data["content"] or "")
+            chapter_word_count = len(chapter_content.strip())
             chapter = Chapter(
                 id=ChapterId(str(uuid.uuid4())),
                 novel_id=novel.id,
-                number=chapter_data['number'],
-                title=chapter_data['title'],
-                content=chapter_data['content'],
+                number=chapter_number,
+                title=chapter_title,
+                content=chapter_content,
                 status=ChapterStatus.DRAFT,
                 created_at=now,
                 updated_at=now
             )
             self.chapter_repo.save(chapter)
             novel.add_chapter(chapter, now)
+            saved_chapter_count += 1
+            safe_title = self._sanitize_log_title(chapter_title)
+            if not first_chapter_title:
+                first_chapter_title = safe_title
+            last_chapter_title = safe_title
+            self.logger.info(
+                "import chapter saved",
+                extra=build_log_context(
+                    event="import_chapter_saved",
+                    novel_id=request.novel_id,
+                    chapter_number=chapter_number,
+                    chapter_title=safe_title,
+                    word_count=chapter_word_count,
+                ),
+            )
+            if saved_chapter_count % 10 == 0:
+                self.logger.info(
+                    "import progress",
+                    extra=build_log_context(
+                        event="import_progress",
+                        novel_id=request.novel_id,
+                        saved_chapter_count=saved_chapter_count,
+                        chapter_number=chapter_number,
+                        chapter_title=safe_title,
+                    ),
+                )
         
         self.novel_repo.save(novel)
         if request.outline_path and os.path.exists(request.outline_path):
@@ -218,6 +251,8 @@ class ContentService:
                 chapter_count=len(parsed.get("chapters") or []),
                 import_mode=import_mode,
                 outline_present=bool(request.outline_path and os.path.exists(request.outline_path)),
+                first_chapter_title=first_chapter_title,
+                last_chapter_title=last_chapter_title,
             ),
         )
         
@@ -354,3 +389,11 @@ class ContentService:
             created_at=novel.created_at.isoformat(),
             updated_at=novel.updated_at.isoformat()
         )
+
+    def _sanitize_log_title(self, title: str, limit: int = 80) -> str:
+        text = sanitize_display_text(str(title or ""))
+        text = repair_mojibake(text).strip()
+        text = " ".join(text.split())
+        if len(text) > limit:
+            return text[:limit]
+        return text

@@ -160,6 +160,12 @@ class MemoryViewResponse(BaseModel):
     active_arc_ids: List[str] = Field(default_factory=list)
     chapter_arc_bindings: List[Dict[str, Any]] = Field(default_factory=list)
     recent_arc_progress: List[Dict[str, Any]] = Field(default_factory=list)
+    current_state: str = ""
+    structure_quality: Dict[str, Any] = Field(default_factory=dict)
+    next_actions: List[Dict[str, Any]] = Field(default_factory=list)
+    lens_cards: List[Dict[str, Any]] = Field(default_factory=list)
+    risk_summary: str = ""
+    focus_arc_id: str = ""
 
 
 class ProjectMemoryViewEnvelope(BaseModel):
@@ -235,6 +241,7 @@ class ContinuationContextResponse(BaseModel):
     relevant_foreshadowing: List[str] = Field(default_factory=list)
     global_constraints: Dict[str, Any] = Field(default_factory=dict)
     chapter_outline: Dict[str, Any] = Field(default_factory=dict)
+    detail_outline: Dict[str, Any] = Field(default_factory=dict)
     chapter_task_seed: Dict[str, Any] = Field(default_factory=dict)
     active_arcs: List[Dict[str, Any]] = Field(default_factory=list)
     target_arc: Dict[str, Any] = Field(default_factory=dict)

@@ -15,6 +15,7 @@ _request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("request_i
 _logging_inited = False
 _FORMAT = "%(asctime)s %(levelname)s %(name)s event=%(event)s request_id=%(request_id)s message=%(message)s"
 _RESERVED_KEYS = set(logging.LogRecord("x", logging.INFO, "", 0, "", (), None).__dict__.keys())
+_SUPPRESS_PROGRESS_POLL = str(os.getenv("INKTRACE_LOG_SUPPRESS_PROGRESS_POLL", "1")).strip().lower() not in {"0", "false"}
 
 
 class _SafeExtraFormatter(logging.Formatter):
@@ -46,6 +47,22 @@ class _MessageEncodingGuardFilter(logging.Filter):
         if is_probably_garbled_message(message):
             record.msg = "[garbled_message]"
             record.args = ()
+        return True
+
+
+class _UvicornAccessNoiseFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not _SUPPRESS_PROGRESS_POLL:
+            return True
+        try:
+            args = getattr(record, "args", ()) or ()
+            method = str(args[1] if len(args) > 1 else "")
+            path = str(args[2] if len(args) > 2 else "")
+            status = int(args[4]) if len(args) > 4 else 200
+            if method.upper() == "GET" and path.startswith("/api/content/organize/progress/") and status < 400:
+                return False
+        except Exception:
+            return True
         return True
 
 
@@ -114,6 +131,11 @@ def setup_logging() -> None:
     root_logger.addHandler(console_handler)
     root_logger.addHandler(info_file)
     root_logger.addHandler(error_file)
+    access_logger = logging.getLogger("uvicorn.access")
+    access_filter = _UvicornAccessNoiseFilter()
+    for handler in access_logger.handlers:
+        handler.addFilter(access_filter)
+    access_logger.addFilter(access_filter)
 
     os.environ["INKTRACE_LOG_DIR"] = str(logs_dir.resolve())
     _logging_inited = True
