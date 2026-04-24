@@ -32,16 +32,56 @@
 
 系统采用经典的前后端分离架构，但在数据同步策略上采用了 **Local-First（本地优先）** 的思想。
 
-```text
-[浏览器端 / 桌面端 (Vue3)] 
-      │ 
-      ├──> [本地存储 (LocalStorage LRU)] (核心容错层)
-      │
-[REST API / JSON] (状态同步)
-      │
-[服务端 (FastAPI)]
-      │
-[本地数据库 (SQLite / WAL模式)]
+```mermaid
+graph TD
+    %% 定义样式
+    classDef client fill:#e1f5fe,stroke:#333,stroke-width:2px;
+    classDef storage fill:#fff3e0,stroke:#333,stroke-width:2px;
+    classDef server fill:#e8f5e9,stroke:#333,stroke-width:2px;
+    classDef database fill:#f3e5f5,stroke:#333,stroke-width:2px;
+
+    %% 客户端子系统
+    subgraph Client [Browser / Desktop Client (Vue3 + Pinia)]
+        direction TB
+        UI[写作界面\nWorksList / WritingStudio] -->|防抖输入| State[Pinia Store\n状态管理]
+        State -->|更新| UI
+    end
+
+    %% 本地缓存子系统
+    subgraph LocalStorage [Local Storage (LRU Cache)]
+        Drafts[(本地草稿\ninktrace_draft_ID)]
+    end
+
+    %% 服务端子系统
+    subgraph Server [Backend (FastAPI)]
+        direction TB
+        API[REST API\nRouter Layer] --> Service[业务逻辑\nService Layer]
+        Service --> Lock{乐观锁校验\nVersion Match?}
+    end
+
+    %% 数据库子系统
+    subgraph Database [Database (SQLite WAL)]
+        DB[(核心表\nworks / chapters)]
+    end
+
+    %% 核心数据流转
+    State -->|1. 实时/离线写入| Drafts
+    State -->|2. 定时/在线同步| API
+    
+    Lock -->|Yes: 更新并 version+1| DB
+    Lock -->|No: 拒绝并返回 409| API
+    
+    API -->|3. 成功 (200 OK)| State
+    State -->|4. 删除对应缓存| Drafts
+    
+    API -->|3. 失败/冲突 (409)| State
+    State -.->|保留缓存以备恢复| Drafts
+
+    %% 样式应用
+    class Client client;
+    class LocalStorage storage;
+    class Server server;
+    class Database database;
 ```
 
 ---
