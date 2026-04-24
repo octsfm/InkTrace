@@ -3,6 +3,20 @@
 更新时间：2026-04-24  
 适用阶段：当前版本
 
+### 3.4 状态机：保存状态机制 (Save State Machine)
+满足 `R-UI-02` 和 `R-SAVE-05`，前端保存状态机仅允许以下三种状态及其确定性流转：
+
+- **初始状态**: `已保存` (Loaded / Saved)
+- **状态流转**:
+  - `已保存` → 用户输入/触发防抖 → `保存中` (Saving)
+  - `保存中` → API 请求成功 (`200 OK`) → `已保存` (Saved)
+  - `保存中` → API 请求失败 / 断网离线 → `保存失败` (Failed)
+  - `保存失败` → 用户继续输入/触发防抖 → `保存中` (Saving)
+  - `保存失败` → 离线回放/后台重试成功 → `已保存` (Saved)
+- **特殊规则**:
+  - **离线模式**下，输入直接将数据写入 LocalStorage，状态强制停留在 `保存失败` (或独立显示离线徽章)，但不阻断用户继续输入。
+  - **版本冲突 (409)** 时，状态转为 `保存失败`，直到用户完成决策（覆盖或放弃）。
+
 ---
 
 ## 1. 架构目标
@@ -90,18 +104,74 @@
    - `database/models.py`: SQLAlchemy ORM 模型定义。
    - `database/session.py`: 数据库连接池，**开启 SQLite WAL 模式**提升并发写性能。
 
-### 4.2 数据库核心模型 (SQLite)
+### 4.2 接口定义（API清单）
 
-基于 v1.1 需求，数据库表结构极简设计：
+为了支撑上述业务流程，需要实现以下 RESTful API：
 
-- **`works` (作品表)**: `id`, `title`, `author`, `created_at`, `updated_at`
-- **`chapters` (章节表)**: 
-  - `id`, `work_id`, `title`, `content`, `word_count`
-  - `order_index`: `INT` (排序绝对依据，`R-CH-01`)
-  - `version`: `INT` (乐观锁版本号，默认 1，`R-SAVE-04`)
-- **`edit_sessions` (编辑会话表)**: 
-  - `work_id` (PK), `last_open_chapter_id`
-  - `cursor_position`, `scroll_top` (用于恢复现场，`R-EDIT-01`)
+#### Works API (`routers/works.py`)
+| 接口路径 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/works` | `GET` | 获取作品列表（按最近更新时间排序） |
+| `/api/works` | `POST` | 新建作品（系统需静默创建第1章） |
+| `/api/works/{id}` | `GET` | 获取单个作品详情 |
+| `/api/works/{id}` | `DELETE` | 删除作品及级联数据 |
+
+#### Chapters API (`routers/chapters.py`)
+| 接口路径 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/works/{work_id}/chapters` | `GET` | 获取某作品下的所有章节（按 `order_index` 升序） |
+| `/api/works/{work_id}/chapters` | `POST` | 新建章节（插入在指定的 `order_index` 后，后续章节顺延） |
+| `/api/chapters/{id}` | `PUT` | 保存章节标题与正文（需携带 `version` 进行乐观锁校验） |
+| `/api/chapters/{id}` | `DELETE` | 删除章节（后续章节 `order_index` 需顺延重算） |
+| `/api/works/{work_id}/chapters/reorder` | `PUT` | 原子化全量调整章节顺序（接收 `[{"id": "A", "order_index": 1}, ...]`） |
+
+#### Edit Session API (`routers/sessions.py`)
+| 接口路径 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/works/{work_id}/session` | `GET` | 获取该作品的最后一次编辑会话（章节ID、光标、滚动条） |
+| `/api/works/{work_id}/session` | `PUT` | 更新最后一次编辑会话状态 |
+
+#### IO API (`routers/io.py`)
+| 接口路径 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/io/import` | `POST` | 导入 TXT 文件，按正则分章入库 |
+| `/api/io/export/{work_id}` | `GET` | 导出指定作品为 TXT 文件 |
+
+### 4.3 数据库核心模型 (SQLite)
+
+基于 v1.1 需求，数据库表结构必须严格遵循以下字段定义：
+
+#### 1. `works` (作品表)
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | `String(36)` | 主键 UUID |
+| `title` | `String(255)` | 作品名称 |
+| `author` | `String(100)` | 作者名称 (可空) |
+| `created_at` | `DateTime` | 创建时间 |
+| `updated_at` | `DateTime` | 最后更新时间 |
+
+#### 2. `chapters` (章节表)
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | `String(36)` | 主键 UUID |
+| `work_id` | `String(36)` | 外键，关联 `works.id` |
+| `chapter_no` | `String(50)` | 保留字段，不参与排序 (可空) |
+| `title` | `String(255)` | 章节标题 (默认"") |
+| `content` | `Text` | 章节正文 (默认"") |
+| `word_count` | `Integer` | 有效字数统计 |
+| `order_index` | `Integer` | **排序绝对依据** |
+| `version` | `Integer` | **乐观锁版本号** (默认 1) |
+| `created_at` | `DateTime` | 创建时间 |
+| `updated_at` | `DateTime` | 最后更新时间 |
+
+#### 3. `edit_sessions` (编辑会话表)
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `work_id` | `String(36)` | 主键，外键关联 `works.id` |
+| `last_open_chapter_id`| `String(36)` | 上次最后编辑的章节ID (可空) |
+| `cursor_position` | `Integer` | 光标位置 (用于恢复现场) |
+| `scroll_top` | `Integer` | 滚动条高度 (用于恢复现场) |
+| `last_opened_at` | `DateTime` | 最后打开时间 |
 
 ---
 
