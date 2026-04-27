@@ -413,26 +413,172 @@ const onInput = () => {
 
 ## 4. 关键交互流程与组件间通信
 
-### 4.1 章节切换流程
+### 4.1 核心组件与状态流转类图
 
-为满足 `R-SAVE-03`（切章前必须确保可恢复），在用户点击侧边栏的另一章节时：
+为避免后期维护时出现“单一 Store 过于臃肿”的情况，这里严格定义了组件和 Store 之间的单向数据流与依赖关系：
 
-1. `ChapterSidebar.vue` 触发 `selectChapter(newId)`。
-2. `useChapterStore` 检查 `saveState`：
-   - 若为 `保存中`，调用 `debouncedSync.flush()` 强制立即执行。
-   - 若强制执行后仍失败，检查本地缓存是否存在对应的 `inktrace_draft_ID`。如果存在，则允许切换。
-3. 切换前，保存当前光标和滚动位置（`cursor_position`, `scroll_top`）到数据库（或先防抖写入本地缓存）。
-4. 加载新章节数据，并恢复其光标与滚动位置。
+```mermaid
+classDiagram
+    %% Components
+    class WritingStudio {
+        +initWorkspace()
+    }
+    class ChapterSidebar {
+        +renderVirtualList()
+        +onChapterClick(id)
+        +onDragEnd(newList)
+    }
+    class PureTextEditor {
+        +onInput(content)
+        +onScroll(position)
+        +onPaste(text)
+    }
+    class StatusBar {
+        +display(saveState)
+    }
 
-### 4.2 虚拟列表排序通信
+    %% Stores
+    class useWorkspaceStore {
+        <<Pinia Store>>
+        +String activeWorkId
+        +String activeChapterId
+        +Int cursorPosition
+        +Int scrollTop
+        +updateCursorAndScroll()
+        +debouncedSaveSession()
+    }
+    class useChapterDataStore {
+        <<Pinia Store>>
+        +Array chaptersList
+        +Object activeChapterData
+        +fetchChapters()
+        +reorderChapters()
+    }
+    class useSaveStateStore {
+        <<Pinia Store>>
+        +String saveState
+        +Boolean isOffline
+        +debouncedSync(chapterData)
+        +replayOfflineDrafts()
+    }
 
-使用 `vuedraggable` 或类似库实现 `DraggableItem.vue`：
+    %% Utils & API
+    class localCache {
+        <<Utility>>
+        +saveLocalDraft()
+        +enforceCacheQuota()
+    }
+    class api {
+        <<Axios Instance>>
+        +put()
+        +get()
+    }
 
-1. 用户拖拽结束，组件触发 `@end` 事件，得到新的数组 `newList`。
-2. 前端立即使用 `newList` 更新 UI（乐观更新）。
-3. 提取映射：`const mapping = newList.map((ch, index) => ({ id: ch.id, order_index: index + 1 }))`。
-4. 调用 API：`api.put('/api/chapters/reorder', mapping)`。
-5. 若 API 返回 500 失败，捕获异常并将前端列表回滚为拖拽前的状态，并提示用户。
+    %% Relationships
+    WritingStudio --> ChapterSidebar : 包含
+    WritingStudio --> PureTextEditor : 包含
+    WritingStudio --> StatusBar : 包含
+
+    ChapterSidebar --> useChapterDataStore : 读取列表 & 触发调序
+    ChapterSidebar --> useWorkspaceStore : 触发切章
+    
+    PureTextEditor --> useChapterDataStore : 更新正文内容
+    PureTextEditor --> useSaveStateStore : 触发保存防抖
+    PureTextEditor --> useWorkspaceStore : 触发滚动记录
+
+    StatusBar --> useSaveStateStore : 监听 saveState
+
+    useSaveStateStore --> localCache : 第一时间写本地草稿
+    useSaveStateStore --> api : 防抖调用接口
+    useWorkspaceStore --> api : 记录会话
+```
+
+### 4.2 自动保存时序图 (V1 核心链路)
+
+展示用户输入触发 Local-First 保存机制的全过程：
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Editor as PureTextEditor
+    participant DataStore as useChapterDataStore
+    participant SaveStore as useSaveStateStore
+    participant Cache as localCache
+    participant API as api (Axios)
+    participant Backend as FastAPI Backend
+
+    User->>Editor: 输入文字
+    Editor->>DataStore: 更新内存 activeChapterData
+    Editor->>SaveStore: 触发保存动作 (状态: 保存中)
+    
+    %% 立即写入本地缓存
+    SaveStore->>Cache: saveLocalDraft(chapterId, payload)
+    Note over Cache: 检查容量并 LRU 淘汰旧缓存
+    Cache-->>SaveStore: 写入成功
+    
+    %% 防抖等待
+    Note over SaveStore: 等待防抖 (如 2s)
+    
+    %% 触发同步
+    SaveStore->>API: PUT /api/chapters/{id} (带 version)
+    API->>Backend: 请求到达
+    
+    %% 后端处理
+    Backend->>Backend: DB 查询当前 version
+    alt version 匹配 (无冲突)
+        Backend->>Backend: 写入 DB，version + 1
+        Backend-->>API: 200 OK (返回新 version)
+        API-->>SaveStore: 更新成功
+        SaveStore->>DataStore: 同步最新的 version
+        SaveStore->>Cache: removeItem(对应草稿)
+        SaveStore->>SaveStore: 状态流转 -> "已保存"
+    else version 不匹配 (409 冲突)
+        Backend-->>API: 409 Conflict
+        API-->>SaveStore: 抛出异常
+        SaveStore->>SaveStore: 状态流转 -> "保存失败"
+        Note over SaveStore: 保留本地缓存，弹窗等待用户干预
+    end
+```
+
+### 4.3 章节切换时序图
+
+防丢字、防状态错乱的切换流程：
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Sidebar as ChapterSidebar
+    participant SaveStore as useSaveStateStore
+    participant WorkStore as useWorkspaceStore
+    participant Cache as localCache
+    participant Editor as PureTextEditor
+
+    User->>Sidebar: 点击另一个章节 B
+    Sidebar->>SaveStore: 检查当前章节 A 的 saveState
+    
+    alt saveState == '保存中'
+        SaveStore->>SaveStore: debouncedSync.flush() 强制立即执行
+    end
+    
+    alt saveState == '保存失败' 且 处于离线/冲突状态
+        SaveStore->>Cache: 检查章节 A 是否有 draft
+        alt 没有 draft
+            SaveStore-->>Sidebar: 阻断切换，提示保存异常
+        end
+    end
+    
+    Note over Sidebar, SaveStore: 状态检查通过
+    
+    Sidebar->>WorkStore: 保存章节 A 的 cursor/scroll 到 Session
+    WorkStore->>WorkStore: debouncedSaveSession.flush()
+    
+    Sidebar->>WorkStore: activeChapterId = B
+    Note over Sidebar: 触发章节 B 的加载 (API 请求或缓存读取)
+    
+    Sidebar->>Editor: 渲染章节 B 的内容
+    Editor->>WorkStore: 读取章节 B 的 cursor/scroll
+    WorkStore-->>Editor: 恢复光标与滚动条高度
+```
 
 ---
 
