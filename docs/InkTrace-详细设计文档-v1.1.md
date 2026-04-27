@@ -240,103 +240,100 @@ function enforceCacheQuota(newPayloadSize) {
 }
 ```
 
-### 3.2 保存状态机与同步逻辑 (`stores/chapterStore.js`)
+### 3.2 状态管理与 Store 边界划分 (Pinia)
 
-处理防抖保存、乐观锁冲突和离线回放。
+为避免单一 Store 臃肿导致数据混乱，严格按照职责拆分为三个独立的 Store：
+
+1. **`useWorkspaceStore`**：管理当前编辑上下文（作品 ID、激活章节 ID、光标位置等 EditSession 数据）。
+2. **`useChapterDataStore`**：管理章节数据列表与缓存（负责读写数据）。
+3. **`useSaveStateStore`**：专门管理保存状态机（`已保存` / `保存中` / `保存失败` / `离线`）。
+
+#### 3.2.1 离线草稿回放逻辑 (`useSaveStateStore` 内部)
+
+修复隐患：采用按时间戳排序的**串行回放**，避免瞬间并发打爆接口，保证数据恢复顺序的确定性。
+
+```javascript
+import { defineStore } from 'pinia'
+import api from '@/api'
+
+export const useSaveStateStore = defineStore('saveState', {
+  state: () => ({
+    saveState: '已保存',
+    isOffline: !navigator.onLine
+  }),
+  actions: {
+    async replayOfflineDrafts() {
+        if (this.isOffline) return;
+        
+        // 1. 收集并按时间戳排序
+        const drafts = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key.startsWith('inktrace_draft_')) {
+                try {
+                    const draft = JSON.parse(localStorage.getItem(key));
+                    drafts.push({ key, chapterId: key.replace('inktrace_draft_', ''), ...draft });
+                } catch(e) {}
+            }
+        }
+        drafts.sort((a, b) => a.timestamp - b.timestamp);
+
+        // 2. 串行回放，避免打爆接口并保证顺序
+        for (const draft of drafts) {
+            try {
+                await api.put(`/api/chapters/${draft.chapterId}`, {
+                    title: draft.title,
+                    content: draft.content,
+                    version: draft.version
+                });
+                // 回放成功，清除缓存
+                localStorage.removeItem(draft.key);
+            } catch (error) {
+                console.error(`Replay failed for ${draft.chapterId}`, error);
+                // 遇到冲突 (409) 时跳过，保留缓存交由用户后续决策
+            }
+        }
+    }
+  }
+})
+```
+
+#### 3.2.2 EditSession 机制与上下文管理 (`useWorkspaceStore`)
+
+满足 `R-EDIT-01`：实时记录光标与滚动位置，在重新打开或多标签页切换时准确恢复。
 
 ```javascript
 import { defineStore } from 'pinia'
 import debounce from 'lodash/debounce'
-import { saveLocalDraft } from '@/utils/localCache'
-import api from '@/api' // 封装了 axios 的请求实例
+import api from '@/api'
 
-export const useChapterStore = defineStore('chapter', {
+export const useWorkspaceStore = defineStore('workspace', {
   state: () => ({
-    activeChapter: null, // { id, title, content, version, wordCount }
-    saveState: '已保存',  // '已保存' | '保存中' | '保存失败'
-    isOffline: !navigator.onLine
+    activeWorkId: null,
+    activeChapterId: null,
+    cursorPosition: 0,
+    scrollTop: 0
   }),
-  
   actions: {
-    // 每次输入触发此方法
-    handleInput(title, content) {
-        this.activeChapter.title = title;
-        this.activeChapter.content = content;
-        this.saveState = '保存中';
-        
-        // 1. 立即写入本地草稿 (Local-First)
-        saveLocalDraft(this.activeChapter.id, {
-            title,
-            content,
-            version: this.activeChapter.version // 记录基于哪个版本修改的
-        });
-        
-        // 2. 触发防抖 API 请求
-        this.debouncedSync();
-    },
-    
-    // 防抖 2 秒同步到远端
-    debouncedSync: debounce(async function() {
-        if (this.isOffline) {
-            this.saveState = '保存失败'; // 离线仅写本地
-            return;
-        }
+    // 监听编辑器滚动与光标变化，防抖记录到远端（或本地会话缓存）
+    debouncedSaveSession: debounce(async function() {
+        if (!this.activeWorkId) return;
         
         try {
-            const res = await api.put(`/api/chapters/${this.activeChapter.id}`, {
-                title: this.activeChapter.title,
-                content: this.activeChapter.content,
-                version: this.activeChapter.version
+            await api.put(`/api/works/${this.activeWorkId}/session`, {
+                last_open_chapter_id: this.activeChapterId,
+                cursor_position: this.cursorPosition,
+                scroll_top: this.scrollTop
             });
-            
-            // 同步成功：更新本地版本号，清除草稿，更新状态
-            this.activeChapter.version = res.data.version;
-            localStorage.removeItem(`inktrace_draft_${this.activeChapter.id}`);
-            this.saveState = '已保存';
-            
         } catch (error) {
-            this.saveState = '保存失败';
-            
-            // 处理乐观锁冲突 (409)
-            if (error.response && error.response.status === 409) {
-                // 触发 UI 提示冲突，等待用户决策
-                this.handleVersionConflict(error.response.data.server_version);
-            }
+            console.error("Failed to save session", error);
         }
-    }, 2000),
-    
-    // 处理版本冲突
-    handleVersionConflict(serverVersion) {
-        // 在 UI 层面弹窗或显示通知
-        // 如果用户选择覆盖：
-        // 1. this.activeChapter.version = serverVersion
-        // 2. 发起请求携带 force_override = true
-    },
-    
-    // 网络恢复时的回放逻辑
-    async replayOfflineDrafts() {
-        if (this.isOffline) return;
-        
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key.startsWith('inktrace_draft_')) {
-                const chapterId = key.replace('inktrace_draft_', '');
-                const draft = JSON.parse(localStorage.getItem(key));
-                
-                try {
-                    const res = await api.put(`/api/chapters/${chapterId}`, {
-                        title: draft.title,
-                        content: draft.content,
-                        version: draft.version
-                    });
-                    // 回放成功，清除缓存
-                    localStorage.removeItem(key);
-                } catch (error) {
-                    // 回放冲突或失败，保留缓存
-                    console.error(`Replay failed for ${chapterId}`, error);
-                }
-            }
-        }
+    }, 1000),
+
+    updateCursorAndScroll(position, scroll) {
+        this.cursorPosition = position;
+        this.scrollTop = scroll;
+        this.debouncedSaveSession();
     }
   }
 })
