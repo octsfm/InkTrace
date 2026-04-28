@@ -9,11 +9,10 @@ Novel聚合根模块
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from domain.types import NovelId, ChapterId, CharacterId, OutlineId
 from domain.entities.chapter import Chapter
-from domain.entities.character import Character
 from domain.entities.outline import Outline
 
 
@@ -35,7 +34,7 @@ class Novel:
     updated_at: datetime
     current_word_count: int = 0
     chapters: List[Chapter] = field(default_factory=list)
-    characters: List[Character] = field(default_factory=list)
+    characters: List[Any] = field(default_factory=list)
     outline: Optional[Outline] = None
 
     @property
@@ -110,7 +109,7 @@ class Novel:
         sorted_chapters = sorted(self.chapters, key=lambda c: c.number, reverse=True)
         return sorted_chapters[:count]
 
-    def add_character(self, character: Character, updated_at: datetime) -> None:
+    def add_character(self, character: Any, updated_at: datetime) -> None:
         """
 # 文件：模块：novel
 
@@ -126,7 +125,7 @@ class Novel:
         self.characters.append(character)
         self.updated_at = updated_at
 
-    def get_character(self, character_id: CharacterId) -> Optional[Character]:
+    def get_character(self, character_id: CharacterId) -> Optional[Any]:
         """
 # 文件：模块：novel
 
@@ -143,7 +142,7 @@ class Novel:
                 return character
         return None
 
-    def get_protagonist(self) -> Optional[Character]:
+    def get_protagonist(self) -> Optional[Any]:
         """
 # 文件：模块：novel
 
@@ -153,7 +152,7 @@ class Novel:
             主角实体，不存在则返回None
         """
         for character in self.characters:
-            if character.is_protagonist:
+            if getattr(character, "is_protagonist", False):
                 return character
         return None
 

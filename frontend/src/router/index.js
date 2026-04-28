@@ -4,40 +4,35 @@ const routes = [
   {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
-    redirect: '/novels', // Make NovelList the Dashboard
+    redirect: '/works',
     children: [
       {
-        path: 'novels',
-        name: 'NovelList',
+        path: 'works',
+        name: 'WorksList',
         component: () => import('@/views/novel/NovelList.vue'),
-        meta: { title: '小说工作台' } // Rename to reflect dashboard
-      },
-      {
-        path: 'import',
-        name: 'NovelImport',
-        component: () => import('@/views/novel/NovelImport.vue'),
-        meta: { title: '导入小说' }
-      },
-      {
-        path: 'config',
-        name: 'LLMConfig',
-        component: () => import('@/views/config/LLMConfig.vue'),
-        meta: { title: '模型配置' }
+        meta: { title: '书架' }
       }
     ]
   },
   {
-    // The Workspace is a top-level route because it has its own layout (4-column layout)
-    // and should not be wrapped by MainLayout.vue
-    path: '/novel/:id',
+    path: '/works/:id',
     name: 'NovelWorkspace',
     component: () => import('@/views/workspace/NovelWorkspace.vue'),
-    meta: { title: '小说工作区' }
+    meta: { title: '写作页' }
+  },
+  {
+    path: '/novel/:id',
+    redirect: (to) => ({
+      path: `/works/${to.params.id}`,
+      query: {
+        ...to.query
+      }
+    })
   },
   {
     path: '/novel/:id/write',
     redirect: (to) => ({
-      path: `/novel/${to.params.id}`,
+      path: `/works/${to.params.id}`,
       query: {
         ...to.query,
         section: 'writing'
@@ -47,7 +42,7 @@ const routes = [
   {
     path: '/novel/:id/chapters/:chapterId/edit',
     redirect: (to) => ({
-      path: `/novel/${to.params.id}`,
+      path: `/works/${to.params.id}`,
       query: {
         ...to.query,
         section: 'writing',

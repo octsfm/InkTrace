@@ -358,7 +358,7 @@ const handleImport = async () => {
         target_word_count: form.target_word_count
       })
       ElMessage.success('空白小说创建成功')
-      router.push(`/novel/${created.id}`)
+      router.push(`/works/${created.id}`)
       return
     }
     if (!window.electronAPI && !form.selectedFile) {
@@ -531,7 +531,7 @@ const retryOrganize = async () => {
 
 const goToDetail = () => {
   if (!createdNovelId.value) return
-  router.push(`/novel/${createdNovelId.value}`)
+  router.push(`/works/${createdNovelId.value}`)
 }
 
 onBeforeUnmount(() => {

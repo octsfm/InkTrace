@@ -16,37 +16,16 @@
           <button
             type="button"
             class="nav-link"
-            :class="{ active: $route.path === '/novels' }"
-            @click="$router.push('/novels')"
+            :class="{ active: $route.path === '/works' }"
+            @click="$router.push('/works')"
           >
-            工作台
-          </button>
-          <button
-            type="button"
-            class="nav-link"
-            :class="{ active: $route.path === '/import' }"
-            @click="$router.push('/import')"
-          >
-            导入
-          </button>
-          <button
-            type="button"
-            class="nav-link"
-            :class="{ active: $route.path === '/config' }"
-            @click="$router.push('/config')"
-          >
-            配置
+            书架
           </button>
         </nav>
 
         <div class="header-right">
-          <el-button plain @click="$router.push('/config')">
-            <el-icon><Setting /></el-icon>
-            模型配置
-          </el-button>
-          <el-button type="primary" @click="$router.push('/import')">
-            <el-icon><Plus /></el-icon>
-            新建 / 导入小说
+          <el-button type="primary" @click="$router.push('/works')">
+            返回书架
           </el-button>
         </div>
       </div>
@@ -63,7 +42,7 @@
 </template>
 
 <script setup>
-import { Edit, Plus, Setting } from '@element-plus/icons-vue'
+import { Edit } from '@element-plus/icons-vue'
 </script>
 
 <style scoped>

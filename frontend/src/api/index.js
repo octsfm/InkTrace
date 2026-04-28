@@ -22,8 +22,18 @@ const baseURL = isElectron
   ? `http://localhost:${electronPort}/api`
   : '/api'
 
+const v1BaseURL = `${baseURL}/v1`
+
 const api = axios.create({
   baseURL,
+  timeout: 120000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+})
+
+const v1Api = axios.create({
+  baseURL: v1BaseURL,
   timeout: 120000,
   headers: {
     'Content-Type': 'application/json'
@@ -49,14 +59,6 @@ const appendBatchSizeQuery = (basePath, batchSizeChapters) => {
   }
   return `${basePath}&batch_size_chapters=${encodeURIComponent(size)}`
 }
-
-api.interceptors.request.use((config) => {
-  const requestId = buildRequestId()
-  config.headers = config.headers || {}
-  config.headers['X-Request-Id'] = requestId
-  config.metadata = { ...(config.metadata || {}), requestId }
-  return config
-})
 
 const ERROR_MESSAGE_MAP = {
   NOVEL_NOT_FOUND: '未找到对应作品，请先创建或导入。',
@@ -108,22 +110,39 @@ const resolveErrorMessage = (error) => {
   return error.message || '请求失败'
 }
 
-api.interceptors.response.use(
-  (response) => response.data,
-  (error) => {
-    if (isCanceledError(error)) {
+const attachInterceptors = (client) => {
+  client.interceptors.request.use((config) => {
+    const requestId = buildRequestId()
+    config.headers = config.headers || {}
+    config.headers['X-Request-Id'] = requestId
+    config.metadata = { ...(config.metadata || {}), requestId }
+    return config
+  })
+
+  client.interceptors.response.use(
+    (response) => response.data,
+    (error) => {
+      if (isCanceledError(error)) {
+        return Promise.reject(error)
+      }
+      const responseRequestId = error?.response?.headers?.['x-request-id']
+      const requestId = responseRequestId || error?.config?.metadata?.requestId || ''
+      const message = resolveErrorMessage(error)
+      if (requestId) {
+        console.error('请求失败 request_id:', requestId)
+      }
+      if (error?.response?.status === 409) {
+        error.userMessage = message
+        return Promise.reject(error)
+      }
+      ElMessage.error(message)
       return Promise.reject(error)
     }
-    const responseRequestId = error?.response?.headers?.['x-request-id']
-    const requestId = responseRequestId || error?.config?.metadata?.requestId || ''
-    const message = resolveErrorMessage(error)
-    if (requestId) {
-      console.error('请求失败 request_id:', requestId)
-    }
-    ElMessage.error(message)
-    return Promise.reject(error)
-  }
-)
+  )
+}
+
+attachInterceptors(api)
+attachInterceptors(v1Api)
 
 export const novelApi = {
   list: () => api.get('/novels/'),
@@ -319,6 +338,32 @@ export const chapterEditorApi = {
     { timeout: 0 }
   ),
   generateFromOutline: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/generate-from-outline`, buildChapterAIRequest(chapterId, 'generate-from-outline', data), { timeout: 0 })
+}
+
+export const v1WorksApi = {
+  list: () => v1Api.get('/works'),
+  create: (data) => v1Api.post('/works', data),
+  get: (id) => v1Api.get(`/works/${id}`),
+  delete: (id) => v1Api.delete(`/works/${id}`)
+}
+
+export const v1ChaptersApi = {
+  list: (workId) => v1Api.get(`/works/${workId}/chapters`).then((data) => data?.items ?? []),
+  create: (workId, data) => v1Api.post(`/works/${workId}/chapters`, data),
+  update: (chapterId, data) => v1Api.put(`/chapters/${chapterId}`, data),
+  forceOverride: (chapterId, data) => v1Api.put(`/chapters/${chapterId}`, { ...data, force_override: true }),
+  delete: (chapterId) => v1Api.delete(`/chapters/${chapterId}`),
+  reorder: (workId, chapterIds) => v1Api.put(`/works/${workId}/chapters/reorder`, { chapter_ids: chapterIds })
+}
+
+export const v1SessionsApi = {
+  get: (workId) => v1Api.get(`/works/${workId}/session`),
+  save: (workId, data) => v1Api.put(`/works/${workId}/session`, data)
+}
+
+export const v1IOApi = {
+  importTxt: (data) => v1Api.post('/io/import', data),
+  exportTxt: (workId, params = {}) => v1Api.get(`/io/export/${workId}`, { params })
 }
 
 export default api

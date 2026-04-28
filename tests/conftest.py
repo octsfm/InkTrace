@@ -4,7 +4,6 @@ import pytest
 
 from presentation.api import dependencies
 from presentation.api.app import app
-from presentation.api.routers import content
 
 
 def _clear_dependency_caches() -> None:
@@ -12,17 +11,6 @@ def _clear_dependency_caches() -> None:
         cache_clear = getattr(value, "cache_clear", None)
         if callable(cache_clear):
             cache_clear()
-
-
-def _reset_organize_runtime() -> None:
-    for task in list(content.ACTIVE_ORGANIZE_TASKS.values()):
-        cancel = getattr(task, "cancel", None)
-        done = getattr(task, "done", None)
-        if callable(cancel) and callable(done) and not done():
-            cancel()
-    content.ACTIVE_ORGANIZE_TASKS.clear()
-    content.PROGRESS_CACHE.clear()
-    content.ORGANIZE_LOCKS.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -38,11 +26,9 @@ def isolate_app_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(dependencies, "CHROMA_DIR", str(chroma_dir), raising=False)
 
     app.dependency_overrides.clear()
-    _reset_organize_runtime()
     _clear_dependency_caches()
 
     yield
 
     app.dependency_overrides.clear()
-    _reset_organize_runtime()
     _clear_dependency_caches()

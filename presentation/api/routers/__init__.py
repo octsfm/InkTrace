@@ -8,6 +8,6 @@ API路由模块
 # 文件路径：presentation/api/routers/__init__.py
 
 
-from presentation.api.routers import novel, content, writing, export
+from presentation.api.routers.v1 import works, chapters, sessions, io
 
-__all__ = ['novel', 'content', 'writing', 'export']
+__all__ = ["works", "chapters", "sessions", "io"]

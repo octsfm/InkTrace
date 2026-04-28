@@ -50,7 +50,7 @@ class TxtParser:
         for pattern_str in self.CHAPTER_PATTERNS:
             flags = re.MULTILINE | (re.IGNORECASE if "chapter" in pattern_str.lower() else 0)
             matches = re.findall(pattern_str, content, flags)
-            if len(matches) >= 2:
+            if len(matches) >= 1:
                 return re.compile(pattern_str, flags)
         return None
 
@@ -88,33 +88,16 @@ class TxtParser:
             chapters = self.parse_chapters(filepath)
             return {"intro": intro, "chapters": chapters}
 
-        sections = self.extract_sections(content)
-        if len(sections) >= 2:
-            return {
-                "intro": "",
-                "chapters": [
-                    {
-                        "number": index,
-                        "title": section["title"],
-                        "content": section["content"],
-                        "word_count": self.count_words(section["content"]),
-                    }
-                    for index, section in enumerate(sections, 1)
-                ],
-            }
-
-        fallback_title = Path(filepath).stem or "正文"
+        fallback_title = "全本导入"
         fallback_content = content.strip()
-        chapters = []
-        if fallback_content:
-            chapters.append(
-                {
-                    "number": 1,
-                    "title": fallback_title,
-                    "content": fallback_content,
-                    "word_count": self.count_words(fallback_content),
-                }
-            )
+        chapters = [
+            {
+                "number": 1,
+                "title": fallback_title,
+                "content": fallback_content,
+                "word_count": self.count_words(fallback_content),
+            }
+        ]
         return {"intro": "", "chapters": chapters}
 
     def parse_outline_file(self, filepath: str) -> Dict:

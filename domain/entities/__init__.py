@@ -9,16 +9,17 @@
 
 
 from domain.entities.chapter import Chapter
-from domain.entities.character import Character, CharacterRelationship
+from domain.entities.edit_session import EditSession
 from domain.entities.outline import Outline, VolumeOutline, PlotNode
 from domain.entities.novel import Novel
+from domain.entities.work import Work
 
 __all__ = [
-    'Chapter', 
-    'Character', 
-    'CharacterRelationship',
+    'Chapter',
+    'EditSession',
     'Outline',
     'VolumeOutline',
     'PlotNode',
-    'Novel'
+    'Novel',
+    'Work'
 ]

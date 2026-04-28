@@ -8,14 +8,4 @@
 # 文件路径：infrastructure/persistence/__init__.py
 
 
-from infrastructure.persistence.sqlite_novel_repo import SQLiteNovelRepository
-from infrastructure.persistence.sqlite_chapter_repo import SQLiteChapterRepository
-from infrastructure.persistence.sqlite_character_repo import SQLiteCharacterRepository
-from infrastructure.persistence.sqlite_outline_repo import SQLiteOutlineRepository
-
-__all__ = [
-    'SQLiteNovelRepository',
-    'SQLiteChapterRepository',
-    'SQLiteCharacterRepository',
-    'SQLiteOutlineRepository'
-]
+__all__ = []

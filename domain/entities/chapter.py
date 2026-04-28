@@ -32,6 +32,8 @@ class Chapter:
     status: ChapterStatus
     created_at: datetime
     updated_at: datetime
+    order_index: int = 0
+    version: int = 1
     summary: str = ""
     characters_involved: List[str] = field(default_factory=list)
 
@@ -59,6 +61,7 @@ class Chapter:
 
         self.content = new_content
         self.updated_at = updated_at
+        self.version += 1
 
     def update_title(self, new_title: str, updated_at: datetime) -> None:
         """
@@ -71,6 +74,11 @@ class Chapter:
 # 文件：模块：chapter
 
         self.title = new_title
+        self.updated_at = updated_at
+        self.version += 1
+
+    def move_to(self, order_index: int, updated_at: datetime) -> None:
+        self.order_index = max(0, int(order_index))
         self.updated_at = updated_at
 
     def publish(self, published_at: datetime) -> None:

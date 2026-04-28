@@ -32,10 +32,7 @@ from application.services.runtime_metrics_service import (
 )
 from infrastructure.persistence.sqlite_utils import get_sqlite_metrics_snapshot
 from presentation.api.dependencies import warmup_singletons_for_startup
-from presentation.api.routers import novel, content, writing, export, chapter_editor
-from presentation.api.routers import project, template, character, worldview
-from presentation.api.routers import vector, rag, config
-from presentation.api.routers import projects_v2
+from presentation.api.routers.v1 import works as works_v1, chapters as chapters_v1, sessions as sessions_v1, io as io_v1
 
 logger = get_logger(__name__)
 APP_VERSION = "3.0.0"
@@ -150,26 +147,10 @@ def create_app() -> FastAPI:
         finally:
             reset_request_id(token)
     
-    # 一期路由
-    app.include_router(novel.router)
-    app.include_router(content.router)
-    app.include_router(writing.router)
-    app.include_router(export.router, prefix="/api")
-    app.include_router(chapter_editor.router)
-    
-    # 二期路由
-    app.include_router(project.router)
-    app.include_router(template.router)
-    app.include_router(character.router)
-    app.include_router(worldview.router)
-    
-    # 三期路由
-    app.include_router(vector.router)
-    app.include_router(rag.router)
-    
-    # 配置管理路由
-    app.include_router(config.router)
-    app.include_router(projects_v2.router)
+    app.include_router(works_v1.router)
+    app.include_router(chapters_v1.router)
+    app.include_router(sessions_v1.router)
+    app.include_router(io_v1.router)
     logger.info("路由加载完成", extra=build_log_context(event="app_router_registered", module="app", version=APP_VERSION))
 
     @app.exception_handler(FastAPIHTTPException)
