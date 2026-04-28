@@ -42,6 +42,9 @@
             :loading="chaptersLoading"
             @select="handleSelectChapter"
             @create="handleCreateChapter"
+            @rename="handleRenameChapter"
+            @delete="handleDeleteChapter"
+            @reorder="handleReorderChapters"
           />
         </div>
       </aside>
@@ -197,6 +200,14 @@ const clearCachedDraft = (chapterId) => {
 const clearConflictState = () => {
   conflictModalVisible.value = false
   conflictPayload.value = null
+}
+
+const blockSidebarMutation = () => {
+  if (saveStateStore.saveStatus === 'saving') {
+    ElMessage.warning('正在同步数据，请稍候...')
+    return true
+  }
+  return false
 }
 
 const clearRetryTimer = () => {
@@ -575,8 +586,82 @@ const handleScrollChange = ({ scrollTop = 0 } = {}) => {
   scheduleSessionSave()
 }
 
-const handleCreateChapter = () => {
-  ElMessage.warning('新建章节将在下一步接入到章节侧栏。')
+const handleCreateChapter = async () => {
+  if (!workId.value || blockSidebarMutation()) return
+  try {
+    const createdChapter = await v1ChaptersApi.create(workId.value, {
+      title: '',
+      after_chapter_id: String(chapterDataStore.activeChapterId || '')
+    })
+    const chapters = await refreshChapters()
+    const nextChapterId = String(createdChapter?.id || chapters.at(-1)?.id || '')
+    if (nextChapterId) {
+      await activateChapter(nextChapterId)
+    }
+    ElMessage.success('已新建章节。')
+  } catch (error) {
+    console.error('新建章节失败:', error)
+  }
+}
+
+const handleRenameChapter = async ({ chapterId = '', title = '' } = {}) => {
+  const id = String(chapterId || '')
+  const nextTitle = String(title || '').trim()
+  if (!id || !nextTitle || blockSidebarMutation()) return
+  const chapter = chapterDataStore.chapters.find((item) => item.id === id)
+  if (!chapter || nextTitle === String(chapter.title || '').trim()) return
+  try {
+    const savedChapter = await v1ChaptersApi.update(id, {
+      title: nextTitle,
+      expected_version: Number(chapter.version || 0)
+    })
+    chapterDataStore.upsertChapter(savedChapter)
+    ElMessage.success('章节标题已更新。')
+  } catch (error) {
+    console.error('重命名章节失败:', error)
+  }
+}
+
+const handleDeleteChapter = async (chapterId) => {
+  const id = String(chapterId || '')
+  if (!id || blockSidebarMutation()) return
+  if (!window.confirm('确认删除该章节吗？')) return
+  const wasActive = id === chapterDataStore.activeChapterId
+  const nextActiveIdFallback = wasActive
+    ? ''
+    : String(chapterDataStore.activeChapterId || '')
+  try {
+    const result = await v1ChaptersApi.delete(id)
+    pendingChapterId.value = pendingChapterId.value === id ? '' : pendingChapterId.value
+    saveStateStore.removeDraft(id)
+    chapterDataStore.clearChapterDraft(id)
+    clearCachedDraft(id)
+    const chapters = await refreshChapters()
+    const nextChapterId = wasActive
+      ? String(result?.next_chapter_id || chapters[0]?.id || '')
+      : nextActiveIdFallback
+    if (nextChapterId) {
+      await activateChapter(nextChapterId)
+    } else {
+      chapterDataStore.setActiveChapter('')
+      workspaceStore.setLastOpenChapter('')
+    }
+    ElMessage.success('章节已删除。')
+  } catch (error) {
+    console.error('删除章节失败:', error)
+  }
+}
+
+const handleReorderChapters = async (chapterIds) => {
+  const orderedIds = Array.isArray(chapterIds) ? chapterIds.map((item) => String(item || '')).filter(Boolean) : []
+  if (!workId.value || orderedIds.length !== chapterDataStore.chapters.length || blockSidebarMutation()) return
+  try {
+    const response = await v1ChaptersApi.reorder(workId.value, orderedIds)
+    chapterDataStore.setChapters(response?.items || [])
+    ElMessage.success('章节顺序已更新。')
+  } catch (error) {
+    console.error('调序章节失败:', error)
+  }
 }
 
 const handleConflictDiscard = async () => {

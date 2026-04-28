@@ -10,8 +10,11 @@ import { useSaveStateStore } from '@/stores/useSaveStateStore'
 
 const mockPush = vi.fn()
 const mockListChapters = vi.fn()
+const mockCreateChapter = vi.fn()
 const mockUpdateChapter = vi.fn()
 const mockForceOverrideChapter = vi.fn()
+const mockDeleteChapter = vi.fn()
+const mockReorderChapters = vi.fn()
 const mockGetSession = vi.fn()
 const mockSaveSession = vi.fn()
 const mockLocalCacheGet = vi.fn()
@@ -33,8 +36,11 @@ vi.mock('vue-router', () => ({
 vi.mock('@/api', () => ({
   v1ChaptersApi: {
     list: (...args) => mockListChapters(...args),
+    create: (...args) => mockCreateChapter(...args),
     update: (...args) => mockUpdateChapter(...args),
-    forceOverride: (...args) => mockForceOverrideChapter(...args)
+    forceOverride: (...args) => mockForceOverrideChapter(...args),
+    delete: (...args) => mockDeleteChapter(...args),
+    reorder: (...args) => mockReorderChapters(...args)
   },
   v1SessionsApi: {
     get: (...args) => mockGetSession(...args),
@@ -67,8 +73,11 @@ describe('NovelWorkspace', () => {
     setActivePinia(createPinia())
     mockPush.mockReset()
     mockListChapters.mockReset()
+    mockCreateChapter.mockReset()
     mockUpdateChapter.mockReset()
     mockForceOverrideChapter.mockReset()
+    mockDeleteChapter.mockReset()
+    mockReorderChapters.mockReset()
     mockGetSession.mockReset()
     mockSaveSession.mockReset()
     mockLocalCacheGet.mockReset()
@@ -82,11 +91,19 @@ describe('NovelWorkspace', () => {
       { id: 'ch-1', title: '第一章', content: '第一章内容', word_count: 1200, version: 1 },
       { id: 'ch-2', title: '第二章', content: '第二章内容', word_count: 1600, version: 2 }
     ])
+    mockCreateChapter.mockResolvedValue({
+      id: 'ch-3',
+      title: '',
+      content: '',
+      word_count: 0,
+      version: 1,
+      updated_at: '2026-04-28T18:00:04.000Z'
+    })
     mockUpdateChapter.mockImplementation(async (chapterId, payload) => ({
       id: chapterId,
-      title: chapterId === 'ch-1' ? '第一章' : '第二章',
-      content: payload.content,
-      word_count: String(payload.content || '').length,
+      title: payload.title ?? (chapterId === 'ch-1' ? '第一章' : '第二章'),
+      content: payload.content ?? (chapterId === 'ch-1' ? '第一章内容' : '第二章内容'),
+      word_count: String(payload.content ?? (chapterId === 'ch-1' ? '第一章内容' : '第二章内容')).length,
       version: chapterId === 'ch-1' ? 2 : 3,
       updated_at: '2026-04-28T18:00:02.000Z'
     }))
@@ -97,6 +114,23 @@ describe('NovelWorkspace', () => {
       word_count: String(payload.content || '').length,
       version: chapterId === 'ch-1' ? 2 : 3,
       updated_at: '2026-04-28T18:00:03.000Z'
+    }))
+    mockDeleteChapter.mockResolvedValue({
+      ok: true,
+      id: 'ch-2',
+      next_chapter_id: 'ch-1'
+    })
+    mockReorderChapters.mockImplementation(async (workId, chapterIds) => ({
+      work_id: workId,
+      items: chapterIds.map((id, index) => ({
+        id,
+        title: id === 'ch-1' ? '第一章' : id === 'ch-2' ? '第二章' : '第三章',
+        content: id === 'ch-1' ? '第一章内容' : id === 'ch-2' ? '第二章内容' : '',
+        word_count: id === 'ch-1' ? 1200 : id === 'ch-2' ? 1600 : 0,
+        version: index + 1,
+        order_index: index + 1
+      })),
+      total: chapterIds.length
     }))
     mockGetSession.mockResolvedValue({
       last_open_chapter_id: 'ch-2',
@@ -112,6 +146,7 @@ describe('NovelWorkspace', () => {
     vi.stubGlobal('navigator', {
       onLine: true
     })
+    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
   afterEach(() => {
@@ -205,6 +240,125 @@ describe('NovelWorkspace', () => {
     expect(workspaceStore.scrollTop).toBe(88)
   })
 
+  it('creates a chapter after the active chapter and activates it', async () => {
+    mockListChapters
+      .mockResolvedValueOnce([
+        { id: 'ch-1', title: '第一章', content: '第一章内容', word_count: 1200, version: 1 },
+        { id: 'ch-2', title: '第二章', content: '第二章内容', word_count: 1600, version: 2 }
+      ])
+      .mockResolvedValueOnce([
+        { id: 'ch-1', title: '第一章', content: '第一章内容', word_count: 1200, version: 1 },
+        { id: 'ch-2', title: '第二章', content: '第二章内容', word_count: 1600, version: 2 },
+        { id: 'ch-3', title: '', content: '', word_count: 0, version: 1 }
+      ])
+
+    const wrapper = mount(NovelWorkspace, {
+      global: {
+        stubs: {
+          'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
+        }
+      }
+    })
+    await flushPromises()
+    await vi.runAllTimersAsync()
+    await flushPromises()
+
+    await wrapper.find('.add-button').trigger('click')
+    await flushPromises()
+
+    expect(mockCreateChapter).toHaveBeenCalledWith('work-1', {
+      title: '',
+      after_chapter_id: 'ch-2'
+    })
+    expect(wrapper.find('textarea').element.value).toBe('')
+    expect(ElMessage.success).toHaveBeenCalledWith('已新建章节。')
+  })
+
+  it('renames chapter from sidebar and updates the list', async () => {
+    const wrapper = mount(NovelWorkspace, {
+      global: {
+        stubs: {
+          'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
+        }
+      }
+    })
+    await flushPromises()
+    await vi.runAllTimersAsync()
+    await flushPromises()
+
+    const firstItem = wrapper.findAll('.chapter-item')[0]
+    await firstItem.find('.chapter-action-button').trigger('click')
+    const input = firstItem.find('.chapter-rename-input')
+    await input.setValue('第一章·修订')
+    await input.trigger('blur')
+    await flushPromises()
+
+    expect(mockUpdateChapter).toHaveBeenCalledWith('ch-1', {
+      title: '第一章·修订',
+      expected_version: 1
+    })
+    expect(wrapper.text()).toContain('第一章·修订')
+  })
+
+  it('deletes chapter from sidebar and falls back to the next focus', async () => {
+    mockListChapters
+      .mockResolvedValueOnce([
+        { id: 'ch-1', title: '第一章', content: '第一章内容', word_count: 1200, version: 1 },
+        { id: 'ch-2', title: '第二章', content: '第二章内容', word_count: 1600, version: 2 }
+      ])
+      .mockResolvedValueOnce([
+        { id: 'ch-1', title: '第一章', content: '第一章内容', word_count: 1200, version: 1 }
+      ])
+
+    const wrapper = mount(NovelWorkspace, {
+      global: {
+        stubs: {
+          'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
+        }
+      }
+    })
+    await flushPromises()
+    await vi.runAllTimersAsync()
+    await flushPromises()
+
+    const activeItem = wrapper.findAll('.chapter-item')[1]
+    await activeItem.find('.chapter-action-button.danger').trigger('click')
+    await flushPromises()
+
+    expect(mockDeleteChapter).toHaveBeenCalledWith('ch-2')
+    expect(wrapper.find('textarea').element.value).toBe('第一章内容')
+    expect(ElMessage.success).toHaveBeenCalledWith('章节已删除。')
+  })
+
+  it('reorders chapters from sidebar drag and drop', async () => {
+    const wrapper = mount(NovelWorkspace, {
+      global: {
+        stubs: {
+          'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
+        }
+      }
+    })
+    await flushPromises()
+    await vi.runAllTimersAsync()
+    await flushPromises()
+
+    const items = wrapper.findAll('.chapter-item')
+    const dataTransfer = {
+      setData: () => {},
+      effectAllowed: 'move'
+    }
+
+    await items[1].trigger('dragstart', { dataTransfer })
+    await items[0].trigger('dragover', {
+      preventDefault: () => {}
+    })
+    await items[0].trigger('drop')
+    await flushPromises()
+
+    expect(mockReorderChapters).toHaveBeenCalledWith('work-1', ['ch-2', 'ch-1'])
+    expect(wrapper.findAll('.chapter-title')[0].text()).toContain('第二章')
+  })
+
   it('updates status bar when save state changes', async () => {
     const wrapper = mount(NovelWorkspace, {
       global: {
@@ -278,7 +432,7 @@ describe('NovelWorkspace', () => {
     const saveStateStore = useSaveStateStore()
 
     saveStateStore.markSaving()
-    await wrapper.findAll('.chapter-item')[0].trigger('click')
+    await wrapper.findAll('.chapter-select-button')[0].trigger('click')
 
     expect(chapterDataStore.activeChapterId).toBe('ch-2')
     expect(ElMessage.warning).toHaveBeenCalledWith('正在同步数据，请稍候...')
@@ -429,7 +583,7 @@ describe('NovelWorkspace', () => {
     const textarea = wrapper.find('textarea')
 
     await textarea.setValue(overLimitContent)
-    await wrapper.findAll('.chapter-item')[0].trigger('click')
+    await wrapper.findAll('.chapter-select-button')[0].trigger('click')
 
     expect(chapterDataStore.activeChapterId).toBe('ch-2')
     expect(wrapper.text()).toContain('当前章节已超过 20 万有效字符')

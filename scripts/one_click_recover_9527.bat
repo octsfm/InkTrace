@@ -24,7 +24,7 @@ start "" /b python main.py 1>".\logs\backend_stdout.log" 2>".\logs\backend_stder
 echo.
 echo [3/3] 等待健康检查并冒烟...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ErrorActionPreference='Stop'; $ok=$false; $deadline=(Get-Date).AddSeconds(45); while((Get-Date)-lt $deadline){ try{ $r=Invoke-RestMethod -Uri 'http://127.0.0.1:9527/health' -TimeoutSec 3 -ErrorAction Stop; if($r.status -eq 'healthy'){ $ok=$true; break } } catch {}; Start-Sleep -Milliseconds 600 }; if(-not $ok){ exit 28 }; Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9527/api/projects' -TimeoutSec 8 -ErrorAction Stop | Out-Null; Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9527/api/novels/' -TimeoutSec 8 -ErrorAction Stop | Out-Null; exit 0"
+  "$ErrorActionPreference='Stop'; $ok=$false; $deadline=(Get-Date).AddSeconds(45); while((Get-Date)-lt $deadline){ try{ $r=Invoke-RestMethod -Uri 'http://127.0.0.1:9527/health' -TimeoutSec 3 -ErrorAction Stop; if($r.status -eq 'healthy'){ $ok=$true; break } } catch {}; Start-Sleep -Milliseconds 600 }; if(-not $ok){ exit 28 }; $works=Invoke-RestMethod -Uri 'http://127.0.0.1:9527/api/v1/works' -TimeoutSec 8 -ErrorAction Stop; if($null -eq $works.items){ exit 29 }; exit 0"
 if %errorlevel% neq 0 (
   echo [ERROR] 后端恢复或冒烟失败，错误码=%errorlevel%
   echo ---- backend stderr tail ----

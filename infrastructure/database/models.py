@@ -49,10 +49,44 @@ INDEX_STATEMENTS = (
 )
 
 
+def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {str(row[1]) for row in rows}
+
+
+def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    return str(column_name) in _table_columns(conn, table_name)
+
+
+def _ensure_legacy_chapters_compat(conn: sqlite3.Connection) -> None:
+    columns = _table_columns(conn, "chapters")
+    if not columns:
+        return
+
+    if "work_id" not in columns and "novel_id" in columns:
+        conn.execute("ALTER TABLE chapters ADD COLUMN work_id TEXT")
+        conn.execute("UPDATE chapters SET work_id = novel_id WHERE work_id IS NULL OR work_id = ''")
+
+    if "chapter_number" not in columns and "number" in columns:
+        conn.execute("ALTER TABLE chapters ADD COLUMN chapter_number INTEGER")
+        conn.execute("UPDATE chapters SET chapter_number = number WHERE chapter_number IS NULL")
+
+    if "order_index" not in columns:
+        conn.execute("ALTER TABLE chapters ADD COLUMN order_index INTEGER")
+        if _column_exists(conn, "chapters", "number"):
+            conn.execute("UPDATE chapters SET order_index = number WHERE order_index IS NULL")
+        conn.execute("UPDATE chapters SET order_index = 1 WHERE order_index IS NULL")
+
+    if "version" not in columns:
+        conn.execute("ALTER TABLE chapters ADD COLUMN version INTEGER")
+        conn.execute("UPDATE chapters SET version = 1 WHERE version IS NULL")
+
+
 def initialize_schema(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute(WORKS_TABLE_SQL)
     conn.execute(CHAPTERS_TABLE_SQL)
     conn.execute(EDIT_SESSIONS_TABLE_SQL)
+    _ensure_legacy_chapters_compat(conn)
     for statement in INDEX_STATEMENTS:
         conn.execute(statement)

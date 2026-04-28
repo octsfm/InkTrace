@@ -11,26 +11,68 @@
     <div v-if="loading" class="sidebar-state">正在加载章节...</div>
     <div v-else-if="!chapters.length" class="sidebar-state">当前还没有章节。</div>
     <div v-else class="chapter-list">
-      <button
+      <div
         v-for="chapter in chapters"
         :key="chapter.id"
-        type="button"
         class="chapter-item"
-        :class="{ active: chapter.id === activeChapterId }"
-        @click="$emit('select', chapter.id)"
+        :class="{
+          active: chapter.id === activeChapterId,
+          editing: chapter.id === editingChapterId,
+          dragging: chapter.id === draggingChapterId,
+          'drag-target': chapter.id === dragTargetChapterId
+        }"
+        draggable="true"
+        @dragstart="handleDragStart($event, chapter.id)"
+        @dragover="handleDragOver($event, chapter.id)"
+        @drop="handleDrop(chapter.id)"
+        @dragend="handleDragEnd"
       >
-        <span class="chapter-title">{{ chapter.title || `第${chapter.chapter_number || chapter.number || 0}章` }}</span>
-        <span class="chapter-meta">{{ formatWords(chapter.word_count ?? chapter.current_word_count ?? estimateWords(chapter.content)) }} 字</span>
-      </button>
-    </div>
+        <div class="chapter-item-main">
+          <button
+            v-if="chapter.id !== editingChapterId"
+            type="button"
+            class="chapter-select-button"
+            @click="$emit('select', chapter.id)"
+          >
+            <span class="chapter-title">{{ chapter.title || `第${chapter.chapter_number || chapter.number || 0}章` }}</span>
+            <span class="chapter-meta">{{ formatWords(chapter.word_count ?? chapter.current_word_count ?? estimateWords(chapter.content)) }} 字</span>
+          </button>
+          <form v-else class="chapter-rename-form" @submit.prevent="submitRename(chapter.id)">
+            <input
+              v-model="editingTitle"
+              class="chapter-rename-input"
+              type="text"
+              maxlength="120"
+              @keydown.esc.prevent="cancelRename"
+              @blur="submitRename(chapter.id)"
+            />
+          </form>
+        </div>
 
-    <div class="sidebar-footer">
-      <p>重命名、删除和拖拽排序将在后续步骤接入。</p>
+        <div class="chapter-actions">
+          <button
+            type="button"
+            class="chapter-action-button"
+            @click="startRename(chapter)"
+          >
+            改名
+          </button>
+          <button
+            type="button"
+            class="chapter-action-button danger"
+            @click="$emit('delete', chapter.id)"
+          >
+            删除
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { nextTick, ref } from 'vue'
+
 const props = defineProps({
   chapters: {
     type: Array,
@@ -46,10 +88,91 @@ const props = defineProps({
   }
 })
 
-defineEmits(['select', 'create'])
+const emit = defineEmits(['select', 'create', 'rename', 'delete', 'reorder'])
+
+const editingChapterId = ref('')
+const editingTitle = ref('')
+const draggingChapterId = ref('')
+const dragTargetChapterId = ref('')
 
 const estimateWords = (content) => String(content || '').trim().length
 const formatWords = (value) => Number(value || 0).toLocaleString('zh-CN')
+
+const startRename = async (chapter) => {
+  editingChapterId.value = String(chapter?.id || '')
+  editingTitle.value = String(chapter?.title || '')
+  await nextTick()
+  const target = document.querySelector('.chapter-rename-input')
+  target?.focus?.()
+  target?.select?.()
+}
+
+const cancelRename = () => {
+  editingChapterId.value = ''
+  editingTitle.value = ''
+}
+
+const submitRename = (chapterId) => {
+  const id = String(chapterId || '')
+  const nextTitle = String(editingTitle.value || '').trim()
+  if (!id) return
+  if (!nextTitle) {
+    cancelRename()
+    return
+  }
+  emit('rename', {
+    chapterId: id,
+    title: nextTitle
+  })
+  cancelRename()
+}
+
+const moveChapterId = (chapterIds, sourceId, targetId) => {
+  const nextIds = [...chapterIds]
+  const sourceIndex = nextIds.indexOf(sourceId)
+  const targetIndex = nextIds.indexOf(targetId)
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return []
+  }
+  const [moved] = nextIds.splice(sourceIndex, 1)
+  nextIds.splice(targetIndex, 0, moved)
+  return nextIds
+}
+
+const handleDragStart = (event, chapterId) => {
+  draggingChapterId.value = String(chapterId || '')
+  dragTargetChapterId.value = ''
+  event.dataTransfer?.setData('text/plain', draggingChapterId.value)
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+const handleDragOver = (event, chapterId) => {
+  if (!draggingChapterId.value || draggingChapterId.value === String(chapterId || '')) return
+  event.preventDefault()
+  dragTargetChapterId.value = String(chapterId || '')
+}
+
+const handleDrop = (chapterId) => {
+  const targetId = String(chapterId || '')
+  const sourceId = String(draggingChapterId.value || '')
+  const orderedIds = moveChapterId(
+    props.chapters.map((item) => String(item.id)),
+    sourceId,
+    targetId
+  )
+  if (orderedIds.length) {
+    emit('reorder', orderedIds)
+  }
+  draggingChapterId.value = ''
+  dragTargetChapterId.value = ''
+}
+
+const handleDragEnd = () => {
+  draggingChapterId.value = ''
+  dragTargetChapterId.value = ''
+}
 </script>
 
 <style scoped>
@@ -114,11 +237,9 @@ const formatWords = (value) => Number(value || 0).toLocaleString('zh-CN')
   border-radius: 16px;
   background: #ffffff;
   padding: 12px 14px;
-  text-align: left;
-  cursor: pointer;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   transition: all 0.18s ease;
 }
 
@@ -132,6 +253,32 @@ const formatWords = (value) => Number(value || 0).toLocaleString('zh-CN')
   background: #eff6ff;
 }
 
+.chapter-item.dragging {
+  opacity: 0.7;
+}
+
+.chapter-item.drag-target {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.12);
+}
+
+.chapter-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.chapter-select-button {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .chapter-title {
   font-size: 14px;
   font-weight: 600;
@@ -143,10 +290,51 @@ const formatWords = (value) => Number(value || 0).toLocaleString('zh-CN')
   color: #6b7280;
 }
 
-.sidebar-footer {
-  margin-top: 16px;
+.chapter-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.chapter-item:hover .chapter-actions,
+.chapter-item.editing .chapter-actions,
+.chapter-item.active .chapter-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chapter-action-button {
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1d4ed8;
+  padding: 4px 10px;
   font-size: 12px;
-  line-height: 1.7;
-  color: #6b7280;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chapter-action-button.danger {
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.chapter-rename-form {
+  width: 100%;
+}
+
+.chapter-rename-input {
+  width: 100%;
+  border: 1px solid #93c5fd;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: #111827;
+  outline: none;
 }
 </style>
