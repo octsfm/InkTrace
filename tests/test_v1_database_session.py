@@ -3,6 +3,7 @@ from infrastructure.database.session import (
     get_database_path,
     initialize_database,
 )
+from application.services.v1.work_service import WorkService
 
 
 def test_v1_database_session_enables_wal_and_busy_timeout(monkeypatch, tmp_path):
@@ -68,5 +69,63 @@ def test_v1_database_session_migrates_legacy_chapters_schema(monkeypatch, tmp_pa
     assert "order_index" in columns
     assert "version" in columns
     assert row == ("work-1", 3, 3, 1)
+
+    get_database_path.cache_clear()
+
+
+def test_v1_database_session_allows_create_work_on_legacy_chapters_schema(monkeypatch, tmp_path):
+    db_path = tmp_path / "runtime" / "legacy-create.db"
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(db_path))
+    get_database_path.cache_clear()
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with create_connection(row_factory=None) as conn:
+        conn.execute(
+            """
+            CREATE TABLE works (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                author TEXT NOT NULL DEFAULT '',
+                current_word_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE chapters (
+                id TEXT PRIMARY KEY,
+                novel_id TEXT NOT NULL,
+                number INTEGER NOT NULL,
+                title TEXT,
+                content TEXT,
+                word_count INTEGER,
+                summary TEXT,
+                status TEXT DEFAULT 'draft',
+                created_at TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+
+    work = WorkService().create_work("遗留库创建作品", "")
+
+    with create_connection(row_factory=None) as conn:
+        row = conn.execute(
+            """
+            SELECT novel_id, work_id, number, chapter_number, order_index, version
+            FROM chapters
+            WHERE work_id = ?
+            """,
+            (work.id,),
+        ).fetchone()
+
+    assert row[0] == work.id
+    assert row[1] == work.id
+    assert row[2] == 1
+    assert row[3] == 1
+    assert row[4] == 1
+    assert row[5] == 1
 
     get_database_path.cache_clear()
