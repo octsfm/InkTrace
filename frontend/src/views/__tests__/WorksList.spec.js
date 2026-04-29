@@ -6,7 +6,7 @@ import WorksList from '../WorksList.vue'
 
 const mockPush = vi.fn()
 const mockList = vi.fn()
-const mockCreate = vi.fn()
+const mockDelete = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: mockPush })
@@ -15,7 +15,7 @@ vi.mock('vue-router', () => ({
 vi.mock('@/api', () => ({
   v1WorksApi: {
     list: (...args) => mockList(...args),
-    create: (...args) => mockCreate(...args)
+    delete: (...args) => mockDelete(...args)
   }
 }))
 
@@ -29,6 +29,18 @@ const mountPage = async () => {
   const wrapper = mount(WorksList, {
     global: {
       stubs: {
+        CreateWorkModal: {
+          props: ['modelValue', 'defaultTitle'],
+          emits: ['update:modelValue', 'created'],
+          template: `
+            <div v-if="modelValue" class="create-work-modal-stub">
+              <span class="default-title">{{ defaultTitle }}</span>
+              <button class="confirm-create" @click="$emit('created', { id: 'work-new', title: '未命名作品 0428', author: '' })">
+                confirm create
+              </button>
+            </div>
+          `
+        },
         ImportModal: {
           props: ['modelValue'],
           emits: ['update:modelValue', 'imported'],
@@ -65,13 +77,6 @@ describe('WorksList 页面', () => {
       ],
       total: 1
     })
-    mockCreate.mockResolvedValue({
-      id: 'work-new',
-      title: '未命名作品 0428',
-      author: '',
-      current_word_count: 0,
-      updated_at: '2026-04-28T10:00:00.000Z'
-    })
   })
 
   it('renders hero actions and work list', async () => {
@@ -84,15 +89,17 @@ describe('WorksList 页面', () => {
     expect(wrapper.text()).toContain('32,000')
   })
 
-  it('creates a new work and opens workspace', async () => {
+  it('opens create modal and navigates after creation', async () => {
     const wrapper = await mountPage()
     const createButton = wrapper.findAll('button').find((node) => node.text().includes('新建作品'))
     expect(createButton).toBeTruthy()
     await createButton.trigger('click')
+
+    expect(wrapper.find('.create-work-modal-stub').exists()).toBe(true)
+    expect(wrapper.find('.default-title').text()).toContain('未命名作品')
+    await wrapper.find('.confirm-create').trigger('click')
     await flushPromises()
 
-    expect(mockCreate).toHaveBeenCalledTimes(1)
-    expect(ElMessage.success).toHaveBeenCalledWith('已创建新作品')
     expect(mockPush).toHaveBeenCalledWith({ path: '/works/work-new' })
   })
 
@@ -112,6 +119,22 @@ describe('WorksList 页面', () => {
     await card.trigger('click')
 
     expect(mockPush).toHaveBeenCalledWith({ path: '/works/work-1' })
+  })
+
+  it('deletes work after confirmation and updates the list', async () => {
+    mockDelete.mockResolvedValueOnce({ ok: true, id: 'work-1' })
+    const wrapper = await mountPage()
+
+    await wrapper.find('.more-button').trigger('click')
+    await wrapper.find('.menu-item.danger').trigger('click')
+    expect(wrapper.text()).toContain('此操作不可恢复，确认删除？')
+    await wrapper.find('.danger-button').trigger('click')
+    await flushPromises()
+
+    expect(mockDelete).toHaveBeenCalledWith('work-1')
+    expect(wrapper.text()).not.toContain('风暴将至')
+    expect(ElMessage.success).toHaveBeenCalledWith('作品已删除')
+    expect(mockPush).not.toHaveBeenCalled()
   })
 
   it('shows empty onboarding when no works exist', async () => {

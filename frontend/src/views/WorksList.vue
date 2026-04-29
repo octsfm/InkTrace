@@ -7,7 +7,7 @@
         <p class="hero-description">支持新建作品或导入 TXT，进入后即可继续创作。</p>
       </div>
       <div class="hero-actions">
-        <el-button type="primary" @click="createWork" :loading="creating">
+        <el-button type="primary" @click="showCreateModal = true">
           <el-icon><Plus /></el-icon>
           新建作品
         </el-button>
@@ -42,7 +42,7 @@
       <p>{{ errorMessage }}</p>
       <div class="error-actions">
         <el-button type="primary" @click="loadWorks">重新加载</el-button>
-        <el-button plain @click="createWork" :loading="creating">先新建作品</el-button>
+        <el-button plain @click="showCreateModal = true">先新建作品</el-button>
       </div>
     </section>
 
@@ -50,7 +50,7 @@
       <el-empty description="书架还是空的，先创建一个作品开始写作。">
         <div class="empty-hint">你可以先新建空白作品，也可以直接导入现有 TXT 稿件。</div>
         <div class="empty-actions">
-          <el-button type="primary" @click="createWork" :loading="creating">新建作品</el-button>
+          <el-button type="primary" @click="showCreateModal = true">新建作品</el-button>
           <el-button plain @click="showImportModal = true">导入 TXT</el-button>
         </div>
       </el-empty>
@@ -69,7 +69,9 @@
           v-for="work in works"
           :key="work.id"
           :work="work"
+          :deleting="deletingWorkId === work.id"
           @open="openWorkspace"
+          @delete="handleDeleteWork"
         />
       </div>
     </section>
@@ -77,6 +79,11 @@
     <ImportModal
       v-model="showImportModal"
       @imported="handleImported"
+    />
+    <CreateWorkModal
+      v-model="showCreateModal"
+      :default-title="buildDraftTitle()"
+      @created="handleCreated"
     />
   </div>
 </template>
@@ -89,12 +96,14 @@ import { v1WorksApi } from '@/api'
 import { useRouter } from 'vue-router'
 import WorkCard from '@/components/works/WorkCard.vue'
 import ImportModal from '@/components/works/ImportModal.vue'
+import CreateWorkModal from '@/components/works/CreateWorkModal.vue'
 
 const router = useRouter()
 const works = ref([])
 const loading = ref(true)
-const creating = ref(false)
 const showImportModal = ref(false)
+const showCreateModal = ref(false)
+const deletingWorkId = ref('')
 const errorMessage = ref('')
 
 const loadWorks = async () => {
@@ -112,29 +121,32 @@ const loadWorks = async () => {
   }
 }
 
-const createWork = async () => {
-  if (creating.value) return
-  creating.value = true
-  try {
-    const created = await v1WorksApi.create({
-      title: buildDraftTitle(),
-      author: ''
-    })
-    ElMessage.success('已创建新作品')
-    await loadWorks()
-    openWorkspace(created.id)
-  } catch (error) {
-    console.error('创建作品失败:', error)
-    ElMessage.error('创建作品失败，请稍后重试。')
-  } finally {
-    creating.value = false
-  }
-}
-
 const handleImported = async (work) => {
   await loadWorks()
   if (work?.id) {
     openWorkspace(work.id)
+  }
+}
+
+const handleCreated = async (work) => {
+  await loadWorks()
+  if (work?.id) {
+    openWorkspace(work.id)
+  }
+}
+
+const handleDeleteWork = async (workId) => {
+  if (deletingWorkId.value) return
+  deletingWorkId.value = String(workId || '')
+  try {
+    await v1WorksApi.delete(workId)
+    works.value = works.value.filter((item) => item.id !== workId)
+    ElMessage.success('作品已删除')
+  } catch (error) {
+    console.error('删除作品失败:', error)
+    ElMessage.error('删除作品失败，请稍后重试。')
+  } finally {
+    deletingWorkId.value = ''
   }
 }
 

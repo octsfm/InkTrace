@@ -4,15 +4,25 @@
       <div class="modal-header">
         <div>
           <h3>导入 TXT</h3>
-          <p>输入本地 TXT 路径后，系统会创建作品并导入章节。</p>
+          <p>选择本地 TXT 文件后，系统会创建作品并导入章节。</p>
         </div>
         <button type="button" class="ghost-button" @click="close">关闭</button>
       </div>
 
       <div class="modal-body">
         <label class="field-block">
-          <span class="field-label">TXT 路径</span>
-          <input v-model="form.file_path" class="field-input" placeholder="例如：D:\drafts\novel.txt" />
+          <span class="field-label">TXT 文件</span>
+          <div class="file-picker-row">
+            <input
+              :value="selectedFileLabel"
+              class="field-input"
+              placeholder="请选择 TXT 文件"
+              readonly
+            />
+            <button type="button" class="select-button" :disabled="submitting" @click="selectFile">
+              选择文件
+            </button>
+          </div>
         </label>
 
         <label class="field-block">
@@ -33,11 +43,18 @@
         </button>
       </div>
     </div>
+    <input
+      ref="fallbackInputRef"
+      type="file"
+      accept=".txt,text/plain"
+      class="fallback-file-input"
+      @change="handleFallbackFileChange"
+    />
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
 import { v1IOApi } from '@/api'
@@ -58,21 +75,67 @@ const form = reactive({
 })
 
 const submitting = ref(false)
+const fallbackInputRef = ref(null)
+const selectedFileName = ref('')
+
+const selectedFileLabel = computed(() => {
+  return selectedFileName.value || form.file_path || ''
+})
 
 const resetForm = () => {
   form.file_path = ''
   form.title = ''
   form.author = ''
+  selectedFileName.value = ''
+  if (fallbackInputRef.value) {
+    fallbackInputRef.value.value = ''
+  }
 }
 
 const close = () => {
   emit('update:modelValue', false)
 }
 
+const extractFileName = (filePath) => {
+  const normalized = String(filePath || '').trim().replace(/\\/g, '/')
+  if (!normalized) return ''
+  const parts = normalized.split('/')
+  return String(parts[parts.length - 1] || '')
+}
+
+const selectFile = async () => {
+  if (submitting.value) return
+  if (window.electronAPI?.selectFile) {
+    const result = await window.electronAPI.selectFile({
+      title: '选择 TXT 文件',
+      filters: [
+        { name: '文本文件', extensions: ['txt'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    })
+    if (!result?.canceled && Array.isArray(result?.filePaths) && result.filePaths[0]) {
+      form.file_path = String(result.filePaths[0] || '')
+      selectedFileName.value = extractFileName(form.file_path)
+    }
+    return
+  }
+  fallbackInputRef.value?.click()
+}
+
+const handleFallbackFileChange = (event) => {
+  const file = event.target?.files?.[0]
+  selectedFileName.value = String(file?.name || '')
+  form.file_path = ''
+}
+
 const submit = async () => {
   if (submitting.value) return
   if (!String(form.file_path || '').trim()) {
-    ElMessage.warning('请输入 TXT 文件路径。')
+    if (selectedFileName.value) {
+      ElMessage.warning('当前环境暂不支持直接导入本地文件，请在桌面端使用该功能。')
+      return
+    }
+    ElMessage.warning('请先选择 TXT 文件。')
     return
   }
   submitting.value = true
@@ -180,6 +243,28 @@ watch(
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+.file-picker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.select-button {
+  border: 1px solid #d1d5db;
+  border-radius: 14px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #ffffff;
+  color: #374151;
+}
+
+.select-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .modal-footer {
   border-top: 1px solid #e5e7eb;
 }
@@ -205,5 +290,9 @@ watch(
 .primary-button:disabled {
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+.fallback-file-input {
+  display: none;
 }
 </style>

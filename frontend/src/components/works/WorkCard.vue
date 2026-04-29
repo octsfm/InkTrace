@@ -1,5 +1,11 @@
 <template>
   <article class="work-card-shell" @click="$emit('open', work.id)">
+    <div class="work-card-actions">
+      <button type="button" class="more-button" @click.stop="toggleMenu">...</button>
+      <div v-if="menuVisible" class="card-menu" @click.stop>
+        <button type="button" class="menu-item danger" @click.stop="openDeleteConfirm">删除作品</button>
+      </div>
+    </div>
     <div class="work-card-top">
       <div class="work-cover">{{ coverText }}</div>
       <div class="work-main">
@@ -20,22 +26,61 @@
     <div class="work-footer">
       <span class="work-enter">进入写作页</span>
     </div>
+
+    <div v-if="confirmVisible" class="confirm-mask" @click.stop>
+      <div class="confirm-panel">
+        <h4>确认删除作品？</h4>
+        <p>此操作不可恢复，确认删除？</p>
+        <div class="confirm-actions">
+          <button type="button" class="ghost-button" @click.stop="closeDeleteConfirm">取消</button>
+          <button type="button" class="danger-button" :disabled="deleting" @click.stop="confirmDelete">
+            {{ deleting ? '删除中...' : '删除' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </article>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps({
   work: {
     type: Object,
     required: true
+  },
+  deleting: {
+    type: Boolean,
+    default: false
   }
 })
 
-defineEmits(['open'])
+const emit = defineEmits(['open', 'delete'])
+
+const menuVisible = ref(false)
+const confirmVisible = ref(false)
 
 const coverText = computed(() => String(props.work?.title || '作品').slice(0, 2))
+
+const toggleMenu = () => {
+  menuVisible.value = !menuVisible.value
+}
+
+const openDeleteConfirm = () => {
+  menuVisible.value = false
+  confirmVisible.value = true
+}
+
+const closeDeleteConfirm = () => {
+  if (props.deleting) return
+  confirmVisible.value = false
+}
+
+const confirmDelete = () => {
+  if (props.deleting) return
+  emit('delete', props.work.id)
+}
 
 const formatNumber = (num) => Number(num || 0).toLocaleString('zh-CN')
 
@@ -54,6 +99,7 @@ const formatDate = (value) => {
 
 <style scoped>
 .work-card-shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -69,6 +115,52 @@ const formatDate = (value) => {
   transform: translateY(-2px);
   border-color: #d1d5db;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.work-card-actions {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+}
+
+.more-button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #4b5563;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.card-menu {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  min-width: 120px;
+  padding: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+}
+
+.menu-item {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.menu-item.danger {
+  color: #b91c1c;
 }
 
 .work-card-top {
@@ -142,6 +234,69 @@ const formatDate = (value) => {
   font-size: 13px;
   font-weight: 600;
   color: #2563eb;
+}
+
+.confirm-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  border-radius: 22px;
+  background: rgba(15, 23, 42, 0.18);
+}
+
+.confirm-panel {
+  width: 100%;
+  max-width: 280px;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 18px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+}
+
+.confirm-panel h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.confirm-panel p {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6b7280;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.ghost-button,
+.danger-button {
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #ffffff;
+  color: #374151;
+}
+
+.danger-button {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 @media (max-width: 760px) {

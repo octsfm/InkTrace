@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElMessage } from 'element-plus'
 
 import ImportModal from '../ImportModal.vue'
@@ -17,7 +17,12 @@ vi.mock('element-plus', () => ({
 }))
 
 describe('ImportModal', () => {
-  it('warns when file path is empty', async () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    delete window.electronAPI
+  })
+
+  it('warns when no file is selected', async () => {
     const wrapper = mount(ImportModal, {
       props: {
         modelValue: true
@@ -26,18 +31,54 @@ describe('ImportModal', () => {
 
     await wrapper.find('.primary-button').trigger('click')
 
-    expect(ElMessage.warning).toHaveBeenCalledWith('请输入 TXT 文件路径。')
+    expect(ElMessage.warning).toHaveBeenCalledWith('请先选择 TXT 文件。')
   })
 
-  it('submits import request and emits imported', async () => {
-    mockImportTxt.mockResolvedValueOnce({ id: 'work-9', title: '导入作品' })
+  it('fills readonly input after selecting file in electron', async () => {
+    const selectFile = vi.fn().mockResolvedValue({
+      canceled: false,
+      filePaths: ['D:\\drafts\\novel.txt']
+    })
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: {
+        selectFile
+      }
+    })
+
     const wrapper = mount(ImportModal, {
       props: {
         modelValue: true
       }
     })
 
-    await wrapper.findAll('.field-input')[0].setValue('D:\\drafts\\novel.txt')
+    await wrapper.find('.select-button').trigger('click')
+    await flushPromises()
+
+    expect(selectFile).toHaveBeenCalled()
+    expect(wrapper.find('.field-input').element.value).toBe('novel.txt')
+  })
+
+  it('submits import request and emits imported', async () => {
+    mockImportTxt.mockResolvedValueOnce({ id: 'work-9', title: '导入作品' })
+    const selectFile = vi.fn().mockResolvedValue({
+      canceled: false,
+      filePaths: ['D:\\drafts\\novel.txt']
+    })
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: {
+        selectFile
+      }
+    })
+    const wrapper = mount(ImportModal, {
+      props: {
+        modelValue: true
+      }
+    })
+
+    await wrapper.find('.select-button').trigger('click')
+    await flushPromises()
     await wrapper.findAll('.field-input')[1].setValue('导入作品')
     await wrapper.find('.primary-button').trigger('click')
     await flushPromises()

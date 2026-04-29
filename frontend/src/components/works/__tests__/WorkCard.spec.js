@@ -40,4 +40,48 @@ describe('WorkCard', () => {
 
     expect(wrapper.emitted('open')).toEqual([['work-2']])
   })
+
+  it('opens action menu without triggering open', async () => {
+    const wrapper = mount(WorkCard, {
+      props: {
+        work: {
+          id: 'work-3',
+          title: '第三作品',
+          author: '',
+          current_word_count: 0,
+          updated_at: ''
+        }
+      }
+    })
+
+    await wrapper.find('.more-button').trigger('click')
+
+    expect(wrapper.find('.card-menu').exists()).toBe(true)
+    expect(wrapper.emitted('open')).toBeUndefined()
+  })
+
+  it('requires confirmation before emitting delete', async () => {
+    const wrapper = mount(WorkCard, {
+      props: {
+        work: {
+          id: 'work-4',
+          title: '第四作品',
+          author: '',
+          current_word_count: 0,
+          updated_at: ''
+        }
+      }
+    })
+
+    await wrapper.find('.more-button').trigger('click')
+    await wrapper.find('.menu-item.danger').trigger('click')
+
+    expect(wrapper.find('.confirm-panel').exists()).toBe(true)
+    expect(wrapper.emitted('delete')).toBeUndefined()
+
+    await wrapper.find('.danger-button').trigger('click')
+
+    expect(wrapper.emitted('delete')).toEqual([['work-4']])
+    expect(wrapper.emitted('open')).toBeUndefined()
+  })
 })
