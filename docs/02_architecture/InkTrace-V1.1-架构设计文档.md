@@ -546,7 +546,7 @@ asset_draft:chapter_outline:{chapter_id}
 
 ### 7.1 分层结构
 
-后端保持现有 DDD 风格分层。
+后端保持 DDD + 清洁架构风格分层。依赖方向必须由外向内：`Presentation -> Application -> Domain`，`Infrastructure` 只作为实现细节被 Application 通过 Repository 接口使用。Domain 层不得依赖 FastAPI、数据库连接、ORM、HTTP DTO 或前端展示模型。
 
 ```text
 presentation/api/routers/v1/
@@ -610,6 +610,8 @@ infrastructure/database/
 - 章节全量调序。
 - 时间线排序保存。
 - TXT 导入创建作品 + 批量创建章节。
+
+Timeline 调序接口必须一次性提交完整映射列表 `[{ id, order_index }]`，由 Service 在单个数据库事务中批量写入。禁止前端逐条提交或后端逐条独立 `commit`。
 
 允许单实体事务的场景：
 
@@ -681,6 +683,9 @@ infrastructure/database/
 | `DELETE` | `/timeline-events/{event_id}`              | 删除事件                          |
 | `PUT`    | `/works/{work_id}/timeline-events/reorder` | 单事务保存 `[{ id, order_index }]` |
 
+交互约束：前端优先支持“上移 / 下移”完成时间线排序，拖拽排序作为增强交互，不作为 V1.1-B 首要实现依赖。
+提交约束：Timeline 调序接口必须一次性提交完整映射列表 `[{ id, order_index }]`，由 Service 在单个数据库事务中批量写入。禁止前端逐条提交或后端逐条独立 `commit`。
+
 #### Foreshadows
 
 | 方法       | 路径                             | 说明                         |
@@ -731,6 +736,8 @@ infrastructure/database/
 | `created_at`     | text    | ISO datetime              |
 | `updated_at`     | text    | ISO datetime              |
 
+标题空值策略：后端统一存储空字符串，不使用 `NULL`。`title` 只保存用户输入的章节标题，禁止写入“第X章”前缀；当前端 `title` 为空时，由 UI 根据 `order_index` 显示“第X章”。
+
 #### `edit_sessions`
 
 | 字段                     | 类型      | 约束           |
@@ -755,6 +762,10 @@ infrastructure/database/
 | `created_at`        | text    | ISO datetime    |
 | `updated_at`        | text    | ISO datetime    |
 
+存储规则：`content_text` 为唯一真实存储；`content_tree_json` 为派生视图缓存，不保证与 `content_text` 强一致同步。
+
+节点关联规则：若大纲树节点需要关联章节，关联信息存放在 `content_tree_json` 的节点字段中。删除章节时仅置空对应节点中的章节引用，不删除大纲节点本身。
+
 #### `chapter_outlines`
 
 | 字段                  | 类型      | 约束              |
@@ -766,6 +777,10 @@ infrastructure/database/
 | `version`           | integer | optimistic lock |
 | `created_at`        | text    | ISO datetime    |
 | `updated_at`        | text    | ISO datetime    |
+
+存储规则：`content_text` 为唯一真实存储；`content_tree_json` 为派生视图缓存，不保证与 `content_text` 强一致同步。
+
+节点关联规则：若细纲树节点需要关联章节，关联信息存放在 `content_tree_json` 的节点字段中。删除章节时仅置空对应节点中的章节引用，不删除细纲节点本身。
 
 #### `timeline_events`
 
@@ -976,7 +991,18 @@ sequenceDiagram
 
 ***
 
-## 13. V2 衔接设计
+## 13. 统计一致性边界
+
+### 13.1 今日新增字数
+
+- 今日新增字数由前端按本地自然日统计。
+- 统计口径只包含正文有效字符新增，不包含标题。
+- 该数据为近似统计，不作为强一致数据来源。
+- 跨端编辑、撤销、删除、离线编辑导致的差异不进入服务端强一致校正流程。
+
+***
+
+## 14. V2 衔接设计
 
 V1.1 为 V2 提供稳定的只读资产输入：
 
@@ -994,7 +1020,21 @@ V2 接入约束：
 
 ***
 
-## 14. 架构验收清单
+## 15. 系统复杂度约束
+
+V1.1 必须控制系统复杂度，防止非 AI 创作工作台重新演化为多域混杂的复杂工作台。
+
+约束：
+
+- 不新增需求文档之外的核心实体类型。
+- 所有结构化写作能力必须通过右侧抽屉承载。
+- 不新增新的主页面，主结构固定为 `书架 -> 写作页`。
+- 不新增 AI、自动分析、自动抽取、自动生成相关架构入口。
+- 新能力必须优先落入既有 Workbench 分层：Router、Service、Domain Entity、Repository、Store、Drawer Panel。
+
+***
+
+## 16. 架构验收清单
 
 ### V1.1-A
 
