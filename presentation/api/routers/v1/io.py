@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from application.services.v1 import IOService
@@ -15,7 +15,31 @@ class ImportTxtRequest(BaseModel):
 @router.post("/import")
 def import_txt(request: ImportTxtRequest):
     service = IOService()
+    if not service.path_import_allowed():
+        raise HTTPException(status_code=400, detail="path_import_not_supported_in_web")
     work = service.import_txt(request.file_path, title=request.title, author=request.author)
+    return {
+        "id": work.id,
+        "title": work.title,
+        "author": work.author,
+        "current_word_count": work.current_word_count,
+        "created_at": work.created_at.isoformat(),
+        "updated_at": work.updated_at.isoformat(),
+    }
+
+
+@router.post("/import-upload")
+async def import_txt_upload(
+    txt_file: UploadFile = File(...),
+    title: str = Form(default=""),
+    author: str = Form(default=""),
+):
+    service = IOService()
+    raw_bytes = await txt_file.read()
+    try:
+        work = service.import_txt_upload(txt_file.filename or "未命名作品.txt", raw_bytes, title=title, author=author)
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="txt_decode_failed") from exc
     return {
         "id": work.id,
         "title": work.title,

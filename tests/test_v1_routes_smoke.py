@@ -118,13 +118,13 @@ def test_v1_sessions_get_and_save_smoke():
 
 def test_v1_io_import_and_export_smoke(tmp_path):
     client = TestClient(app)
-    source_path = tmp_path / "route-import.txt"
     export_path = tmp_path / "route-export.txt"
-    source_path.write_text("第一章 起点\n这里是正文。", encoding="utf-8")
+    raw_bytes = "第一章 起点\n这里是正文。".encode("utf-8")
 
     imported = client.post(
-        "/api/v1/io/import",
-        json={"file_path": str(source_path), "title": "导入路由作品", "author": "作者丁"},
+        "/api/v1/io/import-upload",
+        data={"title": "导入路由作品", "author": "作者丁"},
+        files={"txt_file": ("route-import.txt", raw_bytes, "text/plain")},
     )
     assert imported.status_code == 200
     work_id = imported.json()["id"]
@@ -137,13 +137,13 @@ def test_v1_io_import_and_export_smoke(tmp_path):
 
 def test_v1_io_export_follows_reordered_chapters_smoke(tmp_path):
     client = TestClient(app)
-    source_path = tmp_path / "route-export-reorder.txt"
     export_path = tmp_path / "route-export-reordered.txt"
-    source_path.write_text("第一章 起点\n正文一。\n第二章 进展\n正文二。", encoding="utf-8")
+    raw_bytes = "第一章 起点\n正文一。\n第二章 进展\n正文二。".encode("utf-8")
 
     imported = client.post(
-        "/api/v1/io/import",
-        json={"file_path": str(source_path), "title": "导出重排作品", "author": "作者壬"},
+        "/api/v1/io/import-upload",
+        data={"title": "导出重排作品", "author": "作者壬"},
+        files={"txt_file": ("route-export-reorder.txt", raw_bytes, "text/plain")},
     )
     assert imported.status_code == 200
     work_id = imported.json()["id"]
@@ -187,12 +187,12 @@ def test_v1_io_export_empty_file_when_work_has_no_chapters_smoke(tmp_path):
 
 def test_v1_io_import_fallback_smoke(tmp_path):
     client = TestClient(app)
-    source_path = tmp_path / "route-import-plain.txt"
-    source_path.write_text("没有章节名的整本正文。\n第二段内容继续。", encoding="utf-8")
+    raw_bytes = "没有章节名的整本正文。\n第二段内容继续。".encode("utf-8")
 
     imported = client.post(
-        "/api/v1/io/import",
-        json={"file_path": str(source_path), "title": "整本导入作品", "author": "作者己"},
+        "/api/v1/io/import-upload",
+        data={"title": "整本导入作品", "author": "作者己"},
+        files={"txt_file": ("route-import-plain.txt", raw_bytes, "text/plain")},
     )
     assert imported.status_code == 200
     work_id = imported.json()["id"]
@@ -207,12 +207,10 @@ def test_v1_io_import_fallback_smoke(tmp_path):
 
 def test_v1_io_import_empty_file_smoke(tmp_path):
     client = TestClient(app)
-    source_path = tmp_path / "route-import-empty.txt"
-    source_path.write_text("", encoding="utf-8")
-
     imported = client.post(
-        "/api/v1/io/import",
-        json={"file_path": str(source_path), "title": "空文件作品", "author": "作者庚"},
+        "/api/v1/io/import-upload",
+        data={"title": "空文件作品", "author": "作者庚"},
+        files={"txt_file": ("route-import-empty.txt", b"", "text/plain")},
     )
     assert imported.status_code == 200
     work_id = imported.json()["id"]
@@ -227,15 +225,12 @@ def test_v1_io_import_empty_file_smoke(tmp_path):
 
 def test_v1_io_import_intro_and_order_correction_smoke(tmp_path):
     client = TestClient(app)
-    source_path = tmp_path / "route-import-intro.txt"
-    source_path.write_text(
-        "这是前言。\n第二行前言。\n\n第一章 起点\n正文一。\n\n第三章 转折\n正文三。",
-        encoding="utf-8",
-    )
+    raw_bytes = "这是前言。\n第二行前言。\n\n第一章 起点\n正文一。\n\n第三章 转折\n正文三。".encode("utf-8")
 
     imported = client.post(
-        "/api/v1/io/import",
-        json={"file_path": str(source_path), "title": "顺序校正作品", "author": "作者辛"},
+        "/api/v1/io/import-upload",
+        data={"title": "顺序校正作品", "author": "作者辛"},
+        files={"txt_file": ("route-import-intro.txt", raw_bytes, "text/plain")},
     )
     assert imported.status_code == 200
     work_id = imported.json()["id"]
@@ -246,3 +241,16 @@ def test_v1_io_import_intro_and_order_correction_smoke(tmp_path):
     assert [item["title"] for item in items] == ["前言", "起点", "转折"]
     assert [item["chapter_number"] for item in items] == [1, 2, 3]
     assert [item["order_index"] for item in items] == [1, 2, 3]
+
+
+def test_v1_io_path_import_disabled_by_default_smoke(tmp_path):
+    client = TestClient(app)
+    source_path = tmp_path / "route-import-disabled.txt"
+    source_path.write_text("第一章 起点\n这里是正文。", encoding="utf-8")
+
+    imported = client.post(
+        "/api/v1/io/import",
+        json={"file_path": str(source_path), "title": "路径导入作品", "author": "作者壬"},
+    )
+    assert imported.status_code == 400
+    assert imported.json()["detail"] == "path_import_not_supported_in_web"

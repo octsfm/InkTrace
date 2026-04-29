@@ -69,4 +69,26 @@ describe('useWorkspaceStore', () => {
       scrollTop: 96
     })
   })
+
+  it('normalizes fractional viewport values before persisting session payload', () => {
+    const store = useWorkspaceStore()
+    store.setWorkContext('work-4')
+    store.captureViewport({
+      chapterId: 'chapter-9',
+      cursorPosition: 18.4,
+      scrollTop: 96.6
+    })
+
+    expect(store.cursorPosition).toBe(18)
+    expect(store.scrollTop).toBe(97)
+    expect(store.getViewport('chapter-9')).toEqual({
+      cursorPosition: 18,
+      scrollTop: 97
+    })
+    expect(store.toSessionPayload()).toEqual({
+      chapter_id: 'chapter-9',
+      cursor_position: 18,
+      scroll_top: 97
+    })
+  })
 })

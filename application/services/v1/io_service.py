@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
@@ -29,7 +30,18 @@ class IOService:
     def import_txt(self, file_path: str, *, title: str = "", author: str = ""):
         payload = self.txt_parser.parse_novel_file(file_path)
         work_title = str(title or "").strip() or Path(file_path).stem or "未命名作品"
-        work = self.work_service.create_work(work_title, author)
+        return self._import_from_payload(payload, title=work_title, author=author)
+
+    def import_txt_upload(self, filename: str, raw_bytes: bytes, *, title: str = "", author: str = ""):
+        payload = self.txt_parser.parse_uploaded_novel_file(raw_bytes)
+        work_title = str(title or "").strip() or Path(str(filename or "未命名作品.txt")).stem or "未命名作品"
+        return self._import_from_payload(payload, title=work_title, author=author)
+
+    def path_import_allowed(self) -> bool:
+        return str(os.getenv("INKTRACE_ALLOW_PATH_IMPORT", "")).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _import_from_payload(self, payload: dict, *, title: str, author: str):
+        work = self.work_service.create_work(title, author)
         imported = self._build_import_chapters(payload)
         existing = self.chapter_repo.list_by_work(work.id)
         if not existing:

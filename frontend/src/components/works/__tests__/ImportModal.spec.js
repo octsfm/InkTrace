@@ -4,11 +4,11 @@ import { ElMessage } from 'element-plus'
 
 import ImportModal from '../ImportModal.vue'
 
-const mockImportTxt = vi.fn()
+const mockImportTxtUpload = vi.fn()
 
 vi.mock('@/api', () => ({
   v1IOApi: {
-    importTxt: (...args) => mockImportTxt(...args)
+    importTxtUpload: (...args) => mockImportTxtUpload(...args)
   }
 }))
 
@@ -19,7 +19,6 @@ vi.mock('element-plus', () => ({
 describe('ImportModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    delete window.electronAPI
   })
 
   it('warns when no file is selected', async () => {
@@ -34,59 +33,48 @@ describe('ImportModal', () => {
     expect(ElMessage.warning).toHaveBeenCalledWith('请先选择 TXT 文件。')
   })
 
-  it('fills readonly input after selecting file in electron', async () => {
-    const selectFile = vi.fn().mockResolvedValue({
-      canceled: false,
-      filePaths: ['D:\\drafts\\novel.txt']
-    })
-    Object.defineProperty(window, 'electronAPI', {
-      configurable: true,
-      value: {
-        selectFile
-      }
-    })
-
+  it('fills readonly input after selecting file in web upload flow', async () => {
     const wrapper = mount(ImportModal, {
       props: {
         modelValue: true
       }
     })
 
-    await wrapper.find('.select-button').trigger('click')
-    await flushPromises()
+    const input = wrapper.find('input[type="file"]')
+    const file = new File(['第一章 起点\n这里是正文。'], 'novel.txt', { type: 'text/plain' })
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [file]
+    })
+    await input.trigger('change')
 
-    expect(selectFile).toHaveBeenCalled()
     expect(wrapper.find('.field-input').element.value).toBe('novel.txt')
   })
 
   it('submits import request and emits imported', async () => {
-    mockImportTxt.mockResolvedValueOnce({ id: 'work-9', title: '导入作品' })
-    const selectFile = vi.fn().mockResolvedValue({
-      canceled: false,
-      filePaths: ['D:\\drafts\\novel.txt']
-    })
-    Object.defineProperty(window, 'electronAPI', {
-      configurable: true,
-      value: {
-        selectFile
-      }
-    })
+    mockImportTxtUpload.mockResolvedValueOnce({ id: 'work-9', title: '导入作品' })
     const wrapper = mount(ImportModal, {
       props: {
         modelValue: true
       }
     })
 
-    await wrapper.find('.select-button').trigger('click')
-    await flushPromises()
+    const input = wrapper.find('input[type="file"]')
+    const file = new File(['第一章 起点\n这里是正文。'], 'novel.txt', { type: 'text/plain' })
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [file]
+    })
+    await input.trigger('change')
     await wrapper.findAll('.field-input')[1].setValue('导入作品')
+    await wrapper.findAll('.field-input')[2].setValue('作者甲')
     await wrapper.find('.primary-button').trigger('click')
     await flushPromises()
 
-    expect(mockImportTxt).toHaveBeenCalledWith({
-      file_path: 'D:\\drafts\\novel.txt',
+    expect(mockImportTxtUpload).toHaveBeenCalledWith({
+      txtFile: file,
       title: '导入作品',
-      author: ''
+      author: '作者甲'
     })
     expect(wrapper.emitted('imported')).toEqual([[{ id: 'work-9', title: '导入作品' }]])
     expect(wrapper.emitted('update:modelValue')).toEqual([[false]])

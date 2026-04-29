@@ -69,7 +69,6 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'imported'])
 
 const form = reactive({
-  file_path: '',
   title: '',
   author: ''
 })
@@ -77,16 +76,17 @@ const form = reactive({
 const submitting = ref(false)
 const fallbackInputRef = ref(null)
 const selectedFileName = ref('')
+const selectedFile = ref(null)
 
 const selectedFileLabel = computed(() => {
-  return selectedFileName.value || form.file_path || ''
+  return selectedFileName.value || ''
 })
 
 const resetForm = () => {
-  form.file_path = ''
   form.title = ''
   form.author = ''
   selectedFileName.value = ''
+  selectedFile.value = null
   if (fallbackInputRef.value) {
     fallbackInputRef.value.value = ''
   }
@@ -96,52 +96,27 @@ const close = () => {
   emit('update:modelValue', false)
 }
 
-const extractFileName = (filePath) => {
-  const normalized = String(filePath || '').trim().replace(/\\/g, '/')
-  if (!normalized) return ''
-  const parts = normalized.split('/')
-  return String(parts[parts.length - 1] || '')
-}
-
-const selectFile = async () => {
+const selectFile = () => {
   if (submitting.value) return
-  if (window.electronAPI?.selectFile) {
-    const result = await window.electronAPI.selectFile({
-      title: '选择 TXT 文件',
-      filters: [
-        { name: '文本文件', extensions: ['txt'] },
-        { name: '所有文件', extensions: ['*'] }
-      ]
-    })
-    if (!result?.canceled && Array.isArray(result?.filePaths) && result.filePaths[0]) {
-      form.file_path = String(result.filePaths[0] || '')
-      selectedFileName.value = extractFileName(form.file_path)
-    }
-    return
-  }
   fallbackInputRef.value?.click()
 }
 
 const handleFallbackFileChange = (event) => {
   const file = event.target?.files?.[0]
+  selectedFile.value = file || null
   selectedFileName.value = String(file?.name || '')
-  form.file_path = ''
 }
 
 const submit = async () => {
   if (submitting.value) return
-  if (!String(form.file_path || '').trim()) {
-    if (selectedFileName.value) {
-      ElMessage.warning('当前环境暂不支持直接导入本地文件，请在桌面端使用该功能。')
-      return
-    }
+  if (!selectedFile.value) {
     ElMessage.warning('请先选择 TXT 文件。')
     return
   }
   submitting.value = true
   try {
-    const work = await v1IOApi.importTxt({
-      file_path: form.file_path.trim(),
+    const work = await v1IOApi.importTxtUpload({
+      txtFile: selectedFile.value,
       title: form.title.trim(),
       author: form.author.trim()
     })

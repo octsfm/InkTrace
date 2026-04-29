@@ -12,6 +12,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   const hasSession = computed(() => Boolean(workId.value))
 
+  const normalizeNonNegativeInt = (value) => {
+    const next = Number(value)
+    if (!Number.isFinite(next) || next < 0) {
+      return 0
+    }
+    return Math.round(next)
+  }
+
   const setWorkContext = (nextWorkId) => {
     const nextId = String(nextWorkId || '')
     if (workId.value && workId.value !== nextId) {
@@ -26,13 +34,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   const setCursorPosition = (position) => {
-    const value = Number(position)
-    cursorPosition.value = Number.isFinite(value) && value >= 0 ? value : 0
+    cursorPosition.value = normalizeNonNegativeInt(position)
   }
 
   const setScrollTop = (value) => {
-    const next = Number(value)
-    scrollTop.value = Number.isFinite(next) && next >= 0 ? next : 0
+    scrollTop.value = normalizeNonNegativeInt(value)
   }
 
   const resetSession = () => {
@@ -56,8 +62,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       ? {
           ...viewportByChapterId.value,
           [chapterId]: {
-            cursorPosition: Number.isFinite(nextCursor) && nextCursor >= 0 ? nextCursor : 0,
-            scrollTop: Number.isFinite(nextScroll) && nextScroll >= 0 ? nextScroll : 0
+            cursorPosition: normalizeNonNegativeInt(nextCursor),
+            scrollTop: normalizeNonNegativeInt(nextScroll)
           }
         }
       : {}
@@ -95,8 +101,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const cached = viewportByChapterId.value[id]
     if (cached) {
       return {
-        cursorPosition: Number(cached.cursorPosition || 0),
-        scrollTop: Number(cached.scrollTop || 0)
+        cursorPosition: normalizeNonNegativeInt(cached.cursorPosition),
+        scrollTop: normalizeNonNegativeInt(cached.scrollTop)
       }
     }
     return {
@@ -113,8 +119,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     viewportByChapterId.value = {
       ...viewportByChapterId.value,
       [id]: {
-        cursorPosition: Number.isFinite(nextCursor) && nextCursor >= 0 ? nextCursor : 0,
-        scrollTop: Number.isFinite(nextScroll) && nextScroll >= 0 ? nextScroll : 0
+        cursorPosition: normalizeNonNegativeInt(nextCursor),
+        scrollTop: normalizeNonNegativeInt(nextScroll)
       }
     }
   }

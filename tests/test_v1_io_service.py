@@ -26,6 +26,43 @@ def test_io_service_imports_txt_into_work(monkeypatch, tmp_path):
     get_database_path.cache_clear()
 
 
+def test_io_service_imports_uploaded_txt_into_work(monkeypatch, tmp_path):
+    db_path = tmp_path / "runtime" / "io-upload.db"
+    raw_bytes = "第一章 起点\n这里是第一章。\n第二章 进展\n这里是第二章。".encode("utf-8")
+
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(db_path))
+    get_database_path.cache_clear()
+    initialize_database()
+
+    service = IOService(work_repo=WorkRepo(), chapter_repo=ChapterRepo())
+    work = service.import_txt_upload("upload.txt", raw_bytes, title="上传作品", author="作者上传")
+    chapters = ChapterRepo().list_by_work(work.id)
+
+    assert work.title == "上传作品"
+    assert len(chapters) == 2
+    assert chapters[0].title == "起点"
+    assert chapters[1].title == "进展"
+
+    get_database_path.cache_clear()
+
+
+def test_io_service_path_import_allowed_reads_env(monkeypatch, tmp_path):
+    db_path = tmp_path / "runtime" / "io-env.db"
+
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(db_path))
+    monkeypatch.delenv("INKTRACE_ALLOW_PATH_IMPORT", raising=False)
+    get_database_path.cache_clear()
+    initialize_database()
+
+    service = IOService(work_repo=WorkRepo(), chapter_repo=ChapterRepo())
+    assert service.path_import_allowed() is False
+
+    monkeypatch.setenv("INKTRACE_ALLOW_PATH_IMPORT", "true")
+    assert service.path_import_allowed() is True
+
+    get_database_path.cache_clear()
+
+
 def test_io_service_imports_plain_txt_as_single_full_book_chapter(monkeypatch, tmp_path):
     db_path = tmp_path / "runtime" / "io-fullbook.db"
     source_path = tmp_path / "plain.txt"

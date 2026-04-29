@@ -32,21 +32,24 @@ class TxtParser:
         r"^[^\n]{1,30}$",
     ]
 
-    def _read_text(self, filepath: str) -> str:
+    def _normalize_newlines(self, content: str) -> str:
+        return str(content or "").replace("\r\n", "\n").replace("\r", "\n")
+
+    def _decode_bytes(self, raw_bytes: bytes) -> str:
         last_error: Optional[Exception] = None
         for encoding in self.READ_ENCODINGS:
             try:
-                with open(filepath, "r", encoding=encoding) as file:
-                    return file.read()
+                return self._normalize_newlines(raw_bytes.decode(encoding))
             except UnicodeDecodeError as error:
                 last_error = error
         if last_error is not None:
             raise last_error
-        with open(filepath, "r", encoding="utf-8") as file:
-            return file.read()
+        return self._normalize_newlines(raw_bytes.decode("utf-8"))
 
-    def detect_chapter_pattern(self, filepath: str) -> Optional[re.Pattern]:
-        content = self._read_text(filepath)
+    def _read_text(self, filepath: str) -> str:
+        return self._decode_bytes(Path(filepath).read_bytes())
+
+    def detect_chapter_pattern_from_content(self, content: str) -> Optional[re.Pattern]:
         for pattern_str in self.CHAPTER_PATTERNS:
             flags = re.MULTILINE | (re.IGNORECASE if "chapter" in pattern_str.lower() else 0)
             matches = re.findall(pattern_str, content, flags)
@@ -54,9 +57,12 @@ class TxtParser:
                 return re.compile(pattern_str, flags)
         return None
 
-    def parse_chapters(self, filepath: str) -> List[Dict]:
+    def detect_chapter_pattern(self, filepath: str) -> Optional[re.Pattern]:
         content = self._read_text(filepath)
-        pattern = self.detect_chapter_pattern(filepath)
+        return self.detect_chapter_pattern_from_content(content)
+
+    def parse_chapters_from_content(self, content: str) -> List[Dict]:
+        pattern = self.detect_chapter_pattern_from_content(content)
         if not pattern:
             return []
 
@@ -79,13 +85,15 @@ class TxtParser:
             )
         return chapters
 
-    def parse_novel_file(self, filepath: str) -> Dict:
-        content = self._read_text(filepath)
-        pattern = self.detect_chapter_pattern(filepath)
+    def parse_chapters(self, filepath: str) -> List[Dict]:
+        return self.parse_chapters_from_content(self._read_text(filepath))
+
+    def parse_novel_content(self, content: str) -> Dict:
+        pattern = self.detect_chapter_pattern_from_content(content)
         if pattern:
             first_match = pattern.search(content)
             intro = content[: first_match.start()].strip() if first_match else ""
-            chapters = self.parse_chapters(filepath)
+            chapters = self.parse_chapters_from_content(content)
             return {"intro": intro, "chapters": chapters}
 
         fallback_title = "全本导入"
@@ -99,6 +107,13 @@ class TxtParser:
             }
         ]
         return {"intro": "", "chapters": chapters}
+
+    def parse_uploaded_novel_file(self, raw_bytes: bytes) -> Dict:
+        content = self._decode_bytes(raw_bytes)
+        return self.parse_novel_content(content)
+
+    def parse_novel_file(self, filepath: str) -> Dict:
+        return self.parse_novel_content(self._read_text(filepath))
 
     def parse_outline_file(self, filepath: str) -> Dict:
         content = self._read_text(filepath)

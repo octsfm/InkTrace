@@ -363,6 +363,17 @@ export const v1SessionsApi = {
 
 export const v1IOApi = {
   importTxt: (data) => v1Api.post('/io/import', data),
+  importTxtUpload: ({ txtFile, title = '', author = '' }) => {
+    const formData = new FormData()
+    formData.append('txt_file', txtFile)
+    formData.append('title', title)
+    formData.append('author', author)
+    return v1Api.post('/io/import-upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
   exportTxt: (workId, params = {}) => v1Api.get(`/io/export/${workId}`, { params })
 }
 
