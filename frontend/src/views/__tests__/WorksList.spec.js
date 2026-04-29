@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElMessage } from 'element-plus'
 
-import NovelList from '../NovelList.vue'
+import WorksList from '../WorksList.vue'
 
 const mockPush = vi.fn()
 const mockList = vi.fn()
@@ -26,7 +26,7 @@ vi.mock('element-plus', () => ({
 const slotStub = { template: '<div><slot /></div>' }
 
 const mountPage = async () => {
-  const wrapper = mount(NovelList, {
+  const wrapper = mount(WorksList, {
     global: {
       stubs: {
         ImportModal: {
@@ -50,7 +50,7 @@ const mountPage = async () => {
   return wrapper
 }
 
-describe('NovelList WorksList 页面', () => {
+describe('WorksList 页面', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockList.mockResolvedValue({
@@ -139,3 +139,4 @@ describe('NovelList WorksList 页面', () => {
     expect(mockList.mock.calls.length).toBeGreaterThan(callCountBeforeRetry)
   })
 })
+

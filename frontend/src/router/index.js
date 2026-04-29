@@ -9,15 +9,15 @@ const routes = [
       {
         path: 'works',
         name: 'WorksList',
-        component: () => import('@/views/novel/NovelList.vue'),
+        component: () => import('@/views/WorksList.vue'),
         meta: { title: '书架' }
       }
     ]
   },
   {
     path: '/works/:id',
-    name: 'NovelWorkspace',
-    component: () => import('@/views/workspace/NovelWorkspace.vue'),
+    name: 'WritingStudio',
+    component: () => import('@/views/WritingStudio.vue'),
     meta: { title: '写作页' }
   },
 ]
@@ -35,3 +35,4 @@ router.beforeEach((to, from, next) => {
 })
 
 export default router
+

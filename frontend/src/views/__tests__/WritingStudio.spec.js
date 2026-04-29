@@ -3,7 +3,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElMessage } from 'element-plus'
 
-import NovelWorkspace from '../NovelWorkspace.vue'
+import WritingStudio from '../WritingStudio.vue'
 import { useChapterDataStore } from '@/stores/useChapterDataStore'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { useSaveStateStore } from '@/stores/useSaveStateStore'
@@ -63,7 +63,7 @@ vi.mock('element-plus', () => ({
 
 enableAutoUnmount(afterEach)
 
-describe('NovelWorkspace', () => {
+describe('WritingStudio', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.stubGlobal('requestAnimationFrame', (callback) => {
@@ -155,7 +155,7 @@ describe('NovelWorkspace', () => {
   })
 
   it('renders three-column writing studio skeleton', async () => {
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -180,7 +180,7 @@ describe('NovelWorkspace', () => {
   })
 
   it('navigates back to works list', async () => {
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -200,7 +200,7 @@ describe('NovelWorkspace', () => {
 
   it('shows an error message when chapters fail to load', async () => {
     mockListChapters.mockRejectedValueOnce(new Error('load failed'))
-    mount(NovelWorkspace, {
+    mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -213,7 +213,7 @@ describe('NovelWorkspace', () => {
   })
 
   it('syncs editor draft and viewport state into stores', async () => {
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -252,7 +252,7 @@ describe('NovelWorkspace', () => {
         { id: 'ch-3', title: '', content: '', word_count: 0, version: 1 }
       ])
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -275,7 +275,7 @@ describe('NovelWorkspace', () => {
   })
 
   it('renames chapter from sidebar and updates the list', async () => {
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -310,7 +310,7 @@ describe('NovelWorkspace', () => {
         { id: 'ch-1', title: '第一章', content: '第一章内容', word_count: 1200, version: 1 }
       ])
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -331,7 +331,7 @@ describe('NovelWorkspace', () => {
   })
 
   it('reorders chapters from sidebar drag and drop', async () => {
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -360,7 +360,7 @@ describe('NovelWorkspace', () => {
   })
 
   it('updates status bar when save state changes', async () => {
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -400,7 +400,7 @@ describe('NovelWorkspace', () => {
       }
     ])
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -417,7 +417,7 @@ describe('NovelWorkspace', () => {
   })
 
   it('blocks chapter switching while saving and switches after save completes', async () => {
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -444,7 +444,7 @@ describe('NovelWorkspace', () => {
   })
 
   it('restores chapter from session and persists session after viewport changes', async () => {
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -480,7 +480,7 @@ describe('NovelWorkspace', () => {
   })
 
   it('writes local cache immediately and clears it after chapter sync succeeds', async () => {
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -524,7 +524,7 @@ describe('NovelWorkspace', () => {
       }
     ])
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -567,7 +567,7 @@ describe('NovelWorkspace', () => {
       }
     ])
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -611,7 +611,7 @@ describe('NovelWorkspace', () => {
       return null
     })
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -638,7 +638,7 @@ describe('NovelWorkspace', () => {
       userMessage: 'Version conflict'
     })
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -671,7 +671,7 @@ describe('NovelWorkspace', () => {
       userMessage: 'Version conflict'
     })
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -708,7 +708,7 @@ describe('NovelWorkspace', () => {
       userMessage: 'Version conflict'
     })
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -759,7 +759,7 @@ describe('NovelWorkspace', () => {
         updated_at: '2026-04-28T18:00:05.000Z'
       })
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -817,7 +817,7 @@ describe('NovelWorkspace', () => {
       }
     })
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -878,7 +878,7 @@ describe('NovelWorkspace', () => {
       return null
     })
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -910,21 +910,21 @@ describe('NovelWorkspace', () => {
       if (key === 'draft:work-1:ch-1') {
         return {
           chapterId: 'ch-1',
-          content: '较早草稿',
+          content: '杈冩棭鑽夌',
           timestamp: 100
         }
       }
       if (key === 'draft:work-1:ch-2') {
         return {
           chapterId: 'ch-2',
-          content: '较晚草稿',
+          content: '杈冩櫄鑽夌',
           timestamp: 200
         }
       }
       return null
     })
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -945,11 +945,11 @@ describe('NovelWorkspace', () => {
     await flushPromises()
 
     expect(mockUpdateChapter).toHaveBeenNthCalledWith(1, 'ch-1', {
-      content: '较早草稿',
+      content: '杈冩棭鑽夌',
       expected_version: 1
     })
     expect(mockUpdateChapter).toHaveBeenNthCalledWith(2, 'ch-2', {
-      content: '较晚草稿',
+      content: '杈冩櫄鑽夌',
       expected_version: 2
     })
     expect(mockLocalCacheRemove).toHaveBeenCalledWith('draft:work-1:ch-1')
@@ -964,7 +964,7 @@ describe('NovelWorkspace', () => {
       onLine: false
     })
 
-    const wrapper = mount(NovelWorkspace, {
+    const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
           'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -990,3 +990,4 @@ describe('NovelWorkspace', () => {
     expect(wrapper.text()).not.toContain('离线模式：当前网络离线，编辑仍可继续。')
   })
 })
+
