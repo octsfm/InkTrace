@@ -10,9 +10,8 @@
     <header class="studio-header">
       <div class="header-main">
         <div class="header-copy">
-          <div class="eyebrow">Writing Studio</div>
-          <h1>纯文本写作页</h1>
-          <p>当前作品：{{ workId }}</p>
+          <h1>{{ workTitle }}</h1>
+          <p v-if="workAuthor">{{ workAuthor }}</p>
         </div>
         <div class="header-actions">
           <StatusBar
@@ -37,6 +36,7 @@
       <aside class="sidebar-column">
         <div class="panel-card sidebar-card">
           <ChapterSidebar
+            ref="sidebarRef"
             :chapters="chapterDataStore.chapters"
             :active-chapter-id="chapterDataStore.activeChapterId"
             :loading="chaptersLoading"
@@ -51,23 +51,21 @@
 
       <main class="editor-column">
         <div class="panel-card editor-card">
-          <div class="panel-title-row">
-            <h2>编辑区</h2>
-            <span>宽边距正文区</span>
-          </div>
-          <p class="panel-description">专注正文创作，当前页面仅显示必要的写作信息。</p>
           <div class="editor-shell">
-            <div class="editor-toolbar">
-              <span>会话已加载：{{ workspaceStore.hydrated ? '是' : '否' }}</span>
-              <span>光标：{{ workspaceStore.cursorPosition }}</span>
-              <span>滚动：{{ workspaceStore.scrollTop }}</span>
-            </div>
+            <input
+              :value="activeChapterInputValue"
+              class="chapter-title-input"
+              type="text"
+              :disabled="!chapterDataStore.activeChapterId"
+              :placeholder="chapterTitlePlaceholder"
+              maxlength="120"
+              @input="handleTitleInput"
+            />
             <div class="editor-surface">
               <PureTextEditor
                 ref="editorRef"
                 :chapter-id="chapterDataStore.activeChapterId"
                 :model-value="chapterDataStore.activeChapterContent"
-                :chapter-title="activeChapterTitle"
                 :placeholder="editorPlaceholder"
                 @update:model-value="handleDraftChange"
                 @cursor-change="handleCursorChange"
@@ -77,15 +75,6 @@
           </div>
         </div>
       </main>
-
-      <aside class="rail-column">
-        <div class="rail-card">
-          <div class="rail-icon">S</div>
-          <div class="rail-icon">T</div>
-          <div class="rail-icon">M</div>
-          <p>右侧区域暂不展开，保留快捷入口。</p>
-        </div>
-      </aside>
     </section>
   </div>
 </template>
@@ -94,7 +83,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { v1ChaptersApi, v1SessionsApi } from '@/api'
+import { v1ChaptersApi, v1SessionsApi, v1WorksApi } from '@/api'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { useChapterDataStore } from '@/stores/useChapterDataStore'
 import { useSaveStateStore } from '@/stores/useSaveStateStore'
@@ -113,6 +102,9 @@ const saveStateStore = useSaveStateStore()
 const chaptersLoading = ref(false)
 const pendingChapterId = ref('')
 const editorRef = ref(null)
+const sidebarRef = ref(null)
+const workTitle = ref('作品')
+const workAuthor = ref('')
 let sessionSaveTimer = null
 let draftSyncTimer = null
 let retryTimer = null
@@ -123,12 +115,32 @@ const conflictModalVisible = ref(false)
 const conflictPayload = ref(null)
 
 const workId = computed(() => String(route.params.id || ''))
-const activeChapterTitle = computed(() => String(chapterDataStore.activeChapter?.title || '未命名章节'))
 const activeWordCount = computed(() => countEffectiveCharacters(chapterDataStore.activeChapterContent))
 const statusUpdatedAt = computed(() => String(saveStateStore.lastSyncedAt || workspaceStore.sessionUpdatedAt || ''))
 const editorPlaceholder = computed(() => (
   chapterDataStore.activeChapterId ? '开始创作...' : '请先选择一个章节开始创作'
 ))
+const chapterTitlePlaceholder = computed(() => (
+  chapterDataStore.activeChapterId ? '输入章节标题' : '请先选择一个章节'
+))
+const resolveChapterOrderIndex = (chapter) => {
+  const explicitOrder = Number(chapter?.order_index)
+  if (Number.isFinite(explicitOrder) && explicitOrder > 0) {
+    return explicitOrder
+  }
+  const index = chapterDataStore.chapters.findIndex((item) => item.id === chapter?.id)
+  return index >= 0 ? index + 1 : 1
+}
+const buildChapterLabel = (chapter, title) => {
+  const prefix = `第${resolveChapterOrderIndex(chapter)}章`
+  const trimmedTitle = String(title || '').trim()
+  return trimmedTitle ? `${prefix} ${trimmedTitle}` : prefix
+}
+const activeChapterInputValue = computed(() => {
+  const chapter = chapterDataStore.activeChapter
+  if (!chapter) return ''
+  return buildChapterLabel(chapter, chapterDataStore.activeChapterTitle)
+})
 const isOfflineMode = computed(() => saveStateStore.saveStatus === 'offline')
 const displaySaveStatus = computed(() => {
   if (saveStateStore.saveStatus === 'saving') return 'saving'
@@ -171,7 +183,12 @@ const showManualRetry = computed(() => (
   !conflictModalVisible.value
 ))
 const conflictDescription = computed(() => {
-  const chapterTitle = String(conflictPayload.value?.chapterTitle || activeChapterTitle.value || '当前章节')
+  const chapterTitle = String(
+    conflictPayload.value?.chapterTitle ||
+    chapterDataStore.activeChapterTitle ||
+    buildChapterLabel(chapterDataStore.activeChapter, '') ||
+    '当前章节'
+  )
   return `${chapterTitle} 在云端已存在更新版本，请先决定是否覆盖。`
 })
 
@@ -179,13 +196,36 @@ const buildDraftCacheKey = (chapterId) => `draft:${workId.value}:${String(chapte
 
 const readCachedDraft = (chapterId) => localCache.get(buildDraftCacheKey(chapterId), null)
 
+const resolveChapterTitle = (chapterId) => {
+  const id = String(chapterId || '')
+  if (!id) return ''
+  if (Object.prototype.hasOwnProperty.call(chapterDataStore.draftTitleByChapterId, id)) {
+    return String(chapterDataStore.draftTitleByChapterId[id] || '')
+  }
+  return String(chapterDataStore.chapters.find((item) => item.id === id)?.title || '')
+}
+
+const resolveChapterContent = (chapterId) => {
+  const id = String(chapterId || '')
+  if (!id) return ''
+  if (Object.prototype.hasOwnProperty.call(chapterDataStore.draftByChapterId, id)) {
+    return String(chapterDataStore.draftByChapterId[id] || '')
+  }
+  return String(chapterDataStore.chapters.find((item) => item.id === id)?.content || '')
+}
+
+const parseEditableTitle = (rawTitle) => {
+  const text = String(rawTitle || '').trim()
+  return text.replace(/^第\d+章\s*/, '').trim()
+}
+
 const writeCachedDraft = (chapterId, content) => {
   const chapter = chapterDataStore.chapters.find((item) => item.id === chapterId) || {}
   localCache.set(buildDraftCacheKey(chapterId), {
     workId: workId.value,
     chapterId,
-    title: String(chapter.title || ''),
-    content: String(content || ''),
+    title: resolveChapterTitle(chapterId) || String(chapter.title || ''),
+    content: typeof content === 'string' ? String(content) : resolveChapterContent(chapterId),
     version: Number(chapter.version || 0),
     cursorPosition: workspaceStore.cursorPosition,
     scrollTop: workspaceStore.scrollTop,
@@ -200,6 +240,16 @@ const clearCachedDraft = (chapterId) => {
 const clearConflictState = () => {
   conflictModalVisible.value = false
   conflictPayload.value = null
+}
+
+const scrollSidebarToChapter = async (chapterId) => {
+  await nextTick()
+  sidebarRef.value?.scrollToChapter?.(chapterId)
+}
+
+const focusEditor = async () => {
+  await nextTick()
+  editorRef.value?.focusEditor?.()
 }
 
 const blockSidebarMutation = () => {
@@ -223,8 +273,10 @@ const loadCachedDrafts = (chapters) => {
     if (!cached || typeof cached !== 'object') return
     if (typeof cached.content === 'string') {
       chapterDataStore.updateChapterDraft(chapter.id, cached.content)
+      chapterDataStore.updateChapterTitleDraft(chapter.id, String(cached.title || chapter.title || ''))
       cachedDrafts.push({
         chapterId: chapter.id,
+        title: String(cached.title || chapter.title || ''),
         content: cached.content,
         timestamp: cached.timestamp
       })
@@ -238,6 +290,21 @@ const loadCachedDrafts = (chapters) => {
     ...saveStateStore.pendingQueue,
     ...cachedDrafts
   ])
+}
+
+const loadWork = async () => {
+  if (!workId.value) return null
+  try {
+    const work = await v1WorksApi.get(workId.value)
+    workTitle.value = String(work?.title || '未命名作品')
+    workAuthor.value = String(work?.author || '').trim()
+    return work
+  } catch (error) {
+    console.error('加载作品信息失败:', error)
+    workTitle.value = '未命名作品'
+    workAuthor.value = ''
+    return null
+  }
 }
 
 const loadChapters = async () => {
@@ -336,8 +403,10 @@ const collectOfflineDrafts = () => {
     .map((key) => {
       const cached = localCache.get(key, null)
       if (!cached || typeof cached !== 'object') return null
+      const chapterId = String(cached.chapterId || key.slice(prefix.length))
       return {
-        chapterId: String(cached.chapterId || key.slice(prefix.length)),
+        chapterId,
+        title: String(cached.title || resolveChapterTitle(chapterId) || ''),
         content: String(cached.content || ''),
         timestamp: cached.timestamp,
         cursorPosition: cached.cursorPosition,
@@ -388,14 +457,19 @@ const flushDraftQueue = async ({ retryAttempt = 0, manual = false } = {}) => {
           return
         }
         const savedChapter = await v1ChaptersApi.update(draft.chapterId, {
+          title: String(draft.title || ''),
           content: draft.content,
           expected_version: chapter.version
         })
         lastUpdatedAt = String(savedChapter?.updated_at || lastUpdatedAt)
         chapterDataStore.upsertChapter(savedChapter)
         const latestDraftContent = chapterDataStore.draftByChapterId[draft.chapterId]
-        if (latestDraftContent === undefined || String(latestDraftContent) === String(draft.content || '')) {
+        const latestDraftTitle = chapterDataStore.draftTitleByChapterId[draft.chapterId]
+        const contentMatches = latestDraftContent === undefined || String(latestDraftContent) === String(draft.content || '')
+        const titleMatches = latestDraftTitle === undefined || String(latestDraftTitle) === String(draft.title || '')
+        if (contentMatches && titleMatches) {
           chapterDataStore.clearChapterDraft(draft.chapterId)
+          chapterDataStore.clearChapterTitleDraft(draft.chapterId)
           clearCachedDraft(draft.chapterId)
         }
         currentDraft = null
@@ -410,7 +484,8 @@ const flushDraftQueue = async ({ retryAttempt = 0, manual = false } = {}) => {
       const chapter = chapterDataStore.chapters.find((item) => item.id === currentDraft.chapterId)
       conflictPayload.value = {
         ...currentDraft,
-        chapterTitle: String(chapter?.title || '')
+        title: String(currentDraft.title || ''),
+        chapterTitle: String(currentDraft.title || chapter?.title || '')
       }
       conflictModalVisible.value = true
       saveStateStore.setRetrySchedule({ retryCount: retryAttempt, nextRetryAt: '' })
@@ -474,6 +549,7 @@ const activateChapter = async (chapterId) => {
   pendingChapterId.value = ''
   chapterDataStore.setActiveChapter(nextChapterId)
   workspaceStore.setLastOpenChapter(nextChapterId)
+  await scrollSidebarToChapter(nextChapterId)
   await restoreViewportForChapter(nextChapterId)
   scheduleSessionSave()
 }
@@ -483,7 +559,7 @@ onMounted(async () => {
   saveStateStore.setSaveStatus('synced')
   window.addEventListener('offline', handleBrowserOffline)
   window.addEventListener('online', handleBrowserOnline)
-  const [session, chapters] = await Promise.all([loadSession(), loadChapters()])
+  const [, session, chapters] = await Promise.all([loadWork(), loadSession(), loadChapters()])
   chapterDataStore.setChapters(chapters)
   loadCachedDrafts(chapters)
   const sessionChapterId = String(session?.last_open_chapter_id || session?.chapter_id || '')
@@ -548,7 +624,36 @@ const handleDraftChange = (content) => {
   writeCachedDraft(chapterId, content)
   saveStateStore.upsertDraft({
     chapterId,
+    title: resolveChapterTitle(chapterId),
     content: String(content || ''),
+    timestamp: Date.now()
+  })
+  if (!conflictModalVisible.value) {
+    if (!navigator.onLine || isOfflineMode.value) {
+      saveStateStore.markOffline()
+    } else {
+      saveStateStore.markSaving()
+      scheduleDraftSync()
+    }
+  }
+  scheduleSessionSave()
+}
+
+const handleTitleInput = (event) => {
+  const chapterId = String(chapterDataStore.activeChapterId || '')
+  if (!chapterId) return
+  if (saveStateStore.nextRetryAt || saveStateStore.retryCount) {
+    clearRetryTimer()
+    saveStateStore.clearRetrySchedule()
+  }
+  const nextTitle = parseEditableTitle(event?.target?.value)
+  chapterDataStore.updateChapterTitleDraft(chapterId, nextTitle)
+  workspaceStore.setLastOpenChapter(chapterId)
+  writeCachedDraft(chapterId)
+  saveStateStore.upsertDraft({
+    chapterId,
+    title: nextTitle,
+    content: chapterDataStore.activeChapterContent,
     timestamp: Date.now()
   })
   if (!conflictModalVisible.value) {
@@ -568,7 +673,13 @@ const handleCursorChange = ({ cursorPosition = 0 } = {}) => {
     cursorPosition,
     scrollTop: workspaceStore.scrollTop
   })
-  if (chapterDataStore.activeChapterId && chapterDataStore.draftByChapterId[chapterDataStore.activeChapterId] !== undefined) {
+  if (
+    chapterDataStore.activeChapterId &&
+    (
+      chapterDataStore.draftByChapterId[chapterDataStore.activeChapterId] !== undefined ||
+      chapterDataStore.draftTitleByChapterId[chapterDataStore.activeChapterId] !== undefined
+    )
+  ) {
     writeCachedDraft(chapterDataStore.activeChapterId, chapterDataStore.activeChapterContent)
   }
   scheduleSessionSave()
@@ -580,7 +691,13 @@ const handleScrollChange = ({ scrollTop = 0 } = {}) => {
     cursorPosition: workspaceStore.cursorPosition,
     scrollTop
   })
-  if (chapterDataStore.activeChapterId && chapterDataStore.draftByChapterId[chapterDataStore.activeChapterId] !== undefined) {
+  if (
+    chapterDataStore.activeChapterId &&
+    (
+      chapterDataStore.draftByChapterId[chapterDataStore.activeChapterId] !== undefined ||
+      chapterDataStore.draftTitleByChapterId[chapterDataStore.activeChapterId] !== undefined
+    )
+  ) {
     writeCachedDraft(chapterDataStore.activeChapterId, chapterDataStore.activeChapterContent)
   }
   scheduleSessionSave()
@@ -589,14 +706,16 @@ const handleScrollChange = ({ scrollTop = 0 } = {}) => {
 const handleCreateChapter = async () => {
   if (!workId.value || blockSidebarMutation()) return
   try {
+    const lastChapterId = String(chapterDataStore.chapters.at(-1)?.id || '')
     const createdChapter = await v1ChaptersApi.create(workId.value, {
       title: '',
-      after_chapter_id: String(chapterDataStore.activeChapterId || '')
+      after_chapter_id: lastChapterId
     })
     const chapters = await refreshChapters()
     const nextChapterId = String(createdChapter?.id || chapters.at(-1)?.id || '')
     if (nextChapterId) {
       await activateChapter(nextChapterId)
+      await focusEditor()
     }
     ElMessage.success('已新建章节。')
   } catch (error) {
@@ -616,6 +735,7 @@ const handleRenameChapter = async ({ chapterId = '', title = '' } = {}) => {
       expected_version: Number(chapter.version || 0)
     })
     chapterDataStore.upsertChapter(savedChapter)
+    chapterDataStore.clearChapterTitleDraft(id)
     ElMessage.success('章节标题已更新。')
   } catch (error) {
     console.error('重命名章节失败:', error)
@@ -635,6 +755,7 @@ const handleDeleteChapter = async (chapterId) => {
     pendingChapterId.value = pendingChapterId.value === id ? '' : pendingChapterId.value
     saveStateStore.removeDraft(id)
     chapterDataStore.clearChapterDraft(id)
+    chapterDataStore.clearChapterTitleDraft(id)
     clearCachedDraft(id)
     const chapters = await refreshChapters()
     const nextChapterId = wasActive
@@ -673,6 +794,7 @@ const handleConflictDiscard = async () => {
   const chapters = await refreshChapters()
   const latestChapter = chapters.find((item) => item.id === chapterId)
   chapterDataStore.clearChapterDraft(chapterId)
+  chapterDataStore.clearChapterTitleDraft(chapterId)
   saveStateStore.removeDraft(chapterId)
   saveStateStore.clearRetrySchedule()
   clearCachedDraft(chapterId)
@@ -702,15 +824,20 @@ const handleConflictOverride = async () => {
   const latestContent = Object.prototype.hasOwnProperty.call(chapterDataStore.draftByChapterId, chapterId)
     ? String(chapterDataStore.draftByChapterId[chapterId] || '')
     : String(conflictPayload.value?.content || '')
+  const latestTitle = Object.prototype.hasOwnProperty.call(chapterDataStore.draftTitleByChapterId, chapterId)
+    ? String(chapterDataStore.draftTitleByChapterId[chapterId] || '')
+    : String(conflictPayload.value?.title || '')
   const chapter = chapterDataStore.chapters.find((item) => item.id === chapterId)
   saveStateStore.markSaving()
   try {
     const savedChapter = await v1ChaptersApi.forceOverride(chapterId, {
+      title: latestTitle,
       content: latestContent,
       expected_version: Number(chapter?.version || 0)
     })
     chapterDataStore.upsertChapter(savedChapter)
     chapterDataStore.clearChapterDraft(chapterId)
+    chapterDataStore.clearChapterTitleDraft(chapterId)
     saveStateStore.removeDraft(chapterId)
     saveStateStore.clearRetrySchedule()
     clearCachedDraft(chapterId)
@@ -760,16 +887,8 @@ const handleManualRetry = async () => {
   gap: 24px;
 }
 
-.eyebrow {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #6b7280;
-}
-
 .header-copy h1 {
-  margin-top: 10px;
+  margin: 0;
   font-size: 28px;
   font-weight: 700;
   color: #111827;
@@ -790,18 +909,16 @@ const handleManualRetry = async () => {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 72px;
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 16px;
 }
 
 .sidebar-column,
-.editor-column,
-.rail-column {
+.editor-column {
   min-height: 0;
 }
 
-.panel-card,
-.rail-card {
+.panel-card {
   height: 100%;
   border: 1px solid #e5e7eb;
   border-radius: 24px;
@@ -848,67 +965,61 @@ const handleManualRetry = async () => {
 
 .editor-shell {
   display: grid;
-  gap: 14px;
-  margin-top: 18px;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
+  gap: 8px;
   flex: 1;
   min-height: 0;
 }
 
-.editor-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  font-size: 12px;
-  color: #6b7280;
+.chapter-title-input {
+  display: block;
+  width: min(560px, 100%);
+  height: 44px;
+  box-sizing: border-box;
+  justify-self: center;
+  align-self: start;
+  flex: none;
+  min-height: 44px;
+  max-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 0 14px;
+  font-size: 16px;
+  line-height: 44px;
+  font-weight: 600;
+  text-align: center;
+  color: #111827;
+  outline: none;
+  appearance: none;
+}
+
+.chapter-title-input::placeholder {
+  color: #9ca3af;
+}
+
+.chapter-title-input:focus {
+  border-color: #dbeafe;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+}
+
+.chapter-title-input:disabled {
+  color: #9ca3af;
 }
 
 .editor-surface {
   flex: 1;
   min-height: 0;
   border-radius: 20px;
-  background: #f8fafc;
-  padding: 20px;
+  background: #ffffff;
+  padding: 0;
   display: flex;
-}
-
-.rail-card {
-  padding: 16px 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.rail-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f3f4f6;
-  color: #374151;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.rail-card p {
-  margin-top: auto;
-  font-size: 12px;
-  line-height: 1.6;
-  color: #6b7280;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
 }
 
 @media (max-width: 1120px) {
   .studio-shell {
     grid-template-columns: 1fr;
-  }
-
-  .rail-card p {
-    writing-mode: initial;
-    transform: none;
   }
 }
 

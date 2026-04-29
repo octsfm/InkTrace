@@ -8,15 +8,15 @@ describe('ChapterSidebar', () => {
     const wrapper = mount(ChapterSidebar, {
       props: {
         chapters: [
-          { id: 'ch-1', title: '第一章', word_count: 1200 },
-          { id: 'ch-2', title: '第二章', word_count: 1600 }
+          { id: 'ch-1', title: '起点', word_count: 1200, order_index: 1 },
+          { id: 'ch-2', title: '', word_count: 1600, order_index: 2 }
         ],
         activeChapterId: 'ch-2'
       }
     })
 
-    expect(wrapper.text()).toContain('第一章')
-    expect(wrapper.text()).toContain('第二章')
+    expect(wrapper.text()).toContain('第1章 起点')
+    expect(wrapper.text()).toContain('第2章')
     expect(wrapper.text()).toContain('1,600')
     expect(wrapper.findAll('.chapter-item.active')).toHaveLength(1)
   })

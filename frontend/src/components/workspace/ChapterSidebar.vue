@@ -12,8 +12,9 @@
     <div v-else-if="!chapters.length" class="sidebar-state">当前还没有章节。</div>
     <div v-else class="chapter-list">
       <div
-        v-for="chapter in chapters"
+        v-for="(chapter, index) in chapters"
         :key="chapter.id"
+        :data-chapter-id="chapter.id"
         class="chapter-item"
         :class="{
           active: chapter.id === activeChapterId,
@@ -34,7 +35,7 @@
             class="chapter-select-button"
             @click="$emit('select', chapter.id)"
           >
-            <span class="chapter-title">{{ chapter.title || `第${chapter.chapter_number || chapter.number || 0}章` }}</span>
+            <span class="chapter-title">{{ buildChapterLabel(chapter, index) }}</span>
             <span class="chapter-meta">{{ formatWords(chapter.word_count ?? chapter.current_word_count ?? estimateWords(chapter.content)) }} 字</span>
           </button>
           <form v-else class="chapter-rename-form" @submit.prevent="submitRename(chapter.id)">
@@ -97,6 +98,18 @@ const dragTargetChapterId = ref('')
 
 const estimateWords = (content) => String(content || '').trim().length
 const formatWords = (value) => Number(value || 0).toLocaleString('zh-CN')
+const resolveOrderIndex = (chapter, index) => {
+  const orderIndex = Number(chapter?.order_index)
+  if (Number.isFinite(orderIndex) && orderIndex > 0) {
+    return orderIndex
+  }
+  return index + 1
+}
+const buildChapterLabel = (chapter, index) => {
+  const prefix = `第${resolveOrderIndex(chapter, index)}章`
+  const title = String(chapter?.title || '').trim()
+  return title ? `${prefix} ${title}` : prefix
+}
 
 const startRename = async (chapter) => {
   editingChapterId.value = String(chapter?.id || '')
@@ -173,6 +186,17 @@ const handleDragEnd = () => {
   draggingChapterId.value = ''
   dragTargetChapterId.value = ''
 }
+
+const scrollToChapter = (chapterId) => {
+  const id = String(chapterId || '')
+  if (!id) return
+  const target = document.querySelector(`.chapter-item[data-chapter-id="${id}"]`)
+  target?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+}
+
+defineExpose({
+  scrollToChapter
+})
 </script>
 
 <style scoped>

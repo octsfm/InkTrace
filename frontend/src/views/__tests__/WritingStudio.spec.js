@@ -15,6 +15,7 @@ const mockUpdateChapter = vi.fn()
 const mockForceOverrideChapter = vi.fn()
 const mockDeleteChapter = vi.fn()
 const mockReorderChapters = vi.fn()
+const mockGetWork = vi.fn()
 const mockGetSession = vi.fn()
 const mockSaveSession = vi.fn()
 const mockLocalCacheGet = vi.fn()
@@ -34,6 +35,9 @@ vi.mock('vue-router', () => ({
 }))
 
 vi.mock('@/api', () => ({
+  v1WorksApi: {
+    get: (...args) => mockGetWork(...args)
+  },
   v1ChaptersApi: {
     list: (...args) => mockListChapters(...args),
     create: (...args) => mockCreateChapter(...args),
@@ -78,6 +82,7 @@ describe('WritingStudio', () => {
     mockForceOverrideChapter.mockReset()
     mockDeleteChapter.mockReset()
     mockReorderChapters.mockReset()
+    mockGetWork.mockReset()
     mockGetSession.mockReset()
     mockSaveSession.mockReset()
     mockLocalCacheGet.mockReset()
@@ -87,9 +92,14 @@ describe('WritingStudio', () => {
     ElMessage.success.mockReset()
     ElMessage.warning.mockReset()
     ElMessage.error.mockReset()
+    mockGetWork.mockResolvedValue({
+      id: 'work-1',
+      title: '风暴将至',
+      author: '作者甲'
+    })
     mockListChapters.mockResolvedValue([
-      { id: 'ch-1', title: '第一章', content: '第一章内容', word_count: 1200, version: 1 },
-      { id: 'ch-2', title: '第二章', content: '第二章内容', word_count: 1600, version: 2 }
+      { id: 'ch-1', title: '起点', content: '第一章内容', word_count: 1200, version: 1, order_index: 1 },
+      { id: 'ch-2', title: '转折', content: '第二章内容', word_count: 1600, version: 2, order_index: 2 }
     ])
     mockCreateChapter.mockResolvedValue({
       id: 'ch-3',
@@ -101,19 +111,21 @@ describe('WritingStudio', () => {
     })
     mockUpdateChapter.mockImplementation(async (chapterId, payload) => ({
       id: chapterId,
-      title: payload.title ?? (chapterId === 'ch-1' ? '第一章' : '第二章'),
+      title: payload.title ?? (chapterId === 'ch-1' ? '起点' : '转折'),
       content: payload.content ?? (chapterId === 'ch-1' ? '第一章内容' : '第二章内容'),
       word_count: String(payload.content ?? (chapterId === 'ch-1' ? '第一章内容' : '第二章内容')).length,
       version: chapterId === 'ch-1' ? 2 : 3,
-      updated_at: '2026-04-28T18:00:02.000Z'
+      updated_at: '2026-04-28T18:00:02.000Z',
+      order_index: chapterId === 'ch-1' ? 1 : 2
     }))
     mockForceOverrideChapter.mockImplementation(async (chapterId, payload) => ({
       id: chapterId,
-      title: chapterId === 'ch-1' ? '第一章' : '第二章',
+      title: payload.title ?? (chapterId === 'ch-1' ? '起点' : '转折'),
       content: payload.content,
       word_count: String(payload.content || '').length,
       version: chapterId === 'ch-1' ? 2 : 3,
-      updated_at: '2026-04-28T18:00:03.000Z'
+      updated_at: '2026-04-28T18:00:03.000Z',
+      order_index: chapterId === 'ch-1' ? 1 : 2
     }))
     mockDeleteChapter.mockResolvedValue({
       ok: true,
@@ -124,7 +136,7 @@ describe('WritingStudio', () => {
       work_id: workId,
       items: chapterIds.map((id, index) => ({
         id,
-        title: id === 'ch-1' ? '第一章' : id === 'ch-2' ? '第二章' : '第三章',
+        title: id === 'ch-1' ? '起点' : id === 'ch-2' ? '转折' : '',
         content: id === 'ch-1' ? '第一章内容' : id === 'ch-2' ? '第二章内容' : '',
         word_count: id === 'ch-1' ? 1200 : id === 'ch-2' ? 1600 : 0,
         version: index + 1,
@@ -154,7 +166,7 @@ describe('WritingStudio', () => {
     vi.useRealTimers()
   })
 
-  it('renders three-column writing studio skeleton', async () => {
+  it('renders clean writing studio layout', async () => {
     const wrapper = mount(WritingStudio, {
       global: {
         stubs: {
@@ -166,15 +178,17 @@ describe('WritingStudio', () => {
     await vi.runAllTimersAsync()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('纯文本写作页')
+    expect(wrapper.text()).toContain('风暴将至')
+    expect(wrapper.text()).toContain('作者甲')
     expect(wrapper.text()).toContain('章节列表')
-    expect(wrapper.text()).toContain('编辑区')
-    expect(wrapper.text()).toContain('右侧区域暂不展开')
-    expect(wrapper.text()).toContain('第一章')
-    expect(wrapper.text()).toContain('第二章')
+    expect(wrapper.text()).toContain('第1章 起点')
+    expect(wrapper.text()).toContain('第2章 转折')
     expect(wrapper.text()).toContain('已同步')
     expect(wrapper.text()).toContain('本章字数 5')
-    expect(wrapper.text()).toContain('会话已加载')
+    expect(wrapper.find('.chapter-title-input').element.value).toBe('第2章 转折')
+    expect(wrapper.text()).not.toContain('纯文本写作页')
+    expect(wrapper.text()).not.toContain('当前作品：')
+    expect(wrapper.text()).not.toContain('右侧区域暂不展开')
     expect(wrapper.find('textarea').element.value).toBe('第二章内容')
     expect(wrapper.find('.studio-shell').exists()).toBe(true)
   })
@@ -240,16 +254,16 @@ describe('WritingStudio', () => {
     expect(workspaceStore.scrollTop).toBe(88)
   })
 
-  it('creates a chapter after the active chapter and activates it', async () => {
+  it('creates a chapter after the last chapter even when current selection is not last', async () => {
     mockListChapters
       .mockResolvedValueOnce([
-        { id: 'ch-1', title: '第一章', content: '第一章内容', word_count: 1200, version: 1 },
-        { id: 'ch-2', title: '第二章', content: '第二章内容', word_count: 1600, version: 2 }
+        { id: 'ch-1', title: '起点', content: '第一章内容', word_count: 1200, version: 1, order_index: 1 },
+        { id: 'ch-2', title: '转折', content: '第二章内容', word_count: 1600, version: 2, order_index: 2 }
       ])
       .mockResolvedValueOnce([
-        { id: 'ch-1', title: '第一章', content: '第一章内容', word_count: 1200, version: 1 },
-        { id: 'ch-2', title: '第二章', content: '第二章内容', word_count: 1600, version: 2 },
-        { id: 'ch-3', title: '', content: '', word_count: 0, version: 1 }
+        { id: 'ch-1', title: '起点', content: '第一章内容', word_count: 1200, version: 1, order_index: 1 },
+        { id: 'ch-2', title: '转折', content: '第二章内容', word_count: 1600, version: 2, order_index: 2 },
+        { id: 'ch-3', title: '', content: '', word_count: 0, version: 1, order_index: 3 }
       ])
 
     const wrapper = mount(WritingStudio, {
@@ -263,6 +277,8 @@ describe('WritingStudio', () => {
     await vi.runAllTimersAsync()
     await flushPromises()
 
+    await wrapper.findAll('.chapter-select-button')[0].trigger('click')
+    await flushPromises()
     await wrapper.find('.add-button').trigger('click')
     await flushPromises()
 
@@ -271,6 +287,7 @@ describe('WritingStudio', () => {
       after_chapter_id: 'ch-2'
     })
     expect(wrapper.find('textarea').element.value).toBe('')
+    expect(wrapper.find('.chapter-title-input').element.value).toBe('第3章')
     expect(ElMessage.success).toHaveBeenCalledWith('已新建章节。')
   })
 
@@ -297,7 +314,7 @@ describe('WritingStudio', () => {
       title: '第一章·修订',
       expected_version: 1
     })
-    expect(wrapper.text()).toContain('第一章·修订')
+    expect(wrapper.text()).toContain('第1章 第一章·修订')
   })
 
   it('deletes chapter from sidebar and falls back to the next focus', async () => {
@@ -356,7 +373,7 @@ describe('WritingStudio', () => {
     await flushPromises()
 
     expect(mockReorderChapters).toHaveBeenCalledWith('work-1', ['ch-2', 'ch-1'])
-    expect(wrapper.findAll('.chapter-title')[0].text()).toContain('第二章')
+    expect(wrapper.findAll('.chapter-title')[0].text()).toContain('第1章 转折')
   })
 
   it('updates status bar when save state changes', async () => {
@@ -504,12 +521,38 @@ describe('WritingStudio', () => {
     await flushPromises()
 
     expect(mockUpdateChapter).toHaveBeenCalledWith('ch-2', {
+      title: '转折',
       content: '本地优先正文',
       expected_version: 2
     })
     expect(mockLocalCacheRemove).toHaveBeenCalledWith('draft:work-1:ch-2')
     expect(chapterDataStore.draftByChapterId['ch-2']).toBeUndefined()
     expect(saveStateStore.saveStatus).toBe('synced')
+  })
+
+  it('shares debounce save between title and content', async () => {
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
+        }
+      }
+    })
+    await flushPromises()
+    await vi.runAllTimersAsync()
+    await flushPromises()
+
+    await wrapper.find('.chapter-title-input').setValue('第2章 新标题')
+    await wrapper.find('textarea').setValue('标题正文一起保存')
+
+    await vi.advanceTimersByTimeAsync(2501)
+    await flushPromises()
+
+    expect(mockUpdateChapter).toHaveBeenLastCalledWith('ch-2', {
+      title: '新标题',
+      content: '标题正文一起保存',
+      expected_version: 2
+    })
   })
 
   it('keeps over-limit chapter editable and saves it successfully', async () => {
@@ -548,6 +591,7 @@ describe('WritingStudio', () => {
     await flushPromises()
 
     expect(mockUpdateChapter).toHaveBeenLastCalledWith('ch-2', {
+      title: '第二章',
       content: nextContent,
       expected_version: 2
     })
@@ -592,6 +636,7 @@ describe('WritingStudio', () => {
     await flushPromises()
 
     expect(mockUpdateChapter).toHaveBeenLastCalledWith('ch-2', {
+      title: '第二章',
       content: overLimitContent,
       expected_version: 2
     })
@@ -730,6 +775,7 @@ describe('WritingStudio', () => {
     await flushPromises()
 
     expect(mockForceOverrideChapter).toHaveBeenLastCalledWith('ch-2', {
+      title: '转折',
       content: '用于覆盖的本地正文',
       expected_version: 2
     })
@@ -945,10 +991,12 @@ describe('WritingStudio', () => {
     await flushPromises()
 
     expect(mockUpdateChapter).toHaveBeenNthCalledWith(1, 'ch-1', {
+      title: '起点',
       content: '杈冩棭鑽夌',
       expected_version: 1
     })
     expect(mockUpdateChapter).toHaveBeenNthCalledWith(2, 'ch-2', {
+      title: '转折',
       content: '杈冩櫄鑽夌',
       expected_version: 2
     })

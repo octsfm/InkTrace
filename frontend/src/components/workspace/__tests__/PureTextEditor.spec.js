@@ -18,16 +18,16 @@ describe('PureTextEditor', () => {
     globalThis.requestAnimationFrame = originalRequestAnimationFrame
   })
 
-  it('renders chapter title and word count', () => {
+  it('renders footer word count', () => {
     const wrapper = mount(PureTextEditor, {
       props: {
-        modelValue: '春风十里',
-        chapterTitle: '第一章'
+        modelValue: '春风十里'
       }
     })
 
-    expect(wrapper.text()).toContain('第一章')
     expect(wrapper.text()).toContain('本章字数 4')
+    expect(wrapper.text()).not.toContain('仅支持纯文本输入')
+    expect(wrapper.find('textarea').attributes('title')).toBe('仅支持纯文本输入')
   })
 
   it('counts effective characters only', () => {

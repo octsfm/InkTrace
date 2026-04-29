@@ -1,10 +1,5 @@
 <template>
   <div class="pure-text-editor">
-    <div class="editor-meta">
-      <span>{{ chapterTitle }}</span>
-      <span>本章: {{ formattedWordCount }}</span>
-    </div>
-
     <div v-if="showSoftLimitWarning" class="soft-limit-banner">
       当前章节已超过 20 万有效字符，建议尽快拆分章节以保持流畅编辑。
     </div>
@@ -14,6 +9,7 @@
       class="pure-textarea"
       :value="modelValue"
       :placeholder="placeholder"
+      title="仅支持纯文本输入"
       spellcheck="false"
       @input="onInput"
       @paste="onPaste"
@@ -23,7 +19,6 @@
     />
 
     <div class="editor-footer">
-      <span>仅支持纯文本输入</span>
       <span class="word-count">本章字数 {{ formattedWordCount }}</span>
     </div>
   </div>
@@ -37,10 +32,6 @@ const props = defineProps({
   modelValue: {
     type: String,
     default: ''
-  },
-  chapterTitle: {
-    type: String,
-    default: '未命名章节'
   },
   chapterId: {
     type: String,
@@ -96,6 +87,10 @@ const restoreViewport = ({ cursorPosition = 0, scrollTop = 0 } = {}) => {
   })
 }
 
+const focusEditor = () => {
+  textareaRef.value?.focus?.()
+}
+
 const onInput = (event) => {
   emit('update:modelValue', event.target.value)
   emitCursorState()
@@ -124,7 +119,8 @@ const onPaste = (event) => {
 }
 
 defineExpose({
-  restoreViewport
+  restoreViewport,
+  focusEditor
 })
 </script>
 
@@ -137,11 +133,10 @@ defineExpose({
   min-height: 0;
 }
 
-.editor-meta,
 .editor-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   font-size: 12px;
   color: #6b7280;

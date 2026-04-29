@@ -5,6 +5,7 @@ export const useChapterDataStore = defineStore('chapterData', () => {
   const chapters = ref([])
   const activeChapterId = ref('')
   const draftByChapterId = ref({})
+  const draftTitleByChapterId = ref({})
 
   const chapterCount = computed(() => chapters.value.length)
   const activeChapter = computed(() => chapters.value.find((item) => item.id === activeChapterId.value) || null)
@@ -15,6 +16,14 @@ export const useChapterDataStore = defineStore('chapterData', () => {
       return String(draftByChapterId.value[activeId] || '')
     }
     return String(activeChapter.value?.content || '')
+  })
+  const activeChapterTitle = computed(() => {
+    const activeId = String(activeChapterId.value || '')
+    if (!activeId) return ''
+    if (Object.prototype.hasOwnProperty.call(draftTitleByChapterId.value, activeId)) {
+      return String(draftTitleByChapterId.value[activeId] || '')
+    }
+    return String(activeChapter.value?.title || '')
   })
 
   const setChapters = (items) => {
@@ -44,6 +53,9 @@ export const useChapterDataStore = defineStore('chapterData', () => {
     const nextDraftMap = { ...draftByChapterId.value }
     delete nextDraftMap[id]
     draftByChapterId.value = nextDraftMap
+    const nextTitleDraftMap = { ...draftTitleByChapterId.value }
+    delete nextTitleDraftMap[id]
+    draftTitleByChapterId.value = nextTitleDraftMap
   }
 
   const reorderChapters = (orderedIds) => {
@@ -71,19 +83,40 @@ export const useChapterDataStore = defineStore('chapterData', () => {
     draftByChapterId.value = nextDraftMap
   }
 
+  const updateChapterTitleDraft = (chapterId, title) => {
+    const id = String(chapterId || '')
+    if (!id) return
+    draftTitleByChapterId.value = {
+      ...draftTitleByChapterId.value,
+      [id]: String(title || '')
+    }
+  }
+
+  const clearChapterTitleDraft = (chapterId) => {
+    const id = String(chapterId || '')
+    if (!id || !Object.prototype.hasOwnProperty.call(draftTitleByChapterId.value, id)) return
+    const nextDraftMap = { ...draftTitleByChapterId.value }
+    delete nextDraftMap[id]
+    draftTitleByChapterId.value = nextDraftMap
+  }
+
   return {
     chapters,
     activeChapterId,
     draftByChapterId,
+    draftTitleByChapterId,
     chapterCount,
     activeChapter,
     activeChapterContent,
+    activeChapterTitle,
     setChapters,
     setActiveChapter,
     upsertChapter,
     removeChapter,
     reorderChapters,
     updateChapterDraft,
-    clearChapterDraft
+    clearChapterDraft,
+    updateChapterTitleDraft,
+    clearChapterTitleDraft
   }
 })
