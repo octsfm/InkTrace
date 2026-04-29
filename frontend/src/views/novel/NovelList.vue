@@ -2,11 +2,9 @@
   <div class="works-page">
     <section class="hero-panel">
       <div class="hero-copy">
-        <div class="hero-eyebrow">V1 书架</div>
-        <h1 class="hero-title">先选作品，再进入纯文本写作</h1>
-        <p class="hero-description">
-          当前阶段只保留 V1 主流程：创建作品、TXT 导入入口、进入写作页。
-        </p>
+        <div class="hero-eyebrow">书架</div>
+        <h1 class="hero-title">选择作品，开始写作</h1>
+        <p class="hero-description">支持新建作品或导入 TXT，进入后即可继续创作。</p>
       </div>
       <div class="hero-actions">
         <el-button type="primary" @click="createWork" :loading="creating">
@@ -50,7 +48,7 @@
 
     <div v-else-if="works.length === 0" class="empty-container">
       <el-empty description="书架还是空的，先创建一个作品开始写作。">
-        <div class="empty-hint">首次打开时，建议先创建空白作品，再逐步导入已有 TXT 草稿。</div>
+        <div class="empty-hint">你可以先新建空白作品，也可以直接导入现有 TXT 稿件。</div>
         <div class="empty-actions">
           <el-button type="primary" @click="createWork" :loading="creating">新建作品</el-button>
           <el-button plain @click="showImportModal = true">导入 TXT</el-button>
@@ -62,7 +60,7 @@
       <div class="section-heading">
         <div>
           <h2>我的作品</h2>
-          <p>点击任一作品卡片即可进入写作页。</p>
+          <p>点击作品卡片即可打开。</p>
         </div>
       </div>
 

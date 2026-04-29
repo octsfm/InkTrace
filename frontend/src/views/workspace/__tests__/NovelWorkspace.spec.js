@@ -169,7 +169,7 @@ describe('NovelWorkspace', () => {
     expect(wrapper.text()).toContain('纯文本写作页')
     expect(wrapper.text()).toContain('章节列表')
     expect(wrapper.text()).toContain('编辑区')
-    expect(wrapper.text()).toContain('右侧面板在 V1 默认隐藏')
+    expect(wrapper.text()).toContain('右侧区域暂不展开')
     expect(wrapper.text()).toContain('第一章')
     expect(wrapper.text()).toContain('第二章')
     expect(wrapper.text()).toContain('已同步')

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime
 from typing import List, Optional
 
@@ -43,7 +44,7 @@ class ChapterRepo:
             ).fetchone()
         return self._row_to_entity(row) if row else None
 
-    def save(self, chapter: Chapter) -> None:
+    def _build_save_payload(self, chapter: Chapter) -> tuple[str, tuple]:
         insert_columns = [
             "id",
             "work_id",
@@ -103,16 +104,28 @@ class ChapterRepo:
         columns_sql = ", ".join(insert_columns)
         placeholders_sql = ", ".join(["?"] * len(insert_columns))
         update_sql = ",\n                    ".join(update_assignments)
-        with get_connection() as conn:
-            conn.execute(
-                f"""
+        sql = f"""
                 INSERT INTO chapters ({columns_sql})
                 VALUES ({placeholders_sql})
                 ON CONFLICT(id) DO UPDATE SET
                     {update_sql}
-                """,
-                tuple(insert_values),
-            )
+                """
+        return sql, tuple(insert_values)
+
+    def _save_with_connection(self, conn: sqlite3.Connection, chapter: Chapter) -> None:
+        sql, params = self._build_save_payload(chapter)
+        conn.execute(sql, params)
+
+    def save(self, chapter: Chapter) -> None:
+        with get_connection() as conn:
+            self._save_with_connection(conn, chapter)
+
+    def save_many(self, chapters: List[Chapter]) -> None:
+        if not chapters:
+            return
+        with get_connection() as conn:
+            for chapter in chapters:
+                self._save_with_connection(conn, chapter)
 
     def delete(self, chapter_id: str) -> None:
         with get_connection() as conn:

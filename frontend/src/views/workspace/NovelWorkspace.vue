@@ -55,7 +55,7 @@
             <h2>编辑区</h2>
             <span>宽边距正文区</span>
           </div>
-          <p class="panel-description">V1 只保留纯文本编辑主线，富面板默认不展开。</p>
+          <p class="panel-description">专注正文创作，当前页面仅显示必要的写作信息。</p>
           <div class="editor-shell">
             <div class="editor-toolbar">
               <span>会话已加载：{{ workspaceStore.hydrated ? '是' : '否' }}</span>
@@ -83,7 +83,7 @@
           <div class="rail-icon">S</div>
           <div class="rail-icon">T</div>
           <div class="rail-icon">M</div>
-          <p>右侧面板在 V1 默认隐藏，仅保留预留入口。</p>
+          <p>右侧区域暂不展开，保留快捷入口。</p>
         </div>
       </aside>
     </section>

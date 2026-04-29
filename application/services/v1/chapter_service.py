@@ -107,7 +107,7 @@ class ChapterService:
             chapter.order_index = index
             chapter.number = index
             chapter.updated_at = now
-            self.chapter_repo.save(chapter)
+        self.chapter_repo.save_many(final_list)
         return self.chapter_repo.list_by_work(work_id)
 
     def _normalize_orders(self, work_id: str, *, updated_at: datetime) -> None:

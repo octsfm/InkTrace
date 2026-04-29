@@ -20,36 +20,6 @@ const routes = [
     component: () => import('@/views/workspace/NovelWorkspace.vue'),
     meta: { title: '写作页' }
   },
-  {
-    path: '/novel/:id',
-    redirect: (to) => ({
-      path: `/works/${to.params.id}`,
-      query: {
-        ...to.query
-      }
-    })
-  },
-  {
-    path: '/novel/:id/write',
-    redirect: (to) => ({
-      path: `/works/${to.params.id}`,
-      query: {
-        ...to.query,
-        section: 'writing'
-      }
-    })
-  },
-  {
-    path: '/novel/:id/chapters/:chapterId/edit',
-    redirect: (to) => ({
-      path: `/works/${to.params.id}`,
-      query: {
-        ...to.query,
-        section: 'writing',
-        chapterId: String(to.params.chapterId || '')
-      }
-    })
-  }
 ]
 
 const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:'
