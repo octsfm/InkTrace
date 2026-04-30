@@ -62,4 +62,43 @@ describe('localCache', () => {
     expect(localCache.get('draft:newest')).not.toBeNull()
     expect(localCache.get('draft:old')).toBeNull()
   })
+
+  it('does not prune protected current or conflict drafts', () => {
+    const quota = Math.floor(SOFT_LIMIT_BYTES / 2)
+    const data = new Map()
+    const currentSize = () => Array.from(data.values()).reduce((sum, item) => sum + item.length, 0)
+    const fakeStorage = {
+      getItem(key) {
+        return data.has(key) ? data.get(key) : null
+      },
+      setItem(key, value) {
+        const text = String(value)
+        const previous = data.get(key) || ''
+        const nextSize = currentSize() - previous.length + text.length
+        if (nextSize > quota) {
+          const error = new Error('quota exceeded')
+          error.name = 'QuotaExceededError'
+          throw error
+        }
+        data.set(key, text)
+      },
+      removeItem(key) {
+        data.delete(key)
+      }
+    }
+    Object.defineProperty(window, 'localStorage', {
+      value: fakeStorage,
+      configurable: true
+    })
+    const chunk = 'x'.repeat(Math.floor(quota / 3))
+    localCache.set('draft:current', { content: chunk })
+    localCache.set('draft:conflict', { content: chunk })
+    localCache.set('asset_draft:outline:1', { payload: chunk }, {
+      protectedKeys: ['draft:current', 'draft:conflict']
+    })
+
+    expect(localCache.get('draft:current')).not.toBeNull()
+    expect(localCache.get('draft:conflict')).not.toBeNull()
+    expect(localCache.get('asset_draft:outline:1')).toBeNull()
+  })
 })

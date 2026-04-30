@@ -28,14 +28,25 @@ const getTotalSize = (entries) => {
   return entries.reduce((sum, item) => sum + Number(item?.size || 0), 0)
 }
 
-const pruneToFit = (entries, incomingSize = 0) => {
+const pruneToFit = (entries, incomingSize = 0, protectedKeys = new Set()) => {
   const nextEntries = [...entries].sort((a, b) => Number(a.updatedAt || 0) - Number(b.updatedAt || 0))
   let total = getTotalSize(nextEntries)
   while (nextEntries.length && total + incomingSize > SOFT_LIMIT_BYTES) {
-    const oldest = nextEntries.shift()
+    const oldestIndex = nextEntries.findIndex((item) => !protectedKeys.has(item.key))
+    if (oldestIndex < 0) break
+    const [oldest] = nextEntries.splice(oldestIndex, 1)
     window.localStorage.removeItem(storageKeyOf(oldest.key))
     total -= Number(oldest?.size || 0)
   }
+  return nextEntries
+}
+
+const pruneOldest = (entries, protectedKeys = new Set()) => {
+  const nextEntries = [...entries].sort((a, b) => Number(a.updatedAt || 0) - Number(b.updatedAt || 0))
+  const oldestIndex = nextEntries.findIndex((item) => !protectedKeys.has(item.key))
+  if (oldestIndex < 0) return entries
+  const [oldest] = nextEntries.splice(oldestIndex, 1)
+  window.localStorage.removeItem(storageKeyOf(oldest.key))
   return nextEntries
 }
 
@@ -45,13 +56,14 @@ const isQuotaExceededError = (error) => {
 }
 
 export const localCache = {
-  set(key, value) {
+  set(key, value, options = {}) {
     const normalizedKey = String(key || '').trim()
     if (!normalizedKey) return
 
+    const protectedKeys = new Set((options.protectedKeys || []).map((item) => String(item || '').trim()).filter(Boolean))
     const serializedSize = estimateSize(value)
     let index = readIndex().filter((item) => item.key !== normalizedKey)
-    index = pruneToFit(index, serializedSize)
+    index = pruneToFit(index, serializedSize, protectedKeys)
     const payload = JSON.stringify(value)
 
     while (true) {
@@ -68,7 +80,12 @@ export const localCache = {
         if (!isQuotaExceededError(error) || !index.length) {
           throw error
         }
-        index = pruneToFit(index, 1)
+        const nextIndex = pruneOldest(index, protectedKeys)
+        if (nextIndex.length === index.length) {
+          writeIndex(index)
+          return
+        }
+        index = nextIndex
       }
     }
   },

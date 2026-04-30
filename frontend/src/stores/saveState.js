@@ -1,3 +1,18 @@
-// V1.1 Workbench store namespace placeholder.
-// Store shell is initialized in T0-08.
+import { defineStore } from 'pinia'
 
+export const useSaveStateStore = defineStore('workbenchSaveState', {
+  state: () => ({
+    status: 'idle',
+    pendingQueue: [],
+    conflictPayload: null,
+    offline: false
+  }),
+  actions: {
+    reset() {
+      this.status = 'idle'
+      this.pendingQueue = []
+      this.conflictPayload = null
+      this.offline = false
+    }
+  }
+})

@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
+﻿import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
 
 const routes = [
   {
@@ -9,17 +9,17 @@ const routes = [
       {
         path: 'works',
         name: 'WorksList',
-        component: () => import('@/views/WorksList.vue'),
-        meta: { title: '书架' }
+        component: () => import('@/views/works/WorksList.vue'),
+        meta: { title: 'Bookshelf' }
       }
     ]
   },
   {
     path: '/works/:id',
     name: 'WritingStudio',
-    component: () => import('@/views/WritingStudio.vue'),
-    meta: { title: '写作页' }
-  },
+    component: () => import('@/views/works/WritingStudio.vue'),
+    meta: { title: 'Writing' }
+  }
 ]
 
 const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:'
@@ -30,9 +30,8 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  document.title = `${to.meta.title || '首页'} - InkTrace Novel AI`
+  document.title = `${to.meta.title || 'Home'} - InkTrace`
   next()
 })
 
 export default router
-
