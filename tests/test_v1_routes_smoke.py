@@ -21,6 +21,11 @@ def test_v1_works_create_and_get_smoke():
     assert fetched.status_code == 200
     assert fetched.json()["id"] == payload["id"]
 
+    updated = client.put(f"/api/v1/works/{payload['id']}", json={"title": "路由作品-改", "author": "作者甲-改"})
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "路由作品-改"
+    assert updated.json()["author"] == "作者甲-改"
+
 
 def test_v1_chapters_list_smoke():
     client = TestClient(app)
@@ -56,7 +61,12 @@ def test_v1_chapters_crud_and_reorder_smoke():
 
     reorder = client.put(
         f"/api/v1/works/{work_id}/chapters/reorder",
-        json={"chapter_ids": [second_payload["id"], first["id"]]},
+        json={
+            "items": [
+                {"id": second_payload["id"], "order_index": 1},
+                {"id": first["id"], "order_index": 2},
+            ]
+        },
     )
     assert reorder.status_code == 200
     reordered_ids = [item["id"] for item in reorder.json()["items"]]
@@ -86,6 +96,12 @@ def test_v1_chapters_force_override_smoke():
         json={"content": "本地正文", "expected_version": 1},
     )
     assert conflicted.status_code == 409
+    assert conflicted.json() == {
+        "detail": "version_conflict",
+        "server_version": 2,
+        "resource_type": "chapter",
+        "resource_id": chapter["id"],
+    }
 
     forced = client.put(
         f"/api/v1/chapters/{chapter['id']}",
@@ -118,32 +134,30 @@ def test_v1_sessions_get_and_save_smoke():
 
 def test_v1_io_import_and_export_smoke(tmp_path):
     client = TestClient(app)
-    export_path = tmp_path / "route-export.txt"
     raw_bytes = "第一章 起点\n这里是正文。".encode("utf-8")
 
     imported = client.post(
-        "/api/v1/io/import-upload",
+        "/api/v1/io/import",
         data={"title": "导入路由作品", "author": "作者丁"},
-        files={"txt_file": ("route-import.txt", raw_bytes, "text/plain")},
+        files={"file": ("route-import.txt", raw_bytes, "text/plain")},
     )
     assert imported.status_code == 200
     work_id = imported.json()["id"]
 
-    exported = client.get(f"/api/v1/io/export/{work_id}", params={"output_path": str(export_path)})
+    exported = client.get(f"/api/v1/io/export/{work_id}")
     assert exported.status_code == 200
-    assert export_path.exists()
-    assert "导入路由作品" in export_path.read_text(encoding="utf-8")
+    assert "第1章 起点" in exported.text
+    assert "attachment;" in exported.headers["content-disposition"].lower()
 
 
 def test_v1_io_export_follows_reordered_chapters_smoke(tmp_path):
     client = TestClient(app)
-    export_path = tmp_path / "route-export-reordered.txt"
     raw_bytes = "第一章 起点\n正文一。\n第二章 进展\n正文二。".encode("utf-8")
 
     imported = client.post(
-        "/api/v1/io/import-upload",
+        "/api/v1/io/import",
         data={"title": "导出重排作品", "author": "作者壬"},
-        files={"txt_file": ("route-export-reorder.txt", raw_bytes, "text/plain")},
+        files={"file": ("route-export-reorder.txt", raw_bytes, "text/plain")},
     )
     assert imported.status_code == 200
     work_id = imported.json()["id"]
@@ -154,19 +168,23 @@ def test_v1_io_export_follows_reordered_chapters_smoke(tmp_path):
 
     reordered = client.put(
         f"/api/v1/works/{work_id}/chapters/reorder",
-        json={"chapter_ids": [items[1]["id"], items[0]["id"]]},
+        json={
+            "items": [
+                {"id": items[1]["id"], "order_index": 1},
+                {"id": items[0]["id"], "order_index": 2},
+            ]
+        },
     )
     assert reordered.status_code == 200
 
-    exported = client.get(f"/api/v1/io/export/{work_id}", params={"output_path": str(export_path)})
+    exported = client.get(f"/api/v1/io/export/{work_id}")
     assert exported.status_code == 200
-    content = export_path.read_text(encoding="utf-8")
+    content = exported.text
     assert content.index("第1章 进展") < content.index("第2章 起点")
 
 
 def test_v1_io_export_empty_file_when_work_has_no_chapters_smoke(tmp_path):
     client = TestClient(app)
-    export_path = tmp_path / "route-export-empty.txt"
 
     created_work = client.post("/api/v1/works", json={"title": "空导出路由作品", "author": "作者子"})
     assert created_work.status_code == 200
@@ -179,10 +197,9 @@ def test_v1_io_export_empty_file_when_work_has_no_chapters_smoke(tmp_path):
     deleted = client.delete(f"/api/v1/chapters/{first['id']}")
     assert deleted.status_code == 200
 
-    exported = client.get(f"/api/v1/io/export/{work_id}", params={"output_path": str(export_path)})
+    exported = client.get(f"/api/v1/io/export/{work_id}")
     assert exported.status_code == 200
-    assert export_path.exists()
-    assert export_path.read_text(encoding="utf-8") == ""
+    assert exported.content == b""
 
 
 def test_v1_io_import_fallback_smoke(tmp_path):
@@ -190,9 +207,9 @@ def test_v1_io_import_fallback_smoke(tmp_path):
     raw_bytes = "没有章节名的整本正文。\n第二段内容继续。".encode("utf-8")
 
     imported = client.post(
-        "/api/v1/io/import-upload",
+        "/api/v1/io/import",
         data={"title": "整本导入作品", "author": "作者己"},
-        files={"txt_file": ("route-import-plain.txt", raw_bytes, "text/plain")},
+        files={"file": ("route-import-plain.txt", raw_bytes, "text/plain")},
     )
     assert imported.status_code == 200
     work_id = imported.json()["id"]
@@ -208,9 +225,9 @@ def test_v1_io_import_fallback_smoke(tmp_path):
 def test_v1_io_import_empty_file_smoke(tmp_path):
     client = TestClient(app)
     imported = client.post(
-        "/api/v1/io/import-upload",
+        "/api/v1/io/import",
         data={"title": "空文件作品", "author": "作者庚"},
-        files={"txt_file": ("route-import-empty.txt", b"", "text/plain")},
+        files={"file": ("route-import-empty.txt", b"", "text/plain")},
     )
     assert imported.status_code == 200
     work_id = imported.json()["id"]
@@ -228,9 +245,9 @@ def test_v1_io_import_intro_and_order_correction_smoke(tmp_path):
     raw_bytes = "这是前言。\n第二行前言。\n\n第一章 起点\n正文一。\n\n第三章 转折\n正文三。".encode("utf-8")
 
     imported = client.post(
-        "/api/v1/io/import-upload",
+        "/api/v1/io/import",
         data={"title": "顺序校正作品", "author": "作者辛"},
-        files={"txt_file": ("route-import-intro.txt", raw_bytes, "text/plain")},
+        files={"file": ("route-import-intro.txt", raw_bytes, "text/plain")},
     )
     assert imported.status_code == 200
     work_id = imported.json()["id"]
@@ -243,14 +260,43 @@ def test_v1_io_import_intro_and_order_correction_smoke(tmp_path):
     assert [item["order_index"] for item in items] == [1, 2, 3]
 
 
-def test_v1_io_path_import_disabled_by_default_smoke(tmp_path):
+def test_v1_io_import_rejects_too_large_file_smoke(tmp_path):
     client = TestClient(app)
-    source_path = tmp_path / "route-import-disabled.txt"
-    source_path.write_text("第一章 起点\n这里是正文。", encoding="utf-8")
+    oversized = b"a" * (20 * 1024 * 1024 + 1)
 
     imported = client.post(
         "/api/v1/io/import",
-        json={"file_path": str(source_path), "title": "路径导入作品", "author": "作者壬"},
+        data={"title": "超限作品", "author": "作者壬"},
+        files={"file": ("route-import-too-large.txt", oversized, "text/plain")},
     )
     assert imported.status_code == 400
-    assert imported.json()["detail"] == "path_import_not_supported_in_web"
+    assert imported.json()["detail"] == "txt_file_too_large"
+
+
+def test_v1_io_export_respects_options_smoke():
+    client = TestClient(app)
+    raw_bytes = "第一章 起点\n正文一。\n第二章 进展\n正文二。".encode("utf-8")
+
+    imported = client.post(
+        "/api/v1/io/import",
+        data={"title": "选项路由作品", "author": "作者癸"},
+        files={"file": ("route-import-options.txt", raw_bytes, "text/plain")},
+    )
+    assert imported.status_code == 200
+    work_id = imported.json()["id"]
+
+    without_titles = client.get(f"/api/v1/io/export/{work_id}", params={"include_titles": False, "gap_lines": 0})
+    with_double_gap = client.get(f"/api/v1/io/export/{work_id}", params={"include_titles": True, "gap_lines": 2})
+
+    assert without_titles.status_code == 200
+    assert "第1章 起点" not in without_titles.text
+    assert "\n\n\n" in with_double_gap.text
+
+
+def test_v1_validation_error_returns_invalid_input_smoke():
+    client = TestClient(app)
+
+    invalid = client.post("/api/v1/works", json={"author": "作者缺标题"})
+
+    assert invalid.status_code == 400
+    assert invalid.json() == {"detail": "invalid_input"}

@@ -71,6 +71,9 @@
           :work="work"
           :deleting="deletingWorkId === work.id"
           @open="openWorkspace"
+          @rename="handleRenameWork"
+          @change-author="handleChangeAuthor"
+          @export="openExportModal"
           @delete="handleDeleteWork"
         />
       </div>
@@ -79,6 +82,11 @@
     <ImportModal
       v-model="showImportModal"
       @imported="handleImported"
+    />
+    <ExportTxtModal
+      v-model="showExportModal"
+      :work="exportTargetWork"
+      @exported="handleExported"
     />
     <CreateWorkModal
       v-model="showCreateModal"
@@ -96,14 +104,17 @@ import { v1WorksApi } from '@/api'
 import { useRouter } from 'vue-router'
 import WorkCard from '@/components/works/WorkCard.vue'
 import ImportModal from '@/components/works/ImportModal.vue'
+import ExportTxtModal from '@/components/works/ExportTxtModal.vue'
 import CreateWorkModal from '@/components/works/CreateWorkModal.vue'
 
 const router = useRouter()
 const works = ref([])
 const loading = ref(true)
 const showImportModal = ref(false)
+const showExportModal = ref(false)
 const showCreateModal = ref(false)
 const deletingWorkId = ref('')
+const exportTargetWork = ref(null)
 const errorMessage = ref('')
 
 const loadWorks = async () => {
@@ -150,6 +161,51 @@ const handleDeleteWork = async (workId) => {
   }
 }
 
+const updateWorkInList = (work) => {
+  if (!work?.id) return
+  works.value = works.value.map((item) => (item.id === work.id ? { ...item, ...work } : item))
+}
+
+const handleRenameWork = async (work) => {
+  const nextTitle = window.prompt('重命名作品', work?.title || '')
+  if (nextTitle == null) return
+  const title = String(nextTitle || '').trim()
+  if (!title) {
+    ElMessage.warning('作品标题不能为空')
+    return
+  }
+  try {
+    const updated = await v1WorksApi.update(work.id, { title })
+    updateWorkInList(updated)
+    ElMessage.success('作品已重命名')
+  } catch (error) {
+    console.error('重命名作品失败:', error)
+    ElMessage.error('重命名作品失败，请稍后重试。')
+  }
+}
+
+const handleChangeAuthor = async (work) => {
+  const nextAuthor = window.prompt('修改作者', work?.author || '')
+  if (nextAuthor == null) return
+  try {
+    const updated = await v1WorksApi.update(work.id, { author: String(nextAuthor || '').trim() })
+    updateWorkInList(updated)
+    ElMessage.success('作者信息已更新')
+  } catch (error) {
+    console.error('修改作者失败:', error)
+    ElMessage.error('修改作者失败，请稍后重试。')
+  }
+}
+
+const openExportModal = (work) => {
+  exportTargetWork.value = work || null
+  showExportModal.value = Boolean(work?.id)
+}
+
+const handleExported = () => {
+  exportTargetWork.value = null
+}
+
 const openWorkspace = (workId) => {
   router.push({
     path: `/works/${workId}`
@@ -165,7 +221,9 @@ const buildDraftTitle = () => {
 
 const formatNumber = (num) => Number(num || 0).toLocaleString('zh-CN')
 
-const totalWords = computed(() => works.value.reduce((sum, item) => sum + Number(item.current_word_count || 0), 0))
+const totalWords = computed(() => works.value.reduce((sum, item) => {
+  return sum + Number(item.word_count ?? item.current_word_count ?? 0)
+}, 0))
 const latestWork = computed(() => works.value[0] || null)
 
 onMounted(() => {

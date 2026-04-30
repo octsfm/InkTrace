@@ -1,11 +1,106 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { useWorkspaceStore } from '../useWorkspaceStore'
 
+const mockGetWork = vi.fn()
+const mockGetSession = vi.fn()
+const mockSaveSession = vi.fn()
+const mockUpdateChapter = vi.fn()
+
+vi.mock('@/api', () => ({
+  v1WorksApi: {
+    get: (...args) => mockGetWork(...args)
+  },
+  v1SessionsApi: {
+    get: (...args) => mockGetSession(...args),
+    save: (...args) => mockSaveSession(...args)
+  },
+  v1ChaptersApi: {
+    update: (...args) => mockUpdateChapter(...args)
+  }
+}))
+
 describe('useWorkspaceStore', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     setActivePinia(createPinia())
+  })
+
+  it('initializes work and session from V1 APIs', async () => {
+    mockGetWork.mockResolvedValueOnce({
+      id: 'work-1',
+      title: '作品',
+      author: '作者',
+      current_word_count: 0
+    })
+    mockGetSession.mockResolvedValueOnce({
+      work_id: 'work-1',
+      last_open_chapter_id: 'chapter-2',
+      cursor_position: 18,
+      scroll_top: 32,
+      updated_at: '2026-04-30T00:00:00Z'
+    })
+    const store = useWorkspaceStore()
+
+    const result = await store.initializeWorkspace('work-1')
+
+    expect(mockGetWork).toHaveBeenCalledWith('work-1')
+    expect(mockGetSession).toHaveBeenCalledWith('work-1')
+    expect(result.work.title).toBe('作品')
+    expect(result.session.last_open_chapter_id).toBe('chapter-2')
+    expect(store.work).toEqual(expect.objectContaining({ id: 'work-1' }))
+    expect(store.session).toEqual(expect.objectContaining({ work_id: 'work-1' }))
+    expect(store.lastOpenChapterId).toBe('chapter-2')
+    expect(store.cursorPosition).toBe(18)
+    expect(store.scrollTop).toBe(32)
+    expect(store.hydrated).toBe(true)
+  })
+
+  it('keeps backend fallback session when no previous session exists', async () => {
+    mockGetWork.mockResolvedValueOnce({ id: 'work-2', title: '作品', author: '' })
+    mockGetSession.mockResolvedValueOnce({
+      work_id: 'work-2',
+      last_open_chapter_id: 'first-chapter',
+      cursor_position: 0,
+      scroll_top: 0,
+      updated_at: '2026-04-30T00:00:00Z'
+    })
+    const store = useWorkspaceStore()
+
+    await store.initializeWorkspace('work-2')
+
+    expect(store.lastOpenChapterId).toBe('first-chapter')
+    expect(store.cursorPosition).toBe(0)
+    expect(store.scrollTop).toBe(0)
+    expect(store.hydrated).toBe(true)
+  })
+
+  it('saves session position without calling chapter save API', async () => {
+    mockSaveSession.mockResolvedValueOnce({
+      work_id: 'work-3',
+      last_open_chapter_id: 'chapter-9',
+      cursor_position: 44,
+      scroll_top: 88,
+      updated_at: '2026-04-30T00:01:00Z'
+    })
+    const store = useWorkspaceStore()
+    store.setWorkContext('work-3')
+
+    const saved = await store.saveSessionPosition({
+      activeChapterId: 'chapter-9',
+      cursorPosition: 44,
+      scrollTop: 88
+    })
+
+    expect(mockSaveSession).toHaveBeenCalledWith('work-3', {
+      active_chapter_id: 'chapter-9',
+      cursor_position: 44,
+      scroll_top: 88
+    })
+    expect(mockUpdateChapter).not.toHaveBeenCalled()
+    expect(saved.last_open_chapter_id).toBe('chapter-9')
+    expect(store.sessionUpdatedAt).toBe('2026-04-30T00:01:00Z')
   })
 
   it('hydrates session payload into workspace state', () => {

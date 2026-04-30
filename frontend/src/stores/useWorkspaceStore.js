@@ -1,7 +1,10 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { v1SessionsApi, v1WorksApi } from '@/api'
 
 export const useWorkspaceStore = defineStore('workspace', () => {
+  const work = ref(null)
+  const session = ref(null)
   const workId = ref('')
   const lastOpenChapterId = ref('')
   const cursorPosition = ref(0)
@@ -9,6 +12,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const hydrated = ref(false)
   const sessionUpdatedAt = ref('')
   const viewportByChapterId = ref({})
+  const loading = ref(false)
+  const error = ref('')
 
   const hasSession = computed(() => Boolean(workId.value))
 
@@ -24,9 +29,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const nextId = String(nextWorkId || '')
     if (workId.value && workId.value !== nextId) {
       resetSession()
+      work.value = null
+      session.value = null
     }
     workId.value = nextId
     hydrated.value = false
+  }
+
+  const setWork = (payload) => {
+    work.value = payload && typeof payload === 'object' ? { ...payload } : null
+    if (work.value?.id) {
+      workId.value = String(work.value.id)
+    }
   }
 
   const setLastOpenChapter = (chapterId) => {
@@ -50,8 +64,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     hydrated.value = false
   }
 
-  const hydrateSession = (session) => {
-    const payload = session && typeof session === 'object' ? session : {}
+  const hydrateSession = (sessionPayload) => {
+    const payload = sessionPayload && typeof sessionPayload === 'object' ? sessionPayload : {}
     const chapterId = String(payload.last_open_chapter_id || payload.chapter_id || '')
     const nextCursor = Number(payload.cursor_position)
     const nextScroll = Number(payload.scroll_top)
@@ -68,7 +82,36 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
       : {}
     sessionUpdatedAt.value = String(payload.updated_at || '')
+    session.value = { ...payload }
     hydrated.value = true
+  }
+
+  const initializeWorkspace = async (nextWorkId) => {
+    const id = String(nextWorkId || '')
+    setWorkContext(id)
+    loading.value = true
+    error.value = ''
+    try {
+      const workPayload = await v1WorksApi.get(id)
+      setWork(workPayload)
+      let sessionPayload = null
+      try {
+        sessionPayload = await v1SessionsApi.get(id)
+      } catch (sessionError) {
+        resetSession()
+      }
+      hydrateSession(sessionPayload)
+      return {
+        work: work.value,
+        session: session.value
+      }
+    } catch (err) {
+      error.value = String(err?.response?.data?.detail || err?.message || 'workspace_init_failed')
+      hydrated.value = false
+      throw err
+    } finally {
+      loading.value = false
+    }
   }
 
   const captureViewport = ({ chapterId = '', cursorPosition: nextCursor = 0, scrollTop: nextScroll = 0 } = {}) => {
@@ -136,12 +179,44 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     hydrated.value = true
   }
 
+  const saveSessionPosition = async ({
+    chapterId = '',
+    activeChapterId = '',
+    cursorPosition: nextCursor = cursorPosition.value,
+    scrollTop: nextScroll = scrollTop.value
+  } = {}) => {
+    const targetChapterId = String(activeChapterId || chapterId || lastOpenChapterId.value || '')
+    captureViewport({
+      chapterId: targetChapterId,
+      cursorPosition: nextCursor,
+      scrollTop: nextScroll
+    })
+    if (!workId.value) {
+      return null
+    }
+    const payload = {
+      active_chapter_id: targetChapterId,
+      cursor_position: cursorPosition.value,
+      scroll_top: scrollTop.value
+    }
+    const savedSession = await v1SessionsApi.save(workId.value, payload)
+    hydrateSession(savedSession)
+    markPersisted(savedSession?.updated_at)
+    return session.value
+  }
+
   const clearAll = () => {
+    work.value = null
+    session.value = null
+    loading.value = false
+    error.value = ''
     workId.value = ''
     resetSession()
   }
 
   return {
+    work,
+    session,
     workId,
     lastOpenChapterId,
     cursorPosition,
@@ -149,18 +224,23 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     hydrated,
     sessionUpdatedAt,
     viewportByChapterId,
+    loading,
+    error,
     hasSession,
     setWorkContext,
+    setWork,
     setLastOpenChapter,
     setCursorPosition,
     setScrollTop,
     resetSession,
     hydrateSession,
+    initializeWorkspace,
     captureViewport,
     getViewport,
     setViewport,
     toSessionPayload,
     markPersisted,
+    saveSessionPosition,
     clearAll
   }
 })

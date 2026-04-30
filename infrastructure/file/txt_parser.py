@@ -19,7 +19,7 @@ class ChapterData:
 
 
 class TxtParser:
-    READ_ENCODINGS = ["utf-8", "utf-8-sig", "gb18030", "gbk"]
+    READ_ENCODINGS = ["utf-8-sig", "utf-8", "gb18030"]
 
     CHAPTER_PATTERNS = [
         r"^\s*第[零〇一二两三四五六七八九十百千万\d]+章[^\n]*$",

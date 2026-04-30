@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div v-if="modelValue" class="modal-mask" @click.self="close">
     <div class="modal-panel">
       <div class="modal-header">
@@ -78,18 +78,14 @@ const fallbackInputRef = ref(null)
 const selectedFileName = ref('')
 const selectedFile = ref(null)
 
-const selectedFileLabel = computed(() => {
-  return selectedFileName.value || ''
-})
+const selectedFileLabel = computed(() => selectedFileName.value || '')
 
 const resetForm = () => {
   form.title = ''
   form.author = ''
   selectedFileName.value = ''
   selectedFile.value = null
-  if (fallbackInputRef.value) {
-    fallbackInputRef.value.value = ''
-  }
+  if (fallbackInputRef.value) fallbackInputRef.value.value = ''
 }
 
 const close = () => {
@@ -115,7 +111,7 @@ const submit = async () => {
   }
   submitting.value = true
   try {
-    const work = await v1IOApi.importTxtUpload({
+    const work = await v1IOApi.importTxt({
       txtFile: selectedFile.value,
       title: form.title.trim(),
       author: form.author.trim()
@@ -125,6 +121,8 @@ const submit = async () => {
     close()
     resetForm()
   } catch (error) {
+    const detail = error?.response?.data?.detail || error?.message || 'TXT 导入失败，请检查文件编码或大小后重试。'
+    ElMessage.error(detail)
     console.error('导入 TXT 失败:', error)
   } finally {
     submitting.value = false
@@ -134,9 +132,7 @@ const submit = async () => {
 watch(
   () => props.modelValue,
   (visible) => {
-    if (!visible) {
-      resetForm()
-    }
+    if (!visible) resetForm()
   }
 )
 </script>

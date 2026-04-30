@@ -1,62 +1,41 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter
 
 from application.services.v1 import ChapterService
+from presentation.api.routers.v1.schemas import (
+    ChapterCreateRequest,
+    ChapterDeleteResponse,
+    ChapterListResponse,
+    ChapterReorderRequest,
+    ChapterResponse,
+    ChapterUpdateRequest,
+    V1APIError,
+    build_conflict_response,
+    serialize_chapter,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["v1-chapters"])
 
-
-class CreateChapterRequest(BaseModel):
-    title: str = ""
-    after_chapter_id: str = ""
-
-
-class UpdateChapterRequest(BaseModel):
-    title: str | None = None
-    content: str | None = None
-    expected_version: int | None = None
-    force_override: bool = False
-
-
-class ReorderChaptersRequest(BaseModel):
-    chapter_ids: list[str]
-
-
-def _serialize_chapter(chapter):
-    return {
-        "id": chapter.id.value,
-        "work_id": chapter.novel_id.value,
-        "title": chapter.title,
-        "content": chapter.content,
-        "chapter_number": chapter.number,
-        "order_index": chapter.order_index,
-        "version": chapter.version,
-        "created_at": chapter.created_at.isoformat(),
-        "updated_at": chapter.updated_at.isoformat(),
-    }
-
-
-@router.get("/works/{work_id}/chapters")
+@router.get("/works/{work_id}/chapters", response_model=ChapterListResponse)
 def list_chapters(work_id: str):
     service = ChapterService()
     items = service.list_chapters(work_id)
-    return {"work_id": work_id, "items": [_serialize_chapter(item) for item in items], "total": len(items)}
+    return {"work_id": work_id, "items": [serialize_chapter(item) for item in items], "total": len(items)}
 
 
-@router.post("/works/{work_id}/chapters")
-def create_chapter(work_id: str, request: CreateChapterRequest):
+@router.post("/works/{work_id}/chapters", response_model=ChapterResponse)
+def create_chapter(work_id: str, request: ChapterCreateRequest):
     service = ChapterService()
     try:
         chapter = service.create_chapter(work_id, request.title, request.after_chapter_id)
     except ValueError as exc:
         if str(exc) == "work_not_found":
-            raise HTTPException(status_code=404, detail="work_not_found") from exc
+            raise V1APIError("work_not_found") from exc
         raise
-    return _serialize_chapter(chapter)
+    return serialize_chapter(chapter)
 
 
-@router.put("/chapters/{chapter_id}")
-def update_chapter(chapter_id: str, request: UpdateChapterRequest):
+@router.put("/chapters/{chapter_id}", response_model=ChapterResponse)
+def update_chapter(chapter_id: str, request: ChapterUpdateRequest):
     service = ChapterService()
     try:
         chapter = service.update_chapter(
@@ -68,27 +47,44 @@ def update_chapter(chapter_id: str, request: UpdateChapterRequest):
         )
     except ValueError as exc:
         if str(exc) == "chapter_not_found":
-            raise HTTPException(status_code=404, detail="chapter_not_found") from exc
-        if str(exc) == "chapter_version_conflict":
-            raise HTTPException(status_code=409, detail="chapter_version_conflict") from exc
+            raise V1APIError("chapter_not_found") from exc
+        if str(exc) == "version_conflict":
+            current = service.chapter_repo.find_by_id(chapter_id)
+            raise V1APIError(
+                "version_conflict",
+                payload=build_conflict_response(
+                    "version_conflict",
+                    server_version=current.version,
+                    resource_type="chapter",
+                    resource_id=chapter_id,
+                ),
+            ) from exc
         raise
-    return _serialize_chapter(chapter)
+    return serialize_chapter(chapter)
 
 
-@router.delete("/chapters/{chapter_id}")
+@router.delete("/chapters/{chapter_id}", response_model=ChapterDeleteResponse)
 def delete_chapter(chapter_id: str):
     service = ChapterService()
     try:
         next_chapter_id = service.delete_chapter(chapter_id)
     except ValueError as exc:
         if str(exc) == "chapter_not_found":
-            raise HTTPException(status_code=404, detail="chapter_not_found") from exc
+            raise V1APIError("chapter_not_found") from exc
         raise
     return {"ok": True, "id": chapter_id, "next_chapter_id": next_chapter_id}
 
 
-@router.put("/works/{work_id}/chapters/reorder")
-def reorder_chapters(work_id: str, request: ReorderChaptersRequest):
+@router.put("/works/{work_id}/chapters/reorder", response_model=ChapterListResponse)
+def reorder_chapters(work_id: str, request: ChapterReorderRequest):
     service = ChapterService()
-    items = service.reorder_chapters(work_id, request.chapter_ids)
-    return {"work_id": work_id, "items": [_serialize_chapter(item) for item in items], "total": len(items)}
+    try:
+        items = service.reorder_chapters(
+            work_id,
+            [{"id": item.id, "order_index": item.order_index} for item in request.items],
+        )
+    except ValueError as exc:
+        if str(exc) == "invalid_input":
+            raise V1APIError("invalid_input") from exc
+        raise
+    return {"work_id": work_id, "items": [serialize_chapter(item) for item in items], "total": len(items)}

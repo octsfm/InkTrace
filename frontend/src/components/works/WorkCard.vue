@@ -1,11 +1,15 @@
-<template>
+﻿<template>
   <article class="work-card-shell" @click="$emit('open', work.id)">
     <div class="work-card-actions">
       <button type="button" class="more-button" @click.stop="toggleMenu">...</button>
       <div v-if="menuVisible" class="card-menu" @click.stop>
+        <button type="button" class="menu-item rename" @click.stop="emitAction('rename')">重命名</button>
+        <button type="button" class="menu-item author" @click.stop="emitAction('change-author')">修改作者</button>
+        <button type="button" class="menu-item export" @click.stop="emitAction('export')">导出 TXT</button>
         <button type="button" class="menu-item danger" @click.stop="openDeleteConfirm">删除作品</button>
       </div>
     </div>
+
     <div class="work-card-top">
       <div class="work-cover">{{ coverText }}</div>
       <div class="work-main">
@@ -13,16 +17,18 @@
         <p class="work-meta">作者：{{ work.author || '未填写' }}</p>
       </div>
     </div>
+
     <div class="work-stats">
       <div class="stat-chip">
         <span class="stat-chip-label">字数</span>
-        <span class="stat-chip-value">{{ formatNumber(work.current_word_count) }}</span>
+        <span class="stat-chip-value">{{ formatNumber(work.word_count ?? work.current_word_count) }}</span>
       </div>
       <div class="stat-chip">
         <span class="stat-chip-label">更新</span>
         <span class="stat-chip-value">{{ formatDate(work.updated_at) }}</span>
       </div>
     </div>
+
     <div class="work-footer">
       <span class="work-enter">进入写作页</span>
     </div>
@@ -56,7 +62,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['open', 'delete'])
+const emit = defineEmits(['open', 'delete', 'rename', 'change-author', 'export'])
 
 const menuVisible = ref(false)
 const confirmVisible = ref(false)
@@ -70,6 +76,11 @@ const toggleMenu = () => {
 const openDeleteConfirm = () => {
   menuVisible.value = false
   confirmVisible.value = true
+}
+
+const emitAction = (eventName) => {
+  menuVisible.value = false
+  emit(eventName, props.work)
 }
 
 const closeDeleteConfirm = () => {
@@ -140,7 +151,7 @@ const formatDate = (value) => {
   position: absolute;
   top: 40px;
   right: 0;
-  min-width: 120px;
+  min-width: 132px;
   padding: 8px;
   border: 1px solid #e5e7eb;
   border-radius: 14px;
@@ -157,6 +168,10 @@ const formatDate = (value) => {
   text-align: left;
   font-size: 13px;
   cursor: pointer;
+}
+
+.menu-item:hover {
+  background: #f9fafb;
 }
 
 .menu-item.danger {

@@ -22,18 +22,8 @@ const baseURL = isElectron
   ? `http://localhost:${electronPort}/api`
   : '/api'
 
-const v1BaseURL = `${baseURL}/v1`
-
 const api = axios.create({
   baseURL,
-  timeout: 120000,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-})
-
-const v1Api = axios.create({
-  baseURL: v1BaseURL,
   timeout: 120000,
   headers: {
     'Content-Type': 'application/json'
@@ -142,7 +132,6 @@ const attachInterceptors = (client) => {
 }
 
 attachInterceptors(api)
-attachInterceptors(v1Api)
 
 export const novelApi = {
   list: () => api.get('/novels/'),
@@ -340,41 +329,14 @@ export const chapterEditorApi = {
   generateFromOutline: (chapterId, data) => api.post(`/chapters/${chapterId}/ai/generate-from-outline`, buildChapterAIRequest(chapterId, 'generate-from-outline', data), { timeout: 0 })
 }
 
-export const v1WorksApi = {
-  list: () => v1Api.get('/works'),
-  create: (data) => v1Api.post('/works', data),
-  get: (id) => v1Api.get(`/works/${id}`),
-  delete: (id) => v1Api.delete(`/works/${id}`)
-}
-
-export const v1ChaptersApi = {
-  list: (workId) => v1Api.get(`/works/${workId}/chapters`).then((data) => data?.items ?? []),
-  create: (workId, data) => v1Api.post(`/works/${workId}/chapters`, data),
-  update: (chapterId, data) => v1Api.put(`/chapters/${chapterId}`, data),
-  forceOverride: (chapterId, data) => v1Api.put(`/chapters/${chapterId}`, { ...data, force_override: true }),
-  delete: (chapterId) => v1Api.delete(`/chapters/${chapterId}`),
-  reorder: (workId, chapterIds) => v1Api.put(`/works/${workId}/chapters/reorder`, { chapter_ids: chapterIds })
-}
-
-export const v1SessionsApi = {
-  get: (workId) => v1Api.get(`/works/${workId}/session`),
-  save: (workId, data) => v1Api.put(`/works/${workId}/session`, data)
-}
-
-export const v1IOApi = {
-  importTxt: (data) => v1Api.post('/io/import', data),
-  importTxtUpload: ({ txtFile, title = '', author = '' }) => {
-    const formData = new FormData()
-    formData.append('txt_file', txtFile)
-    formData.append('title', title)
-    formData.append('author', author)
-    return v1Api.post('/io/import-upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-  },
-  exportTxt: (workId, params = {}) => v1Api.get(`/io/export/${workId}`, { params })
-}
+export {
+  isVersionConflictError,
+  normalizeV1ApiError,
+  v1Api,
+  v1ChaptersApi,
+  v1IOApi,
+  v1SessionsApi,
+  v1WorksApi
+} from './works'
 
 export default api

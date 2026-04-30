@@ -84,4 +84,33 @@ describe('WorkCard', () => {
     expect(wrapper.emitted('delete')).toEqual([['work-4']])
     expect(wrapper.emitted('open')).toBeUndefined()
   })
+
+  it('emits work operation events from the action menu', async () => {
+    const work = {
+      id: 'work-5',
+      title: '第五作品',
+      author: '',
+      word_count: 12,
+      updated_at: ''
+    }
+    const wrapper = mount(WorkCard, {
+      props: { work }
+    })
+
+    await wrapper.find('.more-button').trigger('click')
+    await wrapper.find('.menu-item.rename').trigger('click')
+
+    expect(wrapper.emitted('rename')).toEqual([[work]])
+    expect(wrapper.emitted('open')).toBeUndefined()
+
+    await wrapper.find('.more-button').trigger('click')
+    await wrapper.find('.menu-item.author').trigger('click')
+
+    expect(wrapper.emitted('change-author')).toEqual([[work]])
+
+    await wrapper.find('.more-button').trigger('click')
+    await wrapper.find('.menu-item.export').trigger('click')
+
+    expect(wrapper.emitted('export')).toEqual([[work]])
+  })
 })

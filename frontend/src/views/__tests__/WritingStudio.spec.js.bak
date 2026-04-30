@@ -1,0 +1,233 @@
+﻿import { createPinia, setActivePinia } from 'pinia'
+import { mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ElMessage } from 'element-plus'
+
+import WritingStudio from '../WritingStudio.vue'
+import { useChapterDataStore } from '@/stores/useChapterDataStore'
+import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
+import { useSaveStateStore } from '@/stores/useSaveStateStore'
+
+const mocks = vi.hoisted(() => ({
+  push: vi.fn(),
+  listChapters: vi.fn(),
+  updateChapter: vi.fn(),
+  getWork: vi.fn(),
+  updateWork: vi.fn(),
+  getSession: vi.fn(),
+  saveSession: vi.fn(),
+  localCacheGet: vi.fn(),
+  localCacheKeys: vi.fn(),
+  localCacheSet: vi.fn(),
+  localCacheRemove: vi.fn()
+}))
+
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ params: { id: 'work-1' } }),
+  useRouter: () => ({ push: mocks.push })
+}))
+
+vi.mock('@/api', () => ({
+  v1WorksApi: {
+    get: (...args) => mocks.getWork(...args),
+    update: (...args) => mocks.updateWork(...args)
+  },
+  v1ChaptersApi: {
+    list: (...args) => mocks.listChapters(...args),
+    create: vi.fn(),
+    update: (...args) => mocks.updateChapter(...args),
+    forceOverride: vi.fn(),
+    delete: vi.fn(),
+    reorder: vi.fn()
+  },
+  v1SessionsApi: {
+    get: (...args) => mocks.getSession(...args),
+    save: (...args) => mocks.saveSession(...args)
+  }
+}))
+
+vi.mock('@/utils/localCache', () => ({
+  localCache: {
+    get: (...args) => mocks.localCacheGet(...args),
+    keys: (...args) => mocks.localCacheKeys(...args),
+    set: (...args) => mocks.localCacheSet(...args),
+    remove: (...args) => mocks.localCacheRemove(...args)
+  }
+}))
+
+vi.mock('element-plus', () => ({
+  ElMessage: { success: vi.fn(), warning: vi.fn(), error: vi.fn() }
+}))
+
+const flushAll = async () => {
+  await Promise.resolve()
+  await Promise.resolve()
+  await vi.runAllTimersAsync()
+  await Promise.resolve()
+}
+
+const stubButton = {
+  template: '<button type="button"><slot /></button>'
+}
+
+describe('WritingStudio', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+    vi.useFakeTimers()
+    vi.stubGlobal('requestAnimationFrame', (callback) => {
+      callback()
+      return 1
+    })
+    setActivePinia(createPinia())
+    Object.values(mocks).forEach((mock) => mock.mockReset())
+    ElMessage.success.mockReset()
+    ElMessage.warning.mockReset()
+    ElMessage.error.mockReset()
+
+    mocks.getWork.mockResolvedValue({ id: 'work-1', title: 'Storm', author: 'Author A' })
+    mocks.updateWork.mockResolvedValue({ id: 'work-1', title: 'Storm', author: 'Author A' })
+    mocks.listChapters.mockResolvedValue([
+      { id: 'ch-1', title: 'Start', content: 'chapter one', word_count: 10, version: 1, order_index: 1 },
+      { id: 'ch-2', title: 'Turn', content: 'chapter two', word_count: 10, version: 2, order_index: 2 }
+    ])
+    mocks.updateChapter.mockImplementation(async (chapterId, payload) => ({
+      id: chapterId,
+      title: payload.title || 'Turn',
+      content: payload.content || 'chapter two',
+      word_count: String(payload.content || '').length,
+      version: 3,
+      updated_at: '2026-04-28T18:00:02.000Z',
+      order_index: 2
+    }))
+    mocks.getSession.mockResolvedValue({
+      last_open_chapter_id: 'ch-2',
+      cursor_position: 3,
+      scroll_top: 0,
+      updated_at: '2026-04-28T18:00:00.000Z'
+    })
+    mocks.saveSession.mockResolvedValue({ updated_at: '2026-04-28T18:00:01.000Z' })
+    mocks.localCacheGet.mockReturnValue(null)
+    mocks.localCacheKeys.mockReturnValue([])
+    vi.stubGlobal('navigator', { onLine: true })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it('renders the three-column writing studio and focuses the editor by default', async () => {
+    const wrapper = mount(WritingStudio, {
+      attachTo: document.body,
+      global: { stubs: { 'el-button': stubButton } }
+    })
+    await flushAll()
+
+    expect(wrapper.find('.studio-shell').exists()).toBe(true)
+    expect(wrapper.find('.sidebar-column').exists()).toBe(true)
+    expect(wrapper.find('.editor-column').exists()).toBe(true)
+    expect(wrapper.find('.asset-rail').exists()).toBe(true)
+    expect(wrapper.find('textarea').element.value).toBe('chapter two')
+    expect(document.activeElement).toBe(wrapper.find('textarea').element)
+  })
+
+  it('loads work, chapters and the last edit session on mount', async () => {
+    mount(WritingStudio, {
+      attachTo: document.body,
+      global: { stubs: { 'el-button': stubButton } }
+    })
+    await flushAll()
+
+    const chapterDataStore = useChapterDataStore()
+    const workspaceStore = useWorkspaceStore()
+
+    expect(mocks.getWork).toHaveBeenCalledWith('work-1')
+    expect(mocks.listChapters).toHaveBeenCalledWith('work-1')
+    expect(mocks.getSession).toHaveBeenCalledWith('work-1')
+    expect(chapterDataStore.activeChapterId).toBe('ch-2')
+    expect(workspaceStore.cursorPosition).toBe(3)
+  })
+
+  it('opens and closes one asset drawer from the asset rail', async () => {
+    const wrapper = mount(WritingStudio, {
+      attachTo: document.body,
+      global: { stubs: { 'el-button': stubButton } }
+    })
+    await flushAll()
+
+    expect(wrapper.find('.asset-drawer').exists()).toBe(false)
+    await wrapper.findAll('.asset-rail-button')[0].trigger('click')
+    expect(wrapper.find('.asset-drawer').exists()).toBe(true)
+    await wrapper.findAll('.asset-rail-button')[1].trigger('click')
+    expect(wrapper.findAll('.asset-drawer')).toHaveLength(1)
+    await wrapper.find('.asset-drawer .close-button').trigger('click')
+    expect(wrapper.find('.asset-drawer').exists()).toBe(false)
+  })
+
+  it('writes local cache immediately and clears it after chapter sync succeeds', async () => {
+    const wrapper = mount(WritingStudio, {
+      attachTo: document.body,
+      global: { stubs: { 'el-button': stubButton } }
+    })
+    await flushAll()
+
+    const saveStateStore = useSaveStateStore()
+    await wrapper.find('textarea').setValue('local first content')
+
+    expect(mocks.localCacheSet).toHaveBeenCalled()
+    expect(saveStateStore.saveStatus).toBe('saving')
+
+    await vi.advanceTimersByTimeAsync(2501)
+    await Promise.resolve()
+
+    expect(mocks.updateChapter).toHaveBeenCalledWith('ch-2', {
+      title: 'Turn',
+      content: 'local first content',
+      expected_version: 2
+    })
+    expect(mocks.localCacheRemove).toHaveBeenCalledWith('draft:work-1:ch-2')
+    expect(saveStateStore.saveStatus).toBe('synced')
+  })
+
+  it('persists session after cursor and scroll changes', async () => {
+    const wrapper = mount(WritingStudio, {
+      attachTo: document.body,
+      global: { stubs: { 'el-button': stubButton } }
+    })
+    await flushAll()
+
+    const textarea = wrapper.find('textarea')
+    await textarea.setValue('session content')
+    textarea.element.selectionStart = 5
+    await textarea.trigger('click')
+    textarea.element.scrollTop = 64
+    await textarea.trigger('scroll')
+    await vi.advanceTimersByTimeAsync(801)
+    await Promise.resolve()
+
+    expect(mocks.saveSession).toHaveBeenCalledWith('work-1', {
+      chapter_id: 'ch-2',
+      cursor_position: 5,
+      scroll_top: 64
+    })
+  })
+
+  it('shows conflict state and keeps the local cache when chapter sync returns 409', async () => {
+    mocks.updateChapter.mockRejectedValueOnce({ response: { status: 409 }, userMessage: 'Version conflict' })
+    const wrapper = mount(WritingStudio, {
+      attachTo: document.body,
+      global: { stubs: { 'el-button': stubButton } }
+    })
+    await flushAll()
+
+    const saveStateStore = useSaveStateStore()
+    await wrapper.find('textarea').setValue('conflict content')
+    await vi.advanceTimersByTimeAsync(2501)
+    await Promise.resolve()
+
+    expect(saveStateStore.saveStatus).toBe('conflict')
+    expect(saveStateStore.hasConflict).toBe(true)
+    expect(saveStateStore.conflictPayload).toMatchObject({ chapterId: 'ch-2', title: 'Turn', content: 'conflict content' })
+    expect(mocks.localCacheRemove).not.toHaveBeenCalledWith('draft:work-1:ch-2')
+  })
+})

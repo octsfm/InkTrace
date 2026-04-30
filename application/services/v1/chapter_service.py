@@ -1,9 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
+from application.services.v1.text_metrics import count_effective_characters
 from domain.entities.chapter import Chapter
 from domain.types import ChapterId, ChapterStatus, NovelId
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
@@ -24,30 +25,19 @@ class ChapterService:
 
         now = datetime.now(timezone.utc)
         chapters = self.chapter_repo.list_by_work(work_id)
-        insert_after = next((item for item in chapters if item.id.value == str(after_chapter_id)), None)
-        insert_index = insert_after.order_index if insert_after else len(chapters)
-
-        for item in chapters:
-            if item.order_index > insert_index:
-                item.order_index += 1
-                item.number = item.order_index
-                item.updated_at = now
-                self.chapter_repo.save(item)
-
+        next_order = len(chapters) + 1
         chapter = Chapter(
             id=ChapterId(str(uuid.uuid4())),
-            novel_id=NovelId(str(work_id)),
-            number=insert_index + 1,
-            title=str(title or "").strip() or f"第{insert_index + 1}章",
+            work_id=NovelId(str(work_id)),
+            title=str(title or "").strip(),
             content="",
             status=ChapterStatus.DRAFT,
             created_at=now,
             updated_at=now,
-            order_index=insert_index + 1,
+            order_index=next_order,
             version=1,
         )
         self.chapter_repo.save(chapter)
-        self._normalize_orders(work_id, updated_at=now)
         return self.chapter_repo.find_by_id(chapter.id.value)
 
     def update_chapter(
@@ -63,17 +53,19 @@ class ChapterService:
         if not chapter:
             raise ValueError("chapter_not_found")
         if expected_version is not None and chapter.version != int(expected_version) and not force_override:
-            raise ValueError("chapter_version_conflict")
+            raise ValueError("version_conflict")
 
         now = datetime.now(timezone.utc)
         if title is not None:
-            chapter.title = str(title)
+            chapter.title = str(title or "")
         if content is not None:
-            chapter.content = str(content)
+            chapter.content = str(content or "")
+        # word_count is derived from content through the Chapter entity and persisted by ChapterRepo.
+        count_effective_characters(chapter.content)
         chapter.updated_at = now
         chapter.version += 1
         self.chapter_repo.save(chapter)
-        self._sync_work_word_count(chapter.novel_id.value)
+        self._sync_work_word_count(chapter.work_id.value)
         return self.chapter_repo.find_by_id(chapter.id.value)
 
     def delete_chapter(self, chapter_id: str) -> str:
@@ -81,7 +73,7 @@ class ChapterService:
         if not chapter:
             raise ValueError("chapter_not_found")
 
-        work_id = chapter.novel_id.value
+        work_id = chapter.work_id.value
         chapters = self.chapter_repo.list_by_work(work_id)
         current_index = next((index for index, item in enumerate(chapters) if item.id.value == chapter_id), -1)
         next_focus = ""
@@ -96,26 +88,36 @@ class ChapterService:
         self._sync_work_word_count(work_id)
         return next_focus
 
-    def reorder_chapters(self, work_id: str, ordered_chapter_ids: List[str]) -> List[Chapter]:
-        existing = {item.id.value: item for item in self.chapter_repo.list_by_work(work_id)}
-        ordered = [existing[item_id] for item_id in ordered_chapter_ids if item_id in existing]
-        remaining = [item for item_id, item in existing.items() if item_id not in ordered_chapter_ids]
-        final_list = [*ordered, *remaining]
-        now = datetime.now(timezone.utc)
+    def reorder_chapters(self, work_id: str, mappings: List[dict]) -> List[Chapter]:
+        chapters = self.chapter_repo.list_by_work(work_id)
+        existing_ids = [item.id.value for item in chapters]
+        if len(mappings) != len(chapters):
+            raise ValueError("invalid_input")
 
-        for index, chapter in enumerate(final_list, start=1):
-            chapter.order_index = index
-            chapter.number = index
+        submitted_ids = [str(item.get("id", "")) for item in mappings]
+        submitted_orders = [int(item.get("order_index", 0)) for item in mappings]
+        if len(set(submitted_ids)) != len(submitted_ids):
+            raise ValueError("invalid_input")
+        if set(submitted_ids) != set(existing_ids):
+            raise ValueError("invalid_input")
+        if sorted(submitted_orders) != list(range(1, len(chapters) + 1)):
+            raise ValueError("invalid_input")
+
+        chapter_by_id = {item.id.value: item for item in chapters}
+        now = datetime.now(timezone.utc)
+        for item in mappings:
+            chapter = chapter_by_id[str(item["id"])]
+            order_index = int(item["order_index"])
+            chapter.order_index = order_index
             chapter.updated_at = now
-        self.chapter_repo.save_many(final_list)
+        self.chapter_repo.save_many(list(chapter_by_id.values()))
         return self.chapter_repo.list_by_work(work_id)
 
     def _normalize_orders(self, work_id: str, *, updated_at: datetime) -> None:
         chapters = self.chapter_repo.list_by_work(work_id)
         for index, chapter in enumerate(chapters, start=1):
-            if chapter.order_index != index or chapter.number != index:
+            if chapter.order_index != index:
                 chapter.order_index = index
-                chapter.number = index
                 chapter.updated_at = updated_at
                 self.chapter_repo.save(chapter)
 

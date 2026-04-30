@@ -1,68 +1,63 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter
 
 from application.services.v1 import WorkService
+from presentation.api.routers.v1.schemas import (
+    V1APIError,
+    WorkCreateRequest,
+    WorkDeleteResponse,
+    WorkListResponse,
+    WorkResponse,
+    WorkUpdateRequest,
+    serialize_work,
+)
 
 router = APIRouter(prefix="/api/v1/works", tags=["v1-works"])
 
-
-class CreateWorkRequest(BaseModel):
-    title: str
-    author: str = ""
-
-
-@router.get("")
+@router.get("", response_model=WorkListResponse)
 def list_works():
     service = WorkService()
     items = service.list_works()
-    return {
-        "items": [
-            {
-                "id": item.id,
-                "title": item.title,
-                "author": item.author,
-                "current_word_count": item.current_word_count,
-                "created_at": item.created_at.isoformat(),
-                "updated_at": item.updated_at.isoformat(),
-            }
-            for item in items
-        ],
-        "total": len(items),
-    }
+    return {"items": [serialize_work(item) for item in items], "total": len(items)}
 
 
-@router.post("")
-def create_work(request: CreateWorkRequest):
+@router.post("", response_model=WorkResponse)
+def create_work(request: WorkCreateRequest):
     service = WorkService()
     work = service.create_work(request.title, request.author)
-    return {
-        "id": work.id,
-        "title": work.title,
-        "author": work.author,
-        "current_word_count": work.current_word_count,
-        "created_at": work.created_at.isoformat(),
-        "updated_at": work.updated_at.isoformat(),
-    }
+    return serialize_work(work)
 
 
-@router.get("/{work_id}")
+@router.get("/{work_id}", response_model=WorkResponse)
 def get_work(work_id: str):
     service = WorkService()
-    work = next((item for item in service.list_works() if item.id == work_id), None)
-    if not work:
-        raise HTTPException(status_code=404, detail="work_not_found")
-    return {
-        "id": work.id,
-        "title": work.title,
-        "author": work.author,
-        "current_word_count": work.current_word_count,
-        "created_at": work.created_at.isoformat(),
-        "updated_at": work.updated_at.isoformat(),
-    }
+    try:
+        work = service.get_work(work_id)
+    except ValueError as exc:
+        if str(exc) == "work_not_found":
+            raise V1APIError("work_not_found") from exc
+        raise
+    return serialize_work(work)
 
 
-@router.delete("/{work_id}")
+@router.put("/{work_id}", response_model=WorkResponse)
+def update_work(work_id: str, request: WorkUpdateRequest):
+    service = WorkService()
+    try:
+        work = service.update_work(work_id, title=request.title, author=request.author)
+    except ValueError as exc:
+        if str(exc) == "work_not_found":
+            raise V1APIError("work_not_found") from exc
+        raise
+    return serialize_work(work)
+
+
+@router.delete("/{work_id}", response_model=WorkDeleteResponse)
 def delete_work(work_id: str):
     service = WorkService()
-    service.delete_work(work_id)
+    try:
+        service.delete_work(work_id)
+    except ValueError as exc:
+        if str(exc) == "work_not_found":
+            raise V1APIError("work_not_found") from exc
+        raise
     return {"ok": True, "id": work_id}

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="status-bar">
     <div v-if="offline" class="offline-banner">{{ offlineMessage }}</div>
 
@@ -50,7 +50,7 @@ const props = defineProps({
   },
   offlineMessage: {
     type: String,
-    default: '离线模式：当前网络离线，已开启本地缓存保护'
+    default: '离线模式：当前网络离线，已开启本地缓存保护。'
   },
   lastSyncedAt: {
     type: String,
@@ -77,9 +77,11 @@ const props = defineProps({
 defineEmits(['manual-retry'])
 
 const statusLabelMap = {
-  synced: '已同步',
-  saving: '保存中...',
-  error: '同步失败'
+  synced: '已保存',
+  saving: '保存中',
+  offline: '离线模式',
+  conflict: '检测到冲突',
+  error: '保存失败'
 }
 
 const status = computed(() => String(props.status || 'synced'))
@@ -89,9 +91,7 @@ const formattedWordCount = computed(() => Number(props.wordCount || 0).toLocaleS
 const formattedNextRetryAt = computed(() => {
   if (!props.nextRetryAt) return ''
   const next = new Date(props.nextRetryAt)
-  if (Number.isNaN(next.getTime())) {
-    return String(props.nextRetryAt)
-  }
+  if (Number.isNaN(next.getTime())) return String(props.nextRetryAt)
   return next.toLocaleTimeString('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
@@ -149,6 +149,12 @@ const formattedNextRetryAt = computed(() => {
   color: #c2410c;
 }
 
+.status-pill[data-status='conflict'] {
+  border-color: #fbcfe8;
+  background: #fdf2f8;
+  color: #be185d;
+}
+
 .status-pill[data-status='offline'] {
   border-color: #fde68a;
   background: #fffbeb;
@@ -190,13 +196,8 @@ const formattedNextRetryAt = computed(() => {
 }
 
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 760px) {

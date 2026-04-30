@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from domain.entities.chapter import Chapter
@@ -23,7 +23,7 @@ class ChapterRepo:
         with get_connection() as conn:
             rows = conn.execute(
                 """
-                SELECT id, work_id, title, content, chapter_number, order_index, version, created_at, updated_at
+                SELECT id, work_id, title, content, word_count, order_index, version, created_at, updated_at
                 FROM chapters
                 WHERE work_id = ?
                 ORDER BY order_index ASC
@@ -36,7 +36,7 @@ class ChapterRepo:
         with get_connection() as conn:
             row = conn.execute(
                 """
-                SELECT id, work_id, title, content, chapter_number, order_index, version, created_at, updated_at
+                SELECT id, work_id, title, content, word_count, order_index, version, created_at, updated_at
                 FROM chapters
                 WHERE id = ?
                 """,
@@ -50,7 +50,7 @@ class ChapterRepo:
             "work_id",
             "title",
             "content",
-            "chapter_number",
+            "word_count",
             "order_index",
             "version",
             "created_at",
@@ -58,10 +58,10 @@ class ChapterRepo:
         ]
         insert_values = [
             chapter.id.value,
-            chapter.novel_id.value,
+            chapter.work_id.value,
             chapter.title,
             chapter.content,
-            chapter.number,
+            chapter.word_count,
             chapter.order_index,
             chapter.version,
             chapter.created_at.isoformat(),
@@ -70,32 +70,29 @@ class ChapterRepo:
         update_assignments = [
             "title = excluded.title",
             "content = excluded.content",
-            "chapter_number = excluded.chapter_number",
+            "word_count = excluded.word_count",
             "order_index = excluded.order_index",
             "version = excluded.version",
             "updated_at = excluded.updated_at",
         ]
 
+        # Legacy columns are synchronized only when present in an existing database.
         if "novel_id" in self._columns:
             insert_columns.append("novel_id")
-            insert_values.append(chapter.novel_id.value)
+            insert_values.append(chapter.work_id.value)
             update_assignments.append("novel_id = excluded.novel_id")
-
         if "number" in self._columns:
             insert_columns.append("number")
-            insert_values.append(chapter.number)
+            insert_values.append(chapter.order_index)
             update_assignments.append("number = excluded.number")
-
-        if "word_count" in self._columns:
-            insert_columns.append("word_count")
-            insert_values.append(chapter.word_count)
-            update_assignments.append("word_count = excluded.word_count")
-
+        if "chapter_number" in self._columns:
+            insert_columns.append("chapter_number")
+            insert_values.append(chapter.order_index)
+            update_assignments.append("chapter_number = excluded.chapter_number")
         if "summary" in self._columns:
             insert_columns.append("summary")
             insert_values.append(chapter.summary)
             update_assignments.append("summary = excluded.summary")
-
         if "status" in self._columns:
             insert_columns.append("status")
             insert_values.append(chapter.status.value)
@@ -127,6 +124,32 @@ class ChapterRepo:
             for chapter in chapters:
                 self._save_with_connection(conn, chapter)
 
+    def reorder(self, work_id: str, mappings: list[dict]) -> None:
+        if not mappings:
+            return
+        updated_at = datetime.now(timezone.utc).isoformat()
+        with get_connection() as conn:
+            for item in mappings:
+                order_index = int(item["order_index"])
+                conn.execute(
+                    """
+                    UPDATE chapters
+                    SET order_index = ?, updated_at = ?
+                    WHERE id = ? AND work_id = ?
+                    """,
+                    (order_index, updated_at, str(item["id"]), str(work_id)),
+                )
+                if "number" in self._columns:
+                    conn.execute(
+                        "UPDATE chapters SET number = ? WHERE id = ? AND work_id = ?",
+                        (order_index, str(item["id"]), str(work_id)),
+                    )
+                if "chapter_number" in self._columns:
+                    conn.execute(
+                        "UPDATE chapters SET chapter_number = ? WHERE id = ? AND work_id = ?",
+                        (order_index, str(item["id"]), str(work_id)),
+                    )
+
     def delete(self, chapter_id: str) -> None:
         with get_connection() as conn:
             conn.execute("DELETE FROM chapters WHERE id = ?", (str(chapter_id),))
@@ -135,8 +158,7 @@ class ChapterRepo:
     def _row_to_entity(row) -> Chapter:
         return Chapter(
             id=ChapterId(str(row["id"])),
-            novel_id=NovelId(str(row["work_id"])),
-            number=int(row["chapter_number"]),
+            work_id=NovelId(str(row["work_id"])),
             title=str(row["title"]),
             content=str(row["content"]),
             status=ChapterStatus.DRAFT,

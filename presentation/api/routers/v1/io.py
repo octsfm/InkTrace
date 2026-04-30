@@ -1,62 +1,59 @@
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from urllib.parse import quote
+
+from fastapi import APIRouter, File, Form, Query, Response, UploadFile
 
 from application.services.v1 import IOService
+from presentation.api.routers.v1.schemas import ImportTxtResponse, V1APIError, serialize_chapter, serialize_work
 
 router = APIRouter(prefix="/api/v1/io", tags=["v1-io"])
 
-
-class ImportTxtRequest(BaseModel):
-    file_path: str
-    title: str = ""
-    author: str = ""
-
-
-@router.post("/import")
-def import_txt(request: ImportTxtRequest):
-    service = IOService()
-    if not service.path_import_allowed():
-        raise HTTPException(status_code=400, detail="path_import_not_supported_in_web")
-    work = service.import_txt(request.file_path, title=request.title, author=request.author)
-    return {
-        "id": work.id,
-        "title": work.title,
-        "author": work.author,
-        "current_word_count": work.current_word_count,
-        "created_at": work.created_at.isoformat(),
-        "updated_at": work.updated_at.isoformat(),
-    }
-
-
-@router.post("/import-upload")
-async def import_txt_upload(
-    txt_file: UploadFile = File(...),
+@router.post("/import", response_model=ImportTxtResponse)
+async def import_txt(
+    file: UploadFile = File(...),
     title: str = Form(default=""),
     author: str = Form(default=""),
 ):
     service = IOService()
-    raw_bytes = await txt_file.read()
+    raw_bytes = await file.read()
     try:
-        work = service.import_txt_upload(txt_file.filename or "未命名作品.txt", raw_bytes, title=title, author=author)
+        work = service.import_txt_upload(file.filename or "未命名作品.txt", raw_bytes, title=title, author=author)
     except UnicodeDecodeError as exc:
-        raise HTTPException(status_code=400, detail="txt_decode_failed") from exc
+        raise V1APIError("invalid_input", payload={"detail": "txt_decode_failed"}) from exc
+    except ValueError as exc:
+        if str(exc) in {"txt_file_too_large", "invalid_input"}:
+            raise V1APIError("invalid_input", payload={"detail": str(exc)}) from exc
+        raise
+    chapters = service.chapter_repo.list_by_work(work.id)
     return {
-        "id": work.id,
-        "title": work.title,
-        "author": work.author,
-        "current_word_count": work.current_word_count,
-        "created_at": work.created_at.isoformat(),
-        "updated_at": work.updated_at.isoformat(),
+        **serialize_work(work),
+        "chapters": [serialize_chapter(chapter) for chapter in chapters],
     }
 
 
 @router.get("/export/{work_id}")
-def export_txt(work_id: str, output_path: str = Query(default="")):
+def export_txt(
+    work_id: str,
+    include_titles: bool = Query(default=True),
+    gap_lines: int = Query(default=1, ge=0, le=2),
+):
     service = IOService()
     try:
-        file_path = service.export_txt(work_id, output_path)
+        filename, content = service.export_txt(
+            work_id,
+            include_titles=include_titles,
+            gap_lines=gap_lines,
+        )
     except ValueError as exc:
         if str(exc) == "work_not_found":
-            raise HTTPException(status_code=404, detail="work_not_found") from exc
+            raise V1APIError("work_not_found") from exc
+        if str(exc) == "invalid_input":
+            raise V1APIError("invalid_input") from exc
         raise
-    return {"work_id": work_id, "file_path": file_path}
+    quoted = quote(filename)
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quoted}"
+        },
+    )

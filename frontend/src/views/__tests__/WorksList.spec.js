@@ -7,6 +7,7 @@ import WorksList from '../WorksList.vue'
 const mockPush = vi.fn()
 const mockList = vi.fn()
 const mockDelete = vi.fn()
+const mockUpdate = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: mockPush })
@@ -15,6 +16,7 @@ vi.mock('vue-router', () => ({
 vi.mock('@/api', () => ({
   v1WorksApi: {
     list: (...args) => mockList(...args),
+    update: (...args) => mockUpdate(...args),
     delete: (...args) => mockDelete(...args)
   }
 }))
@@ -45,6 +47,18 @@ const mountPage = async () => {
           props: ['modelValue'],
           emits: ['update:modelValue', 'imported'],
           template: '<div v-if="modelValue" class="import-modal-stub">import modal</div>'
+        },
+        ExportTxtModal: {
+          props: ['modelValue', 'work'],
+          emits: ['update:modelValue', 'exported'],
+          template: `
+            <div v-if="modelValue" class="export-modal-stub">
+              <span class="export-work-title">{{ work?.title }}</span>
+              <button class="confirm-export" @click="$emit('exported', work); $emit('update:modelValue', false)">
+                confirm export
+              </button>
+            </div>
+          `
         },
         'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' },
         'el-empty': slotStub,
@@ -77,6 +91,14 @@ describe('WorksList 页面', () => {
       ],
       total: 1
     })
+    mockUpdate.mockImplementation(async (workId, payload) => ({
+      id: workId,
+      title: payload.title ?? '椋庢毚灏嗚嚦',
+      author: payload.author ?? '娴嬭瘯浣滆€?',
+      current_word_count: 32000,
+      updated_at: '2026-04-09T10:00:00.000Z'
+    }))
+    vi.spyOn(window, 'prompt').mockRestore?.()
   })
 
   it('renders hero actions and work list', async () => {
@@ -135,6 +157,48 @@ describe('WorksList 页面', () => {
     expect(wrapper.text()).not.toContain('风暴将至')
     expect(ElMessage.success).toHaveBeenCalledWith('作品已删除')
     expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  it('renames work from card operation menu', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValueOnce('新标题')
+    const wrapper = await mountPage()
+
+    await wrapper.find('.more-button').trigger('click')
+    await wrapper.find('.menu-item.rename').trigger('click')
+    await flushPromises()
+
+    expect(promptSpy).toHaveBeenCalled()
+    expect(mockUpdate).toHaveBeenCalledWith('work-1', { title: '新标题' })
+    expect(wrapper.text()).toContain('新标题')
+  })
+
+  it('updates author from card operation menu', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValueOnce('新作者')
+    const wrapper = await mountPage()
+
+    await wrapper.find('.more-button').trigger('click')
+    await wrapper.find('.menu-item.author').trigger('click')
+    await flushPromises()
+
+    expect(promptSpy).toHaveBeenCalled()
+    expect(mockUpdate).toHaveBeenCalledWith('work-1', { author: '新作者' })
+    expect(wrapper.text()).toContain('新作者')
+  })
+
+  it('opens export txt modal from card operation menu', async () => {
+    const wrapper = await mountPage()
+
+    await wrapper.find('.more-button').trigger('click')
+    await wrapper.find('.menu-item.export').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.export-modal-stub').exists()).toBe(true)
+    expect(wrapper.find('.export-work-title').text()).toContain('风暴将至')
+
+    await wrapper.find('.confirm-export').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.export-modal-stub').exists()).toBe(false)
   })
 
   it('shows empty onboarding when no works exist', async () => {

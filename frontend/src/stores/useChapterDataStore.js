@@ -26,8 +26,34 @@ export const useChapterDataStore = defineStore('chapterData', () => {
     return String(activeChapter.value?.title || '')
   })
 
+  const normalizeChapter = (chapter, fallbackIndex = 0) => {
+    const orderIndex = Number(chapter?.order_index)
+    return {
+      ...(chapter || {}),
+      id: String(chapter?.id || ''),
+      title: String(chapter?.title || ''),
+      content: String(chapter?.content || ''),
+      order_index: Number.isFinite(orderIndex) && orderIndex > 0 ? orderIndex : fallbackIndex + 1
+    }
+  }
+
+  const sortByOrderIndex = (items) => [...items].sort((left, right) => {
+    const leftOrder = Number(left?.order_index || 0)
+    const rightOrder = Number(right?.order_index || 0)
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder
+    }
+    return String(left?.id || '').localeCompare(String(right?.id || ''))
+  })
+
   const setChapters = (items) => {
-    chapters.value = Array.isArray(items) ? [...items] : []
+    const normalized = Array.isArray(items)
+      ? items.map((item, index) => normalizeChapter(item, index)).filter((item) => item.id)
+      : []
+    chapters.value = sortByOrderIndex(normalized)
+    if (activeChapterId.value && !chapters.value.some((item) => item.id === activeChapterId.value)) {
+      activeChapterId.value = ''
+    }
   }
 
   const setActiveChapter = (chapterId) => {
@@ -36,19 +62,40 @@ export const useChapterDataStore = defineStore('chapterData', () => {
 
   const upsertChapter = (chapter) => {
     if (!chapter || !chapter.id) return
-    const index = chapters.value.findIndex((item) => item.id === chapter.id)
+    const normalized = normalizeChapter(chapter, chapters.value.length)
+    const index = chapters.value.findIndex((item) => item.id === normalized.id)
     if (index < 0) {
-      chapters.value.push(chapter)
+      chapters.value = sortByOrderIndex([...chapters.value, normalized])
       return
     }
-    chapters.value[index] = { ...chapters.value[index], ...chapter }
+    const next = [...chapters.value]
+    next[index] = normalizeChapter({ ...next[index], ...normalized }, index)
+    chapters.value = sortByOrderIndex(next)
   }
 
-  const removeChapter = (chapterId) => {
+  const appendCreatedChapter = (chapter, { activate = true, clearSearch = false } = {}) => {
+    upsertChapter({
+      ...chapter,
+      order_index: Number(chapter?.order_index || 0) > 0 ? Number(chapter.order_index) : chapters.value.length + 1
+    })
+    if (activate && chapter?.id) {
+      activeChapterId.value = String(chapter.id)
+    }
+    return {
+      activeChapterId: activeChapterId.value,
+      clearSearch: Boolean(clearSearch)
+    }
+  }
+
+  const removeChapter = (chapterId, nextActiveChapterId = '') => {
     const id = String(chapterId || '')
-    chapters.value = chapters.value.filter((item) => item.id !== id)
+    chapters.value = sortByOrderIndex(
+      chapters.value
+        .filter((item) => item.id !== id)
+        .map((item, index) => ({ ...item, order_index: index + 1 }))
+    )
     if (activeChapterId.value === id) {
-      activeChapterId.value = chapters.value[0]?.id || ''
+      activeChapterId.value = String(nextActiveChapterId || chapters.value[0]?.id || '')
     }
     const nextDraftMap = { ...draftByChapterId.value }
     delete nextDraftMap[id]
@@ -63,7 +110,22 @@ export const useChapterDataStore = defineStore('chapterData', () => {
     const byId = new Map(chapters.value.map((item) => [String(item.id), item]))
     const reordered = sequence.map((id) => byId.get(id)).filter(Boolean)
     const remaining = chapters.value.filter((item) => !sequence.includes(String(item.id)))
-    chapters.value = [...reordered, ...remaining]
+    chapters.value = [...reordered, ...remaining].map((item, index) => ({
+      ...item,
+      order_index: index + 1
+    }))
+  }
+
+  const getFilteredChapters = (keyword = '') => {
+    const query = String(keyword || '').trim().toLowerCase()
+    if (!query) {
+      return [...chapters.value]
+    }
+    return chapters.value.filter((chapter, index) => {
+      const displayNumber = `第${Number(chapter.order_index || index + 1)}章`
+      const title = String(chapter.title || '').toLowerCase()
+      return title.includes(query) || displayNumber.toLowerCase().includes(query)
+    })
   }
 
   const updateChapterDraft = (chapterId, content) => {
@@ -112,8 +174,10 @@ export const useChapterDataStore = defineStore('chapterData', () => {
     setChapters,
     setActiveChapter,
     upsertChapter,
+    appendCreatedChapter,
     removeChapter,
     reorderChapters,
+    getFilteredChapters,
     updateChapterDraft,
     clearChapterDraft,
     updateChapterTitleDraft,

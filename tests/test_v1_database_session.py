@@ -1,3 +1,5 @@
+import sqlite3
+
 from infrastructure.database.session import (
     create_connection,
     get_database_path,
@@ -61,11 +63,10 @@ def test_v1_database_session_migrates_legacy_chapters_schema(monkeypatch, tmp_pa
     with create_connection(row_factory=None) as conn:
         columns = [row[1] for row in conn.execute("PRAGMA table_info(chapters)").fetchall()]
         row = conn.execute(
-            "SELECT work_id, chapter_number, order_index, version FROM chapters WHERE id = 'chapter-1'"
+            "SELECT work_id, number, order_index, version FROM chapters WHERE id = 'chapter-1'"
         ).fetchone()
 
     assert "work_id" in columns
-    assert "chapter_number" in columns
     assert "order_index" in columns
     assert "version" in columns
     assert row == ("work-1", 3, 3, 1)
@@ -114,7 +115,7 @@ def test_v1_database_session_allows_create_work_on_legacy_chapters_schema(monkey
     with create_connection(row_factory=None) as conn:
         row = conn.execute(
             """
-            SELECT novel_id, work_id, number, chapter_number, order_index, version
+            SELECT novel_id, work_id, number, order_index, version
             FROM chapters
             WHERE work_id = ?
             """,
@@ -126,6 +127,27 @@ def test_v1_database_session_allows_create_work_on_legacy_chapters_schema(monkey
     assert row[2] == 1
     assert row[3] == 1
     assert row[4] == 1
-    assert row[5] == 1
 
+    get_database_path.cache_clear()
+
+
+def test_v1_database_session_uses_v11_runtime_schema_for_new_databases(monkeypatch, tmp_path):
+    db_path = tmp_path / "runtime" / "v11-runtime-schema.db"
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(db_path))
+    get_database_path.cache_clear()
+
+    initialize_database()
+
+    conn = sqlite3.connect(db_path)
+    work_columns = {row[1] for row in conn.execute("PRAGMA table_info(works)").fetchall()}
+    chapter_columns = {row[1] for row in conn.execute("PRAGMA table_info(chapters)").fetchall()}
+
+    assert "word_count" in work_columns
+    assert "current_word_count" not in work_columns
+    assert {"work_id", "word_count", "order_index", "version"}.issubset(chapter_columns)
+    assert "chapter_number" not in chapter_columns
+    assert "number" not in chapter_columns
+    assert "novel_id" not in chapter_columns
+
+    conn.close()
     get_database_path.cache_clear()

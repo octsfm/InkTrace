@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 
 DEFAULT_DB_PATH = Path("data") / "inktrace.db"
@@ -37,3 +38,20 @@ def connect(
     conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+@contextmanager
+def connection_scope(
+    db_path: Optional[str | Path] = None,
+    *,
+    row_factory: Optional[object] = sqlite3.Row,
+) -> Iterator[sqlite3.Connection]:
+    conn = connect(db_path, row_factory=row_factory)
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

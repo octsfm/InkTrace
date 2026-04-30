@@ -7,7 +7,9 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler as fastapi_request_validation_exception_handler
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -31,7 +33,7 @@ from presentation.api.routers.v1 import health as health_v1
 from presentation.api.routers.v1 import io as io_v1
 from presentation.api.routers.v1 import sessions as sessions_v1
 from presentation.api.routers.v1 import works as works_v1
-from presentation.api.routers.v1.schemas import V1APIError
+from presentation.api.routers.v1.schemas import V1APIError, build_error_response
 
 logger = get_logger(__name__)
 v1_api_logger = get_v1_logger("api")
@@ -205,6 +207,27 @@ def create_app() -> FastAPI:
         if request_id:
             response.headers["X-Request-Id"] = request_id
         return response
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+        request_id = getattr(request.state, "request_id", "")
+        if str(request.url.path).startswith("/api/v1/"):
+            v1_api_logger.warning(
+                "v1 request validation failed",
+                extra=build_v1_log_context(
+                    category="error",
+                    event="validation_error",
+                    request_id=request_id,
+                    path=request.url.path,
+                    error_code="invalid_input",
+                    status_code=400,
+                ),
+            )
+            response = JSONResponse(status_code=400, content=build_error_response("invalid_input"))
+            if request_id:
+                response.headers["X-Request-Id"] = request_id
+            return response
+        return await fastapi_request_validation_exception_handler(request, exc)
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):

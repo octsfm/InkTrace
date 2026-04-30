@@ -18,11 +18,11 @@ def test_v1_database_models_create_core_tables(monkeypatch, tmp_path):
         indexes = {
             row[0]
             for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_chapters_work_order', 'idx_chapters_work_number')"
+                "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_chapters_work_order')"
             ).fetchall()
         }
 
     assert tables == {"works", "chapters", "edit_sessions"}
-    assert indexes == {"idx_chapters_work_order", "idx_chapters_work_number"}
+    assert indexes == {"idx_chapters_work_order"}
 
     get_database_path.cache_clear()

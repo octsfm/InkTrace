@@ -1,18 +1,38 @@
-<template>
+﻿<template>
   <div class="chapter-sidebar">
     <div class="sidebar-header">
       <div>
         <h2>章节列表</h2>
         <p>{{ chapters.length }} 章</p>
       </div>
-      <button type="button" class="add-button" @click="$emit('create')">+ 新章</button>
+      <button type="button" class="add-button" @click="handleCreate">+ 新章</button>
+    </div>
+
+    <div class="sidebar-tools">
+      <input
+        v-model="searchQuery"
+        class="sidebar-tool-input"
+        type="text"
+        placeholder="搜索章节"
+      />
+      <form class="jump-form" @submit.prevent="submitJump">
+        <input
+          v-model="jumpOrderInput"
+          class="sidebar-tool-input"
+          type="text"
+          inputmode="numeric"
+          placeholder="跳转第 N 章"
+        />
+        <button type="submit" class="jump-button">跳转</button>
+      </form>
     </div>
 
     <div v-if="loading" class="sidebar-state">正在加载章节...</div>
     <div v-else-if="!chapters.length" class="sidebar-state">当前还没有章节。</div>
+    <div v-else-if="filteredChapters.length === 0" class="sidebar-state">没有找到匹配章节。</div>
     <div v-else class="chapter-list">
       <div
-        v-for="(chapter, index) in chapters"
+        v-for="chapter in filteredChapters"
         :key="chapter.id"
         :data-chapter-id="chapter.id"
         class="chapter-item"
@@ -35,9 +55,21 @@
             class="chapter-select-button"
             @click="$emit('select', chapter.id)"
           >
-            <span class="chapter-title">{{ buildChapterLabel(chapter, index) }}</span>
-            <span class="chapter-meta">{{ formatWords(chapter.word_count ?? chapter.current_word_count ?? estimateWords(chapter.content)) }} 字</span>
+            <span class="chapter-title-row">
+              <span class="chapter-title">{{ buildChapterLabel(chapter) }}</span>
+              <span
+                v-if="resolveStateMarker(chapter.id)"
+                class="chapter-state-marker"
+                :data-state="resolveStateMarker(chapter.id)"
+              >
+                {{ resolveStateMarker(chapter.id) === 'conflict' ? '!' : '•' }}
+              </span>
+            </span>
+            <span class="chapter-meta">
+              {{ formatWords(chapter.word_count ?? chapter.current_word_count ?? estimateWords(chapter.content)) }} 字
+            </span>
           </button>
+
           <form v-else class="chapter-rename-form" @submit.prevent="submitRename(chapter.id)">
             <input
               v-model="editingTitle"
@@ -51,18 +83,10 @@
         </div>
 
         <div class="chapter-actions">
-          <button
-            type="button"
-            class="chapter-action-button"
-            @click="startRename(chapter)"
-          >
+          <button type="button" class="chapter-action-button" @click="startRename(chapter)">
             改名
           </button>
-          <button
-            type="button"
-            class="chapter-action-button danger"
-            @click="$emit('delete', chapter.id)"
-          >
+          <button type="button" class="chapter-action-button danger" @click="$emit('delete', chapter.id)">
             删除
           </button>
         </div>
@@ -72,7 +96,7 @@
 </template>
 
 <script setup>
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 const props = defineProps({
   chapters: {
@@ -86,29 +110,70 @@ const props = defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  draftChapterIds: {
+    type: Array,
+    default: () => []
+  },
+  conflictChapterId: {
+    type: String,
+    default: ''
   }
 })
 
-const emit = defineEmits(['select', 'create', 'rename', 'delete', 'reorder'])
+const emit = defineEmits(['select', 'create', 'rename', 'delete', 'reorder', 'jump-invalid'])
 
 const editingChapterId = ref('')
 const editingTitle = ref('')
 const draggingChapterId = ref('')
 const dragTargetChapterId = ref('')
+const searchQuery = ref('')
+const jumpOrderInput = ref('')
+
+const draftChapterIdSet = computed(() => new Set(
+  (props.draftChapterIds || []).map((id) => String(id || '')).filter(Boolean)
+))
 
 const estimateWords = (content) => String(content || '').trim().length
 const formatWords = (value) => Number(value || 0).toLocaleString('zh-CN')
-const resolveOrderIndex = (chapter, index) => {
+
+const resolveOrderIndex = (chapter) => {
   const orderIndex = Number(chapter?.order_index)
   if (Number.isFinite(orderIndex) && orderIndex > 0) {
     return orderIndex
   }
-  return index + 1
+  const index = props.chapters.findIndex((item) => item.id === chapter?.id)
+  return index >= 0 ? index + 1 : 1
 }
-const buildChapterLabel = (chapter, index) => {
-  const prefix = `第${resolveOrderIndex(chapter, index)}章`
+
+const buildChapterLabel = (chapter) => {
+  const prefix = `第${resolveOrderIndex(chapter)}章`
   const title = String(chapter?.title || '').trim()
   return title ? `${prefix} ${title}` : prefix
+}
+
+const filteredChapters = computed(() => {
+  const keyword = String(searchQuery.value || '').trim().toLowerCase()
+  if (!keyword) return props.chapters
+  return props.chapters.filter((chapter) => {
+    const label = buildChapterLabel(chapter).toLowerCase()
+    const content = String(chapter?.content || '').toLowerCase()
+    return label.includes(keyword) || content.includes(keyword)
+  })
+})
+
+const resolveStateMarker = (chapterId) => {
+  const id = String(chapterId || '')
+  if (!id) return ''
+  if (String(props.conflictChapterId || '') === id) return 'conflict'
+  if (draftChapterIdSet.value.has(id)) return 'draft'
+  return ''
+}
+
+const handleCreate = () => {
+  searchQuery.value = ''
+  jumpOrderInput.value = ''
+  emit('create')
 }
 
 const startRename = async (chapter) => {
@@ -133,10 +198,7 @@ const submitRename = (chapterId) => {
     cancelRename()
     return
   }
-  emit('rename', {
-    chapterId: id,
-    title: nextTitle
-  })
+  emit('rename', { chapterId: id, title: nextTitle })
   cancelRename()
 }
 
@@ -144,9 +206,7 @@ const moveChapterId = (chapterIds, sourceId, targetId) => {
   const nextIds = [...chapterIds]
   const sourceIndex = nextIds.indexOf(sourceId)
   const targetIndex = nextIds.indexOf(targetId)
-  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
-    return []
-  }
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return []
   const [moved] = nextIds.splice(sourceIndex, 1)
   nextIds.splice(targetIndex, 0, moved)
   return nextIds
@@ -175,9 +235,7 @@ const handleDrop = (chapterId) => {
     sourceId,
     targetId
   )
-  if (orderedIds.length) {
-    emit('reorder', orderedIds)
-  }
+  if (orderedIds.length) emit('reorder', orderedIds)
   draggingChapterId.value = ''
   dragTargetChapterId.value = ''
 }
@@ -187,6 +245,21 @@ const handleDragEnd = () => {
   dragTargetChapterId.value = ''
 }
 
+const submitJump = () => {
+  const targetOrder = Number.parseInt(String(jumpOrderInput.value || '').trim(), 10)
+  if (!Number.isInteger(targetOrder) || targetOrder <= 0) {
+    emit('jump-invalid')
+    return
+  }
+  const matched = props.chapters.find((chapter) => resolveOrderIndex(chapter) === targetOrder)
+  if (!matched) {
+    emit('jump-invalid')
+    return
+  }
+  emit('select', matched.id)
+  jumpOrderInput.value = ''
+}
+
 const scrollToChapter = (chapterId) => {
   const id = String(chapterId || '')
   if (!id) return
@@ -194,9 +267,15 @@ const scrollToChapter = (chapterId) => {
   target?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
 }
 
-defineExpose({
-  scrollToChapter
-})
+watch(
+  () => props.activeChapterId,
+  async (chapterId) => {
+    await nextTick()
+    scrollToChapter(chapterId)
+  }
+)
+
+defineExpose({ scrollToChapter })
 </script>
 
 <style scoped>
@@ -233,6 +312,45 @@ defineExpose({
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
+  cursor: pointer;
+}
+
+.sidebar-tools {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.jump-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.sidebar-tool-input {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #111827;
+  outline: none;
+}
+
+.sidebar-tool-input:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.jump-button {
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
   cursor: pointer;
 }
 
@@ -307,6 +425,28 @@ defineExpose({
   font-size: 14px;
   font-weight: 600;
   color: #111827;
+}
+
+.chapter-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chapter-state-marker {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chapter-state-marker[data-state='draft'] {
+  color: #2563eb;
+}
+
+.chapter-state-marker[data-state='conflict'] {
+  color: #dc2626;
 }
 
 .chapter-meta {

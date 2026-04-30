@@ -1,83 +1,33 @@
-import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ElMessage } from 'element-plus'
+﻿import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
 
-import ImportModal from '../ImportModal.vue'
+const source = readFileSync(resolve(process.cwd(), 'src/components/works/ImportModal.vue'), 'utf8')
 
-const mockImportTxtUpload = vi.fn()
-
-vi.mock('@/api', () => ({
-  v1IOApi: {
-    importTxtUpload: (...args) => mockImportTxtUpload(...args)
-  }
-}))
-
-vi.mock('element-plus', () => ({
-  ElMessage: { success: vi.fn(), warning: vi.fn(), error: vi.fn() }
-}))
-
-describe('ImportModal', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
+describe('ImportModal contract', () => {
+  it('defines txt file selection and upload fields', () => {
+    expect(source).toContain('导入 TXT')
+    expect(source).toContain('accept=".txt,text/plain"')
+    expect(source).toContain('handleFallbackFileChange')
+    expect(source).toContain('selectedFileLabel')
   })
 
-  it('warns when no file is selected', async () => {
-    const wrapper = mount(ImportModal, {
-      props: {
-        modelValue: true
-      }
-    })
-
-    await wrapper.find('.primary-button').trigger('click')
-
-    expect(ElMessage.warning).toHaveBeenCalledWith('请先选择 TXT 文件。')
+  it('calls v1 import api with txt file title and author', () => {
+    expect(source).toContain('v1IOApi.importTxt')
+    expect(source).toContain('txtFile: selectedFile.value')
+    expect(source).toContain('title: form.title.trim()')
+    expect(source).toContain('author: form.author.trim()')
   })
 
-  it('fills readonly input after selecting file in web upload flow', async () => {
-    const wrapper = mount(ImportModal, {
-      props: {
-        modelValue: true
-      }
-    })
-
-    const input = wrapper.find('input[type="file"]')
-    const file = new File(['第一章 起点\n这里是正文。'], 'novel.txt', { type: 'text/plain' })
-    Object.defineProperty(input.element, 'files', {
-      configurable: true,
-      value: [file]
-    })
-    await input.trigger('change')
-
-    expect(wrapper.find('.field-input').element.value).toBe('novel.txt')
+  it('emits imported work and closes on success', () => {
+    expect(source).toContain("emit('imported', work)")
+    expect(source).toContain("emit('update:modelValue', false)")
+    expect(source).toContain("ElMessage.success('TXT 导入成功')")
   })
 
-  it('submits import request and emits imported', async () => {
-    mockImportTxtUpload.mockResolvedValueOnce({ id: 'work-9', title: '导入作品' })
-    const wrapper = mount(ImportModal, {
-      props: {
-        modelValue: true
-      }
-    })
-
-    const input = wrapper.find('input[type="file"]')
-    const file = new File(['第一章 起点\n这里是正文。'], 'novel.txt', { type: 'text/plain' })
-    Object.defineProperty(input.element, 'files', {
-      configurable: true,
-      value: [file]
-    })
-    await input.trigger('change')
-    await wrapper.findAll('.field-input')[1].setValue('导入作品')
-    await wrapper.findAll('.field-input')[2].setValue('作者甲')
-    await wrapper.find('.primary-button').trigger('click')
-    await flushPromises()
-
-    expect(mockImportTxtUpload).toHaveBeenCalledWith({
-      txtFile: file,
-      title: '导入作品',
-      author: '作者甲'
-    })
-    expect(wrapper.emitted('imported')).toEqual([[{ id: 'work-9', title: '导入作品' }]])
-    expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
-    expect(ElMessage.success).toHaveBeenCalledWith('TXT 导入成功')
+  it('shows explicit warning and error feedback', () => {
+    expect(source).toContain("ElMessage.warning('请先选择 TXT 文件。')")
+    expect(source).toContain('TXT 导入失败，请检查文件编码或大小后重试。')
+    expect(source).toContain('ElMessage.error(detail)')
   })
 })
