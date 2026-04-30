@@ -1,3 +1,3 @@
-from presentation.api.routers.v1 import chapters, io, sessions, works
+from presentation.api.routers.v1 import chapters, health, io, sessions, works
 
-__all__ = ["works", "chapters", "sessions", "io"]
+__all__ = ["health", "works", "chapters", "sessions", "io"]
