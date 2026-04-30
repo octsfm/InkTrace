@@ -15,7 +15,8 @@
 规则：
 
 - 正文编辑区位于页面中心。
-- 正文编辑区默认获得输入焦点。
+- 页面打开、切章、新建章节后默认焦点给正文 textarea。
+- 标题输入框仅在用户点击或触发标题编辑快捷入口时进入编辑态。
 - Drawer 展开、关闭、Tab 切换不得主动抢占正文焦点。
 - 保存状态提示使用轻量状态，不使用阻断式全屏弹窗。
 - 正文保存采用 Local-First 自动保存。
@@ -47,7 +48,7 @@
 - 正文保存失败时不弹出全屏阻断弹窗。
 - 网络异常时正文继续允许输入。
 - 409 冲突时保留本地草稿。
-- 切章前必须完成正文保存保护。
+- 切章前必须将当前编辑内容写入本地草稿；网络保存允许异步完成。
 - Ctrl/Cmd+S 只保存当前聚焦区域。
 
 ***
@@ -475,6 +476,8 @@ title 为空：第{order_index}章
 - 粘贴内容按纯文本处理。
 - 支持长文输入。
 - 单章内容超过软上限时显示轻量提示，不阻断输入。
+- 页面打开、切章、新建章节后，正文 textarea 获得默认焦点。
+- 标题输入框不得在页面初始化或切章后自动抢占焦点。
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
@@ -929,7 +932,7 @@ UI 表现：
 
 - 正文保存中不阻断输入。
 - 结构化资产保存中禁用当前资产保存按钮。
-- 切章时若正文正在保存，必须等待保存完成或 flush 完成。
+- 切章时若正文正在保存，必须先确保当前内容已写入本地草稿，网络保存异步继续。
 
 ### 5.2 synced
 
@@ -1057,7 +1060,9 @@ stateDiagram-v2
   ↓
 检查正文保存状态
   ↓
-正文已保存 / 本地已暂存
+当前编辑内容写入本地草稿
+  ↓
+网络保存异步继续
   ↓
 检查当前章节细纲 dirty
   ↓
@@ -1079,9 +1084,9 @@ stateDiagram-v2
 ```text
 用户点击目标章节
   ↓
-正文 saving
+当前编辑内容写入本地草稿
   ↓
-等待正文 flush 完成
+正文网络保存异步继续
   ↓
 当前章节细纲 dirty
   ↓
@@ -1116,13 +1121,13 @@ sequenceDiagram
     participant Editor as Editor
 
     User->>Sidebar: 点击章节
-    Sidebar->>SaveStore: 检查正文保存状态
+    Sidebar->>SaveStore: 写入当前章节本地草稿
 
-    alt 正文saving
-        SaveStore->>API: flush当前章节标题+正文
-        API-->>SaveStore: 保存完成
-    else 正文非saving
-        SaveStore-->>Sidebar: 允许继续
+    alt 正文可发起网络保存
+        SaveStore->>API: 异步flush当前章节标题+正文
+        API-->>SaveStore: 返回保存结果
+    else 网络不可用或保存失败
+        SaveStore->>SaveStore: 保留本地草稿
     end
 
     Sidebar->>AssetStore: 检查当前章节细纲dirty
@@ -1158,6 +1163,17 @@ sequenceDiagram
 - 只保存当前聚焦编辑区。
 - 不保存其它未聚焦 dirty 内容。
 - 其它未保存项保持原状态并提示。
+
+行为矩阵：
+
+| 当前焦点 | 行为 |
+|---|---|
+| 正文 textarea | 触发当前章节标题与正文立即 flush，并更新会话位置 |
+| OutlinePanel | 保存当前激活 Outline 资源 |
+| TimelinePanel | 保存当前 Timeline 编辑项或排序 |
+| ForeshadowPanel | 保存当前 Foreshadow 编辑项 |
+| CharacterPanel | 保存当前 Character 编辑项 |
+| Header / ChapterSidebar / AssetRail | 不发起保存请求，显示当前无可保存编辑区 |
 
 流程：
 
@@ -1279,6 +1295,38 @@ sequenceDiagram
 ├──────────────────────┴───────────────────────┤
 │ [覆盖服务端] [放弃本地并刷新] [取消]           │
 └──────────────────────────────────────────────┘
+```
+
+#### Mermaid：冲突处理流程图
+
+```mermaid
+sequenceDiagram
+    participant API as /api/v1/*
+    participant Store as 保存状态Store
+    participant Cache as 本地缓存
+    participant Modal as 冲突弹窗
+    participant User as 用户
+
+    API-->>Store: 返回409 + server_version
+    Store->>Cache: 保留本地草稿/暂存
+    Store->>Modal: 打开冲突弹窗
+    Modal->>User: 提供本地vs服务端对比入口
+    User->>Modal: 打开对比
+
+    alt 用户选择覆盖服务端
+        Modal->>Store: 使用本地内容覆盖
+        Store->>API: 重新提交本地内容
+        API-->>Store: 200 + new version
+        Store->>Cache: 清理对应本地缓存
+    else 用户选择放弃本地
+        Modal->>Store: 放弃本地
+        Store->>Cache: 清理对应本地缓存
+        Store->>API: 重新加载服务端内容
+        API-->>Store: 返回服务端最新内容
+    else 用户选择取消
+        Modal->>Store: 保持冲突状态
+        Store->>Cache: 继续保留本地草稿/暂存
+    end
 ```
 
 ### 6.4 搜索 / 跳转行为

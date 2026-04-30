@@ -191,6 +191,30 @@ updated_at
 - 删除章节时，章节细纲整条记录随章节删除。
 - 若细纲树节点关联章节，关联信息存放在 `content_tree_json` 的节点字段中。
 
+#### `content_tree_json` 节点 schema
+
+节点最小字段：
+
+```json
+{
+  "node_id": "uuid-string",
+  "text": "节点文本",
+  "children": [],
+  "chapter_ref": null,
+  "collapsed": false
+}
+```
+
+规则：
+
+- `node_id` 必须为 UUID 字符串。
+- `text` 必须为字符串，可为空字符串。
+- `children` 必须为数组，无子节点时为空数组。
+- `chapter_ref` 可为空；非空时必须引用当前作品下章节 ID。
+- `collapsed` 为可选字段；缺省时按 `false` 处理。
+- 节点字段白名单为 `node_id`、`text`、`children`、`chapter_ref`、`collapsed`。
+- 禁止写入 AI 语义字段、分析结果字段、生成来源字段。
+
 #### `timeline_events`
 
 字段：
@@ -257,6 +281,7 @@ updated_at
 - `name` 必填。
 - `aliases_json` 存储 JSON array 字符串。
 - 前端传入 `null` 或空数组时，后端统一存储为 `[]`。
+- 服务端存储前必须对 aliases 执行规范化：去除首尾空白、剔除空字符串、去重并保持首次出现顺序。
 - 重名允许，但前端提示。
 - 搜索按 `name` 与 `aliases_json` 匹配，大小写不敏感。
 
@@ -483,6 +508,25 @@ delete_character(character_id: str) -> None
 ```
 
 前端收到 `409` 后必须保留本地草稿或本地暂存。
+
+409 响应模板：
+
+```json
+{
+  "detail": "version_conflict",
+  "server_version": 4,
+  "resource_type": "chapter",
+  "resource_id": "resource-id"
+}
+```
+
+规则：
+
+- 正文冲突使用 `version_conflict`。
+- 结构化资产冲突使用 `asset_version_conflict`。
+- `server_version` 必须返回服务端当前版本。
+- `resource_type` 必须标识冲突资源类型。
+- `resource_id` 必须标识冲突资源 ID。
 
 错误码规则：
 
@@ -1194,6 +1238,13 @@ function countEffectiveCharacters(content: string): number {
 }
 ```
 
+规则：
+
+- 正文 `word_count` 必须采用同一套 textMetrics 口径。
+- textMetrics 口径为：去除空格、换行符、制表符等不可见空白字符后统计剩余字符数。
+- 前端实时展示值与后端持久化值必须使用同一统计口径。
+- 标题不计入正文字数。
+
 今日新增字数基于本地编辑行为计算，为近似统计，不作为强一致数据来源。
 
 ***
@@ -1460,8 +1511,10 @@ sequenceDiagram
 - Timeline 调序单事务。
 - Timeline 调序拒绝缺失、重复、多余事件映射。
 - Outline `content_text` 与 `content_tree_json` 存储规则。
+- Outline `content_tree_json` 节点 schema 白名单与章节引用清理。
 - Foreshadow 删除章节后引用置空。
-- Character aliases JSON array 存取。
+- Character aliases JSON array 存取与规范化。
+- textMetrics 字数统计口径一致。
 - TXT 导入空文件、无章节标记、编码失败、20MB 上限。
 
 ### 11.2 前端测试
