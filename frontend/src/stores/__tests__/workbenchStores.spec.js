@@ -52,8 +52,12 @@ describe('Workbench Stage 0 store shells', () => {
   it('initializes preference shell', () => {
     const store = usePreferenceStore()
 
-    expect(store.drawerWidth).toBe(360)
-    expect(store.sidebarWidth).toBe(280)
-    expect(store.editorFontSize).toBe(18)
+    expect(store.focusMode).toBe(false)
+    expect(store.fontFamily).toBe('system-ui')
+    expect(store.fontSize).toBe(18)
+    expect(store.lineHeight).toBe(1.8)
+    expect(store.theme).toBe('light')
+    expect(store.todayWordDelta).toBe(0)
+    expect(store.todayKey).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
 })

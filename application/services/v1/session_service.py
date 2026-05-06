@@ -4,15 +4,16 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from domain.entities.edit_session import EditSession
+from domain.repositories.workbench import ChapterRepository, EditSessionRepository, WorkRepository
 from infrastructure.database.repositories import ChapterRepo, EditSessionRepo, WorkRepo
 
 
 class SessionService:
     def __init__(
         self,
-        session_repo: Optional[EditSessionRepo] = None,
-        chapter_repo: Optional[ChapterRepo] = None,
-        work_repo: Optional[WorkRepo] = None,
+        session_repo: Optional[EditSessionRepository] = None,
+        chapter_repo: Optional[ChapterRepository] = None,
+        work_repo: Optional[WorkRepository] = None,
     ):
         self.session_repo = session_repo or EditSessionRepo()
         self.chapter_repo = chapter_repo or ChapterRepo()

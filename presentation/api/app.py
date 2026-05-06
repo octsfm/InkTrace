@@ -29,9 +29,13 @@ from application.services.v1.logging import build_v1_log_context, get_v1_logger
 from infrastructure.persistence.sqlite_utils import get_sqlite_metrics_snapshot
 from presentation.api.dependencies import warmup_singletons_for_startup
 from presentation.api.routers.v1 import chapters as chapters_v1
+from presentation.api.routers.v1 import characters as characters_v1
+from presentation.api.routers.v1 import foreshadows as foreshadows_v1
 from presentation.api.routers.v1 import health as health_v1
 from presentation.api.routers.v1 import io as io_v1
+from presentation.api.routers.v1 import outlines as outlines_v1
 from presentation.api.routers.v1 import sessions as sessions_v1
+from presentation.api.routers.v1 import timeline as timeline_v1
 from presentation.api.routers.v1 import works as works_v1
 from presentation.api.routers.v1.schemas import V1APIError, build_error_response
 
@@ -167,6 +171,10 @@ def create_app() -> FastAPI:
     app.include_router(chapters_v1.router)
     app.include_router(sessions_v1.router)
     app.include_router(io_v1.router)
+    app.include_router(outlines_v1.router)
+    app.include_router(timeline_v1.router)
+    app.include_router(foreshadows_v1.router)
+    app.include_router(characters_v1.router)
     logger.info("routers registered", extra=build_log_context(event="app_router_registered", module="app", version=APP_VERSION))
 
     @app.exception_handler(FastAPIHTTPException)

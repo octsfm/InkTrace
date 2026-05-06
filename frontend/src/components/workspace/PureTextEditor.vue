@@ -1,5 +1,5 @@
-﻿<template>
-  <div class="pure-text-editor">
+﻿﻿﻿﻿﻿﻿<template>
+  <div class="pure-text-editor" :data-theme="editorTheme">
     <div v-if="showSoftLimitWarning" class="soft-limit-banner">
       当前章节已超过 20 万有效字符，建议尽快拆分章节以保持流畅编辑。
     </div>
@@ -7,6 +7,7 @@
     <textarea
       ref="textareaRef"
       class="pure-textarea"
+      :style="textareaStyle"
       :value="modelValue"
       :placeholder="placeholder"
       title="仅支持纯文本输入"
@@ -40,6 +41,22 @@ const props = defineProps({
   placeholder: {
     type: String,
     default: '开始创作...'
+  },
+  fontFamily: {
+    type: String,
+    default: 'system-ui'
+  },
+  fontSize: {
+    type: Number,
+    default: 18
+  },
+  lineHeight: {
+    type: Number,
+    default: 1.8
+  },
+  theme: {
+    type: String,
+    default: 'light'
   }
 })
 
@@ -49,6 +66,12 @@ const textareaRef = ref(null)
 const effectiveWordCount = computed(() => countEffectiveCharacters(props.modelValue))
 const formattedWordCount = computed(() => effectiveWordCount.value.toLocaleString('zh-CN'))
 const showSoftLimitWarning = computed(() => exceedsSoftLimit(props.modelValue))
+const editorTheme = computed(() => String(props.theme || 'light'))
+const textareaStyle = computed(() => ({
+  fontFamily: String(props.fontFamily || 'system-ui'),
+  fontSize: `${Number(props.fontSize || 18)}px`,
+  lineHeight: String(props.lineHeight || 1.8)
+}))
 
 const normalizeNonNegative = (value) => {
   const next = Number(value)
@@ -79,12 +102,30 @@ const restoreViewport = ({ cursorPosition = 0, scrollTop = 0 } = {}) => {
     const nextCursor = Math.min(normalizeNonNegative(cursorPosition), contentLength)
     const maxScrollTop = Math.max(0, Number(target.scrollHeight || 0) - Number(target.clientHeight || 0))
     const nextScrollTop = Math.min(normalizeNonNegative(scrollTop), maxScrollTop)
-    target.selectionStart = nextCursor
-    target.selectionEnd = nextCursor
+    if (typeof target.setSelectionRange === 'function') {
+      target.setSelectionRange(nextCursor, nextCursor)
+    } else {
+      target.selectionStart = nextCursor
+      target.selectionEnd = nextCursor
+    }
     target.scrollTop = nextScrollTop
     emitCursorState()
     emitScrollState()
   })
+}
+
+const getViewport = () => {
+  const target = textareaRef.value
+  if (!target) {
+    return {
+      cursorPosition: 0,
+      scrollTop: 0
+    }
+  }
+  return {
+    cursorPosition: Number(target.selectionStart || 0),
+    scrollTop: Number(target.scrollTop || 0)
+  }
 }
 
 const focusEditor = () => {
@@ -118,7 +159,7 @@ const onPaste = (event) => {
   insertPlainTextAtSelection(text)
 }
 
-defineExpose({ restoreViewport, focusEditor })
+defineExpose({ restoreViewport, getViewport, focusEditor })
 </script>
 
 <style scoped>
@@ -162,6 +203,7 @@ defineExpose({ restoreViewport, focusEditor })
   line-height: 1.9;
   color: #111827;
   outline: none;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .pure-textarea:focus {
@@ -172,5 +214,42 @@ defineExpose({ restoreViewport, focusEditor })
 .word-count {
   font-weight: 600;
   color: #111827;
+}
+
+.pure-text-editor[data-theme='warm'] .soft-limit-banner {
+  border-color: #f59e0b;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.pure-text-editor[data-theme='warm'] .pure-textarea {
+  border-color: #e7d7b1;
+  background: #fffaf0;
+  color: #3f2f1f;
+}
+
+.pure-text-editor[data-theme='warm'] .word-count {
+  color: #5b4636;
+}
+
+.pure-text-editor[data-theme='dark'] .soft-limit-banner {
+  border-color: #f59e0b;
+  background: #3f2a12;
+  color: #fde68a;
+}
+
+.pure-text-editor[data-theme='dark'] .pure-textarea {
+  border-color: #374151;
+  background: #111827;
+  color: #f3f4f6;
+}
+
+.pure-text-editor[data-theme='dark'] .pure-textarea::placeholder {
+  color: #9ca3af;
+}
+
+.pure-text-editor[data-theme='dark'] .editor-footer,
+.pure-text-editor[data-theme='dark'] .word-count {
+  color: #d1d5db;
 }
 </style>

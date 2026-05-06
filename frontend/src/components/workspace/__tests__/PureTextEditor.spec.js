@@ -40,6 +40,23 @@ describe('PureTextEditor', () => {
     expect(wrapper.text()).toContain('本章字数 2')
   })
 
+  it('applies local writing preferences to editor presentation only', () => {
+    const wrapper = mount(PureTextEditor, {
+      props: {
+        modelValue: '偏好展示',
+        fontFamily: 'monospace',
+        fontSize: 24,
+        lineHeight: 2,
+        theme: 'dark'
+      }
+    })
+
+    expect(wrapper.find('.pure-text-editor').attributes('data-theme')).toBe('dark')
+    expect(wrapper.find('textarea').attributes('style')).toContain('font-family: monospace;')
+    expect(wrapper.find('textarea').attributes('style')).toContain('font-size: 24px;')
+    expect(wrapper.find('textarea').attributes('style')).toContain('line-height: 2;')
+  })
+
   it('emits updated content and cursor position on input', async () => {
     const wrapper = mount(PureTextEditor, {
       props: {

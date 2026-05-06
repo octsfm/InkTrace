@@ -336,6 +336,7 @@ export {
   v1ChaptersApi,
   v1IOApi,
   v1SessionsApi,
+  v1WritingAssetsApi,
   v1WorksApi
 } from './works'
 

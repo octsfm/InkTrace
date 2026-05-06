@@ -9,12 +9,14 @@ describe('StatusBar', () => {
       props: {
         status: 'synced',
         wordCount: 1234,
+        todayWordDelta: 88,
         sessionReady: true
       }
     })
 
     expect(wrapper.text()).toContain('已保存')
     expect(wrapper.text()).toContain('本章字数 1,234')
+    expect(wrapper.text()).toContain('今日新增 88')
     expect(wrapper.text()).toContain('会话已加载')
     expect(wrapper.find('.offline-banner').exists()).toBe(false)
   })

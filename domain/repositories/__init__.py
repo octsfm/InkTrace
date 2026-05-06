@@ -11,9 +11,21 @@
 from domain.repositories.novel_repository import INovelRepository
 from domain.repositories.chapter_repository import IChapterRepository
 from domain.repositories.outline_repository import IOutlineRepository
+from domain.repositories.workbench import (
+    CharacterRepository,
+    ChapterOutlineRepository,
+    ForeshadowRepository,
+    TimelineEventRepository,
+    WorkOutlineRepository,
+)
 
 __all__ = [
     'INovelRepository',
     'IChapterRepository',
-    'IOutlineRepository'
+    'IOutlineRepository',
+    'WorkOutlineRepository',
+    'ChapterOutlineRepository',
+    'TimelineEventRepository',
+    'ForeshadowRepository',
+    'CharacterRepository',
 ]

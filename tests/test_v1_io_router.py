@@ -52,7 +52,7 @@ def test_v1_io_router_import_fallback_and_too_large_error(monkeypatch, tmp_path)
     assert len(fallback.json()["chapters"]) == 1
     assert fallback.json()["chapters"][0]["title"] == "全本导入"
     assert too_large.status_code == 400
-    assert too_large.json() == {"detail": "txt_file_too_large"}
+    assert too_large.json() == {"detail": "文件过大，请拆分后导入（上限 20MB）。"}
 
     get_database_path.cache_clear()
 

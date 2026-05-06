@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <input
     :value="displayValue"
     class="chapter-title-input"

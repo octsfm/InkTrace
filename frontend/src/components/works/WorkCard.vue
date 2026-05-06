@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <article class="work-card-shell" @click="$emit('open', work.id)">
     <div class="work-card-actions">
       <button type="button" class="more-button" @click.stop="toggleMenu">...</button>

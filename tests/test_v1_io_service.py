@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from application.services.v1.io_service import IOService
+from infrastructure.database.session import get_connection
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from infrastructure.database.session import get_database_path, initialize_database
 
@@ -141,6 +142,39 @@ def test_io_service_rejects_oversized_upload(monkeypatch, tmp_path):
         assert False, "expected txt_file_too_large"
     except ValueError as exc:
         assert str(exc) == "txt_file_too_large"
+
+    get_database_path.cache_clear()
+
+
+def test_io_service_import_is_atomic(monkeypatch, tmp_path):
+    db_path = tmp_path / "runtime" / "io-atomic.db"
+    raw_bytes = "第一章 起点\n正文一。\n第二章 进展\n正文二。".encode("utf-8")
+
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(db_path))
+    get_database_path.cache_clear()
+    initialize_database()
+
+    service = IOService(work_repo=WorkRepo(), chapter_repo=ChapterRepo())
+    original_save = service.chapter_repo._save_with_connection
+    state = {"count": 0}
+
+    def broken_save(conn, chapter):
+        state["count"] += 1
+        original_save(conn, chapter)
+        if state["count"] == 2:
+            raise RuntimeError("boom")
+
+    service.chapter_repo._save_with_connection = broken_save
+
+    try:
+        service.import_txt_upload("atomic.txt", raw_bytes, title="原子导入", author="作者己")
+        assert False, "expected atomic import failure"
+    except RuntimeError as exc:
+        assert str(exc) == "boom"
+
+    assert WorkRepo().list_all() == []
+    with get_connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM chapters").fetchone()[0] == 0
 
     get_database_path.cache_clear()
 

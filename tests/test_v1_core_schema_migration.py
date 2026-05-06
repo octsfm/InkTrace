@@ -1,6 +1,15 @@
 from infrastructure.database.v1 import connect, migrate_core_schema, verify_core_schema
 
 
+STRUCTURED_ASSET_TABLES = {
+    "work_outlines",
+    "chapter_outlines",
+    "timeline_events",
+    "foreshadows",
+    "characters",
+}
+
+
 def test_v1_core_schema_creates_required_tables_and_columns(tmp_path):
     conn = connect(tmp_path / "v1.db")
 
@@ -8,7 +17,7 @@ def test_v1_core_schema_creates_required_tables_and_columns(tmp_path):
     migrate_core_schema(conn)
 
     schema = verify_core_schema(conn)
-    assert {"works", "chapters", "edit_sessions"} == set(schema)
+    assert {"works", "chapters", "edit_sessions", *STRUCTURED_ASSET_TABLES} == set(schema)
     assert {"id", "title", "author", "word_count", "created_at", "updated_at"}.issubset(schema["works"])
     assert {
         "id",
@@ -28,6 +37,57 @@ def test_v1_core_schema_creates_required_tables_and_columns(tmp_path):
         "scroll_top",
         "updated_at",
     }.issubset(schema["edit_sessions"])
+    assert {
+        "id",
+        "work_id",
+        "content_text",
+        "content_tree_json",
+        "version",
+        "created_at",
+        "updated_at",
+    }.issubset(schema["work_outlines"])
+    assert {
+        "id",
+        "chapter_id",
+        "content_text",
+        "content_tree_json",
+        "version",
+        "created_at",
+        "updated_at",
+    }.issubset(schema["chapter_outlines"])
+    assert {
+        "id",
+        "work_id",
+        "order_index",
+        "title",
+        "description",
+        "chapter_id",
+        "version",
+        "created_at",
+        "updated_at",
+    }.issubset(schema["timeline_events"])
+    assert {
+        "id",
+        "work_id",
+        "status",
+        "title",
+        "description",
+        "introduced_chapter_id",
+        "resolved_chapter_id",
+        "version",
+        "created_at",
+        "updated_at",
+    }.issubset(schema["foreshadows"])
+    assert {
+        "id",
+        "work_id",
+        "name",
+        "description",
+        "aliases_json",
+        "version",
+        "created_at",
+        "updated_at",
+    }.issubset(schema["characters"])
 
     version_column = next(
         row for row in conn.execute("PRAGMA table_info(chapters)").fetchall()
@@ -36,6 +96,22 @@ def test_v1_core_schema_creates_required_tables_and_columns(tmp_path):
     assert version_column[2].upper() == "INTEGER"
     assert str(version_column[4]) == "1"
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    conn.close()
+
+
+def test_v1_structured_asset_tables_use_integer_version_default(tmp_path):
+    conn = connect(tmp_path / "assets.db")
+
+    migrate_core_schema(conn)
+    migrate_core_schema(conn)
+
+    for table_name in STRUCTURED_ASSET_TABLES:
+        version_column = next(
+            row for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+            if row[1] == "version"
+        )
+        assert version_column[2].upper() == "INTEGER"
+        assert str(version_column[4]) == "1"
     conn.close()
 
 

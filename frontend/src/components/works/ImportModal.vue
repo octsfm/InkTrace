@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <div v-if="modelValue" class="modal-mask" @click.self="close">
     <div class="modal-panel">
       <div class="modal-header">
@@ -80,6 +80,20 @@ const selectedFile = ref(null)
 
 const selectedFileLabel = computed(() => selectedFileName.value || '')
 
+const normalizeImportErrorMessage = (error) => {
+  const detail = String(error?.response?.data?.detail || error?.message || '').trim()
+  if (detail === 'txt_file_too_large') {
+    return '文件过大，请拆分后导入（上限 20MB）。'
+  }
+  if (detail === 'txt_decode_failed') {
+    return '文件编码无法识别，请转换为 UTF-8 后重试。'
+  }
+  if (detail) {
+    return detail
+  }
+  return 'TXT 导入失败，请检查文件编码或大小后重试。'
+}
+
 const resetForm = () => {
   form.title = ''
   form.author = ''
@@ -121,8 +135,7 @@ const submit = async () => {
     close()
     resetForm()
   } catch (error) {
-    const detail = error?.response?.data?.detail || error?.message || 'TXT 导入失败，请检查文件编码或大小后重试。'
-    ElMessage.error(detail)
+    ElMessage.error(normalizeImportErrorMessage(error))
     console.error('导入 TXT 失败:', error)
   } finally {
     submitting.value = false

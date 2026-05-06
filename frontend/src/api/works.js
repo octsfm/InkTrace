@@ -21,7 +21,7 @@ export const v1ApiBaseURL = `${apiBaseURL}/v1`
 
 export const isVersionConflictError = (error) => (
   error?.response?.status === 409 &&
-  error?.response?.data?.detail === 'version_conflict'
+  ['version_conflict', 'asset_version_conflict'].includes(error?.response?.data?.detail)
 )
 
 export const normalizeV1ApiError = (error) => {
@@ -97,4 +97,27 @@ export const v1IOApi = {
     params,
     responseType: 'blob'
   })
+}
+
+export const v1WritingAssetsApi = {
+  getWorkOutline: (workId) => v1Api.get(`/works/${workId}/outline`),
+  saveWorkOutline: (workId, data) => v1Api.put(`/works/${workId}/outline`, data),
+  getChapterOutline: (chapterId) => v1Api.get(`/chapters/${chapterId}/outline`),
+  saveChapterOutline: (chapterId, data) => v1Api.put(`/chapters/${chapterId}/outline`, data),
+
+  listTimeline: (workId) => v1Api.get(`/works/${workId}/timeline-events`).then((data) => data?.items ?? []),
+  createTimeline: (workId, data) => v1Api.post(`/works/${workId}/timeline-events`, data),
+  updateTimeline: (eventId, data) => v1Api.put(`/timeline-events/${eventId}`, data),
+  deleteTimeline: (eventId) => v1Api.delete(`/timeline-events/${eventId}`),
+  reorderTimeline: (workId, items) => v1Api.put(`/works/${workId}/timeline-events/reorder`, { items }),
+
+  listForeshadows: (workId, status = 'open') => v1Api.get(`/works/${workId}/foreshadows`, { params: { status } }).then((data) => data?.items ?? []),
+  createForeshadow: (workId, data) => v1Api.post(`/works/${workId}/foreshadows`, data),
+  updateForeshadow: (foreshadowId, data) => v1Api.put(`/foreshadows/${foreshadowId}`, data),
+  deleteForeshadow: (foreshadowId) => v1Api.delete(`/foreshadows/${foreshadowId}`),
+
+  listCharacters: (workId, keyword = '') => v1Api.get(`/works/${workId}/characters`, { params: { keyword } }).then((data) => data?.items ?? []),
+  createCharacter: (workId, data) => v1Api.post(`/works/${workId}/characters`, data),
+  updateCharacter: (characterId, data) => v1Api.put(`/characters/${characterId}`, data),
+  deleteCharacter: (characterId) => v1Api.delete(`/characters/${characterId}`)
 }

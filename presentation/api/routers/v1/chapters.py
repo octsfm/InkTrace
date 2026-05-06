@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from application.services.v1 import ChapterService
+from application.services.v1 import build_chapter_service
 from presentation.api.routers.v1.schemas import (
     ChapterCreateRequest,
     ChapterDeleteResponse,
@@ -17,14 +17,19 @@ router = APIRouter(prefix="/api/v1", tags=["v1-chapters"])
 
 @router.get("/works/{work_id}/chapters", response_model=ChapterListResponse)
 def list_chapters(work_id: str):
-    service = ChapterService()
-    items = service.list_chapters(work_id)
+    service = build_chapter_service()
+    try:
+        items = service.list_chapters(work_id)
+    except ValueError as exc:
+        if str(exc) == "work_not_found":
+            raise V1APIError("work_not_found") from exc
+        raise
     return {"work_id": work_id, "items": [serialize_chapter(item) for item in items], "total": len(items)}
 
 
 @router.post("/works/{work_id}/chapters", response_model=ChapterResponse)
 def create_chapter(work_id: str, request: ChapterCreateRequest):
-    service = ChapterService()
+    service = build_chapter_service()
     try:
         chapter = service.create_chapter(work_id, request.title, request.after_chapter_id)
     except ValueError as exc:
@@ -36,7 +41,7 @@ def create_chapter(work_id: str, request: ChapterCreateRequest):
 
 @router.put("/chapters/{chapter_id}", response_model=ChapterResponse)
 def update_chapter(chapter_id: str, request: ChapterUpdateRequest):
-    service = ChapterService()
+    service = build_chapter_service()
     try:
         chapter = service.update_chapter(
             chapter_id,
@@ -65,7 +70,7 @@ def update_chapter(chapter_id: str, request: ChapterUpdateRequest):
 
 @router.delete("/chapters/{chapter_id}", response_model=ChapterDeleteResponse)
 def delete_chapter(chapter_id: str):
-    service = ChapterService()
+    service = build_chapter_service()
     try:
         next_chapter_id = service.delete_chapter(chapter_id)
     except ValueError as exc:
@@ -77,13 +82,15 @@ def delete_chapter(chapter_id: str):
 
 @router.put("/works/{work_id}/chapters/reorder", response_model=ChapterListResponse)
 def reorder_chapters(work_id: str, request: ChapterReorderRequest):
-    service = ChapterService()
+    service = build_chapter_service()
     try:
         items = service.reorder_chapters(
             work_id,
             [{"id": item.id, "order_index": item.order_index} for item in request.items],
         )
     except ValueError as exc:
+        if str(exc) == "work_not_found":
+            raise V1APIError("work_not_found") from exc
         if str(exc) == "invalid_input":
             raise V1APIError("invalid_input") from exc
         raise

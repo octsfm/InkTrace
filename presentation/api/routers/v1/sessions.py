@@ -1,13 +1,13 @@
 from fastapi import APIRouter
 
-from application.services.v1 import SessionService
+from application.services.v1 import build_session_service
 from presentation.api.routers.v1.schemas import SessionResponse, SessionSaveRequest, V1APIError, serialize_session
 
 router = APIRouter(prefix="/api/v1/works", tags=["v1-sessions"])
 
 @router.get("/{work_id}/session", response_model=SessionResponse)
 def get_session(work_id: str):
-    service = SessionService()
+    service = build_session_service()
     try:
         session = service.get_session(work_id)
     except ValueError as exc:
@@ -21,7 +21,7 @@ def get_session(work_id: str):
 
 @router.put("/{work_id}/session", response_model=SessionResponse)
 def save_session(work_id: str, request: SessionSaveRequest):
-    service = SessionService()
+    service = build_session_service()
     try:
         session = service.save_session(
             work_id,

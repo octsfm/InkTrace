@@ -15,6 +15,17 @@ from infrastructure.database.v1 import connect, migrate_core_schema, verify_core
 from presentation.api.app import create_app
 from presentation.api.routers.v1.schemas import ERROR_HTTP_STATUS_MAP
 
+CORE_TABLES = {
+    "works",
+    "chapters",
+    "edit_sessions",
+    "work_outlines",
+    "chapter_outlines",
+    "timeline_events",
+    "foreshadows",
+    "characters",
+}
+
 
 def verify_health_endpoint() -> None:
     client = TestClient(create_app())
@@ -31,23 +42,25 @@ def verify_database_baseline() -> None:
     with TemporaryDirectory() as temp_dir:
         db_path = Path(temp_dir) / "stage0.db"
         conn = connect(db_path)
-        migrate_core_schema(conn)
-        migrate_core_schema(conn)
+        try:
+            migrate_core_schema(conn)
+            migrate_core_schema(conn)
 
-        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-        assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
-        schema = verify_core_schema(conn)
-        assert {"works", "chapters", "edit_sessions"} == set(schema)
-        for table_name in ("works", "chapters", "edit_sessions"):
-            assert conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0] == 0
+            assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+            assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+            schema = verify_core_schema(conn)
+            assert CORE_TABLES == set(schema)
+            for table_name in CORE_TABLES:
+                assert conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0] == 0
 
-        version_column = next(
-            row for row in conn.execute("PRAGMA table_info(chapters)").fetchall()
-            if row[1] == "version"
-        )
-        assert version_column[2].upper() == "INTEGER"
-        assert str(version_column[4]) == "1"
-        conn.close()
+            version_column = next(
+                row for row in conn.execute("PRAGMA table_info(chapters)").fetchall()
+                if row[1] == "version"
+            )
+            assert version_column[2].upper() == "INTEGER"
+            assert str(version_column[4]) == "1"
+        finally:
+            conn.close()
 
 
 def verify_error_mapping() -> None:

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from domain.entities.work import Work
+from domain.repositories.workbench import ChapterRepository, WorkRepository
+from infrastructure.database.session import get_connection
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from infrastructure.file.txt_exporter import TxtExporter
 from infrastructure.file.txt_parser import TxtParser
@@ -17,8 +21,8 @@ class IOService:
     def __init__(
         self,
         work_service: Optional[WorkService] = None,
-        work_repo: Optional[WorkRepo] = None,
-        chapter_repo: Optional[ChapterRepo] = None,
+        work_repo: Optional[WorkRepository] = None,
+        chapter_repo: Optional[ChapterRepository] = None,
         txt_parser: Optional[TxtParser] = None,
         txt_exporter: Optional[TxtExporter] = None,
     ):
@@ -36,33 +40,28 @@ class IOService:
         return self._import_from_payload(payload, title=work_title, author=author)
 
     def _import_from_payload(self, payload: dict, *, title: str, author: str):
-        work = self.work_service.create_work(title, author)
         imported = self._build_import_chapters(payload)
-        existing = self.chapter_repo.list_by_work(work.id)
-        if not existing:
-            return work
-
-        first = existing[0]
-        if not imported:
-            return work
-
-        first_item = imported[0]
-        first.order_index = 1
-        first.title = str(first_item.get("title") or "")
-        first.content = str(first_item.get("content") or "")
-        self.chapter_repo.save(first)
-
-        for index, item in enumerate(imported[1:], start=2):
-            chapter = self.work_service._build_first_chapter(work.id, first.created_at)
-            chapter.order_index = index
-            chapter.title = str(item.get("title") or "")
-            chapter.content = str(item.get("content") or "")
-            self.chapter_repo.save(chapter)
-
-        chapters = self.chapter_repo.list_by_work(work.id)
-        total_words = sum(item.word_count for item in chapters)
-        work.update_word_count(total_words, work.updated_at)
-        self.work_repo.save(work)
+        now = datetime.now(timezone.utc)
+        work = Work(
+            id=str(uuid.uuid4()),
+            title=str(title or "").strip(),
+            author=str(author or "").strip(),
+            word_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        chapters = []
+        with get_connection() as conn:
+            self.work_repo._save_with_connection(conn, work)
+            for index, item in enumerate(imported, start=1):
+                chapter = self.work_service._build_first_chapter(work.id, now)
+                chapter.order_index = index
+                chapter.title = str(item.get("title") or "")
+                chapter.content = str(item.get("content") or "")
+                self.chapter_repo._save_with_connection(conn, chapter)
+                chapters.append(chapter)
+            work.update_word_count(sum(item.word_count for item in chapters), now)
+            self.work_repo._save_with_connection(conn, work)
         return work
 
     def _build_import_chapters(self, payload: dict) -> list[dict]:

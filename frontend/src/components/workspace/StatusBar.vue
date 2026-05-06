@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <div class="status-bar">
     <div v-if="offline" class="offline-banner">{{ offlineMessage }}</div>
 
@@ -10,6 +10,7 @@
 
       <div class="status-meta">
         <span>本章字数 {{ formattedWordCount }}</span>
+        <span>今日新增 {{ formattedTodayWordDelta }}</span>
         <span>会话{{ sessionReady ? '已加载' : '未加载' }}</span>
         <span v-if="lastSyncedAt">最近同步 {{ lastSyncedAt }}</span>
         <span v-if="statusDetail">{{ statusDetail }}</span>
@@ -37,6 +38,10 @@ const props = defineProps({
     default: 'synced'
   },
   wordCount: {
+    type: Number,
+    default: 0
+  },
+  todayWordDelta: {
     type: Number,
     default: 0
   },
@@ -88,6 +93,7 @@ const status = computed(() => String(props.status || 'synced'))
 const isSaving = computed(() => status.value === 'saving')
 const statusLabel = computed(() => statusLabelMap[status.value] || statusLabelMap.synced)
 const formattedWordCount = computed(() => Number(props.wordCount || 0).toLocaleString('zh-CN'))
+const formattedTodayWordDelta = computed(() => Math.max(0, Number(props.todayWordDelta || 0)).toLocaleString('zh-CN'))
 const formattedNextRetryAt = computed(() => {
   if (!props.nextRetryAt) return ''
   const next = new Date(props.nextRetryAt)

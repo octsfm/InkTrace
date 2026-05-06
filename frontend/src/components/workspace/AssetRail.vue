@@ -1,14 +1,17 @@
 <template>
-  <nav class="asset-rail" aria-label="结构化资产入口">
+  <nav class="asset-rail" aria-label="Writing assets">
     <button
       v-for="item in items"
       :key="item.key"
       type="button"
       class="asset-rail-button"
       :class="{ active: item.key === activeTab }"
-      @click="$emit('toggle', item.key)"
+      :aria-pressed="item.key === activeTab"
+      :data-asset-tab="item.key"
+      @click="handleToggle(item.key)"
     >
-      {{ item.label }}
+      <span class="asset-rail-icon" aria-hidden="true">{{ item.icon }}</span>
+      <span class="asset-rail-label">{{ item.label }}</span>
     </button>
   </nav>
 </template>
@@ -21,14 +24,18 @@ const props = defineProps({
   }
 })
 
-defineEmits(['toggle'])
+const emit = defineEmits(['toggle'])
 
 const items = [
-  { key: 'outline', label: '纲' },
-  { key: 'timeline', label: '线' },
-  { key: 'foreshadow', label: '伏' },
-  { key: 'character', label: '人' }
+  { key: 'outline', label: 'Outline', icon: 'O' },
+  { key: 'timeline', label: 'Timeline', icon: 'T' },
+  { key: 'foreshadow', label: 'Foreshadow', icon: 'F' },
+  { key: 'character', label: 'Character', icon: 'C' }
 ]
+
+const handleToggle = (key) => {
+  emit('toggle', key === props.activeTab ? '' : key)
+}
 </script>
 
 <style scoped>
@@ -39,12 +46,15 @@ const items = [
 }
 
 .asset-rail-button {
-  min-height: 44px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  min-height: 52px;
   border: 1px solid #d1d5db;
   border-radius: 14px;
   background: #ffffff;
   color: #374151;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -53,5 +63,17 @@ const items = [
   border-color: #93c5fd;
   background: #eff6ff;
   color: #1d4ed8;
+}
+
+.asset-rail-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.asset-rail-label {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

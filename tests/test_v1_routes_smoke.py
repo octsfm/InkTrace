@@ -30,8 +30,8 @@ def test_v1_works_create_and_get_smoke():
 def test_v1_chapters_list_smoke():
     client = TestClient(app)
     response = client.get("/api/v1/works/work-1/chapters")
-    assert response.status_code == 200
-    assert response.json()["work_id"] == "work-1"
+    assert response.status_code == 404
+    assert response.json() == {"detail": "work_not_found"}
 
 
 def test_v1_chapters_crud_and_reorder_smoke():
@@ -75,6 +75,146 @@ def test_v1_chapters_crud_and_reorder_smoke():
     deleted = client.delete(f"/api/v1/chapters/{first['id']}")
     assert deleted.status_code == 200
     assert deleted.json()["ok"] is True
+
+
+def test_v1_chapter_delete_cleans_asset_refs_smoke():
+    client = TestClient(app)
+    created_work = client.post("/api/v1/works", json={"title": "删章清理作品", "author": "作者删"})
+    assert created_work.status_code == 200
+    work_id = created_work.json()["id"]
+
+    chapters = client.get(f"/api/v1/works/{work_id}/chapters")
+    assert chapters.status_code == 200
+    first = chapters.json()["items"][0]
+    second = client.post(
+        f"/api/v1/works/{work_id}/chapters",
+        json={"title": "第二章", "after_chapter_id": first["id"]},
+    )
+    assert second.status_code == 200
+    second_id = second.json()["id"]
+
+    saved_work_outline = client.put(
+        f"/api/v1/works/{work_id}/outline",
+        json={
+            "content_text": "全书大纲",
+            "content_tree_json": [
+                {
+                    "node_id": "00000000-0000-4000-8000-000000000101",
+                    "text": "主线",
+                    "chapter_ref": second_id,
+                    "children": [],
+                }
+            ],
+            "expected_version": 1,
+        },
+    )
+    assert saved_work_outline.status_code == 200
+    saved_chapter_outline = client.put(
+        f"/api/v1/chapters/{second_id}/outline",
+        json={"content_text": "章节细纲", "content_tree_json": [], "expected_version": 1},
+    )
+    assert saved_chapter_outline.status_code == 200
+    timeline = client.post(
+        f"/api/v1/works/{work_id}/timeline-events",
+        json={"title": "事件", "description": "描述", "chapter_id": second_id},
+    )
+    assert timeline.status_code == 200
+    foreshadow = client.post(
+        f"/api/v1/works/{work_id}/foreshadows",
+        json={
+            "title": "伏笔",
+            "description": "描述",
+            "status": "resolved",
+            "introduced_chapter_id": second_id,
+            "resolved_chapter_id": second_id,
+        },
+    )
+    assert foreshadow.status_code == 200
+
+    deleted = client.delete(f"/api/v1/chapters/{second_id}")
+    assert deleted.status_code == 200
+    assert deleted.json()["ok"] is True
+    assert deleted.json()["next_chapter_id"] == first["id"]
+
+    chapter_outline = client.get(f"/api/v1/chapters/{second_id}/outline")
+    assert chapter_outline.status_code == 404
+    assert chapter_outline.json() == {"detail": "chapter_not_found"}
+
+    timeline_after = client.get(f"/api/v1/works/{work_id}/timeline-events")
+    assert timeline_after.status_code == 200
+    assert timeline_after.json()["items"][0]["chapter_id"] is None
+
+    foreshadow_after = client.get(f"/api/v1/works/{work_id}/foreshadows", params={"status": "resolved"})
+    assert foreshadow_after.status_code == 200
+    assert foreshadow_after.json()["items"][0]["introduced_chapter_id"] is None
+    assert foreshadow_after.json()["items"][0]["resolved_chapter_id"] is None
+
+    work_outline_after = client.get(f"/api/v1/works/{work_id}/outline")
+    assert work_outline_after.status_code == 200
+    assert work_outline_after.json()["content_tree_json"][0]["chapter_ref"] is None
+
+    chapters_after = client.get(f"/api/v1/works/{work_id}/chapters")
+    assert chapters_after.status_code == 200
+    assert [item["order_index"] for item in chapters_after.json()["items"]] == [1]
+
+
+def test_v1_work_delete_cleans_workbench_data_smoke():
+    client = TestClient(app)
+    created_work = client.post("/api/v1/works", json={"title": "删作品路由作品", "author": "作者清"})
+    assert created_work.status_code == 200
+    work_id = created_work.json()["id"]
+
+    chapters = client.get(f"/api/v1/works/{work_id}/chapters")
+    assert chapters.status_code == 200
+    first = chapters.json()["items"][0]
+
+    saved_session = client.put(
+        f"/api/v1/works/{work_id}/session",
+        json={"chapter_id": first["id"], "cursor_position": 3, "scroll_top": 9},
+    )
+    assert saved_session.status_code == 200
+    saved_work_outline = client.put(
+        f"/api/v1/works/{work_id}/outline",
+        json={"content_text": "大纲", "content_tree_json": [], "expected_version": 1},
+    )
+    assert saved_work_outline.status_code == 200
+    saved_chapter_outline = client.put(
+        f"/api/v1/chapters/{first['id']}/outline",
+        json={"content_text": "细纲", "content_tree_json": [], "expected_version": 1},
+    )
+    assert saved_chapter_outline.status_code == 200
+    saved_timeline = client.post(
+        f"/api/v1/works/{work_id}/timeline-events",
+        json={"title": "事件", "description": "描述", "chapter_id": first["id"]},
+    )
+    assert saved_timeline.status_code == 200
+    saved_foreshadow = client.post(
+        f"/api/v1/works/{work_id}/foreshadows",
+        json={"title": "伏笔", "description": "描述", "status": "open", "introduced_chapter_id": first["id"]},
+    )
+    assert saved_foreshadow.status_code == 200
+    saved_character = client.post(
+        f"/api/v1/works/{work_id}/characters",
+        json={"name": "角色甲", "description": "描述", "aliases": ["甲"]},
+    )
+    assert saved_character.status_code == 200
+
+    deleted = client.delete(f"/api/v1/works/{work_id}")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"ok": True, "id": work_id}
+
+    assert client.get(f"/api/v1/works/{work_id}").status_code == 404
+    assert client.get(f"/api/v1/works/{work_id}/chapters").json() == {"detail": "work_not_found"}
+    assert client.get(f"/api/v1/works/{work_id}/session").json() == {"detail": "work_not_found"}
+    assert client.get(f"/api/v1/works/{work_id}/outline").json() == {"detail": "work_not_found"}
+    assert client.get(f"/api/v1/works/{work_id}/timeline-events").json() == {"detail": "work_not_found"}
+    assert client.get(f"/api/v1/works/{work_id}/foreshadows").json() == {"detail": "work_not_found"}
+    assert client.get(f"/api/v1/works/{work_id}/characters").json() == {"detail": "work_not_found"}
+    assert client.get(f"/api/v1/chapters/{first['id']}/outline").json() == {"detail": "chapter_not_found"}
+    assert client.put(
+        f"/api/v1/works/{work_id}/chapters/reorder",
+        json={"items": [{"id": first["id"], "order_index": 1}]},
+    ).json() == {"detail": "work_not_found"}
 
 
 def test_v1_chapters_force_override_smoke():
@@ -270,7 +410,7 @@ def test_v1_io_import_rejects_too_large_file_smoke(tmp_path):
         files={"file": ("route-import-too-large.txt", oversized, "text/plain")},
     )
     assert imported.status_code == 400
-    assert imported.json()["detail"] == "txt_file_too_large"
+    assert imported.json()["detail"] == "文件过大，请拆分后导入（上限 20MB）。"
 
 
 def test_v1_io_export_respects_options_smoke():

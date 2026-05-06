@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <div v-if="modelValue" class="modal-mask">
     <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="version-conflict-title">
       <div class="modal-header">

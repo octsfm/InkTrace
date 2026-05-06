@@ -1,6 +1,16 @@
-﻿from application.services.v1.chapter_service import ChapterService
+from datetime import datetime, timezone
+
+from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
-from infrastructure.database.repositories import ChapterRepo, WorkRepo
+from domain.entities.writing_assets import ChapterOutline, Foreshadow, TimelineEvent, WorkOutline
+from infrastructure.database.repositories import (
+    ChapterOutlineRepo,
+    ChapterRepo,
+    ForeshadowRepo,
+    TimelineEventRepo,
+    WorkOutlineRepo,
+    WorkRepo,
+)
 from infrastructure.database.session import get_database_path, initialize_database
 
 
@@ -157,3 +167,78 @@ def test_chapter_service_save_recalculates_word_count_and_title_does_not_affect_
     assert renamed.title == "只改标题"
 
     get_database_path.cache_clear()
+
+
+def test_chapter_service_delete_cleans_structured_asset_chapter_refs(monkeypatch, tmp_path):
+    work, chapter_service, _ = setup_services(monkeypatch, tmp_path, "chapter-service-delete-assets")
+    first = chapter_service.list_chapters(work.id)[0]
+    second = chapter_service.create_chapter(work.id, title="???")
+    now = datetime.now(timezone.utc)
+    tree = [{
+        "node_id": "00000000-0000-4000-8000-000000000001",
+        "text": "??",
+        "chapter_ref": second.id.value,
+        "children": [{
+            "node_id": "00000000-0000-4000-8000-000000000002",
+            "text": "???",
+            "chapter_ref": second.id.value,
+            "children": [],
+        }],
+    }]
+    WorkOutlineRepo().save(WorkOutline(
+        id="outline-1",
+        work_id=work.id,
+        content_text="????",
+        content_tree_json=tree,
+        version=1,
+        created_at=now,
+        updated_at=now,
+    ))
+    ChapterOutlineRepo().save(ChapterOutline(
+        id="chapter-outline-1",
+        chapter_id=second.id.value,
+        content_text="????",
+        content_tree_json=[],
+        version=1,
+        created_at=now,
+        updated_at=now,
+    ))
+    TimelineEventRepo().save(TimelineEvent(
+        id="event-1",
+        work_id=work.id,
+        order_index=1,
+        title="??",
+        description="??",
+        chapter_id=second.id.value,
+        version=1,
+        created_at=now,
+        updated_at=now,
+    ))
+    ForeshadowRepo().save(Foreshadow(
+        id="foreshadow-1",
+        work_id=work.id,
+        status="resolved",
+        title="??",
+        description="??",
+        introduced_chapter_id=second.id.value,
+        resolved_chapter_id=second.id.value,
+        version=1,
+        created_at=now,
+        updated_at=now,
+    ))
+
+    next_focus = chapter_service.delete_chapter(second.id.value)
+
+    assert next_focus == first.id.value
+    assert ChapterOutlineRepo().find_by_chapter(second.id.value) is None
+    assert TimelineEventRepo().find_by_id("event-1").chapter_id is None
+    cleaned_foreshadow = ForeshadowRepo().find_by_id("foreshadow-1")
+    assert cleaned_foreshadow.introduced_chapter_id is None
+    assert cleaned_foreshadow.resolved_chapter_id is None
+    cleaned_tree = WorkOutlineRepo().find_by_work(work.id).content_tree_json
+    assert cleaned_tree[0]["chapter_ref"] is None
+    assert cleaned_tree[0]["children"][0]["chapter_ref"] is None
+    assert [chapter.order_index for chapter in chapter_service.list_chapters(work.id)] == [1]
+
+    get_database_path.cache_clear()
+

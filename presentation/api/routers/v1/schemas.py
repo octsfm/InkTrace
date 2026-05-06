@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
+import json
 import re
 from typing import Any, Mapping
 
@@ -200,12 +201,6 @@ class SessionResponse(V1BaseModel):
     updated_at: datetime
 
 
-class ImportTxtPathRequest(V1BaseModel):
-    file_path: str
-    title: str = ""
-    author: str = ""
-
-
 class ImportTxtResponse(V1BaseModel):
     id: str
     title: str
@@ -219,6 +214,157 @@ class ImportTxtResponse(V1BaseModel):
 class ExportTxtResponse(V1BaseModel):
     filename: str
     media_type: str = "text/plain; charset=utf-8"
+
+
+class OutlineSaveRequest(V1BaseModel):
+    content_text: str = ""
+    content_tree_json: Any = None
+    expected_version: int | None = None
+    force_override: bool = False
+
+
+class WorkOutlineResponse(V1BaseModel):
+    id: str
+    work_id: str
+    content_text: str
+    content_tree_json: Any
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChapterOutlineResponse(V1BaseModel):
+    id: str
+    chapter_id: str
+    content_text: str
+    content_tree_json: Any
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class TimelineEventCreateRequest(V1BaseModel):
+    title: str = ""
+    description: str = ""
+    chapter_id: str | None = None
+
+
+class TimelineEventUpdateRequest(V1BaseModel):
+    title: str | None = None
+    description: str | None = None
+    chapter_id: str | None = None
+    expected_version: int | None = None
+    force_override: bool = False
+
+
+class TimelineEventReorderItem(V1BaseModel):
+    id: str
+    order_index: int
+
+
+class TimelineEventReorderRequest(V1BaseModel):
+    items: list[TimelineEventReorderItem]
+
+
+class TimelineEventResponse(V1BaseModel):
+    id: str
+    work_id: str
+    order_index: int
+    title: str
+    description: str
+    chapter_id: str | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class TimelineEventListResponse(V1BaseModel):
+    work_id: str
+    items: list[TimelineEventResponse]
+    total: int
+
+
+class TimelineEventDeleteResponse(V1BaseModel):
+    ok: bool
+    id: str
+
+
+class ForeshadowCreateRequest(V1BaseModel):
+    title: str = ""
+    description: str = ""
+    status: str = "open"
+    introduced_chapter_id: str | None = None
+    resolved_chapter_id: str | None = None
+
+
+class ForeshadowUpdateRequest(V1BaseModel):
+    title: str | None = None
+    description: str | None = None
+    status: str | None = None
+    introduced_chapter_id: str | None = None
+    resolved_chapter_id: str | None = None
+    expected_version: int | None = None
+    force_override: bool = False
+
+
+class ForeshadowResponse(V1BaseModel):
+    id: str
+    work_id: str
+    status: str
+    title: str
+    description: str
+    introduced_chapter_id: str | None
+    resolved_chapter_id: str | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ForeshadowListResponse(V1BaseModel):
+    work_id: str
+    items: list[ForeshadowResponse]
+    total: int
+
+
+class ForeshadowDeleteResponse(V1BaseModel):
+    ok: bool
+    id: str
+
+
+class CharacterCreateRequest(V1BaseModel):
+    name: str
+    description: str = ""
+    aliases: list[str] = []
+
+
+class CharacterUpdateRequest(V1BaseModel):
+    name: str | None = None
+    description: str | None = None
+    aliases: list[str] | None = None
+    expected_version: int | None = None
+    force_override: bool = False
+
+
+class CharacterResponse(V1BaseModel):
+    id: str
+    work_id: str
+    name: str
+    description: str
+    aliases: list[str]
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CharacterListResponse(V1BaseModel):
+    work_id: str
+    items: list[CharacterResponse]
+    total: int
+
+
+class CharacterDeleteResponse(V1BaseModel):
+    ok: bool
+    id: str
 
 
 def serialize_work(item: Any) -> dict[str, Any]:
@@ -253,5 +399,77 @@ def serialize_session(item: Any) -> dict[str, Any]:
         last_open_chapter_id=item.last_open_chapter_id,
         cursor_position=item.cursor_position,
         scroll_top=item.scroll_top,
+        updated_at=item.updated_at,
+    ).model_dump(mode="json")
+
+
+def serialize_work_outline(item: Any) -> dict[str, Any]:
+    return WorkOutlineResponse(
+        id=item.id,
+        work_id=item.work_id,
+        content_text=item.content_text,
+        content_tree_json=item.content_tree_json,
+        version=item.version,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    ).model_dump(mode="json")
+
+
+def serialize_chapter_outline(item: Any) -> dict[str, Any]:
+    return ChapterOutlineResponse(
+        id=item.id,
+        chapter_id=item.chapter_id,
+        content_text=item.content_text,
+        content_tree_json=item.content_tree_json,
+        version=item.version,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    ).model_dump(mode="json")
+
+
+def serialize_timeline_event(item: Any) -> dict[str, Any]:
+    return TimelineEventResponse(
+        id=item.id,
+        work_id=item.work_id,
+        order_index=item.order_index,
+        title=item.title,
+        description=item.description,
+        chapter_id=item.chapter_id,
+        version=item.version,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    ).model_dump(mode="json")
+
+
+def serialize_foreshadow(item: Any) -> dict[str, Any]:
+    return ForeshadowResponse(
+        id=item.id,
+        work_id=item.work_id,
+        status=item.status,
+        title=item.title,
+        description=item.description,
+        introduced_chapter_id=item.introduced_chapter_id,
+        resolved_chapter_id=item.resolved_chapter_id,
+        version=item.version,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    ).model_dump(mode="json")
+
+
+def serialize_character(item: Any) -> dict[str, Any]:
+    try:
+        aliases = json.loads(item.aliases_json or "[]")
+    except json.JSONDecodeError:
+        aliases = []
+    if not isinstance(aliases, list):
+        aliases = []
+    return CharacterResponse(
+        id=item.id,
+        work_id=item.work_id,
+        name=item.name,
+        description=item.description,
+        aliases=[str(alias) for alias in aliases],
+        version=item.version,
+        created_at=item.created_at,
         updated_at=item.updated_at,
     ).model_dump(mode="json")

@@ -1,10 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from domain.entities.chapter import Chapter
+from domain.repositories.workbench import ChapterRepository, WorkRepository
 from domain.entities.work import Work
 from domain.types import ChapterId, ChapterStatus, NovelId
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
@@ -12,7 +13,11 @@ from infrastructure.database.session import get_connection
 
 
 class WorkService:
-    def __init__(self, work_repo: Optional[WorkRepo] = None, chapter_repo: Optional[ChapterRepo] = None):
+    def __init__(
+        self,
+        work_repo: Optional[WorkRepository] = None,
+        chapter_repo: Optional[ChapterRepository] = None,
+    ):
         self.work_repo = work_repo or WorkRepo()
         self.chapter_repo = chapter_repo or ChapterRepo()
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="writing-studio">
+  <div class="writing-studio" :class="{ 'writing-studio--focus': isFocusMode }">
     <VersionConflictModal
       :model-value="conflictModalVisible"
       :description="conflictDescription"
@@ -10,9 +10,9 @@
       @override="handleConflictOverride"
     />
 
-    <header class="studio-header">
+    <header class="studio-header" :class="{ 'studio-header--focus': isFocusMode }">
       <div class="header-main">
-        <div class="header-copy">
+        <div class="header-copy" :class="{ 'header-copy--muted': isFocusMode }">
           <button
             v-if="!workTitleEditing"
             type="button"
@@ -38,6 +38,7 @@
           <StatusBar
             :status="displaySaveStatus"
             :word-count="activeWordCount"
+            :today-word-delta="preferenceStore.todayWordDelta"
             :session-ready="workspaceStore.hydrated"
             :offline="offlineBannerVisible"
             :offline-message="offlineBannerText"
@@ -48,13 +49,38 @@
             :show-manual-retry="showManualRetry"
             @manual-retry="handleManualRetry"
           />
-          <el-button type="primary" @click="goBack">杩斿洖涔︽灦</el-button>
+          <ManualSyncButton
+            :disabled="!chapterDataStore.activeChapterId || conflictModalVisible"
+            :saving="saveStateStore.saveStatus === 'saving'"
+            @sync="handleManualSync"
+          />
+          <button
+            v-show="!isFocusMode"
+            type="button"
+            class="preference-toggle"
+            data-test="writing-preference-toggle"
+            @click="togglePreferencePanel"
+          >
+            写作偏好
+          </button>
+          <FocusModeToggle
+            :enabled="isFocusMode"
+            @toggle="toggleFocusMode"
+          />
+          <el-button v-show="!isFocusMode" type="primary" @click="goBack">杩斿洖涔︽灦</el-button>
         </div>
+      </div>
+      <div v-show="preferencePanelVisible && !isFocusMode" class="header-panel-row">
+        <WritingPreferencePanel
+          :preferences="editorPreferences"
+          @update-preferences="handlePreferenceUpdate"
+          @close="preferencePanelVisible = false"
+        />
       </div>
     </header>
 
-    <section class="studio-shell">
-      <aside class="sidebar-column">
+    <section class="studio-shell" :class="{ 'studio-shell--focus': isFocusMode }">
+      <aside v-show="!isFocusMode" class="sidebar-column">
         <div class="panel-card sidebar-card">
           <ChapterSidebar
             ref="sidebarRef"
@@ -73,8 +99,8 @@
         </div>
       </aside>
 
-      <main class="editor-column">
-        <div class="panel-card editor-card">
+      <main class="editor-column" :class="{ 'editor-column--focus': isFocusMode }">
+        <div class="panel-card editor-card" :class="{ 'editor-card--focus': isFocusMode }">
           <div class="editor-shell">
             <ChapterTitleInput
               :model-value="chapterDataStore.activeChapterTitle"
@@ -89,6 +115,10 @@
                 :chapter-id="chapterDataStore.activeChapterId"
                 :model-value="chapterDataStore.activeChapterContent"
                 :placeholder="editorPlaceholder"
+                :font-family="editorPreferences.fontFamily"
+                :font-size="editorPreferences.fontSize"
+                :line-height="editorPreferences.lineHeight"
+                :theme="editorPreferences.theme"
                 @update:model-value="handleDraftChange"
                 @cursor-change="handleCursorChange"
                 @scroll-change="handleScrollChange"
@@ -98,7 +128,7 @@
         </div>
       </main>
 
-      <aside class="asset-rail-column">
+      <aside v-show="!isFocusMode" class="asset-rail-column">
         <div class="panel-card asset-rail-card">
           <AssetRail
             :active-tab="activeAssetTab"
@@ -107,12 +137,51 @@
         </div>
       </aside>
 
-      <aside v-if="activeAssetTab" class="asset-drawer-column">
+      <aside
+        v-if="activeAssetTab"
+        v-show="!isFocusMode"
+        class="asset-drawer-column"
+        :class="{ 'mobile-overlay-host': isMobileAssetDrawer }"
+      >
         <AssetDrawer
           :visible="Boolean(activeAssetTab)"
           :active-tab="activeAssetTab"
+          :dirty-tabs="assetDirtyTabs"
+          :mobile="isMobileAssetDrawer"
           @close="closeAssetDrawer"
-        />
+          @save-dirty="handleAssetSaveDirty"
+          @discard-dirty="handleAssetDiscardDirty"
+        >
+          <template #default="{ activeTab }">
+            <OutlinePanel
+              v-if="activeTab === 'outline'"
+              ref="outlinePanelRef"
+              :work-id="workId"
+              :active-chapter-id="chapterDataStore.activeChapterId"
+              @focus-area="handleAssetFocusArea"
+            />
+            <TimelinePanel
+              v-else-if="activeTab === 'timeline'"
+              ref="timelinePanelRef"
+              :work-id="workId"
+              :chapters="chapterDataStore.chapters"
+              @focus-area="handleAssetFocusArea"
+            />
+            <ForeshadowPanel
+              v-else-if="activeTab === 'foreshadow'"
+              ref="foreshadowPanelRef"
+              :work-id="workId"
+              :chapters="chapterDataStore.chapters"
+              @focus-area="handleAssetFocusArea"
+            />
+            <CharacterPanel
+              v-else-if="activeTab === 'character'"
+              ref="characterPanelRef"
+              :work-id="workId"
+              @focus-area="handleAssetFocusArea"
+            />
+          </template>
+        </AssetDrawer>
       </aside>
     </section>
   </div>
@@ -126,9 +195,18 @@ import { v1ChaptersApi, v1WorksApi } from '@/api'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { useChapterDataStore } from '@/stores/useChapterDataStore'
 import { useSaveStateStore } from '@/stores/useSaveStateStore'
+import { usePreferenceStore } from '@/stores/preference'
+import { useWritingAssetStore } from '@/stores/writingAsset'
 import { countEffectiveCharacters } from '@/utils/textMetrics'
 import AssetDrawer from '@/components/workspace/AssetDrawer.vue'
 import AssetRail from '@/components/workspace/AssetRail.vue'
+import CharacterPanel from '@/components/workspace/CharacterPanel.vue'
+import ForeshadowPanel from '@/components/workspace/ForeshadowPanel.vue'
+import FocusModeToggle from '@/components/workspace/FocusModeToggle.vue'
+import ManualSyncButton from '@/components/workspace/ManualSyncButton.vue'
+import OutlinePanel from '@/components/workspace/OutlinePanel.vue'
+import TimelinePanel from '@/components/workspace/TimelinePanel.vue'
+import WritingPreferencePanel from '@/components/workspace/WritingPreferencePanel.vue'
 import ChapterSidebar from '@/components/workspace/ChapterSidebar.vue'
 import ChapterTitleInput from '@/components/workspace/ChapterTitleInput.vue'
 import PureTextEditor from '@/components/workspace/PureTextEditor.vue'
@@ -140,11 +218,17 @@ const router = useRouter()
 const workspaceStore = useWorkspaceStore()
 const chapterDataStore = useChapterDataStore()
 const saveStateStore = useSaveStateStore()
+const preferenceStore = usePreferenceStore()
+const writingAssetStore = useWritingAssetStore()
 const chaptersLoading = ref(false)
 const pendingChapterId = ref('')
 const editorRef = ref(null)
 const sidebarRef = ref(null)
 const workTitleInputRef = ref(null)
+const outlinePanelRef = ref(null)
+const timelinePanelRef = ref(null)
+const foreshadowPanelRef = ref(null)
+const characterPanelRef = ref(null)
 const workTitle = ref('浣滃搧')
 const workAuthor = ref('')
 const workTitleEditing = ref(false)
@@ -155,10 +239,33 @@ let retryTimer = null
 let isDraftSyncing = false
 const DRAFT_SYNC_DELAY_MS = 2500
 const RETRY_DELAYS_MS = [1000, 2000, 4000]
+const MOBILE_ASSET_BREAKPOINT = 760
 const activeAssetTab = ref('')
+const activeAssetFocusArea = ref('outline')
+const isMobileAssetDrawer = ref(false)
+const preferencePanelVisible = ref(false)
+const lastEffectiveCountByChapterId = ref({})
+const suppressDraftCaching = ref(false)
 
 const workId = computed(() => String(route.params.id || ''))
+const isFocusMode = computed(() => preferenceStore.focusMode)
+const editorPreferences = computed(() => preferenceStore.editorPreferences)
 const activeWordCount = computed(() => countEffectiveCharacters(chapterDataStore.activeChapterContent))
+const assetDirtyTabs = computed(() => {
+  const tabs = new Set()
+  for (const key of writingAssetStore.dirtyAssetKeys) {
+    if (key.startsWith('work_outline:') || key.startsWith('chapter_outline:')) {
+      tabs.add('outline')
+    } else if (key.startsWith('timeline:')) {
+      tabs.add('timeline')
+    } else if (key.startsWith('foreshadow:')) {
+      tabs.add('foreshadow')
+    } else if (key.startsWith('character:')) {
+      tabs.add('character')
+    }
+  }
+  return Array.from(tabs)
+})
 const statusUpdatedAt = computed(() => String(saveStateStore.lastSyncedAt || workspaceStore.sessionUpdatedAt || ''))
 const conflictModalVisible = computed(() => saveStateStore.hasConflict)
 const conflictPayload = computed(() => saveStateStore.conflictPayload)
@@ -271,6 +378,7 @@ const resolveChapterContent = (chapterId) => {
 }
 
 const writeCachedDraft = (chapterId, content) => {
+  if (suppressDraftCaching.value) return null
   const chapter = chapterDataStore.chapters.find((item) => item.id === chapterId) || {}
   return saveStateStore.writeLocalDraft({
     workId: workId.value,
@@ -303,6 +411,44 @@ const scrollSidebarToChapter = async (chapterId) => {
 const focusEditor = async () => {
   await nextTick()
   editorRef.value?.focusEditor?.()
+}
+
+const captureActiveEditorViewport = () => {
+  const chapterId = String(chapterDataStore.activeChapterId || '')
+  const viewport = editorRef.value?.getViewport?.() || {
+    cursorPosition: workspaceStore.cursorPosition,
+    scrollTop: workspaceStore.scrollTop
+  }
+  if (chapterId) {
+    workspaceStore.captureViewport({
+      chapterId,
+      cursorPosition: viewport.cursorPosition,
+      scrollTop: viewport.scrollTop
+    })
+  }
+  return viewport
+}
+
+const syncChapterWordBaseline = (chapterId, content = null) => {
+  const id = String(chapterId || '')
+  if (!id) return 0
+  const resolvedContent = typeof content === 'string' ? content : resolveChapterContent(id)
+  const nextCount = countEffectiveCharacters(resolvedContent)
+  lastEffectiveCountByChapterId.value = {
+    ...lastEffectiveCountByChapterId.value,
+    [id]: nextCount
+  }
+  return nextCount
+}
+
+const primeTodayWordBaselines = () => {
+  const nextMap = {}
+  chapterDataStore.chapters.forEach((chapter) => {
+    const chapterId = String(chapter.id || '')
+    if (!chapterId) return
+    nextMap[chapterId] = countEffectiveCharacters(resolveChapterContent(chapterId))
+  })
+  lastEffectiveCountByChapterId.value = nextMap
 }
 
 const blockSidebarMutation = () => {
@@ -574,15 +720,50 @@ const handleBrowserOnline = async () => {
   await replayOfflineDrafts()
 }
 
+const handleCachePruned = () => {
+  ElMessage.warning('本地缓存空间不足，已自动清理较旧的暂存内容。')
+}
+
+const syncAssetDrawerViewport = () => {
+  isMobileAssetDrawer.value = typeof window !== 'undefined' && window.innerWidth <= MOBILE_ASSET_BREAKPOINT
+}
+
+const saveFocusedAssetDraft = async () => {
+  if (!activeAssetTab.value) return false
+  if (activeAssetTab.value === 'outline') {
+    await outlinePanelRef.value?.saveFocusedDraft?.(activeAssetFocusArea.value)
+    return true
+  }
+  if (activeAssetTab.value === 'timeline') {
+    const mode = activeAssetFocusArea.value === 'timeline_reorder' ? 'reorder' : 'event'
+    await timelinePanelRef.value?.saveFocusedDraft?.(mode)
+    return true
+  }
+  if (activeAssetTab.value === 'foreshadow') {
+    await foreshadowPanelRef.value?.saveFocusedDraft?.()
+    return true
+  }
+  if (activeAssetTab.value === 'character') {
+    await characterPanelRef.value?.saveFocusedDraft?.()
+    return true
+  }
+  return false
+}
+
 const handleEditorSaveShortcut = async (event) => {
   const key = String(event?.key || '').toLowerCase()
   if (key !== 's' || (!event?.ctrlKey && !event?.metaKey)) return
   const activeElement = document.activeElement
   const insideEditor = Boolean(activeElement?.closest?.('.editor-shell'))
-  if (!insideEditor) return
+  const insideAssetPanel = Boolean(activeElement?.closest?.('.asset-drawer-body'))
+  if (!insideEditor && !insideAssetPanel) return
   event.preventDefault()
-  await flushCurrentDraftNow()
-  await persistSessionNow()
+  if (insideEditor) {
+    await flushCurrentDraftNow()
+    await persistSessionNow()
+    return
+  }
+  await saveFocusedAssetDraft()
 }
 
 const activateChapter = async (chapterId) => {
@@ -590,6 +771,7 @@ const activateChapter = async (chapterId) => {
   if (!nextChapterId) return
   pendingChapterId.value = ''
   chapterDataStore.setActiveChapter(nextChapterId)
+  syncChapterWordBaseline(nextChapterId)
   workspaceStore.setLastOpenChapter(nextChapterId)
   await scrollSidebarToChapter(nextChapterId)
   await restoreViewportForChapter(nextChapterId)
@@ -597,12 +779,16 @@ const activateChapter = async (chapterId) => {
 }
 
 onMounted(async () => {
+  preferenceStore.hydrate()
+  syncAssetDrawerViewport()
   saveStateStore.setSaveStatus('synced')
   saveStateStore.clearConflict()
   saveStateStore.clearRetrySchedule()
   window.addEventListener('offline', handleBrowserOffline)
   window.addEventListener('online', handleBrowserOnline)
+  window.addEventListener('inktrace-cache-pruned', handleCachePruned)
   window.addEventListener('keydown', handleEditorSaveShortcut)
+  window.addEventListener('resize', syncAssetDrawerViewport)
   let workspacePayload = null
   let chapters = []
   try {
@@ -621,6 +807,7 @@ onMounted(async () => {
   }
   chapterDataStore.setChapters(chapters)
   loadCachedDrafts(chapters)
+  primeTodayWordBaselines()
   const session = workspacePayload?.session || workspaceStore.session || null
   const sessionChapterId = String(session?.last_open_chapter_id || session?.chapter_id || '')
   const matchedSessionChapter = chapters.find((chapter) => chapter.id === sessionChapterId)
@@ -648,7 +835,9 @@ onBeforeUnmount(() => {
   clearRetryTimer()
   window.removeEventListener('offline', handleBrowserOffline)
   window.removeEventListener('online', handleBrowserOnline)
+  window.removeEventListener('inktrace-cache-pruned', handleCachePruned)
   window.removeEventListener('keydown', handleEditorSaveShortcut)
+  window.removeEventListener('resize', syncAssetDrawerViewport)
 })
 
 watch(
@@ -663,13 +852,74 @@ const goBack = () => {
   router.push('/works')
 }
 
+const toggleFocusMode = async () => {
+  const chapterId = String(chapterDataStore.activeChapterId || '')
+  const preservedViewport = captureActiveEditorViewport()
+  if (!isFocusMode.value) {
+    preferencePanelVisible.value = false
+  }
+  preferenceStore.toggleFocusMode()
+  await nextTick()
+  editorRef.value?.focusEditor?.()
+  if (chapterId) {
+    editorRef.value?.restoreViewport(preservedViewport)
+  }
+}
+
+const togglePreferencePanel = () => {
+  preferencePanelVisible.value = !preferencePanelVisible.value
+}
+
+const handlePreferenceUpdate = (patch = {}) => {
+  preferenceStore.updateWritingPreferences(patch)
+}
+
 const toggleAssetDrawer = (tabKey) => {
   const nextKey = String(tabKey || '')
+  activeAssetFocusArea.value = nextKey || activeAssetFocusArea.value
   activeAssetTab.value = activeAssetTab.value === nextKey ? '' : nextKey
 }
 
 const closeAssetDrawer = () => {
   activeAssetTab.value = ''
+}
+
+const handleAssetFocusArea = (area) => {
+  activeAssetFocusArea.value = String(area || activeAssetTab.value || 'outline')
+}
+
+const handleAssetSaveDirty = (tabKey) => {
+  const nextKey = String(tabKey || '')
+  if (nextKey === 'outline') {
+    return outlinePanelRef.value?.saveFocusedDraft?.(activeAssetFocusArea.value)
+  }
+  if (nextKey === 'timeline') {
+    return timelinePanelRef.value?.saveFocusedDraft?.()
+  }
+  if (nextKey === 'foreshadow') {
+    return foreshadowPanelRef.value?.saveFocusedDraft?.()
+  }
+  if (nextKey === 'character') {
+    return characterPanelRef.value?.saveFocusedDraft?.()
+  }
+  return undefined
+}
+
+const handleAssetDiscardDirty = (tabKey) => {
+  const nextKey = String(tabKey || '')
+  if (nextKey === 'outline') {
+    return outlinePanelRef.value?.discardFocusedDraft?.(activeAssetFocusArea.value)
+  }
+  if (nextKey === 'timeline') {
+    return timelinePanelRef.value?.discardFocusedDraft?.()
+  }
+  if (nextKey === 'foreshadow') {
+    return foreshadowPanelRef.value?.discardFocusedDraft?.()
+  }
+  if (nextKey === 'character') {
+    return characterPanelRef.value?.discardFocusedDraft?.()
+  }
+  return undefined
 }
 
 const startWorkTitleEditing = async () => {
@@ -728,6 +978,13 @@ const handleJumpInvalid = () => {
 const handleDraftChange = (content) => {
   const chapterId = String(chapterDataStore.activeChapterId || '')
   if (!chapterId) return
+  const previousCount = Object.prototype.hasOwnProperty.call(lastEffectiveCountByChapterId.value, chapterId)
+    ? Number(lastEffectiveCountByChapterId.value[chapterId] || 0)
+    : countEffectiveCharacters(chapterDataStore.activeChapterContent)
+  const nextCount = countEffectiveCharacters(content)
+  const delta = nextCount - previousCount
+  syncChapterWordBaseline(chapterId, content)
+  preferenceStore.incrementTodayWordDelta(delta)
   if (saveStateStore.nextRetryAt || saveStateStore.retryCount) {
     clearRetryTimer()
     saveStateStore.clearRetrySchedule()
@@ -966,6 +1223,24 @@ const handleManualRetry = async () => {
     manual: true
   })
 }
+
+const handleManualSync = async () => {
+  const chapterId = String(chapterDataStore.activeChapterId || '')
+  if (!chapterId || conflictModalVisible.value) return
+  writeCachedDraft(chapterId, chapterDataStore.activeChapterContent)
+  suppressDraftCaching.value = true
+  try {
+    await flushCurrentDraftNow()
+    if (saveStateStore.saveStatus === 'synced' && !saveStateStore.hasPendingDrafts) {
+      await nextTick()
+      chapterDataStore.clearChapterDraft(chapterId)
+      chapterDataStore.clearChapterTitleDraft(chapterId)
+      clearCachedDraft(chapterId)
+    }
+  } finally {
+    suppressDraftCaching.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -978,11 +1253,19 @@ const handleManualRetry = async () => {
   background: #f8fafc;
 }
 
+.writing-studio--focus {
+  background: #f3f4f6;
+}
+
 .studio-header {
   border: 1px solid #e5e7eb;
   border-radius: 24px;
   background: #ffffff;
   padding: 20px 24px;
+}
+
+.studio-header--focus {
+  padding: 16px 20px;
 }
 
 .header-main {
@@ -1038,10 +1321,36 @@ const handleManualRetry = async () => {
   color: #4b5563;
 }
 
+.header-copy--muted p {
+  color: #9ca3af;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.header-panel-row {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.preference-toggle {
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+}
+
+.preference-toggle:hover {
+  border-color: #93c5fd;
+  color: #1d4ed8;
 }
 
 .studio-shell {
@@ -1052,11 +1361,21 @@ const handleManualRetry = async () => {
   gap: 16px;
 }
 
+.studio-shell--focus {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .sidebar-column,
 .editor-column,
 .asset-rail-column,
 .asset-drawer-column {
   min-height: 0;
+}
+
+.editor-column--focus {
+  max-width: 960px;
+  width: min(100%, 960px);
+  margin: 0 auto;
 }
 
 .panel-card {
@@ -1104,6 +1423,11 @@ const handleManualRetry = async () => {
   flex-direction: column;
 }
 
+.editor-card--focus {
+  border-color: #dbeafe;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+}
+
 .editor-shell {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1145,6 +1469,12 @@ const handleManualRetry = async () => {
   .header-actions {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .asset-drawer-column.mobile-overlay-host {
+    width: 0;
+    min-width: 0;
+    min-height: 0;
   }
 }
 </style>

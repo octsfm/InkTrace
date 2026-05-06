@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <div class="chapter-sidebar">
     <div class="sidebar-header">
       <div>

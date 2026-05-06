@@ -125,6 +125,40 @@ describe('useSaveStateStore', () => {
     expect(store.pendingQueue).toHaveLength(1)
   })
 
+  it('keeps writing available offline and marks offline status immediately', () => {
+    const store = useSaveStateStore()
+    const originalNavigator = global.window?.navigator
+
+    Object.defineProperty(global.window, 'navigator', {
+      value: { ...originalNavigator, onLine: false },
+      configurable: true
+    })
+
+    const draft = store.writeLocalDraft({
+      workId: 'work-1',
+      chapterId: 'ch-1',
+      title: 'offline-title',
+      content: 'offline-draft',
+      version: 2,
+      timestamp: 100
+    })
+
+    expect(draft).toMatchObject({
+      chapterId: 'ch-1',
+      content: 'offline-draft'
+    })
+    expect(store.saveStatus).toBe('offline')
+    expect(store.pendingQueue).toHaveLength(1)
+    expect(store.readLocalDraft({ workId: 'work-1', chapterId: 'ch-1' })).toMatchObject({
+      content: 'offline-draft'
+    })
+
+    Object.defineProperty(global.window, 'navigator', {
+      value: originalNavigator,
+      configurable: true
+    })
+  })
+
   it('clears the local draft only after remote save succeeds', async () => {
     const store = useSaveStateStore()
 
@@ -185,6 +219,84 @@ describe('useSaveStateStore', () => {
     })
   })
 
+  it('keeps conflict payload and local draft when user cancels conflict handling', async () => {
+    const store = useSaveStateStore()
+    const draft = store.writeLocalDraft({
+      workId: 'work-1',
+      chapterId: 'ch-1',
+      title: '冲突标题',
+      content: '保留中的本地草稿',
+      version: 3,
+      timestamp: 100
+    })
+
+    store.markConflict({
+      ...draft,
+      server_version: 4,
+      server_content: 'server-copy'
+    }, 'version_conflict')
+
+    expect(store.hasConflict).toBe(true)
+    expect(store.readLocalDraft({ workId: 'work-1', chapterId: 'ch-1' })).toMatchObject({
+      content: '保留中的本地草稿'
+    })
+    expect(store.conflictPayload).toMatchObject({
+      server_version: 4,
+      server_content: 'server-copy'
+    })
+  })
+
+  it('clears draft and conflict after override path succeeds', async () => {
+    const store = useSaveStateStore()
+    const conflictError = new Error('conflict')
+    conflictError.is_version_conflict = true
+    conflictError.conflict_payload = {
+      detail: 'version_conflict',
+      server_version: 8
+    }
+
+    const draft = store.writeLocalDraft({
+      workId: 'work-1',
+      chapterId: 'ch-1',
+      title: '冲突标题',
+      content: '本地覆盖内容',
+      version: 7,
+      timestamp: 100
+    })
+
+    await expect(store.flushDraft({
+      draft,
+      save: vi.fn().mockRejectedValue(conflictError)
+    })).rejects.toThrow('conflict')
+
+    const overrideSave = vi.fn().mockResolvedValue({
+      id: 'ch-1',
+      version: 9
+    })
+
+    await store.flushDraft({
+      draft: {
+        ...store.conflictPayload,
+        workId: 'work-1',
+        chapterId: 'ch-1',
+        content: '本地覆盖内容',
+        title: '冲突标题',
+        version: 8
+      },
+      save: overrideSave
+    })
+    store.clearConflict()
+
+    expect(overrideSave).toHaveBeenCalledWith(expect.objectContaining({
+      chapterId: 'ch-1',
+      content: '本地覆盖内容'
+    }))
+    expect(store.readLocalDraft({ workId: 'work-1', chapterId: 'ch-1' })).toBeNull()
+    expect(store.pendingQueue).toEqual([])
+    expect(store.hasConflict).toBe(false)
+    expect(store.saveStatus).toBe('synced')
+  })
+
   it('replays only the latest draft per chapter in timestamp order on network recovery', async () => {
     const store = useSaveStateStore()
     const replayed = []
@@ -224,5 +336,40 @@ describe('useSaveStateStore', () => {
     ])
     expect(store.pendingQueue).toEqual([])
     expect(store.collectLocalDrafts('work-1')).toEqual([])
+  })
+
+  it('flushes queued offline drafts on network recovery and returns to synced state', async () => {
+    const store = useSaveStateStore()
+    const replayed = []
+
+    store.markOffline()
+    store.writeLocalDraft({
+      workId: 'work-1',
+      chapterId: 'ch-1',
+      content: 'draft-a',
+      timestamp: 10
+    })
+    store.writeLocalDraft({
+      workId: 'work-1',
+      chapterId: 'ch-2',
+      content: 'draft-b',
+      timestamp: 20
+    })
+
+    await store.handleNetworkOnline({
+      workId: 'work-1',
+      save: async (draft) => {
+        replayed.push(draft.chapterId)
+        return {
+          id: draft.chapterId,
+          version: Number(draft.version || 1) + 1
+        }
+      }
+    })
+
+    expect(replayed).toEqual(['ch-1', 'ch-2'])
+    expect(store.pendingQueue).toEqual([])
+    expect(store.collectLocalDrafts('work-1')).toEqual([])
+    expect(store.saveStatus).toBe('synced')
   })
 })
