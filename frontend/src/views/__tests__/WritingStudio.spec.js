@@ -225,7 +225,7 @@ describe('WritingStudio layout contract', () => {
     expect(source).toContain('const activeAssetTab = ref')
     expect(source).toContain('v-if="activeAssetTab"')
     expect(source).toContain(':active-tab="activeAssetTab"')
-    expect(source).toContain(':hide-active-entry="Boolean(activeAssetTab)"')
+    expect(source).toContain('v-show="!isFocusMode && !activeAssetTab" class="asset-rail-column"')
     expect(source).toContain(':mobile="isMobileAssetDrawer"')
     expect(source).toContain('toggleAssetDrawer')
     expect(source).toContain('closeAssetDrawer')

@@ -1,66 +1,104 @@
 <template>
   <section class="outline-panel" data-panel="outline">
     <header class="outline-header">
-      <div>
-        <h3>作品大纲</h3>
-        <p>`content_text` 是唯一真源，树结构仅作为派生缓存保存。</p>
+      <div class="outline-mode-tabs" role="tablist" aria-label="大纲视图切换">
+        <button
+          type="button"
+          class="outline-mode-tab"
+          :class="{ active: currentMode === 'work' }"
+          data-testid="outline-mode-work"
+          @click="requestModeSwitch('work')"
+        >
+          作品大纲
+        </button>
+        <button
+          type="button"
+          class="outline-mode-tab"
+          :class="{ active: currentMode === 'chapter' }"
+          data-testid="outline-mode-chapter"
+          @click="requestModeSwitch('chapter')"
+        >
+          章节大纲
+        </button>
       </div>
-      <span v-if="isDirty" class="dirty-indicator">未保存</span>
+      <div class="outline-header-actions">
+        <button
+          v-if="currentMode === 'work'"
+          type="button"
+          class="ghost-button"
+          data-testid="outline-import-trigger"
+          @click="openImportModal"
+        >
+          导入
+        </button>
+        <span v-if="currentDirty" class="dirty-indicator">未保存</span>
+      </div>
     </header>
 
-    <textarea
-      class="outline-textarea"
-      :value="draftText"
-      placeholder="在这里输入整本作品的大纲。"
-      data-testid="work-outline-text"
-      @input="handleInput"
-      @focus="$emit('focus-area', 'outline')"
-    />
+    <div class="outline-editor-shell">
+      <template v-if="currentMode === 'work'">
+        <p class="outline-description">`content_text` 是唯一真源，树结构仅作为派生缓存保存。</p>
+        <textarea
+          class="outline-textarea"
+          :value="draftText"
+          placeholder="在这里输入整本作品的大纲。"
+          data-testid="work-outline-text"
+          @input="handleInput"
+          @focus="$emit('focus-area', 'outline')"
+        />
+      </template>
+
+      <template v-else>
+        <p v-if="activeChapterId" class="chapter-outline-caption">当前章节：{{ activeChapterId }}</p>
+        <div v-if="!activeChapterId" class="outline-empty-state">请先选择一个章节，再编辑章节大纲。</div>
+        <textarea
+          v-else
+          class="outline-textarea chapter-outline-textarea"
+          :value="chapterDraftText"
+          placeholder="在这里输入当前章节的细纲。"
+          data-testid="chapter-outline-text"
+          @input="handleChapterInput"
+          @focus="$emit('focus-area', 'chapter_outline')"
+        />
+      </template>
+    </div>
 
     <footer class="outline-footer">
-      <span class="save-status">{{ saveStatusLabel }}</span>
-      <button type="button" class="save-button" :disabled="saveStatus === 'saving'" @click="handleSave">
-        保存作品大纲
+      <span class="save-status">{{ currentMode === 'work' ? saveStatusLabel : chapterSaveStatusLabel }}</span>
+      <button
+        type="button"
+        class="save-button"
+        :disabled="currentMode === 'chapter' ? (!activeChapterId || chapterSaveStatus === 'saving') : saveStatus === 'saving'"
+        @click="currentMode === 'work' ? handleSave() : handleChapterSave()"
+      >
+        {{ currentMode === 'work' ? '保存作品大纲' : '保存章节大纲' }}
       </button>
     </footer>
 
-    <section class="chapter-outline-section">
-      <header class="outline-header">
-        <div>
-          <h3>章节大纲</h3>
-          <p>这里显示当前章节的细纲，会随所选章节自动切换。</p>
-        </div>
-        <span v-if="chapterOutlineDirty" class="dirty-indicator">未保存</span>
-      </header>
-      <textarea
-        class="outline-textarea chapter-outline-textarea"
-        :value="chapterDraftText"
-        placeholder="在这里输入当前章节的细纲。"
-        data-testid="chapter-outline-text"
-        @input="handleChapterInput"
-        @focus="$emit('focus-area', 'chapter_outline')"
-      />
-      <footer class="outline-footer">
-        <span class="save-status">{{ chapterSaveStatusLabel }}</span>
-        <button
-          type="button"
-          class="save-button"
-          :disabled="!activeChapterId || chapterSaveStatus === 'saving'"
-          @click="handleChapterSave"
-        >
-          保存章节大纲
-        </button>
-      </footer>
+    <section v-if="modeSwitchGuardVisible" class="mode-switch-guard">
+      <p>当前编辑区存在未保存内容，切换前请选择处理方式。</p>
+      <div class="mode-switch-guard-actions">
+        <button type="button" class="save-button" @click="handleGuardSave">保存并切换</button>
+        <button type="button" class="ghost-button" @click="handleGuardDiscard">放弃并切换</button>
+        <button type="button" class="ghost-button" @click="handleGuardCancel">取消</button>
+      </div>
     </section>
+
+    <OutlineImportModal
+      :visible="importModalVisible"
+      :current-draft-text="draftText"
+      @close="closeImportModal"
+      @import="handleImportApply"
+    />
 
     <AssetConflictModal
       :model-value="conflictVisible"
-      description="作品大纲已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。"
-      :local-content="draftText"
+      :description="conflictDescription"
+      :local-content="localConflictContent"
       :server-content="serverContent"
       @cancel="assetStore.clearAssetConflict"
-      @discard="handleDiscardLocal"
-      @override="handleOverride"
+      @discard="handleDiscardConflict"
+      @override="handleOverrideConflict"
     />
   </section>
 </template>
@@ -68,8 +106,10 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 
+import { mergeOutlineImportText } from '@/utils/outlineImport'
 import { useWritingAssetStore } from '@/stores/writingAsset'
 import AssetConflictModal from './AssetConflictModal.vue'
+import OutlineImportModal from './OutlineImportModal.vue'
 
 const props = defineProps({
   workId: {
@@ -85,32 +125,46 @@ const props = defineProps({
 defineEmits(['focus-area'])
 
 const assetStore = useWritingAssetStore()
+const currentMode = ref('work')
+const pendingModeSwitch = ref('')
+const importModalVisible = ref(false)
 const draftText = ref('')
 const chapterDraftText = ref('')
 const saveStatusLabelMap = {
   idle: '待保存',
+  dirty: '待保存',
   saving: '保存中',
   synced: '已保存',
-  error: '保存失败'
+  error: '保存失败',
+  conflict: '存在冲突'
 }
 
 const assetKey = 'work_outline:work'
 const draft = computed(() => assetStore.assetDrafts[assetKey] || null)
 const outline = computed(() => assetStore.workOutline || null)
 const activeChapterId = computed(() => String(props.activeChapterId || ''))
-const chapterAssetKey = computed(() => activeChapterId.value ? `chapter_outline:${activeChapterId.value}` : '')
+const chapterAssetKey = computed(() => (activeChapterId.value ? `chapter_outline:${activeChapterId.value}` : ''))
 const chapterDraft = computed(() => assetStore.assetDrafts[chapterAssetKey.value] || null)
 const chapterOutline = computed(() => assetStore.chapterOutlines[activeChapterId.value] || null)
 const isDirty = computed(() => assetStore.dirtyAssetKeys.includes(assetKey))
 const chapterOutlineDirty = computed(() => Boolean(chapterAssetKey.value && assetStore.dirtyAssetKeys.includes(chapterAssetKey.value)))
+const currentDirty = computed(() => (currentMode.value === 'work' ? isDirty.value : chapterOutlineDirty.value))
 const saveStatus = computed(() => assetStore.getAssetSaveStatus('work_outline', 'work'))
 const chapterSaveStatus = computed(() => assetStore.getAssetSaveStatus('chapter_outline', activeChapterId.value))
 const saveStatusLabel = computed(() => saveStatusLabelMap[saveStatus.value] || saveStatusLabelMap.idle)
-const chapterSaveStatusLabel = computed(() => (
-  saveStatusLabelMap[chapterSaveStatus.value] || saveStatusLabelMap.idle
-))
+const chapterSaveStatusLabel = computed(() => saveStatusLabelMap[chapterSaveStatus.value] || saveStatusLabelMap.idle)
+const modeSwitchGuardVisible = computed(() => Boolean(pendingModeSwitch.value))
+const conflictAssetType = computed(() => String(assetStore.assetConflictPayload?.asset_type || ''))
 const conflictVisible = computed(() => (
-  assetStore.assetConflictPayload?.asset_type === 'work_outline'
+  conflictAssetType.value === 'work_outline' || conflictAssetType.value === 'chapter_outline'
+))
+const conflictDescription = computed(() => (
+  conflictAssetType.value === 'chapter_outline'
+    ? '章节大纲已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。'
+    : '作品大纲已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。'
+))
+const localConflictContent = computed(() => (
+  conflictAssetType.value === 'chapter_outline' ? chapterDraftText.value : draftText.value
 ))
 const serverContent = computed(() => String(assetStore.assetConflictPayload?.server_content || ''))
 
@@ -130,19 +184,50 @@ const syncChapterFromStore = () => {
   )
 }
 
-const buildSavePayload = (overrides = {}) => ({
-  content_text: draftText.value,
+const buildSavePayload = (content = draftText.value, overrides = {}) => ({
+  content_text: String(content ?? ''),
   content_tree_json: outline.value?.content_tree_json ?? [],
   expected_version: outline.value?.version ?? 1,
   ...overrides
 })
 
-const buildChapterSavePayload = (overrides = {}) => ({
-  content_text: chapterDraftText.value,
+const buildChapterSavePayload = (content = chapterDraftText.value, overrides = {}) => ({
+  content_text: String(content ?? ''),
   content_tree_json: chapterOutline.value?.content_tree_json ?? [],
   expected_version: chapterOutline.value?.version ?? 1,
   ...overrides
 })
+
+const applyModeSwitch = (mode) => {
+  currentMode.value = mode === 'chapter' ? 'chapter' : 'work'
+  pendingModeSwitch.value = ''
+}
+
+const requestModeSwitch = (mode) => {
+  const nextMode = mode === 'chapter' ? 'chapter' : 'work'
+  if (nextMode === currentMode.value) return
+  if (currentDirty.value) {
+    pendingModeSwitch.value = nextMode
+    return
+  }
+  applyModeSwitch(nextMode)
+}
+
+const openImportModal = () => {
+  if (currentMode.value !== 'work') return
+  importModalVisible.value = true
+}
+
+const closeImportModal = () => {
+  importModalVisible.value = false
+}
+
+const handleImportApply = ({ content = '', mode = 'replace' } = {}) => {
+  const merged = mergeOutlineImportText(draftText.value, content, mode)
+  draftText.value = merged
+  assetStore.writeAssetDraft('work_outline', 'work', buildSavePayload(merged))
+  closeImportModal()
+}
 
 const handleInput = (event) => {
   draftText.value = String(event?.target?.value ?? '')
@@ -161,29 +246,84 @@ const handleSave = async () => {
   }
   try {
     await assetStore.saveWorkOutline()
+    return true
   } catch (error) {
     if (!assetStore.assetConflictPayload) {
       throw error
     }
+    return false
   }
 }
 
 const handleChapterSave = async () => {
-  if (!activeChapterId.value) return
+  if (!activeChapterId.value) return false
   if (!assetStore.assetDrafts[chapterAssetKey.value]) {
     assetStore.writeAssetDraft('chapter_outline', activeChapterId.value, buildChapterSavePayload())
   }
   try {
     await assetStore.saveChapterOutline(activeChapterId.value)
+    return true
   } catch (error) {
     if (!assetStore.assetConflictPayload) {
       throw error
     }
+    return false
   }
 }
 
-const handleOverride = async () => {
-  assetStore.writeAssetDraft('work_outline', 'work', buildSavePayload({ force_override: true }))
+const discardWorkLocal = async () => {
+  assetStore.discardAssetDraft('work_outline', 'work')
+  if (props.workId) {
+    await assetStore.loadWorkOutline(props.workId)
+  }
+  syncFromStore()
+}
+
+const discardChapterLocal = async () => {
+  if (!activeChapterId.value) return
+  assetStore.discardAssetDraft('chapter_outline', activeChapterId.value)
+  await assetStore.loadChapterOutline(activeChapterId.value)
+  syncChapterFromStore()
+}
+
+const handleGuardSave = async () => {
+  const ok = currentMode.value === 'work'
+    ? await handleSave()
+    : await handleChapterSave()
+  if (ok && pendingModeSwitch.value) {
+    applyModeSwitch(pendingModeSwitch.value)
+  }
+}
+
+const handleGuardDiscard = async () => {
+  if (currentMode.value === 'work') {
+    await discardWorkLocal()
+  } else {
+    await discardChapterLocal()
+  }
+  if (pendingModeSwitch.value) {
+    applyModeSwitch(pendingModeSwitch.value)
+  }
+}
+
+const handleGuardCancel = () => {
+  pendingModeSwitch.value = ''
+}
+
+const handleOverrideConflict = async () => {
+  if (conflictAssetType.value === 'chapter_outline' && activeChapterId.value) {
+    assetStore.writeAssetDraft('chapter_outline', activeChapterId.value, buildChapterSavePayload(chapterDraftText.value, { force_override: true }))
+    try {
+      await assetStore.saveChapterOutline(activeChapterId.value)
+      assetStore.clearAssetConflict()
+    } catch (error) {
+      if (!assetStore.assetConflictPayload) {
+        throw error
+      }
+    }
+    return
+  }
+  assetStore.writeAssetDraft('work_outline', 'work', buildSavePayload(draftText.value, { force_override: true }))
   try {
     await assetStore.saveWorkOutline()
     assetStore.clearAssetConflict()
@@ -194,22 +334,14 @@ const handleOverride = async () => {
   }
 }
 
-const handleDiscardLocal = async () => {
-  assetStore.discardAssetDraft('work_outline', 'work')
+const handleDiscardConflict = async () => {
+  if (conflictAssetType.value === 'chapter_outline') {
+    assetStore.clearAssetConflict()
+    await discardChapterLocal()
+    return
+  }
   assetStore.clearAssetConflict()
-  if (props.workId) {
-    await assetStore.loadWorkOutline(props.workId)
-  }
-  syncFromStore()
-}
-
-const discardChapterLocal = async () => {
-  if (!activeChapterId.value) return
-  assetStore.discardAssetDraft('chapter_outline', activeChapterId.value)
-  if (props.workId) {
-    await assetStore.loadChapterOutline(activeChapterId.value)
-  }
-  syncChapterFromStore()
+  await discardWorkLocal()
 }
 
 onMounted(async () => {
@@ -256,11 +388,11 @@ watch(
 )
 
 defineExpose({
-  saveFocusedDraft(area = 'work_outline') {
+  saveFocusedDraft(area = 'outline') {
     return area === 'chapter_outline' ? handleChapterSave() : handleSave()
   },
-  discardFocusedDraft(area = 'work_outline') {
-    return area === 'chapter_outline' ? discardChapterLocal() : handleDiscardLocal()
+  discardFocusedDraft(area = 'outline') {
+    return area === 'chapter_outline' ? discardChapterLocal() : discardWorkLocal()
   }
 })
 </script>
@@ -271,27 +403,81 @@ defineExpose({
   gap: 14px;
 }
 
-.outline-header {
+.outline-header,
+.outline-footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.outline-header h3 {
-  margin: 0;
-  color: #111827;
-  font-size: 18px;
+.outline-mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.outline-header p {
-  margin: 6px 0 0;
+.outline-mode-tab,
+.ghost-button,
+.save-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.outline-mode-tab,
+.ghost-button {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.outline-mode-tab.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.save-button {
+  background: #111827;
+  color: #ffffff;
+}
+
+.save-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.outline-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.outline-editor-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.outline-description,
+.chapter-outline-caption,
+.outline-empty-state,
+.save-status,
+.mode-switch-guard p {
+  margin: 0;
   color: #6b7280;
   font-size: 13px;
   line-height: 1.6;
 }
 
+.outline-empty-state {
+  border: 1px dashed #d1d5db;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 16px;
+}
+
 .dirty-indicator {
-  align-self: start;
   border-radius: 999px;
   background: #fef3c7;
   color: #92400e;
@@ -311,42 +497,39 @@ defineExpose({
   line-height: 1.7;
 }
 
-.outline-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.chapter-outline-section {
-  display: grid;
-  gap: 14px;
-  margin-top: 10px;
-  border-top: 1px solid #e5e7eb;
-  padding-top: 18px;
-}
-
 .chapter-outline-textarea {
-  min-height: 220px;
+  min-height: 240px;
 }
 
-.save-status {
-  color: #6b7280;
-  font-size: 13px;
+.mode-switch-guard {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #fde68a;
+  border-radius: 16px;
+  background: #fffbeb;
+  padding: 14px;
 }
 
-.save-button {
-  border: 0;
-  border-radius: 999px;
-  background: #111827;
-  color: #ffffff;
-  padding: 10px 18px;
-  font-weight: 700;
-  cursor: pointer;
+.mode-switch-guard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.save-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+@media (max-width: 760px) {
+  .outline-header,
+  .outline-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .outline-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .outline-mode-tabs {
+    width: 100%;
+  }
 }
 </style>

@@ -490,13 +490,12 @@ defineExpose({
 
 .timeline-layout {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
   gap: 16px;
 }
 
 .timeline-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
 }
 
@@ -512,6 +511,13 @@ defineExpose({
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;
+}
+
+.timeline-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .timeline-item.active {
@@ -584,6 +590,10 @@ defineExpose({
 
 @media (max-width: 900px) {
   .timeline-layout {
+    gap: 14px;
+  }
+
+  .timeline-list {
     grid-template-columns: 1fr;
   }
 }

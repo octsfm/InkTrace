@@ -166,6 +166,13 @@ classDiagram
     class OutlinePanel {
         +全书大纲
         +章节细纲
+        +作品大纲导入
+    }
+    class OutlineImportModal {
+        +TXT/Markdown读取
+        +粘贴导入
+        +预览
+        +覆盖/追加
     }
     class TimelinePanel {
         +事件顺序
@@ -186,6 +193,7 @@ classDiagram
     WritingStudio --> AssetRail
     WritingStudio --> AssetDrawer
     AssetDrawer --> OutlinePanel
+    OutlinePanel --> OutlineImportModal
     AssetDrawer --> TimelinePanel
     AssetDrawer --> ForeshadowPanel
     AssetDrawer --> CharacterPanel
@@ -662,6 +670,7 @@ OutlinePanel 包含：
 - 全书大纲。
 - 当前章节细纲。
 - 单视图文本编辑主区。
+- 作品大纲导入入口。
 - 保存按钮。
 - dirty 状态提示。
 - 二级切换：`作品大纲 / 章节大纲`。
@@ -672,7 +681,7 @@ OutlinePanel 包含：
 ┌──────────────────────────────────────┐
 │ OutlinePanel                         │
 ├──────────────────────────────────────┤
-│ [全书大纲]*  [当前章节细纲]           │
+│ [全书大纲]*  [当前章节细纲]    [导入] │
 ├──────────────────────────────────────┤
 │ 状态：dirty                           │
 │                                      │
@@ -684,6 +693,9 @@ OutlinePanel 包含：
 │ │                                  │ │
 │ │ 第二卷：风雪                     │ │
 │ └──────────────────────────────────┘ │
+│                                      │
+│ 当前字符数：12,345                   │
+│ 建议控制在 20,000 字以内             │
 │                                      │
 │                            [保存]    │
 └──────────────────────────────────────┘
@@ -720,8 +732,96 @@ OutlinePanel 包含：
 - `content_tree_json` 仅在用户显式保存时更新。
 - 同一时间只显示一个编辑区，避免“全书大纲 + 章节细纲”上下同时挤压。
 - Footer 区域固定在面板底部，保证状态与保存按钮始终可见。
-- V1.1 写作页内不提供“大纲导入”入口。
-- 如需导入大纲，仅允许走作品导入流程，不在 OutlinePanel 内新增上传能力。
+- 作品大纲模式允许显示“导入”入口。
+- 章节细纲模式禁止显示“导入”入口。
+- 导入后不自动保存，必须进入既有 dirty 状态并由用户手动保存。
+
+#### 作品大纲导入弹窗原型
+
+```text
+┌──────────────────────────────────────┐
+│ 导入作品大纲                         │
+├──────────────────────────────────────┤
+│ 上传文件：                           │
+│ [选择 TXT / Markdown 文件]           │
+│                                      │
+│ 或                                   │
+│                                      │
+│ 粘贴作品大纲：                       │
+│ ┌──────────────────────────────────┐ │
+│ │                                  │ │
+│ │                                  │ │
+│ │                                  │ │
+│ └──────────────────────────────────┘ │
+│                                      │
+│ 当前字符数：8,245                    │
+│ 建议控制在 20,000 字以内             │
+├──────────────────────────────────────┤
+│ 导入预览：                           │
+│ ----------------------------------   │
+│ # 第一卷：逃出宗门                   │
+│ 主角出生于边境小城……                 │
+│ ----------------------------------   │
+├──────────────────────────────────────┤
+│ 导入方式：                           │
+│ (●) 覆盖当前草稿                     │
+│ ( ) 追加到末尾                       │
+├──────────────────────────────────────┤
+│                 [取消] [导入到草稿]  │
+└──────────────────────────────────────┘
+```
+
+#### 作品大纲导入规则
+
+- 导入弹窗只从作品大纲模式打开。
+- 支持 `.txt`、`.md` 文件与手动粘贴。
+- Markdown 原样进入 textarea，不渲染为 HTML。
+- 预览区必须为纯文本视觉，不显示树结构。
+- 文件大小上限为 2MB。
+- 支持 `utf-8-sig`、`utf-8`；不支持编码时提示失败。
+- 字符统计使用原始字符数，包含空格、换行、制表符。
+- 20,000 字符以上显示“建议控制在 20,000 字以内以获得更好编辑体验”。
+- 50,000 字符以上显示“当前内容较大，可能影响编辑性能”。
+- 当前作品大纲已有内容时，必须显示覆盖/追加选择，默认覆盖。
+- 追加时，若原草稿与导入文本均非空，中间插入两个换行。
+- 点击“导入到草稿”后写入作品大纲 `localContent`，设置 dirty，并写入既有本地暂存。
+- 点击“导入到草稿”不得调用保存 API。
+- 保存作品大纲返回 409 时，保留本地草稿与 dirty 状态，并打开本地版本 vs 服务端版本对比入口。
+
+#### Mermaid：作品大纲导入流程
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant Panel as OutlinePanel
+    participant Modal as OutlineImportModal
+    participant Cache as 本地暂存
+    participant Store as useWritingAssetStore
+    participant API as Outline API
+
+    User->>Panel: 点击作品大纲导入
+    Panel->>Modal: 打开导入弹窗
+    Modal->>Modal: 读取TXT/Markdown或粘贴文本
+    Modal->>Modal: 纯文本预览与字符统计
+    User->>Modal: 选择覆盖或追加
+    User->>Modal: 点击导入到草稿
+    Modal->>Panel: 写入作品大纲localContent
+    Panel->>Cache: 写入既有作品大纲暂存
+    Panel->>Store: 标记dirty
+    Note over Panel,API: 导入阶段不调用保存API
+    User->>Panel: 点击保存作品大纲
+    Panel->>Store: 保存当前作品大纲
+    Store->>API: PUT content_text + expected_version
+    alt 保存成功
+        API-->>Store: 200 + new version
+        Store->>Cache: 清理对应暂存
+        Store->>Panel: 标记clean
+    else 409冲突
+        API-->>Store: 409 + server_version
+        Store->>Cache: 保留本地暂存
+        Store->>Panel: 保持dirty并打开对比入口
+    end
+```
 
 ### 3.6 写作偏好面板
 

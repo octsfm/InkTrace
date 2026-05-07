@@ -143,11 +143,10 @@
         </div>
       </main>
 
-      <aside v-show="!isFocusMode" class="asset-rail-column">
+      <aside v-show="!isFocusMode && !activeAssetTab" class="asset-rail-column">
         <div class="panel-card asset-rail-card">
           <AssetRail
             :active-tab="activeAssetTab"
-            :hide-active-entry="Boolean(activeAssetTab)"
             @toggle="toggleAssetDrawer"
           />
         </div>
@@ -1423,7 +1422,7 @@ const handleManualSync = async () => {
 }
 
 .studio-shell--drawer-open {
-  grid-template-columns: 280px minmax(0, 1fr) 72px 360px;
+  grid-template-columns: 280px minmax(0, 1fr) 360px;
 }
 
 .studio-shell--focus {

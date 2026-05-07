@@ -510,13 +510,12 @@ defineExpose({
 
 .panel-layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
   gap: 16px;
 }
 
 .character-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 8px;
 }
 
@@ -531,6 +530,14 @@ defineExpose({
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;
+}
+
+.item-title,
+.item-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .character-item.active {
@@ -571,6 +578,10 @@ defineExpose({
 
 @media (max-width: 900px) {
   .panel-layout {
+    gap: 14px;
+  }
+
+  .character-list {
     grid-template-columns: 1fr;
   }
 }
