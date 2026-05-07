@@ -1,37 +1,49 @@
 <template>
-  <nav class="asset-rail" aria-label="Writing assets">
+  <nav class="asset-rail" aria-label="写作资产工具栏">
     <button
-      v-for="item in items"
+      v-for="item in visibleItems"
       :key="item.key"
       type="button"
       class="asset-rail-button"
       :class="{ active: item.key === activeTab }"
+      :title="item.label"
+      :aria-label="item.label"
       :aria-pressed="item.key === activeTab"
       :data-asset-tab="item.key"
       @click="handleToggle(item.key)"
     >
       <span class="asset-rail-icon" aria-hidden="true">{{ item.icon }}</span>
-      <span class="asset-rail-label">{{ item.label }}</span>
     </button>
   </nav>
 </template>
 
 <script setup>
+import { computed } from 'vue'
+
 const props = defineProps({
   activeTab: {
     type: String,
     default: ''
+  },
+  hideActiveEntry: {
+    type: Boolean,
+    default: false
   }
 })
 
 const emit = defineEmits(['toggle'])
 
 const items = [
-  { key: 'outline', label: 'Outline', icon: 'O' },
-  { key: 'timeline', label: 'Timeline', icon: 'T' },
-  { key: 'foreshadow', label: 'Foreshadow', icon: 'F' },
-  { key: 'character', label: 'Character', icon: 'C' }
+  { key: 'outline', label: '大纲', icon: '纲' },
+  { key: 'timeline', label: '时间线', icon: '线' },
+  { key: 'foreshadow', label: '伏笔', icon: '伏' },
+  { key: 'character', label: '人物', icon: '人' }
 ]
+
+const visibleItems = computed(() => items.filter((item) => {
+  if (!props.hideActiveEntry) return true
+  return item.key !== props.activeTab
+}))
 
 const handleToggle = (key) => {
   emit('toggle', key === props.activeTab ? '' : key)
@@ -48,8 +60,8 @@ const handleToggle = (key) => {
 .asset-rail-button {
   display: grid;
   place-items: center;
-  gap: 4px;
-  min-height: 52px;
+  min-height: 60px;
+  min-width: 100%;
   border: 1px solid #d1d5db;
   border-radius: 14px;
   background: #ffffff;
@@ -66,14 +78,8 @@ const handleToggle = (key) => {
 }
 
 .asset-rail-icon {
-  font-size: 16px;
+  font-size: 24px;
   line-height: 1;
-}
-
-.asset-rail-label {
-  max-width: 72px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 700;
 }
 </style>

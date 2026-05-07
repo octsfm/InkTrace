@@ -33,7 +33,7 @@ describe('OutlinePanel', () => {
     mockSaveChapterOutline.mockReset()
   })
 
-  it('loads work outline and renders content_text as edit source', async () => {
+  it('loads work outline and uses work mode as the only visible editor by default', async () => {
     mockGetWorkOutline.mockResolvedValue({
       id: 'outline-1',
       work_id: 'work-1',
@@ -49,9 +49,10 @@ describe('OutlinePanel', () => {
 
     expect(mockGetWorkOutline).toHaveBeenCalledWith('work-1')
     expect(wrapper.find('[data-testid="work-outline-text"]').element.value).toBe('远端大纲')
+    expect(wrapper.find('[data-testid="chapter-outline-text"]').exists()).toBe(false)
   })
 
-  it('writes draft on edit and shows dirty state', async () => {
+  it('writes work draft on edit and shows dirty state', async () => {
     mockGetWorkOutline.mockResolvedValue({
       id: 'outline-1',
       work_id: 'work-1',
@@ -73,10 +74,10 @@ describe('OutlinePanel', () => {
         expected_version: 1
       }
     })
-    expect(wrapper.text()).toContain('Unsaved')
+    expect(wrapper.text()).toContain('未保存')
   })
 
-  it('stages asset draft offline and does not auto-submit after network recovery', async () => {
+  it('stages asset draft offline and only saves after explicit action', async () => {
     mockGetWorkOutline.mockResolvedValue({
       id: 'outline-1',
       work_id: 'work-1',
@@ -190,6 +191,7 @@ describe('OutlinePanel', () => {
       resource_id: 'outline-1'
     }
     mockSaveWorkOutline.mockRejectedValue(conflictError)
+
     const wrapper = mount(OutlinePanel, {
       props: { workId: 'work-1' }
     })
@@ -206,10 +208,10 @@ describe('OutlinePanel', () => {
       }
     })
     expect(wrapper.findComponent({ name: 'AssetConflictModal' }).exists()).toBe(true)
-    expect(wrapper.text()).toContain('Asset version conflict')
+    expect(wrapper.text()).toContain('资料版本冲突')
   })
 
-  it('loads and saves current chapter outline with chapter-specific draft', async () => {
+  it('switches to chapter mode and loads saves chapter outline draft independently', async () => {
     mockGetWorkOutline.mockResolvedValue({
       id: 'outline-1',
       work_id: 'work-1',
@@ -231,6 +233,7 @@ describe('OutlinePanel', () => {
       content_tree_json: [],
       version: 5
     })
+
     const wrapper = mount(OutlinePanel, {
       props: {
         workId: 'work-1',
@@ -239,11 +242,15 @@ describe('OutlinePanel', () => {
     })
     await flushPromises()
 
+    await wrapper.get('[data-testid="outline-mode-chapter"]').trigger('click')
+    await flushPromises()
+
     expect(mockGetChapterOutline).toHaveBeenCalledWith('chapter-1')
+    expect(wrapper.find('[data-testid="work-outline-text"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="chapter-outline-text"]').element.value).toBe('远端章节细纲')
 
     await wrapper.find('[data-testid="chapter-outline-text"]').setValue('章节细纲草稿')
-    await wrapper.findAll('.save-button')[1].trigger('click')
+    await wrapper.find('.save-button').trigger('click')
     await flushPromises()
 
     expect(mockSaveChapterOutline).toHaveBeenCalledWith('chapter-1', {
@@ -254,7 +261,7 @@ describe('OutlinePanel', () => {
     expect(useWritingAssetStore().assetDrafts['chapter_outline:chapter-1']).toBeUndefined()
   })
 
-  it('supports save discard cancel decisions before switching dirty chapter outline', async () => {
+  it('guards mode switching with cancel save and discard branches without losing drafts', async () => {
     mockGetWorkOutline.mockResolvedValue({
       id: 'outline-1',
       work_id: 'work-1',
@@ -262,20 +269,21 @@ describe('OutlinePanel', () => {
       content_tree_json: [],
       version: 1
     })
-    mockGetChapterOutline.mockImplementation(async (chapterId) => ({
-      id: `outline-${chapterId}`,
-      chapter_id: chapterId,
-      content_text: `${chapterId} remote`,
-      content_tree_json: [],
-      version: 1
-    }))
-    mockSaveChapterOutline.mockResolvedValue({
-      id: 'outline-chapter-1',
+    mockGetChapterOutline.mockResolvedValue({
+      id: 'chapter-outline-1',
       chapter_id: 'chapter-1',
-      content_text: 'dirty outline',
+      content_text: '章节远端',
+      content_tree_json: [],
+      version: 3
+    })
+    mockSaveWorkOutline.mockResolvedValue({
+      id: 'outline-1',
+      work_id: 'work-1',
+      content_text: '待切换作品大纲',
       content_tree_json: [],
       version: 2
     })
+
     const wrapper = mount(OutlinePanel, {
       props: {
         workId: 'work-1',
@@ -283,40 +291,50 @@ describe('OutlinePanel', () => {
       }
     })
     await flushPromises()
-    await wrapper.find('[data-testid="chapter-outline-text"]').setValue('dirty outline')
 
-    const store = useWritingAssetStore()
+    await wrapper.find('[data-testid="work-outline-text"]').setValue('待切换作品大纲')
+    await wrapper.get('[data-testid="outline-mode-chapter"]').trigger('click')
+    expect(wrapper.find('.mode-switch-guard').exists()).toBe(true)
 
-    await expect(store.prepareChapterOutlineSwitch({
-      currentChapterId: 'chapter-1',
-      nextChapterId: 'chapter-2',
-      decision: 'cancel'
-    })).resolves.toBe(false)
-    expect(mockGetChapterOutline).not.toHaveBeenCalledWith('chapter-2')
+    await wrapper.findAll('.mode-switch-guard-actions button')[2].trigger('click')
+    expect(wrapper.find('[data-testid="work-outline-text"]').exists()).toBe(true)
+    expect(mockSaveWorkOutline).not.toHaveBeenCalled()
 
-    await expect(store.prepareChapterOutlineSwitch({
-      currentChapterId: 'chapter-1',
-      nextChapterId: 'chapter-2',
-      decision: 'save'
-    })).resolves.toBe(true)
-    expect(mockSaveChapterOutline).toHaveBeenCalledWith('chapter-1', {
-      content_text: 'dirty outline',
+    await wrapper.get('[data-testid="outline-mode-chapter"]').trigger('click')
+    await wrapper.findAll('.mode-switch-guard-actions button')[0].trigger('click')
+    await flushPromises()
+    expect(mockSaveWorkOutline).toHaveBeenCalledWith('work-1', {
+      content_text: '待切换作品大纲',
       content_tree_json: [],
       expected_version: 1
     })
-    expect(mockGetChapterOutline).toHaveBeenCalledWith('chapter-2')
+    expect(wrapper.find('[data-testid="chapter-outline-text"]').exists()).toBe(true)
 
-    store.writeAssetDraft('chapter_outline', 'chapter-2', {
-      content_text: 'second dirty',
+    await wrapper.find('[data-testid="chapter-outline-text"]').setValue('章节本地草稿')
+    await wrapper.get('[data-testid="outline-mode-work"]').trigger('click')
+    await wrapper.findAll('.mode-switch-guard-actions button')[1].trigger('click')
+    await flushPromises()
+
+    expect(useWritingAssetStore().assetDrafts['chapter_outline:chapter-1']).toBeUndefined()
+    expect(wrapper.find('[data-testid="work-outline-text"]').exists()).toBe(true)
+  })
+
+  it('does not expose outline import controls inside the writing workspace panel', async () => {
+    mockGetWorkOutline.mockResolvedValue({
+      id: 'outline-1',
+      work_id: 'work-1',
+      content_text: '',
       content_tree_json: [],
-      expected_version: 1
+      version: 1
     })
-    await expect(store.prepareChapterOutlineSwitch({
-      currentChapterId: 'chapter-2',
-      nextChapterId: 'chapter-3',
-      decision: 'discard'
-    })).resolves.toBe(true)
-    expect(store.assetDrafts['chapter_outline:chapter-2']).toBeUndefined()
-    expect(mockGetChapterOutline).toHaveBeenCalledWith('chapter-3')
+
+    const wrapper = mount(OutlinePanel, {
+      props: { workId: 'work-1' }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('导入大纲')
+    expect(wrapper.find('input[type="file"]').exists()).toBe(false)
+    expect(wrapper.html()).not.toContain('outline_file')
   })
 })

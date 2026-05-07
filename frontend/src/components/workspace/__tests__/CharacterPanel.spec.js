@@ -117,7 +117,7 @@ describe('CharacterPanel', () => {
 
     await wrapper.find('[data-item-id="c-2"]').trigger('click')
     await wrapper.find('[data-testid="character-name"]').setValue('林舟')
-    expect(wrapper.text()).toContain('Duplicate name detected')
+    expect(wrapper.text()).toContain('检测到重名人物，仍可继续保存。')
 
     await wrapper.find('[data-testid="character-aliases"]').setValue('')
     await wrapper.find('.save-button').trigger('click')
@@ -161,7 +161,7 @@ describe('CharacterPanel', () => {
       }
     })
     expect(wrapper.findComponent({ name: 'AssetConflictModal' }).exists()).toBe(true)
-    expect(wrapper.text()).toContain('Asset version conflict')
+    expect(wrapper.text()).toContain('资料版本冲突')
   })
 
   it('discards local asset draft and reloads server content after conflict discard', async () => {
@@ -266,7 +266,7 @@ describe('CharacterPanel', () => {
     await flushPromises()
 
     await wrapper.find('[data-item-id="c-1"]').trigger('click')
-    const deleteButton = wrapper.findAll('button').find((node) => node.text() === 'Delete')
+    const deleteButton = wrapper.findAll('button').find((node) => node.text() === '删除')
     await deleteButton.trigger('click')
     await flushPromises()
 

@@ -2,20 +2,20 @@
   <section class="character-panel" data-panel="character">
     <header class="panel-header">
       <div>
-        <h3>Characters</h3>
-        <p>Characters support explicit save, alias parsing and keyword search.</p>
+        <h3>人物</h3>
+        <p>支持人物姓名、别名和描述维护，编辑后需手动保存。</p>
       </div>
       <button type="button" class="create-button" @click="handleCreate">
-        New Character
+        新建人物
       </button>
     </header>
 
     <label class="search-field">
-      <span>Search</span>
+      <span>搜索</span>
       <input
         v-model="searchKeyword"
         type="text"
-        placeholder="Search by name or aliases"
+        placeholder="按姓名或别名搜索"
         data-testid="character-search"
         @input="handleSearch"
       />
@@ -32,27 +32,27 @@
           :data-item-id="item.id"
           @click="selectItem(item.id)"
         >
-          <span class="item-title">{{ item.name || 'Unnamed Character' }}</span>
+          <span class="item-title">{{ item.name || '未命名人物' }}</span>
           <span class="item-meta">{{ formatAliases(item.aliases) }}</span>
         </button>
-        <div v-if="!items.length" class="empty-state">No characters match the current search.</div>
+        <div v-if="!items.length" class="empty-state">当前搜索没有匹配到人物。</div>
       </aside>
 
       <div class="character-editor">
         <header class="editor-header">
           <div>
-            <h4>{{ isCreating ? 'New Character' : 'Character Editor' }}</h4>
-            <p v-if="selectedItem">Version {{ selectedItem.version }}</p>
+            <h4>{{ isCreating ? '新建人物' : '人物编辑' }}</h4>
+            <p v-if="selectedItem">版本 {{ selectedItem.version }}</p>
           </div>
-          <span v-if="isDirty" class="dirty-indicator">Unsaved</span>
+          <span v-if="isDirty" class="dirty-indicator">未保存</span>
         </header>
 
         <p v-if="showDuplicateWarning" class="duplicate-warning">
-          Duplicate name detected. Saving is still allowed.
+          检测到重名人物，仍可继续保存。
         </p>
 
         <label class="field">
-          <span>Name</span>
+          <span>姓名</span>
           <input
             v-model="draft.name"
             type="text"
@@ -63,11 +63,11 @@
         </label>
 
         <label class="field">
-          <span>Aliases</span>
+          <span>别名</span>
           <input
             v-model="aliasesInput"
             type="text"
-            placeholder="comma,separated,aliases"
+            placeholder="多个别名请用逗号分隔"
             data-testid="character-aliases"
             @focus="emit('focus-area', 'character')"
             @input="handleAliasesInput"
@@ -75,7 +75,7 @@
         </label>
 
         <label class="field">
-          <span>Description</span>
+          <span>描述</span>
           <textarea
             v-model="draft.description"
             rows="8"
@@ -86,7 +86,7 @@
         </label>
 
         <footer class="editor-footer">
-          <span class="save-status">{{ saveStatus }}</span>
+          <span class="save-status">{{ saveStatusLabel }}</span>
           <div class="editor-actions">
             <button
               type="button"
@@ -94,7 +94,7 @@
               :disabled="!canDelete"
               @click="handleDelete"
             >
-              Delete
+              删除
             </button>
             <button
               type="button"
@@ -102,7 +102,7 @@
               :disabled="saveStatus === 'saving'"
               @click="handleSave"
             >
-              {{ isCreating ? 'Create Character' : 'Save Character' }}
+              {{ isCreating ? '创建人物' : '保存人物' }}
             </button>
           </div>
         </footer>
@@ -111,7 +111,7 @@
 
     <AssetConflictModal
       :model-value="conflictVisible"
-      description="The current character was modified elsewhere. Resolve before clearing the local draft."
+      description="当前人物已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。"
       :local-content="localConflictContent"
       :server-content="serverConflictContent"
       @cancel="assetStore.clearAssetConflict"
@@ -138,6 +138,12 @@ const emit = defineEmits(['focus-area'])
 
 const NEW_ITEM_ID = '__new__'
 const assetStore = useWritingAssetStore()
+const saveStatusLabelMap = {
+  idle: '待保存',
+  saving: '保存中',
+  synced: '已保存',
+  error: '保存失败'
+}
 const searchKeyword = ref('')
 const selectedItemId = ref('')
 const isCreating = ref(false)
@@ -167,6 +173,7 @@ const saveStatus = computed(() => (
     ? assetStore.getAssetSaveStatus('character', NEW_ITEM_ID)
     : assetStore.getAssetSaveStatus('character', selectedItemId.value)
 ))
+const saveStatusLabel = computed(() => saveStatusLabelMap[saveStatus.value] || saveStatusLabelMap.idle)
 const canDelete = computed(() => isCreating.value || Boolean(selectedItem.value))
 const conflictVisible = computed(() => assetStore.assetConflictPayload?.asset_type === 'character')
 const conflictItemId = computed(() => String(assetStore.assetConflictPayload?.asset_id || ''))
@@ -181,9 +188,9 @@ const showDuplicateWarning = computed(() => {
 const localConflictContent = computed(() => {
   const payload = assetStore.assetConflictPayload?.payload || {}
   return [
-    `Name: ${String(payload.name || '')}`,
-    `Aliases: ${Array.isArray(payload.aliases) ? payload.aliases.join(', ') : ''}`,
-    `Description: ${String(payload.description || '')}`
+    `姓名：${String(payload.name || '')}`,
+    `别名：${Array.isArray(payload.aliases) ? payload.aliases.join(', ') : ''}`,
+    `描述：${String(payload.description || '')}`
   ].join('\n')
 })
 const serverConflictContent = computed(() => String(assetStore.assetConflictPayload?.server_content || ''))
@@ -207,7 +214,7 @@ const normalizeAliases = (value) => {
 
 const formatAliases = (aliases) => {
   const items = Array.isArray(aliases) ? aliases.filter(Boolean) : []
-  return items.length ? items.join(', ') : 'No aliases'
+  return items.length ? items.join(', ') : '暂无别名'
 }
 
 const buildDraftPayload = (item = selectedItem.value) => ({

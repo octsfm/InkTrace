@@ -54,32 +54,47 @@
             :saving="saveStateStore.saveStatus === 'saving'"
             @sync="handleManualSync"
           />
-          <button
+          <div
             v-show="!isFocusMode"
-            type="button"
-            class="preference-toggle"
-            data-test="writing-preference-toggle"
-            @click="togglePreferencePanel"
+            ref="preferencePanelAnchorRef"
+            class="preference-panel-anchor"
           >
-            写作偏好
-          </button>
+            <button
+              type="button"
+              class="preference-toggle"
+              data-test="writing-preference-toggle"
+              @click="togglePreferencePanel"
+            >
+              写作偏好
+            </button>
+            <div
+              v-if="preferencePanelVisible"
+              class="preference-floating-panel"
+              data-test="writing-preference-floating-panel"
+            >
+              <WritingPreferencePanel
+                :preferences="editorPreferences"
+                @update-preferences="handlePreferenceUpdate"
+                @close="closePreferencePanel"
+              />
+            </div>
+          </div>
           <FocusModeToggle
             :enabled="isFocusMode"
             @toggle="toggleFocusMode"
           />
-          <el-button v-show="!isFocusMode" type="primary" @click="goBack">杩斿洖涔︽灦</el-button>
+          <el-button v-show="!isFocusMode" type="primary" @click="goBack">返回书架</el-button>
         </div>
-      </div>
-      <div v-show="preferencePanelVisible && !isFocusMode" class="header-panel-row">
-        <WritingPreferencePanel
-          :preferences="editorPreferences"
-          @update-preferences="handlePreferenceUpdate"
-          @close="preferencePanelVisible = false"
-        />
       </div>
     </header>
 
-    <section class="studio-shell" :class="{ 'studio-shell--focus': isFocusMode }">
+    <section
+      class="studio-shell"
+      :class="{
+        'studio-shell--focus': isFocusMode,
+        'studio-shell--drawer-open': Boolean(activeAssetTab) && !isFocusMode
+      }"
+    >
       <aside v-show="!isFocusMode" class="sidebar-column">
         <div class="panel-card sidebar-card">
           <ChapterSidebar
@@ -132,6 +147,7 @@
         <div class="panel-card asset-rail-card">
           <AssetRail
             :active-tab="activeAssetTab"
+            :hide-active-entry="Boolean(activeAssetTab)"
             @toggle="toggleAssetDrawer"
           />
         </div>
@@ -144,11 +160,13 @@
         :class="{ 'mobile-overlay-host': isMobileAssetDrawer }"
       >
         <AssetDrawer
+          ref="assetDrawerRef"
           :visible="Boolean(activeAssetTab)"
           :active-tab="activeAssetTab"
           :dirty-tabs="assetDirtyTabs"
           :mobile="isMobileAssetDrawer"
           @close="closeAssetDrawer"
+          @switch="openAssetDrawer"
           @save-dirty="handleAssetSaveDirty"
           @discard-dirty="handleAssetDiscardDirty"
         >
@@ -222,14 +240,16 @@ const preferenceStore = usePreferenceStore()
 const writingAssetStore = useWritingAssetStore()
 const chaptersLoading = ref(false)
 const pendingChapterId = ref('')
+const preferencePanelAnchorRef = ref(null)
 const editorRef = ref(null)
 const sidebarRef = ref(null)
 const workTitleInputRef = ref(null)
+const assetDrawerRef = ref(null)
 const outlinePanelRef = ref(null)
 const timelinePanelRef = ref(null)
 const foreshadowPanelRef = ref(null)
 const characterPanelRef = ref(null)
-const workTitle = ref('浣滃搧')
+const workTitle = ref('作品')
 const workAuthor = ref('')
 const workTitleEditing = ref(false)
 const workTitleDraft = ref('')
@@ -453,7 +473,7 @@ const primeTodayWordBaselines = () => {
 
 const blockSidebarMutation = () => {
   if (saveStateStore.saveStatus === 'saving') {
-    ElMessage.warning('姝ｅ湪鍚屾鏁版嵁锛岃绋嶅€?..')
+    ElMessage.warning('正在同步数据，请稍后再试。')
     return true
   }
   return false
@@ -536,7 +556,7 @@ const persistSessionNow = async () => {
   try {
     await workspaceStore.saveSessionPosition()
   } catch (error) {
-    console.error('淇濆瓨缂栬緫浼氳瘽澶辫触:', error)
+    console.error('保存编辑会话失败:', error)
   }
 }
 
@@ -788,7 +808,9 @@ onMounted(async () => {
   window.addEventListener('online', handleBrowserOnline)
   window.addEventListener('inktrace-cache-pruned', handleCachePruned)
   window.addEventListener('keydown', handleEditorSaveShortcut)
+  window.addEventListener('keydown', handlePreferencePanelEscape)
   window.addEventListener('resize', syncAssetDrawerViewport)
+  document.addEventListener('pointerdown', handlePreferencePanelPointerDown)
   let workspacePayload = null
   let chapters = []
   try {
@@ -837,7 +859,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('online', handleBrowserOnline)
   window.removeEventListener('inktrace-cache-pruned', handleCachePruned)
   window.removeEventListener('keydown', handleEditorSaveShortcut)
+  window.removeEventListener('keydown', handlePreferencePanelEscape)
   window.removeEventListener('resize', syncAssetDrawerViewport)
+  document.removeEventListener('pointerdown', handlePreferencePanelPointerDown)
 })
 
 watch(
@@ -870,14 +894,45 @@ const togglePreferencePanel = () => {
   preferencePanelVisible.value = !preferencePanelVisible.value
 }
 
+const closePreferencePanel = () => {
+  preferencePanelVisible.value = false
+}
+
+const handlePreferencePanelPointerDown = (event) => {
+  if (!preferencePanelVisible.value) return
+  const anchor = preferencePanelAnchorRef.value
+  const target = event?.target
+  if (anchor && target && !anchor.contains(target)) {
+    closePreferencePanel()
+  }
+}
+
+const handlePreferencePanelEscape = (event) => {
+  if (event?.key !== 'Escape' || !preferencePanelVisible.value) return
+  closePreferencePanel()
+}
+
 const handlePreferenceUpdate = (patch = {}) => {
   preferenceStore.updateWritingPreferences(patch)
 }
 
 const toggleAssetDrawer = (tabKey) => {
   const nextKey = String(tabKey || '')
-  activeAssetFocusArea.value = nextKey || activeAssetFocusArea.value
-  activeAssetTab.value = activeAssetTab.value === nextKey ? '' : nextKey
+  if (!nextKey) return
+  activeAssetFocusArea.value = nextKey
+  if (!activeAssetTab.value) {
+    activeAssetTab.value = nextKey
+    return
+  }
+  if (nextKey === activeAssetTab.value) return
+  assetDrawerRef.value?.requestSwitch?.(nextKey)
+}
+
+const openAssetDrawer = (tabKey) => {
+  const nextKey = String(tabKey || '')
+  if (!nextKey) return
+  activeAssetFocusArea.value = nextKey
+  activeAssetTab.value = nextKey
 }
 
 const closeAssetDrawer = () => {
@@ -1331,12 +1386,6 @@ const handleManualSync = async () => {
   gap: 12px;
 }
 
-.header-panel-row {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
-}
-
 .preference-toggle {
   border: 1px solid #d1d5db;
   border-radius: 999px;
@@ -1353,12 +1402,28 @@ const handleManualSync = async () => {
   color: #1d4ed8;
 }
 
+.preference-panel-anchor {
+  position: relative;
+}
+
+.preference-floating-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 30;
+  width: min(320px, calc(100vw - 32px));
+}
+
 .studio-shell {
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr) 72px;
   gap: 16px;
+}
+
+.studio-shell--drawer-open {
+  grid-template-columns: 280px minmax(0, 1fr) 72px 360px;
 }
 
 .studio-shell--focus {
@@ -1469,6 +1534,19 @@ const handleManualSync = async () => {
   .header-actions {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .preference-panel-anchor {
+    width: 100%;
+  }
+
+  .preference-floating-panel {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    top: auto;
+    width: auto;
   }
 
   .asset-drawer-column.mobile-overlay-host {

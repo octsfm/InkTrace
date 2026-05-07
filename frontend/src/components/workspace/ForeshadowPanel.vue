@@ -2,15 +2,15 @@
   <section class="foreshadow-panel" data-panel="foreshadow">
     <header class="panel-header">
       <div>
-        <h3>Foreshadows</h3>
-        <p>Foreshadows are filtered by status and saved explicitly.</p>
+        <h3>伏笔</h3>
+        <p>按状态筛选伏笔，编辑后需手动保存。</p>
       </div>
       <button type="button" class="create-button" @click="handleCreate">
-        New Foreshadow
+        新建伏笔
       </button>
     </header>
 
-    <div class="status-tabs" role="tablist" aria-label="Foreshadow status filter">
+    <div class="status-tabs" role="tablist" aria-label="伏笔状态筛选">
       <button
         v-for="item in statusTabs"
         :key="item.value"
@@ -35,23 +35,23 @@
           :data-item-id="item.id"
           @click="selectItem(item.id)"
         >
-          <span class="item-title">{{ item.title || 'Untitled Foreshadow' }}</span>
-          <span class="item-meta">{{ item.status === 'resolved' ? 'Resolved' : 'Open' }}</span>
+          <span class="item-title">{{ item.title || '未命名伏笔' }}</span>
+          <span class="item-meta">{{ item.status === 'resolved' ? '已回收' : '进行中' }}</span>
         </button>
-        <div v-if="!items.length" class="empty-state">No foreshadows in this status.</div>
+        <div v-if="!items.length" class="empty-state">当前状态下还没有伏笔。</div>
       </aside>
 
       <div class="foreshadow-editor">
         <header class="editor-header">
           <div>
-            <h4>{{ isCreating ? 'New Foreshadow' : 'Foreshadow Editor' }}</h4>
-            <p v-if="selectedItem">Version {{ selectedItem.version }}</p>
+            <h4>{{ isCreating ? '新建伏笔' : '伏笔编辑' }}</h4>
+            <p v-if="selectedItem">版本 {{ selectedItem.version }}</p>
           </div>
-          <span v-if="isDirty" class="dirty-indicator">Unsaved</span>
+          <span v-if="isDirty" class="dirty-indicator">未保存</span>
         </header>
 
         <label class="field">
-          <span>Title</span>
+          <span>标题</span>
           <input
             v-model="draft.title"
             type="text"
@@ -62,7 +62,7 @@
         </label>
 
         <label class="field">
-          <span>Description</span>
+          <span>描述</span>
           <textarea
             v-model="draft.description"
             rows="8"
@@ -73,27 +73,27 @@
         </label>
 
         <label class="field">
-          <span>Status</span>
+          <span>状态</span>
           <select
             v-model="draft.status"
             data-testid="foreshadow-status"
             @focus="emit('focus-area', 'foreshadow')"
             @change="handleStatusChange"
           >
-            <option value="open">open</option>
-            <option value="resolved">resolved</option>
+            <option value="open">进行中</option>
+            <option value="resolved">已回收</option>
           </select>
         </label>
 
         <label class="field">
-          <span>Introduced Chapter</span>
+          <span>埋入章节</span>
           <select
             v-model="draft.introduced_chapter_id"
             data-testid="foreshadow-introduced"
             @focus="emit('focus-area', 'foreshadow')"
             @change="handleDraftChange"
           >
-            <option value="">No Chapter</option>
+            <option value="">不关联章节</option>
             <option
               v-for="chapter in chapterOptions"
               :key="chapter.id"
@@ -105,7 +105,7 @@
         </label>
 
         <label class="field">
-          <span>Resolved Chapter</span>
+          <span>回收章节</span>
           <select
             v-model="draft.resolved_chapter_id"
             data-testid="foreshadow-resolved"
@@ -113,7 +113,7 @@
             @focus="emit('focus-area', 'foreshadow')"
             @change="handleDraftChange"
           >
-            <option value="">No Chapter</option>
+            <option value="">不关联章节</option>
             <option
               v-for="chapter in chapterOptions"
               :key="chapter.id"
@@ -125,7 +125,7 @@
         </label>
 
         <footer class="editor-footer">
-          <span class="save-status">{{ saveStatus }}</span>
+          <span class="save-status">{{ saveStatusLabel }}</span>
           <div class="editor-actions">
             <button
               type="button"
@@ -133,7 +133,7 @@
               :disabled="!canDelete"
               @click="handleDelete"
             >
-              Delete
+              删除
             </button>
             <button
               type="button"
@@ -141,7 +141,7 @@
               :disabled="saveStatus === 'saving'"
               @click="handleSave"
             >
-              {{ isCreating ? 'Create Foreshadow' : 'Save Foreshadow' }}
+              {{ isCreating ? '创建伏笔' : '保存伏笔' }}
             </button>
           </div>
         </footer>
@@ -150,7 +150,7 @@
 
     <AssetConflictModal
       :model-value="conflictVisible"
-      description="The current foreshadow was modified elsewhere. Resolve before clearing the local draft."
+      description="当前伏笔已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。"
       :local-content="localConflictContent"
       :server-content="serverConflictContent"
       @cancel="assetStore.clearAssetConflict"
@@ -181,11 +181,17 @@ const emit = defineEmits(['focus-area'])
 
 const NEW_ITEM_ID = '__new__'
 const statusTabs = [
-  { value: 'open', label: 'Open' },
-  { value: 'resolved', label: 'Resolved' }
+  { value: 'open', label: '进行中' },
+  { value: 'resolved', label: '已回收' }
 ]
 
 const assetStore = useWritingAssetStore()
+const saveStatusLabelMap = {
+  idle: '待保存',
+  saving: '保存中',
+  synced: '已保存',
+  error: '保存失败'
+}
 const activeStatus = ref('open')
 const selectedItemId = ref('')
 const isCreating = ref(false)
@@ -216,6 +222,7 @@ const saveStatus = computed(() => (
     ? assetStore.getAssetSaveStatus('foreshadow', NEW_ITEM_ID)
     : assetStore.getAssetSaveStatus('foreshadow', selectedItemId.value)
 ))
+const saveStatusLabel = computed(() => saveStatusLabelMap[saveStatus.value] || saveStatusLabelMap.idle)
 const canDelete = computed(() => isCreating.value || Boolean(selectedItem.value))
 const conflictVisible = computed(() => assetStore.assetConflictPayload?.asset_type === 'foreshadow')
 const conflictItemId = computed(() => String(assetStore.assetConflictPayload?.asset_id || ''))
@@ -232,11 +239,11 @@ const chapterOptions = computed(() => (
 const localConflictContent = computed(() => {
   const payload = assetStore.assetConflictPayload?.payload || {}
   return [
-    `Title: ${String(payload.title || '')}`,
-    `Status: ${String(payload.status || '')}`,
-    `Description: ${String(payload.description || '')}`,
-    `Introduced Chapter: ${String(payload.introduced_chapter_id || '')}`,
-    `Resolved Chapter: ${String(payload.resolved_chapter_id || '')}`
+    `标题：${String(payload.title || '')}`,
+    `状态：${String(payload.status || '')}`,
+    `描述：${String(payload.description || '')}`,
+    `埋入章节：${String(payload.introduced_chapter_id || '')}`,
+    `回收章节：${String(payload.resolved_chapter_id || '')}`
   ].join('\n')
 })
 const serverConflictContent = computed(() => String(assetStore.assetConflictPayload?.server_content || ''))

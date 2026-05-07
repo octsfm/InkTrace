@@ -1,10 +1,10 @@
-﻿import { mount } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
 import ChapterTitleInput from '../ChapterTitleInput.vue'
 
 describe('ChapterTitleInput', () => {
-  it('displays order prefix and user title without duplicating storage prefix', () => {
+  it('separates order prefix from the editable title field', () => {
     const wrapper = mount(ChapterTitleInput, {
       props: {
         modelValue: 'Storm',
@@ -12,7 +12,8 @@ describe('ChapterTitleInput', () => {
       }
     })
 
-    expect(wrapper.find('input').element.value).toBe('第3章 Storm')
+    expect(wrapper.find('.chapter-title-prefix').text()).toBe('第3章')
+    expect(wrapper.find('input').element.value).toBe('Storm')
   })
 
   it('displays only chapter prefix when title is empty', () => {
@@ -23,10 +24,11 @@ describe('ChapterTitleInput', () => {
       }
     })
 
-    expect(wrapper.find('input').element.value).toBe('第5章')
+    expect(wrapper.find('.chapter-title-prefix').text()).toBe('第5章')
+    expect(wrapper.find('input').element.value).toBe('')
   })
 
-  it('emits only user title and strips a chapter prefix from input', async () => {
+  it('emits only the raw user title input', async () => {
     const wrapper = mount(ChapterTitleInput, {
       props: {
         modelValue: 'Old',
@@ -34,7 +36,7 @@ describe('ChapterTitleInput', () => {
       }
     })
 
-    await wrapper.find('input').setValue('第2章 New Title')
+    await wrapper.find('input').setValue('New Title')
 
     expect(wrapper.emitted('update:modelValue')).toEqual([['New Title']])
   })

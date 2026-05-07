@@ -12,9 +12,9 @@ describe('AssetConflictModal', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('Asset version conflict')
+    expect(wrapper.text()).toContain('资料版本冲突')
     expect(wrapper.text()).toContain('Outline was modified elsewhere.')
-    expect(wrapper.text()).toContain('local asset draft is retained')
+    expect(wrapper.text()).toContain('本地资料草稿会一直保留')
   })
 
   it('provides a local vs server compare entry', () => {
@@ -27,10 +27,10 @@ describe('AssetConflictModal', () => {
     })
 
     expect(wrapper.find('.compare-panel').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Open local version vs server version compare')
-    expect(wrapper.text()).toContain('Local version')
+    expect(wrapper.text()).toContain('展开查看本地版本与服务器版本对比')
+    expect(wrapper.text()).toContain('本地版本')
     expect(wrapper.text()).toContain('local outline draft')
-    expect(wrapper.text()).toContain('Server version')
+    expect(wrapper.text()).toContain('服务器版本')
     expect(wrapper.text()).toContain('server outline')
   })
 

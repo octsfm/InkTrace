@@ -3,34 +3,34 @@
     <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="asset-conflict-title">
       <div class="modal-header">
         <div>
-          <h3 id="asset-conflict-title">Asset version conflict</h3>
+          <h3 id="asset-conflict-title">资料版本冲突</h3>
           <p>{{ description }}</p>
         </div>
       </div>
 
       <div class="modal-body">
-        <p>The local asset draft is retained until an explicit decision is made.</p>
-        <p>Override submits the local draft again. Discard reloads the server version.</p>
+        <p>在你明确做出选择之前，本地资料草稿会一直保留。</p>
+        <p>选择“覆盖云端”会再次提交本地草稿；选择“放弃本地”会重新加载服务器版本。</p>
 
         <details class="compare-panel">
-          <summary>Open local version vs server version compare</summary>
+          <summary>展开查看本地版本与服务器版本对比</summary>
           <div class="compare-grid">
             <section class="compare-column">
-              <h4>Local version</h4>
-              <pre>{{ localContent || 'No local content' }}</pre>
+              <h4>本地版本</h4>
+              <pre>{{ localContent || '无本地内容' }}</pre>
             </section>
             <section class="compare-column">
-              <h4>Server version</h4>
-              <pre>{{ serverContent || 'No server content' }}</pre>
+              <h4>服务器版本</h4>
+              <pre>{{ serverContent || '无服务器内容' }}</pre>
             </section>
           </div>
         </details>
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="ghost-button" @click="$emit('cancel')">Cancel</button>
-        <button type="button" class="ghost-button" @click="$emit('discard')">Discard local</button>
-        <button type="button" class="danger-button" @click="$emit('override')">Override server</button>
+        <button type="button" class="ghost-button" @click="$emit('cancel')">取消</button>
+        <button type="button" class="ghost-button" @click="$emit('discard')">放弃本地</button>
+        <button type="button" class="danger-button" @click="$emit('override')">覆盖云端</button>
       </div>
     </div>
   </div>
@@ -44,7 +44,7 @@ defineProps({
   },
   description: {
     type: String,
-    default: 'The current asset was modified elsewhere. Choose how to resolve the conflict.'
+    default: '当前资料已在其他位置被修改，请选择冲突处理方式。'
   },
   localContent: {
     type: String,

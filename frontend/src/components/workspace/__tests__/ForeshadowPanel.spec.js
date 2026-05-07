@@ -207,7 +207,7 @@ describe('ForeshadowPanel', () => {
       }
     })
     expect(wrapper.findComponent({ name: 'AssetConflictModal' }).exists()).toBe(true)
-    expect(wrapper.text()).toContain('Asset version conflict')
+    expect(wrapper.text()).toContain('资料版本冲突')
   })
 
   it('deletes the current foreshadow and removes it from the list', async () => {
@@ -223,7 +223,7 @@ describe('ForeshadowPanel', () => {
     await flushPromises()
 
     await wrapper.find('[data-item-id="f-1"]').trigger('click')
-    const deleteButton = wrapper.findAll('button').find((node) => node.text() === 'Delete')
+    const deleteButton = wrapper.findAll('button').find((node) => node.text() === '删除')
     await deleteButton.trigger('click')
     await flushPromises()
 

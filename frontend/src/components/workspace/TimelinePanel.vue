@@ -2,11 +2,11 @@
   <section class="timeline-panel" data-panel="timeline">
     <header class="timeline-header">
       <div>
-        <h3>Timeline</h3>
-        <p>Timeline events are edited explicitly and listed by order.</p>
+        <h3>时间线</h3>
+        <p>按顺序维护故事事件，编辑后需手动保存。</p>
       </div>
       <button type="button" class="create-button" @click="handleCreate">
-        New Event
+        新建事件
       </button>
     </header>
 
@@ -21,21 +21,21 @@
           :data-event-id="item.id"
           @click="selectEvent(item.id)"
         >
-          <span class="timeline-item-title">{{ item.title || `Event ${item.order_index}` }}</span>
+          <span class="timeline-item-title">{{ item.title || `事件 ${item.order_index}` }}</span>
           <span class="timeline-item-meta">#{{ item.order_index }}</span>
         </button>
-        <div v-if="!events.length" class="timeline-empty">No timeline events yet.</div>
+        <div v-if="!events.length" class="timeline-empty">当前还没有时间线事件。</div>
       </aside>
 
       <div class="timeline-editor">
         <header class="editor-header">
           <div>
-            <h4>{{ isCreating ? 'New Event' : 'Event Editor' }}</h4>
+            <h4>{{ isCreating ? '新建事件' : '事件编辑' }}</h4>
             <p v-if="selectedEvent">
-              Order {{ selectedEvent.order_index }} · Version {{ selectedEvent.version }}
+              顺序 {{ selectedEvent.order_index }} · 版本 {{ selectedEvent.version }}
             </p>
           </div>
-          <span v-if="isDirty || reorderDirty" class="dirty-indicator">Unsaved</span>
+          <span v-if="isDirty || reorderDirty" class="dirty-indicator">未保存</span>
         </header>
 
         <div v-if="selectedEvent && !isCreating" class="reorder-actions">
@@ -46,7 +46,7 @@
             :disabled="!canMoveUp"
             @click="handleMove('up')"
           >
-            Move Up
+            上移
           </button>
           <button
             type="button"
@@ -55,7 +55,7 @@
             :disabled="!canMoveDown"
             @click="handleMove('down')"
           >
-            Move Down
+            下移
           </button>
           <button
             v-if="reorderDirty"
@@ -65,12 +65,12 @@
             :disabled="reorderSaveStatus === 'saving'"
             @click="handleSaveReorder"
           >
-            Save Order
+            保存顺序
           </button>
         </div>
 
         <label class="field">
-          <span>Title</span>
+          <span>标题</span>
           <input
             v-model="draft.title"
             type="text"
@@ -81,7 +81,7 @@
         </label>
 
         <label class="field">
-          <span>Description</span>
+          <span>描述</span>
           <textarea
             v-model="draft.description"
             rows="8"
@@ -92,14 +92,14 @@
         </label>
 
         <label class="field">
-          <span>Linked Chapter</span>
+          <span>关联章节</span>
           <select
             v-model="draft.chapter_id"
             data-testid="timeline-chapter"
             @focus="emit('focus-area', 'timeline')"
             @change="handleDraftChange"
           >
-            <option value="">No Chapter</option>
+            <option value="">不关联章节</option>
             <option
               v-for="chapter in chapterOptions"
               :key="chapter.id"
@@ -111,7 +111,7 @@
         </label>
 
         <footer class="editor-footer">
-          <span class="save-status">{{ saveStatus }}</span>
+          <span class="save-status">{{ saveStatusLabel }}</span>
           <div class="editor-actions">
             <button
               type="button"
@@ -119,7 +119,7 @@
               :disabled="!canDelete"
               @click="handleDelete"
             >
-              Delete
+              删除
             </button>
             <button
               type="button"
@@ -127,7 +127,7 @@
               :disabled="saveStatus === 'saving'"
               @click="handleSave"
             >
-              {{ isCreating ? 'Create Event' : 'Save Event' }}
+              {{ isCreating ? '创建事件' : '保存事件' }}
             </button>
           </div>
         </footer>
@@ -136,7 +136,7 @@
 
     <AssetConflictModal
       :model-value="conflictVisible"
-      description="The current timeline event was modified elsewhere. Resolve before clearing the local draft."
+      description="当前时间线事件已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。"
       :local-content="localConflictContent"
       :server-content="serverConflictContent"
       @cancel="assetStore.clearAssetConflict"
@@ -167,6 +167,12 @@ const emit = defineEmits(['focus-area'])
 
 const NEW_EVENT_ID = '__new__'
 const assetStore = useWritingAssetStore()
+const saveStatusLabelMap = {
+  idle: '待保存',
+  saving: '保存中',
+  synced: '已保存',
+  error: '保存失败'
+}
 const selectedEventId = ref('')
 const isCreating = ref(false)
 const draft = reactive({
@@ -196,6 +202,7 @@ const saveStatus = computed(() => (
     ? assetStore.getAssetSaveStatus('timeline', NEW_EVENT_ID)
     : assetStore.getAssetSaveStatus('timeline', selectedEventId.value)
 ))
+const saveStatusLabel = computed(() => saveStatusLabelMap[saveStatus.value] || saveStatusLabelMap.idle)
 const conflictVisible = computed(() => assetStore.assetConflictPayload?.asset_type === 'timeline')
 const conflictEventId = computed(() => String(assetStore.assetConflictPayload?.asset_id || ''))
 const reorderDraftKey = 'timeline:__reorder__'
@@ -214,9 +221,9 @@ const chapterOptions = computed(() => (
 const localConflictContent = computed(() => {
   const payload = assetStore.assetConflictPayload?.payload || {}
   return [
-    `Title: ${String(payload.title || '')}`,
-    `Description: ${String(payload.description || '')}`,
-    `Chapter: ${String(payload.chapter_id || '')}`
+    `标题：${String(payload.title || '')}`,
+    `描述：${String(payload.description || '')}`,
+    `章节：${String(payload.chapter_id || '')}`
   ].join('\n')
 })
 const serverConflictContent = computed(() => String(assetStore.assetConflictPayload?.server_content || ''))

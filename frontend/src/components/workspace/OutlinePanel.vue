@@ -2,60 +2,60 @@
   <section class="outline-panel" data-panel="outline">
     <header class="outline-header">
       <div>
-        <h3>Work Outline</h3>
-        <p>content_text is the only source of truth. Tree data is saved only as a derived cache.</p>
+        <h3>作品大纲</h3>
+        <p>`content_text` 是唯一真源，树结构仅作为派生缓存保存。</p>
       </div>
-      <span v-if="isDirty" class="dirty-indicator">Unsaved</span>
+      <span v-if="isDirty" class="dirty-indicator">未保存</span>
     </header>
 
     <textarea
       class="outline-textarea"
       :value="draftText"
-      placeholder="Write the full-book outline here."
+      placeholder="在这里输入整本作品的大纲。"
       data-testid="work-outline-text"
       @input="handleInput"
       @focus="$emit('focus-area', 'outline')"
     />
 
     <footer class="outline-footer">
-      <span class="save-status">{{ saveStatus }}</span>
+      <span class="save-status">{{ saveStatusLabel }}</span>
       <button type="button" class="save-button" :disabled="saveStatus === 'saving'" @click="handleSave">
-        Save Outline
+        保存作品大纲
       </button>
     </footer>
 
     <section class="chapter-outline-section">
       <header class="outline-header">
         <div>
-          <h3>Chapter Outline</h3>
-          <p>The current chapter outline switches with the active chapter.</p>
+          <h3>章节大纲</h3>
+          <p>这里显示当前章节的细纲，会随所选章节自动切换。</p>
         </div>
-        <span v-if="chapterOutlineDirty" class="dirty-indicator">Unsaved</span>
+        <span v-if="chapterOutlineDirty" class="dirty-indicator">未保存</span>
       </header>
       <textarea
         class="outline-textarea chapter-outline-textarea"
         :value="chapterDraftText"
-        placeholder="Write the current chapter outline here."
+        placeholder="在这里输入当前章节的细纲。"
         data-testid="chapter-outline-text"
         @input="handleChapterInput"
         @focus="$emit('focus-area', 'chapter_outline')"
       />
       <footer class="outline-footer">
-        <span class="save-status">{{ chapterSaveStatus }}</span>
+        <span class="save-status">{{ chapterSaveStatusLabel }}</span>
         <button
           type="button"
           class="save-button"
           :disabled="!activeChapterId || chapterSaveStatus === 'saving'"
           @click="handleChapterSave"
         >
-          Save Chapter Outline
+          保存章节大纲
         </button>
       </footer>
     </section>
 
     <AssetConflictModal
       :model-value="conflictVisible"
-      description="The work outline was modified elsewhere. Resolve before clearing the local draft."
+      description="作品大纲已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。"
       :local-content="draftText"
       :server-content="serverContent"
       @cancel="assetStore.clearAssetConflict"
@@ -87,6 +87,12 @@ defineEmits(['focus-area'])
 const assetStore = useWritingAssetStore()
 const draftText = ref('')
 const chapterDraftText = ref('')
+const saveStatusLabelMap = {
+  idle: '待保存',
+  saving: '保存中',
+  synced: '已保存',
+  error: '保存失败'
+}
 
 const assetKey = 'work_outline:work'
 const draft = computed(() => assetStore.assetDrafts[assetKey] || null)
@@ -99,6 +105,10 @@ const isDirty = computed(() => assetStore.dirtyAssetKeys.includes(assetKey))
 const chapterOutlineDirty = computed(() => Boolean(chapterAssetKey.value && assetStore.dirtyAssetKeys.includes(chapterAssetKey.value)))
 const saveStatus = computed(() => assetStore.getAssetSaveStatus('work_outline', 'work'))
 const chapterSaveStatus = computed(() => assetStore.getAssetSaveStatus('chapter_outline', activeChapterId.value))
+const saveStatusLabel = computed(() => saveStatusLabelMap[saveStatus.value] || saveStatusLabelMap.idle)
+const chapterSaveStatusLabel = computed(() => (
+  saveStatusLabelMap[chapterSaveStatus.value] || saveStatusLabelMap.idle
+))
 const conflictVisible = computed(() => (
   assetStore.assetConflictPayload?.asset_type === 'work_outline'
 ))

@@ -3,46 +3,34 @@
     v-if="visible"
     class="asset-drawer"
     :class="{ 'mobile-overlay': mobile }"
-    aria-label="Writing asset drawer"
+    aria-label="写作资产面板"
   >
     <div class="asset-drawer-header">
       <div>
         <h3>{{ activeLabel }}</h3>
-        <p>Structured assets are edited here and saved explicitly.</p>
+        <p>在这里编辑结构化资料，点击保存后才会提交。</p>
       </div>
-      <button type="button" class="close-button" @click="requestClose">Close</button>
-    </div>
-
-    <div class="asset-drawer-tabs" role="tablist" aria-label="Writing asset tabs">
-      <button
-        v-for="item in items"
-        :key="item.key"
-        type="button"
-        class="asset-tab"
-        :class="{ active: item.key === activeTab }"
-        :aria-selected="item.key === activeTab"
-        :data-asset-tab="item.key"
-        role="tab"
-        @click="requestSwitch(item.key)"
-      >
-        {{ item.label }}
-      </button>
+      <button type="button" class="close-button" @click="requestClose">关闭</button>
     </div>
 
     <div class="asset-drawer-body">
       <slot :active-tab="activeTab">
-        <p class="placeholder">{{ activeLabel }} panel is ready for explicit-save editing.</p>
+        <p class="placeholder">{{ activeLabel }}面板已就绪，可在此编辑并手动保存。</p>
       </slot>
     </div>
 
+    <footer v-if="$slots.footer" class="asset-drawer-footer">
+      <slot name="footer" :active-tab="activeTab" />
+    </footer>
+
     <div v-if="pendingAction" class="dirty-guard" role="dialog" aria-modal="true">
       <div class="dirty-guard-card">
-        <h4>Unsaved asset changes</h4>
-        <p>Save or discard the current asset changes before continuing.</p>
+        <h4>存在未保存修改</h4>
+        <p>请先保存或放弃当前修改，再继续切换或关闭。</p>
         <div class="dirty-guard-actions">
-          <button type="button" @click="confirmSave">Save</button>
-          <button type="button" @click="confirmDiscard">Discard</button>
-          <button type="button" @click="cancelPendingAction">Cancel</button>
+          <button type="button" @click="confirmSave">保存</button>
+          <button type="button" @click="confirmDiscard">放弃</button>
+          <button type="button" @click="cancelPendingAction">取消</button>
         </div>
       </div>
     </div>
@@ -74,16 +62,16 @@ const props = defineProps({
 const emit = defineEmits(['close', 'switch', 'save-dirty', 'discard-dirty'])
 
 const items = [
-  { key: 'outline', label: 'Outline' },
-  { key: 'timeline', label: 'Timeline' },
-  { key: 'foreshadow', label: 'Foreshadow' },
-  { key: 'character', label: 'Character' }
+  { key: 'outline', label: '大纲' },
+  { key: 'timeline', label: '时间线' },
+  { key: 'foreshadow', label: '伏笔' },
+  { key: 'character', label: '人物' }
 ]
 
 const pendingAction = ref(null)
 
 const activeLabel = computed(() => (
-  items.find((item) => item.key === props.activeTab)?.label || 'Writing Asset'
+  items.find((item) => item.key === props.activeTab)?.label || '写作资料'
 ))
 
 const isCurrentDirty = computed(() => props.dirtyTabs.includes(props.activeTab))
@@ -132,6 +120,11 @@ const confirmDiscard = () => {
 const cancelPendingAction = () => {
   pendingAction.value = null
 }
+
+defineExpose({
+  requestSwitch,
+  requestClose
+})
 </script>
 
 <style scoped>
@@ -142,6 +135,10 @@ const cancelPendingAction = () => {
   border-radius: 24px;
   background: #ffffff;
   padding: 18px;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
 }
 
 .asset-drawer.mobile-overlay {
@@ -149,6 +146,7 @@ const cancelPendingAction = () => {
   inset: 0;
   z-index: 40;
   border-radius: 0;
+  height: 100vh;
 }
 
 .asset-drawer-header {
@@ -174,7 +172,6 @@ const cancelPendingAction = () => {
 }
 
 .close-button,
-.asset-tab,
 .dirty-guard-actions button {
   border: 1px solid #d1d5db;
   border-radius: 999px;
@@ -185,21 +182,14 @@ const cancelPendingAction = () => {
   cursor: pointer;
 }
 
-.asset-drawer-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.asset-tab.active {
-  border-color: #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
 .asset-drawer-body {
-  margin-top: 18px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.asset-drawer-footer {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 14px;
 }
 
 .dirty-guard {

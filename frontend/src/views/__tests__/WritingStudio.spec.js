@@ -225,6 +225,7 @@ describe('WritingStudio layout contract', () => {
     expect(source).toContain('const activeAssetTab = ref')
     expect(source).toContain('v-if="activeAssetTab"')
     expect(source).toContain(':active-tab="activeAssetTab"')
+    expect(source).toContain(':hide-active-entry="Boolean(activeAssetTab)"')
     expect(source).toContain(':mobile="isMobileAssetDrawer"')
     expect(source).toContain('toggleAssetDrawer')
     expect(source).toContain('closeAssetDrawer')
@@ -246,6 +247,8 @@ describe('WritingStudio layout contract', () => {
     expect(source).toContain('<TimelinePanel')
     expect(source).toContain('<ForeshadowPanel')
     expect(source).toContain('<CharacterPanel')
+    expect(source).not.toContain('outline_file')
+    expect(source).not.toContain('导入大纲')
   })
 
   it('defines header title editing and rename behavior without exposing work id', () => {
@@ -373,7 +376,11 @@ describe('WritingStudio layout contract', () => {
   it('wires a local writing preference panel without sending chapter save requests', () => {
     expect(source).toContain('<WritingPreferencePanel')
     expect(source).toContain('data-test="writing-preference-toggle"')
+    expect(source).toContain('data-test="writing-preference-floating-panel"')
     expect(source).toContain('const preferencePanelVisible = ref(false)')
+    expect(source).toContain('const closePreferencePanel = () =>')
+    expect(source).toContain('document.addEventListener(\'pointerdown\', handlePreferencePanelPointerDown)')
+    expect(source).toContain('window.addEventListener(\'keydown\', handlePreferencePanelEscape)')
     expect(source).toContain('const editorPreferences = computed(() => preferenceStore.editorPreferences)')
     expect(source).toContain('preferenceStore.updateWritingPreferences(patch)')
     expect(source).toContain(':font-family="editorPreferences.fontFamily"')
@@ -588,6 +595,45 @@ describe('WritingStudio focus mode', () => {
     expect(wrapper.get('textarea').attributes('style')).toContain('font-size: 24px;')
     expect(wrapper.get('textarea').attributes('style')).toContain('line-height: 2;')
     expect(mockV1ChaptersUpdate).not.toHaveBeenCalled()
+  })
+
+  it('shows the writing preference panel as a floating layer and closes on outside click or Escape', async () => {
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          AssetRail: AssetRailStub,
+          AssetDrawer: AssetDrawerStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+    await wrapper.get('[data-test="writing-preference-toggle"]').trigger('click')
+    await flushStudio()
+
+    expect(wrapper.find('[data-test="writing-preference-floating-panel"]').exists()).toBe(true)
+
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    await flushStudio()
+    expect(wrapper.find('[data-test="writing-preference-floating-panel"]').exists()).toBe(false)
+
+    await wrapper.get('[data-test="writing-preference-toggle"]').trigger('click')
+    await flushStudio()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushStudio()
+    expect(wrapper.find('[data-test="writing-preference-floating-panel"]').exists()).toBe(false)
   })
 
   it('increments today word delta from正文输入 and ignores title edits', async () => {
