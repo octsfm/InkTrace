@@ -522,7 +522,7 @@ P0 Workflow 可调用工具：
 - `build_context_pack`。
 - `create_writing_task`。
 - `run_writer_step`。
-- `run_reviewer_step`。
+- `review_candidate_draft`（可选辅助审阅，默认由 HumanReviewGate / UI 的 user_action 触发）。
 - `create_candidate_draft`。
 - `request_human_review`。
 - `update_ai_job_progress`。
@@ -531,8 +531,8 @@ P0 Workflow 可调用工具：
 Tool 与 Application Service 映射：
 
 - `run_writer_step` Tool 内部调用 `WritingGenerationService.generate_candidate_text()`。
-- `run_reviewer_step` Tool 内部调用 `ReviewService.generate_review_report()`。
-- Tool 名只保留 `run_writer_step` / `run_reviewer_step`。
+- `review_candidate_draft` 可作为可选辅助审阅 Tool，内部调用 P0-10 AIReviewService 的 review_candidate_draft / 等价用例。
+- Tool 名与 Application Service 方法名不得混淆。
 - `generate_candidate_text()` / `generate_review_report()` 是 Application Service 方法名方向，不作为 Tool 名。
 
 Forbidden Tools：
@@ -745,7 +745,7 @@ sequenceDiagram
 
 ### 4.2 P0 单章续写时序图
 
-注：Tool 名统一为 `run_writer_step` / `run_reviewer_step`；Service 方法名为 `generate_candidate_text` / `generate_review_report`。
+注：Tool 名统一为 `run_writer_step`；Service 方法名为 `generate_candidate_text`。AIReview 是可选辅助审阅，不是 P0 单章续写必经步骤。
 
 ```mermaid
 sequenceDiagram
@@ -761,7 +761,6 @@ sequenceDiagram
     participant ProviderPort as ProviderPort
     participant ProviderAdapter as ProviderAdapter
     participant Draft as CandidateDraftService
-    participant Review as ReviewService
 
     API->>Job: create continuation job
     Job->>Workflow: start workflow
@@ -791,18 +790,11 @@ sequenceDiagram
         Workflow->>Tool: create_candidate_draft
         Tool->>Draft: persist candidate
         Draft-->>Tool: CandidateDraft
-        Workflow->>Tool: run_reviewer_step
-        Tool->>Review: generate_review_report
-        Review->>Router: reviewer role request
-        Router->>ProviderPort: invoke provider
-        ProviderPort->>ProviderAdapter: provider call
-        ProviderAdapter-->>ProviderPort: model response
-        ProviderPort-->>Router: model response
-        Router-->>Review: ReviewReport
-        Review-->>Tool: ReviewReport
         Workflow-->>Job: completed
     end
 ```
+
+可选 AIReview 由 HumanReviewGate / UI 的 user_action 手动触发，不由 MinimalContinuationWorkflow 默认自动触发。AIReview 失败不阻断用户继续 accept / reject / apply CandidateDraft。
 
 ### 4.3 Candidate Draft 接受流程图
 
@@ -879,10 +871,10 @@ stateDiagram-v2
 | ContextPackService | 组装上下文包 | chapter、memory、task、RAG | ContextPack | TokenBudgetPolicy、ContextPriorityPolicy | 由 Workflow 自己拼上下文 | P1：四层轨道 |
 | WritingTaskService | 创建续写任务 | chapter、memory、user intent | WritingTask | StoryMemoryService | 改正式大纲或章节 | P1：Planner Agent |
 | CoreToolFacade | 受控工具入口 | Tool request | ToolResult | ToolRegistry、AgentPermissionPolicy | 承载核心业务逻辑 | P1：完整权限矩阵 |
-| MinimalContinuationWorkflow | 编排单章续写 | continuation request | CandidateDraft、ReviewReport | CoreToolFacade | 直接调用 Router / Infra | P1：Agent Runtime |
+| MinimalContinuationWorkflow | 编排单章续写 | continuation request | CandidateDraft | CoreToolFacade | 直接调用 Router / Infra、默认强制 AIReview | P1：Agent Runtime |
 | WritingGenerationService | 独立 Core Application Service，生成候选正文 | ContextPack、WritingTask、model_role=writer | generated_text / WritingGenerationResult | PromptRegistry、ModelRouter、OutputValidator、LLMCallLog | 创建 CandidateDraft、持久化候选稿、写正式正文、直接访问 Provider SDK | P1：WriterAgent / RewriterAgent |
 | CandidateDraftService | 管理候选稿 | generated text、user action | CandidateDraft | CandidateDraftRepositoryPort、Policy | 代替用户接受候选稿 | P1：版本树 |
-| ReviewService | 基础审稿 | CandidateDraft、ContextPack | ReviewReport | ModelRouter、Validator | 修改正式正文 | P1：ReviewerAgent |
+| ReviewService / AIReviewService | 可选基础审稿 | CandidateDraft、ContextPack 安全引用 | ReviewReport / AIReviewResult | ModelRouter、Validator | 修改正式正文、改变 CandidateDraft.status、阻断 HumanReviewGate 基本操作 | P1：ReviewerAgent |
 | HumanReviewGateService | 用户确认门控 | user action、resource | decision | HumanReviewGatePolicy | 被 Workflow 绕过 | P1：Conflict Guard |
 
 ## 六、P0 Domain 对象与 Policy 设计总览
@@ -1081,7 +1073,7 @@ flowchart TB
 | vector_index_entries | 向量索引 | 索引 | 否 | 否 | 不改正文 | 是 | P1：重排 / 重建 |
 | context_pack_snapshots | 上下文快照 | 快照 / Trace | 否 | 否 | 默认不存完整正文 | 是 | P1：Agent Trace |
 | writing_tasks | 写作任务 | 任务约束 | 否 | 用户可编辑确认 | 不改章节 | 是 | P1：Planner Agent |
-| candidate_drafts | 候选稿与 P0 拒绝理由 | 候选 | 否 | 接受才进入草稿 | 不直接写正式正文；discarded / rejected 可保存 reject_reason_text | 是 | P1：版本树、reason_code 统计 |
+| candidate_drafts | 候选稿与 P0 拒绝理由 | 候选 | 否 | accepted 后仍需 apply 才进入草稿 | 不直接写正式正文；rejected 可保存 reject_reason_text | 是 | P1：版本树、reason_code 统计 |
 | review_reports | 审稿报告 | 报告 | 否 | 否 | 不改正文 | 是 | P1：ReviewIssue |
 
 ## 九、P0 API 方向总览
@@ -1094,7 +1086,7 @@ flowchart TB
 | Context Pack Preview API | 高级模式预览上下文与裁剪结果 | 可查看 blocked / degraded 原因 |
 | Writing Task API | 查看、编辑、确认 Writing Task | P0 单章任务 |
 | Continuation API | 触发单章候选续写 | 创建 AIJob + Workflow |
-| Candidate Draft API | 查看候选稿、丢弃、重新生成、保存 reject_reason_text | 不直接进入正式正文；未填写拒绝理由时允许丢弃并记录空理由 |
+| Candidate Draft API | 查看候选稿、拒绝、重新生成、保存 reject_reason_text | 不直接进入正式正文；未填写拒绝理由时允许 rejected 并记录空理由 |
 | Review API | 查看审稿报告 | 审稿失败不阻断用户手动决策 |
 | Quick Trial API | 未初始化快速试写 | 标记上下文不足 |
 | Accept Candidate Draft API | 用户接受候选稿 | 不是 Agent Tool，进入 Core Application，用于写入 V1.1 草稿链路 |
@@ -1110,7 +1102,7 @@ Accept Candidate Draft API 是用户确认入口，不是 Agent Tool。它进入
 | 初始化进度面板 | AI Job API | queued / running / paused / failed / completed | 暂停 / 继续 / 重试 / 取消 | P0 不做：token streaming |
 | 写作页 AI 续写入口 | Continuation API | 可用 / 不可用 / 初始化要求 | 触发续写 | P2：多章续写 |
 | 快速试写入口 | Quick Trial API | 上下文不足标记 | 触发试写 | P0 不做：正式记忆更新 |
-| Candidate Draft 候选稿区 | Candidate Draft API | generated / reviewed / review_failed / discarded / rejected | 接受 / 丢弃 / 重新生成 / 填写拒绝理由 | P1：多轮版本对比、拒绝理由统计 |
+| Candidate Draft 候选稿区 | Candidate Draft API | pending_review / accepted / rejected / applied / stale / superseded | 接受 / 拒绝 / 应用 / 重新生成 / 填写拒绝理由 | P1：多轮版本对比、拒绝理由统计 |
 | 审稿报告面板 | Review API | 审稿维度、问题摘要、失败状态 | 用户决定是否采纳候选稿 | P1：Rewriter Agent |
 | Context Pack 预览/调试面板 | Context Pack Preview API | normal / degraded / blocked、裁剪层 | 高级模式查看 | P0 不做：完整 Prompt 保存 |
 
@@ -1123,7 +1115,7 @@ Accept Candidate Draft API 是用户确认入口，不是 Agent Tool。它进入
 | 模型输出不符合 schema | OutputValidator 拒绝，进入 retry / failed | 不影响 |
 | OutputValidator 超过最大重试次数 | AIJobStep.status = failed，error_code = output_schema_invalid；不创建候选数据或正式数据 | 不影响 |
 | 续写生成 schema 校验失败 | 首次调用 + 2 次重试后仍失败则 continuation Job failed，不创建 CandidateDraft | 不影响 |
-| 审稿 schema 校验失败 | CandidateDraft 可保留；ReviewReport 不创建或候选稿标记 review_failed；用户可手动决定是否使用候选稿 | 不影响 |
+| 审稿 schema 校验失败 | CandidateDraft 可保留；AIReviewResult 不创建或标记 failed / unavailable；用户可手动决定是否使用候选稿 | 不影响 |
 | AI Job 中断 | 保留 Job 状态，允许继续 / 重试 / 取消 | 不影响 |
 | 服务重启 | running Job 标记 paused / failed | 不影响 |
 | 大纲分析失败 | 初始化失败，可重试大纲分析 | 不影响 |
@@ -1132,8 +1124,8 @@ Accept Candidate Draft API 是用户确认入口，不是 Agent Tool。它进入
 | Context Pack 必选层缺失 | 正式续写 blocked，可选择快速试写 | 不影响 |
 | Context Pack degraded | 允许生成，但必须显示 degraded 原因 | 不影响 |
 | StoryState 缺失 | 正式续写 blocked 或快速试写降级 | 不影响 |
-| 候选稿生成失败 | Candidate Draft 不创建或标记 failed | 不影响 |
-| 审稿失败 | 候选稿标记 review_failed / 未审稿 | 不影响 |
+| 候选稿生成失败 | Candidate Draft 不创建；失败由 Workflow / ToolResult 表达，不作为 CandidateDraft 正式状态 | 不影响 |
+| 审稿失败 | AIReviewResult 标记 failed / unavailable，不改变 CandidateDraft.status，HumanReviewGate 基本操作仍可用 | 不影响 |
 | Candidate Draft 接受失败 | 不写入草稿区，保留候选稿状态 | 不影响 |
 | Local-First 保存冲突 | 沿用 V1.1 409 / 本地草稿优先规则 | 不影响 |
 | Tool 未注册 | 返回 forbidden | 不影响 |
