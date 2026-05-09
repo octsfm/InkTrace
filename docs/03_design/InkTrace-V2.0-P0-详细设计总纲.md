@@ -8,6 +8,8 @@
 
 本文档用于指导后续 P0 各模块详细设计文档，不替代模块级详细设计，不进入开发计划，不拆 Task，不写代码，不生成数据库迁移脚本。
 
+本文档为 P0 总体设计总纲，模块内部状态机、字段、错误码、API DTO、权限矩阵等最终口径，以 P0-01 ~ P0-11 各模块级详细设计为准；该说明不弱化总纲对 P0 范围和边界的约束。
+
 ### 1.2 P0 目标
 
 P0 的目标是完成“AI 初始化 + 单章受控续写”的最小闭环。
@@ -127,7 +129,7 @@ AI Settings
 → 初始化完成
 ```
 
-单章受控续写：
+正式续写主链路：
 
 ```text
 用户触发续写
@@ -138,11 +140,22 @@ AI Settings
 → Context Pack
 → WritingGenerationService
 → Candidate Draft
-→ AI Review
-→ 用户确认
+→ HumanReviewGate / 用户确认
+→ user_action apply
 → 章节草稿区
 → V1.1 Local-First 保存
 ```
+
+可选辅助审阅链路：
+
+```text
+Candidate Draft
+→（可选 AIReview）
+→ AIReviewResult
+→ HumanReviewGate 展示
+```
+
+AIReview 是辅助审阅，不是门控。P0 默认不由 MinimalContinuationWorkflow 自动触发 AIReview；P0-08 续写完成后只需要生成 CandidateDraft，不必须自动 AIReview。AIReview 可以由 HumanReviewGate / UI 的 user_action 手动触发；AIReview failed 不阻断 HumanReviewGate 的 accept / reject / apply 基本操作，AIReviewResult 不改变 CandidateDraft.status，也不自动 accept / reject / apply CandidateDraft。
 
 ### 2.3 P0 模块关系图
 
@@ -178,6 +191,8 @@ flowchart TB
     ProviderAdapter["ProviderAdapter"] -. "implements" .-> ProviderPort
 
     Draft --> Gate["Human Review Gate"]
+    Draft -. "optional review" .-> Review
+    Review -. "AIReviewResult displayed in" .-> Gate
     Gate --> LocalFirst["V1.1 Local-First Draft Path"]
 
     Workflow -. "forbidden" .-> Router
@@ -569,22 +584,30 @@ Forbidden Tools：
 
 - 保存 AI 生成正文候选稿。
 - 记录候选稿状态。
-- 支持用户接受、丢弃、重新生成。
+- 支持用户接受、拒绝、应用候选稿。
 - 用户接受候选稿后，由 Presentation 调用 Core Application 的 `accept_candidate_draft` / `apply_candidate_to_draft` 用例，将候选稿内容放入章节草稿区。
-- CandidateDraftService 只负责加载候选稿、状态流转与标记 accepted / discarded / rejected，不绕过 Human Review Gate。
+- CandidateDraftService 只负责加载候选稿、状态流转与标记 pending_review / accepted / rejected / applied / stale / superseded，不绕过 Human Review Gate。
 
-P0 状态：
+P0 状态，以 P0-09 CandidateDraft 与 HumanReviewGate 详细设计为最终口径：
 
-- generated。
-- reviewed。
-- review_failed。
-- accepted。
-- discarded。
-- rejected。
+- pending_review：CandidateDraft 已生成，等待用户审阅。
+- accepted：用户已接受候选稿，但不等于已写入正式正文。
+- rejected：用户拒绝候选稿。
+- applied：候选稿已通过 V1.1 Local-First 保存链路应用到正式章节草稿。
+- stale：候选稿或其上下文已经过期。
+- superseded：候选稿已被后续候选稿替代。
+
+状态规则：
+
+- `accepted != applied`。
+- CandidateDraft 不是正式正文。
+- CandidateDraft 不属于 confirmed chapters。
+- CandidateDraft 不进入 StoryMemory / StoryState / VectorIndex / 正式 ContextPack。
+- generated / reviewed / review_failed / discarded 是历史草案术语，已被 P0-09 收敛替换，不作为 CandidateDraft 正式状态枚举。
 
 拒绝理由：
 
-- discarded / rejected 时允许记录 reject_reason_text。
+- rejected 时允许记录 reject_reason_text。
 - P0 必须支持 reject_reason_text，可为空。
 - P0 可选支持 reject_reason_code。
 - reason_code 枚举方向：off_topic、style_mismatch、logic_conflict、too_ai_like、too_long、too_short、bad_rhythm、user_other。
@@ -621,10 +644,26 @@ P0 状态：
 - Writing Task 完成度。
 - P0 最小剧情轨道偏离。
 
+P0-10 AIReview 详细设计中使用英文枚举作为实现口径；总纲中的中文审阅维度是产品语义描述，两者对应关系如下。
+
+| 总纲中文维度 | P0-10 AIReviewCategory | 说明 |
+|---|---|---|
+| 人物一致性 | character_consistency | 人物设定、行为、关系是否一致 |
+| 设定冲突 | plot_consistency / contradiction | 世界观、剧情设定是否冲突 |
+| 时间线冲突 | plot_consistency / contradiction | 时间顺序、事件因果是否矛盾 |
+| 伏笔误用 | plot_consistency / coherence | 伏笔使用是否突兀或不连贯 |
+| 风格漂移 | style_consistency / tone_issue | 文风、语气是否偏离 |
+| AI 味 / 生硬表达 | tone_issue / repetition | 表达是否机械、重复、突兀 |
+| 重复啰嗦 | repetition | 内容是否重复或冗余 |
+| 上下文不连贯 | coherence | 与前文、当前上下文是否衔接 |
+| 不安全或不适合直接应用 | unsafe_output / apply_risk | 是否存在不适合直接应用的风险 |
+
 失败策略：
 
-- 审稿失败时，候选稿标记 review_failed 或未审稿。
+- 审稿失败时，AIReviewResult 可标记 failed / unavailable，但不得改变 CandidateDraft.status。
 - P0 允许用户手动决定是否使用候选稿。
+- AIReview failed 不阻断 HumanReviewGate 的 accept / reject / apply 基本操作。
+- AIReview 不自动 accept / reject / apply CandidateDraft。
 - `generate_review_report()` 是 ReviewService 的 Application Service 方法名方向，不作为 Tool 名。
 
 扩展点：

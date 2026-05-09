@@ -880,11 +880,16 @@ P0 Review Context 必须受 token budget 限制，但不复用正式续写 Conte
 
 - AIReviewService 通过 P0-01 ModelRouter / ProviderPort 调用模型。
 - AIReviewService 不直接访问 Provider SDK。
-- model_role 建议使用 reviewer。
+- review_candidate_draft 使用 `model_role = reviewer`。
+- P0 默认 reviewer 的 Provider 倾向为 Kimi，但该默认值只存在于 ModelRoleConfig / AI Settings 中，AIReviewService 不得硬编码 Kimi。
+- AIReviewService 只提交 `model_role = reviewer`，由 ModelRouter / AI Settings 决定实际 provider / model。
+- 如果 review_quick_trial_output 使用模型，P0 默认同样使用 `model_role = reviewer`，不新增 quick_trial_reviewer role。
 - Provider retry 继承 P0-01。
 - Provider auth failed 不 retry。
 - Provider timeout / provider_rate_limited / provider_unavailable 均按 P0-01 retry 边界。
 - LLMCallLog / request_id / trace_id 记录继承 P0-01。
+
+reviewer 默认 Kimi 倾向不改变 AIReview 的边界：AIReview 不自动 accept / reject / apply，不改变 CandidateDraft.status，不阻断 HumanReviewGate 基本操作，也不写 StoryMemory / StoryState / VectorIndex / ContextPack。
 
 ### 12.2 输出 schema
 

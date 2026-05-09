@@ -549,9 +549,14 @@ Request DTO：work_id（可选）、request_id、trace_id、caller_type = user_a
 
 Response DTO：provider 配置摘要、key_configured、last_test_status、last_test_at、model_role_configs、timeout / max_tokens / temperature 等安全配置摘要。
 
-model_role_configs 按 model_role 返回配置摘要，例如：outline_analyzer、manuscript_analyzer、memory_extractor、planner、writer、reviewer、quick_trial_writer。
+model_role_configs 按 model_role 返回配置摘要，例如：outline_analyzer、manuscript_analyzer、memory_extractor、planner、writing_task_builder、reviewer、writer、rewriter、polisher、dialogue_writer、scene_generator、quick_trial_writer。
 
-规则：默认 Provider 倾向继承 P0-01 ModelRoleConfig；API 层不硬编码 Kimi / DeepSeek；业务服务 / Workflow / ToolFacade / API 只提交或展示 model_role；实际 provider / model 由 AI Settings 与 ModelRoleConfig 决定；本轮不做完整“模型路由一致性补丁”；后续会统一补 Kimi / DeepSeek 默认分工到相关文档；不得出现绑定具体 Provider 的固定路由名。
+P0 默认模型分工继承 P0-01 ModelRoleConfig：
+
+- Kimi 默认承担 outline_analyzer / manuscript_analyzer / memory_extractor / planner / writing_task_builder / reviewer。
+- DeepSeek 默认承担 writer / rewriter / polisher / dialogue_writer / scene_generator / quick_trial_writer。
+
+规则：默认 Provider 倾向继承 P0-01 ModelRoleConfig；API 层不硬编码 Kimi / DeepSeek；API 层只展示默认倾向与当前配置，业务服务 / Workflow / ToolFacade / API 只提交或展示 model_role；实际 provider / model 由 AI Settings 与 ModelRoleConfig 决定；用户可以在 AI Settings 中调整 model_role -> provider / model 的映射；P0-11 不做完整模型治理、A/B 测试、自动路由或成本看板；不得出现绑定具体 Provider 的固定路由名。
 
 安全规则：不返回 API Key 明文；不返回 Provider SDK 内部配置；普通日志不记录任何 Key。
 
@@ -561,7 +566,7 @@ Request DTO：provider_name、api_key_write_only（可选）、model_role_config
 
 Response DTO：status、provider_name、key_configured、updated_at、warnings。
 
-规则：API Key 只允许写入 / 更新，不允许读取明文；更新失败不得暴露 Key；API 层不硬编码 Kimi / DeepSeek，不定义绑定具体 Provider 的固定路由名；如果配置会影响正在运行 Job，P0 只返回 warning，不做复杂热切换治理。
+规则：API Key 只允许写入 / 更新，不允许读取明文；update_ai_settings 可以更新 model_role -> provider / model 的配置，但 API 层不硬编码 Kimi / DeepSeek，不定义绑定具体 Provider 的固定路由名；如果 model_role 不存在或未配置，返回 model_role_invalid 或 P0-01 定义的安全错误；如果配置会影响正在运行 Job，P0 只返回 warning，不做复杂热切换治理。
 
 ### 9.3 test_provider_connection
 

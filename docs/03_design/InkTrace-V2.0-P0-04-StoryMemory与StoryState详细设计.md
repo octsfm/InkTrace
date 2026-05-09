@@ -362,7 +362,19 @@ StoryMemorySnapshot 的 P0 初始化输入只能来自：
 8. stale_status 初始设为 fresh。
 9. warnings 汇总自初始化过程的所有 warning。
 
-### 5.6 不允许做的事情
+### 5.6 ModelRole 默认路由口径
+
+StoryMemory / StoryState 的结构化抽取、摘要、记忆生成如需要模型辅助，默认使用 `model_role = memory_extractor`，默认 Provider 倾向 Kimi。
+
+如果存在规划、状态推导或 Writing Task 构建相关的模型辅助，可使用 `model_role = planner` 或 `writing_task_builder`，默认 Provider 倾向 Kimi。
+
+规则：
+
+- StoryMemoryService / StoryStateService 不得直接调用 Kimi Provider，也不得硬编码 Kimi / DeepSeek。
+- P0-04 只提交 `model_role` 或消费 P0-03 已确认分析结果；实际 provider / model 由 P0-01 ModelRouter / ModelRoleConfig / AI Settings 决定。
+- 默认 Kimi 倾向不改变 P0-04 的字段表、Repository Port 行为、snapshot / baseline 写入、stale / reanalysis、数据一致性、安全隐私规则。
+
+### 5.7 不允许做的事情
 
 - 不允许修改正式正文。
 - 不允许覆盖用户原始大纲。

@@ -297,7 +297,7 @@ P0 默认策略：
 | user_instruction | 用户指令 | 是 |
 | current_selection | 当前选区，可选 | 可选 |
 | current_chapter_ref | 当前章节引用 | 是 |
-| model_role | 固定为 writer | 是 |
+| model_role | 正式续写默认为 writer；实际 provider / model 由 P0-01 ModelRoleConfig / AI Settings 决定 | 是 |
 | max_context_tokens | 上下文预算 | 是 |
 | max_output_tokens | 输出预算 | 是 |
 | style_constraints | 风格约束，可选 | 可选 |
@@ -322,7 +322,20 @@ continuation_mode 继承 P0-06 定义：
 - continuation_mode 影响 ContextPack 的 required item、priority 和裁剪策略。
 - continuation_mode 不直接决定是否调用 Writer。
 
-### 5.4 持久化与日志边界
+### 5.4 model_role 默认路由口径
+
+WritingTask 只记录写作意图对应的 `model_role`，不得记录或硬编码具体 Provider。
+
+P0 默认口径：
+
+- `continue_chapter` / 正式续写使用 `model_role = writer`，默认 Provider 倾向 DeepSeek。
+- `rewrite_selection` 可使用 `model_role = rewriter`，默认 Provider 倾向 DeepSeek。
+- `expand_scene` 可使用 `model_role = scene_generator` 或 `writer`，默认 Provider 倾向 DeepSeek。
+- 对白相关生成可使用 `model_role = dialogue_writer`，默认 Provider 倾向 DeepSeek。
+- Quick Trial 试写使用 `model_role = quick_trial_writer`，默认 Provider 倾向 DeepSeek。
+- 上述默认值只存在于 P0-01 ModelRoleConfig / AI Settings 中，MinimalContinuationWorkflow、ToolFacade、WritingGenerationService 不得硬编码 DeepSeek。
+
+### 5.5 持久化与日志边界
 
 持久化边界：
 
@@ -822,6 +835,8 @@ Workflow
 - run_writer_step 通过 WritingGenerationService 间接调用 PromptRegistry、ModelRouter、OutputValidator、LLMCallLog 等 P0-01 能力。
 - “Workflow 通过 ToolFacade 调用 run_writer_step”仅约束 AI 编排工具调用路径；普通非 AI 的 Application 内部协作不由 P0-08 定义。
 - Writer / AI 模型不得借普通接口绕过 ToolFacade 调用 Writer、Provider、Repository 或正式写入能力。
+- run_writer_step / WritingGenerationService.generate_candidate_text 使用 `model_role = writer`；P0 默认 writer 的 Provider 倾向为 DeepSeek，但该默认值只存在于 ModelRoleConfig / AI Settings 中。
+- Workflow / ToolFacade / WritingGenerationService 只提交 `model_role`，由 ModelRouter 决定实际 provider / model，不得硬编码 DeepSeek。
 
 ### 12.2 输入
 
@@ -950,6 +965,7 @@ P0 默认策略：
 - Quick Trial 可以 build degraded ContextPack。
 - Quick Trial 可以 run_writer_step。
 - Quick Trial 可以 validate_writer_output。
+- Quick Trial 试写使用 `model_role = quick_trial_writer`，P0 默认 Provider 倾向 DeepSeek；该默认值仍由 ModelRoleConfig / AI Settings 决定。
 - Quick Trial 默认不 save_candidate_draft。
 - Quick Trial 只有用户明确“保存为候选稿”时才进入 P0-09 CandidateDraft 流程。
 - Quick Trial 如返回 degraded_completed，仅表示降级试写输出已生成完成，不代表 CandidateDraft 已保存。

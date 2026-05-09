@@ -355,15 +355,31 @@ ModelRoleConfig 用于声明 `model_role` 到 provider / model 的映射。
 
 P0 默认 `model_role`：
 
-| model_role | 默认倾向 | 用途 |
-|---|---|---|
-| outline_analyzer | Kimi | 大纲分析 |
-| manuscript_analyzer | Kimi | 正文分析 |
-| memory_extractor | Kimi | 记忆抽取 |
-| planner | Kimi | Writing Task / 规划 |
-| writer | DeepSeek | 续写候选正文 |
-| reviewer | Kimi | 审稿 |
-| quick_trial_writer | DeepSeek | 快速试写候选正文 |
+| model_role | 默认 Provider 倾向 | 主要用途 | 可配置 |
+|---|---|---|---|
+| outline_analyzer | Kimi | 大纲分析 | 是 |
+| manuscript_analyzer | Kimi | 正文分析 | 是 |
+| memory_extractor | Kimi | 记忆抽取 / 结构化摘要 | 是 |
+| planner | Kimi | 规划 / Writing Task | 是 |
+| writing_task_builder | Kimi | Writing Task 构建 | 是 |
+| reviewer | Kimi | AIReview / 审稿 | 是 |
+| writer | DeepSeek | 正式续写 | 是 |
+| rewriter | DeepSeek | 改写 | 是 |
+| polisher | DeepSeek | 润色 | 是 |
+| dialogue_writer | DeepSeek | 对白生成 | 是 |
+| scene_generator | DeepSeek | 场景生成 | 是 |
+| quick_trial_writer | DeepSeek | Quick Trial 试写 | 是 |
+
+规则：
+
+- AI Settings 允许用户配置每个 `model_role` 的 provider / model。
+- P0 默认映射采用：分析、摘要、记忆抽取、规划、审稿类 role 默认倾向 Kimi；写作、改写、润色、对白、场景生成、试写类 role 默认倾向 DeepSeek。
+- 默认 Provider 倾向只存在于 ModelRoleConfig / AI Settings 中，业务服务、Workflow、ToolFacade、API 层不得硬编码 Kimi / DeepSeek。
+- 业务模块只提交 `model_role`；实际 provider / model 由 ModelRouter 根据 ModelRoleConfig 与 AI Settings 决定。
+- P0 不强制 Kimi / DeepSeek 一定是两个物理模型；实现层可将多个 `model_role` 映射到同一个 Provider Model，也可映射到不同 Provider Model。
+- Provider retry、OutputValidation、LLMCallLog 规则不因 Provider 不同而改变。
+- `model_role` 未配置或不受支持时，默认返回 `model_role_invalid`；底层可保留 `model_role_config_missing` 作为内部兼容码或 debug_ref，但不得静默切换到未知模型。
+- P0 不新增自动模型选择、A/B 测试、成本看板、质量看板或复杂模型治理。
 
 ### 5.7 Provider 连接测试
 
@@ -555,21 +571,38 @@ ModelRouter 属于 Core Application 层。
 - Core Application Service 只提交 `model_role`。
 - 业务服务不得写死 Kimi / DeepSeek。
 - ModelRouter 通过 ModelRoleConfig 获取 provider / model。
-- ModelRoleConfig 缺失时返回 `model_role_config_missing`。
+- ModelRoleConfig 缺失、`model_role` 未配置或不受支持时返回 `model_role_invalid`。
+- 底层可以把 `model_role_config_missing` 作为内部兼容错误码或 debug_ref，但不得作为业务默认 fallback 静默切换模型。
 - Provider 未启用时返回 `provider_disabled`。
 - Provider Key 未配置时返回 `provider_key_missing`。
 
 ### 7.3 Kimi / DeepSeek 默认分工
 
+P0 默认模型分工继承 ModelRoleConfig：
+
 | 能力 | 默认 model_role | 默认 Provider 倾向 |
 |---|---|---|
 | 大纲分析 | outline_analyzer | Kimi |
 | 正文分析 | manuscript_analyzer | Kimi |
-| 记忆抽取 | memory_extractor | Kimi |
-| 写作任务规划 | planner | Kimi |
-| 单章候选续写 | writer | DeepSeek |
-| 快速试写 | quick_trial_writer | DeepSeek |
-| 审稿 | reviewer | Kimi |
+| 摘要 / 记忆抽取 / StoryMemory 与 StoryState 结构化分析 | memory_extractor | Kimi |
+| 规划 | planner | Kimi |
+| Writing Task 构建 | writing_task_builder | Kimi |
+| 审稿 / AIReview | reviewer | Kimi |
+| 正式续写 | writer | DeepSeek |
+| 改写 | rewriter | DeepSeek |
+| 润色 | polisher | DeepSeek |
+| 对白生成 | dialogue_writer | DeepSeek |
+| 场景生成 | scene_generator | DeepSeek |
+| Quick Trial 试写 | quick_trial_writer | DeepSeek |
+
+规则：
+
+- 默认分工只是初始配置。
+- 用户可在 AI Settings 中调整。
+- 业务服务、Workflow、ToolFacade、API 层只提交或展示 `model_role`，不得硬编码 Kimi / DeepSeek。
+- Agent / AI 编排不得直接选择具体 Provider。
+- P0 不要求 Kimi / DeepSeek 必须对应两个物理模型；多个 `model_role` 可以映射到同一个 Provider Model。
+- P0 不做自动模型选择、A/B 测试、成本看板、质量看板或复杂模型治理。
 
 ### 7.4 fallback 策略边界
 
@@ -1148,7 +1181,7 @@ sequenceDiagram
 | 超过最大重试次数 | output_schema_invalid | AIJobStep failed，不创建候选或正式数据 |
 | LLMCallLog 写入失败 | llm_call_log_write_failed | 不得阻塞 V1.1；AI 调用可标记日志异常 |
 | PromptTemplate 缺失 | prompt_template_missing | 当前 AI 任务 failed |
-| ModelRoleConfig 缺失 | model_role_config_missing | 当前 AI 任务 failed |
+| ModelRoleConfig 缺失 / model_role 未配置 | model_role_invalid | 当前 AI 任务 failed；内部可记录 model_role_config_missing 作为 debug_ref |
 | Provider 未启用 | provider_disabled | 当前 AI 任务 blocked |
 
 ### 13.2 对 V1.1 能力的影响
@@ -1252,7 +1285,7 @@ P0 AI 基础设施验收标准：
 - AISettingsStore 实现 AISettingsRepositoryPort。
 - 不存在 AISettingsStore -> WorkRepositoryPort 的错误关系。
 - ModelRouter 能按 model_role 路由。
-- 默认 model_role 至少包含 outline_analyzer、manuscript_analyzer、memory_extractor、planner、writer、reviewer、quick_trial_writer。
+- 默认 model_role 至少包含 outline_analyzer、manuscript_analyzer、memory_extractor、planner、writing_task_builder、reviewer、writer、rewriter、polisher、dialogue_writer、scene_generator、quick_trial_writer。
 - 业务服务不硬编码 Provider。
 - Workflow 不能直接调用 ModelRouter。
 - Provider SDK 只在 Adapter 中使用。

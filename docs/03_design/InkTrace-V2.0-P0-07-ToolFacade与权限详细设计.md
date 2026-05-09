@@ -664,6 +664,7 @@ Quick Trial 限制：
 - `generate_candidate_text` 不是 Tool 名。
 - `run_writer_step` 不是 Provider 直连。
 - `run_writer_step` 通过 WritingGenerationService 间接调用 PromptRegistry、ModelRouter、OutputValidator、LLMCallLog 等 P0-01 能力。
+- `run_writer_step` 只提交 `model_role = writer`；P0 默认 writer 的 Provider 倾向为 DeepSeek，但默认值只存在于 ModelRoleConfig / AI Settings 中，ToolFacade / Workflow / WritingGenerationService 不得硬编码 DeepSeek。
 
 ### 11.2 输入边界
 
@@ -1030,4 +1031,3 @@ ToolAuditLog 不记录：
 - [ ] P0 不实现五 Agent Workflow。
 - [ ] P0 不实现 Citation Link / @ 标签系统。
 - [ ] P0 不实现完整 Function Calling 框架。
-
