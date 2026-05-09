@@ -15,6 +15,12 @@
 
 本文档不重新设计、不写代码、不改源码、不生成数据库迁移、不拆到代码函数级别。
 
+S3 / S5 / S6 是 P0-MVP 中跨模块最多、边界风险最高的三个阶段。开发这些阶段时，除本文档外，必须同时参考：
+
+`docs/04_plan/InkTrace-V2.0-P0-S3S5S6-阶段细化.md`
+
+该补充文档提供阶段内依赖图、MVP 联调节点、跨模块边界检查清单和开发启动检查清单。
+
 ---
 
 ## 二、开发目标与最小闭环
@@ -211,6 +217,12 @@ graph TD
 
 ## 九、阶段 3：初始化分析最小闭环
 
+> **本阶段为跨模块复杂阶段**，涉及 OutlineAnalysis、ManuscriptAnalysis、StoryMemory、StoryState、partial_success、stale / reanalysis。开发前必须阅读：
+>
+> `docs/04_plan/InkTrace-V2.0-P0-S3S5S6-阶段细化.md` 的 S3 部分。
+>
+> 重点关注：S3 内部依赖图；S3 MVP 节点；partial_success 执行时机；StoryMemory / StoryState 与 confirmed chapters 边界；stale / reanalysis 触发边界。
+
 **目标**：用户能启动初始化，系统能分析章节，生成最小 StoryMemorySnapshot / StoryState baseline，返回 initialization_status，初始化完成后正式续写入口可用。
 
 **前置条件**：S1（AI 基础设施）、S2（AIJobSystem）完成。
@@ -292,6 +304,12 @@ graph TD
 
 ## 十一、阶段 5：MinimalContinuationWorkflow 与 CandidateDraft 生成
 
+> **本阶段为跨模块复杂阶段**，涉及 ToolFacade、ContextPack、Writer、OutputValidation、CandidateDraft 保存和 Workflow 编排。开发前必须阅读：
+>
+> `docs/04_plan/InkTrace-V2.0-P0-S3S5S6-阶段细化.md` 的 S5 部分。
+>
+> 重点关注：S5 内部依赖图；S5-MVP 与 S5-Full 的边界；save_candidate_draft 能力不可延后；validate_writer_output 失败后应重新生成而不是重复校验；workflow / AI 不得伪造 user_action。
+
 **目标**：用户能触发正式续写，系统构建 ContextPack，Writer 生成候选内容，保存 CandidateDraft（不直接写正式正文）。
 
 **前置条件**：S2（AIJobSystem）、S4（ContextPack）完成。
@@ -366,6 +384,12 @@ graph TD
 ---
 
 ## 十二、阶段 6：HumanReviewGate 与 apply 闭环
+
+> **本阶段为跨模块复杂阶段**，涉及 CandidateDraft 状态机、HumanReviewGate、apply_mode、chapter_version_conflict、V1.1 Local-First 保存链路和 stale 事件传播。开发前必须阅读：
+>
+> `docs/04_plan/InkTrace-V2.0-P0-S3S5S6-阶段细化.md` 的 S6 部分。
+>
+> 重点关注：S6 内部依赖图；S6 MVP 节点；accepted != applied；apply 成功必须以 V1.1 Local-First 保存成功为准；chapter_version_conflict 不得自动覆盖正文；apply 成功后才触发 stale 标记事件。
 
 **目标**：用户可以查看候选稿、accept/reject、apply 到章节草稿。apply 必须走 V1.1 Local-First 保存链路。
 
@@ -774,3 +798,19 @@ MVP 全部跑通
 | P0-09 CandidateDraft/HumanReviewGate | S5, S6, S7 |
 | P0-10 AIReview | S8 |
 | P0-11 API 与集成边界 | S1~S9（全量 API 参考） |
+
+---
+
+## 附录 C：补充执行文档
+
+| 文档 | 覆盖阶段 | 用途 | 使用要求 |
+|---|---|---|---|
+| `docs/04_plan/InkTrace-V2.0-P0-S3S5S6-阶段细化.md` | S3 / S5 / S6 | 阶段内依赖图、MVP 节点、边界检查清单、启动检查清单 | 开发 S3 / S5 / S6 前必须阅读；开发提示词中必须显式引用 |
+
+后续生成 S3 / S5 / S6 开发提示词时，必须同时引用：
+
+- `docs/04_plan/InkTrace-V2.0-P0-开发计划.md`
+- `docs/04_plan/InkTrace-V2.0-P0-S3S5S6-阶段细化.md`
+- 对应 P0 详细设计文档
+
+不得只根据主开发计划开发 S3 / S5 / S6。
