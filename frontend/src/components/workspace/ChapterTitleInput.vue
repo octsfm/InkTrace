@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <label class="chapter-title-input" :class="{ 'chapter-title-input--disabled': disabled }">
     <span class="chapter-title-prefix">{{ chapterPrefix }}</span>
     <input

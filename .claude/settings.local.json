@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git diff-tree *)"
+      "Bash(git diff-tree *)",
+      "Bash(python -m pytest tests/ai/ -v)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
