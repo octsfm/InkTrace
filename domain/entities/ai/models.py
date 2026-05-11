@@ -59,6 +59,117 @@ class AISettings(AIBaseModel):
     model_role_mappings: dict[str, ModelSelection] = Field(default_factory=dict)
 
 
+class AIJobStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    PAUSED = "paused"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+
+
+class AIJobStepStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    PAUSED = "paused"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    COMPLETED = "completed"
+
+
+class AIJobAttemptStatus(StrEnum):
+    RUNNING = "running"
+    FAILED = "failed"
+    COMPLETED = "completed"
+    IGNORED = "ignored"
+
+
+class AIJobProgress(AIBaseModel):
+    total_steps: int = 0
+    completed_steps: int = 0
+    current_step: str = ""
+    current_step_label: str = ""
+    percent: int = 0
+    status: str = AIJobStatus.QUEUED.value
+    error_code: str = ""
+    error_message: str = ""
+    warning_count: int = 0
+    failed_step_count: int = 0
+    skipped_step_count: int = 0
+    updated_at: str = ""
+
+
+class AIJob(AIBaseModel):
+    job_id: str
+    work_id: str
+    chapter_id: str | None = None
+    job_type: str
+    status: AIJobStatus
+    progress: AIJobProgress
+    created_by: str = "user_action"
+    payload: dict[str, Any] = Field(default_factory=dict)
+    input_snapshot: dict[str, Any] = Field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
+    result_summary: dict[str, Any] = Field(default_factory=dict)
+    result_ref: str = ""
+    error_code: str = ""
+    error_message: str = ""
+    status_reason: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+    paused_at: str = ""
+    cancelled_at: str = ""
+
+
+class AIJobStep(AIBaseModel):
+    step_id: str
+    job_id: str
+    step_type: str
+    step_name: str
+    status: AIJobStepStatus
+    order_index: int
+    progress: int = 0
+    label: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+    error_code: str = ""
+    error_message: str = ""
+    status_reason: str = ""
+    warning_count: int = 0
+    attempt_count: int = 0
+    max_attempts: int = 3
+    can_retry: bool = False
+    can_skip: bool = False
+    summary: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AIJobAttempt(AIBaseModel):
+    attempt_id: str
+    job_id: str
+    step_id: str
+    attempt_no: int
+    request_id: str
+    trace_id: str
+    provider_name: str
+    model_name: str
+    model_role: str
+    prompt_key: str
+    prompt_version: str
+    output_schema_key: str
+    status: AIJobAttemptStatus
+    started_at: str = ""
+    finished_at: str = ""
+    elapsed_ms: int = 0
+    error_code: str = ""
+    error_message: str = ""
+    llm_call_log_id: str = ""
+    retry_reason: str = ""
+
+
 class LLMUsage(AIBaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None

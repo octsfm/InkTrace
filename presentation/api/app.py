@@ -37,6 +37,7 @@ from presentation.api.routers.v1 import outlines as outlines_v1
 from presentation.api.routers.v1 import sessions as sessions_v1
 from presentation.api.routers.v1 import timeline as timeline_v1
 from presentation.api.routers.v1 import works as works_v1
+from presentation.api.routers.v2.ai import jobs as ai_jobs_v2
 from presentation.api.routers.v2.ai import settings as ai_settings_v2
 from presentation.api.routers.v1.schemas import V1APIError, build_error_response
 
@@ -177,6 +178,7 @@ def create_app() -> FastAPI:
     app.include_router(foreshadows_v1.router)
     app.include_router(characters_v1.router)
     app.include_router(ai_settings_v2.router)
+    app.include_router(ai_jobs_v2.router)
     logger.info("routers registered", extra=build_log_context(event="app_router_registered", module="app", version=APP_VERSION))
 
     @app.exception_handler(FastAPIHTTPException)

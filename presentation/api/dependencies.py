@@ -13,11 +13,13 @@ def warmup_singletons_for_startup() -> None:
 
 from functools import lru_cache
 
+from application.services.ai.ai_job_service import AIJobService
 from application.services.ai.ai_settings_service import AISettingsService
 from application.services.ai.model_router import ModelRouter
 from application.services.ai.provider_registry import ProviderRegistry
 from application.services.ai.security import SettingsCipher
 from infrastructure.ai.providers.fake_provider import FakeLLMProvider
+from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
 from infrastructure.database.repositories.ai.file_llm_call_log_store import FileLLMCallLogStore
 
@@ -25,6 +27,11 @@ from infrastructure.database.repositories.ai.file_llm_call_log_store import File
 @lru_cache(maxsize=1)
 def get_ai_settings_repository() -> FileAISettingsStore:
     return FileAISettingsStore()
+
+
+@lru_cache(maxsize=1)
+def get_ai_job_store() -> FileAIJobStore:
+    return FileAIJobStore()
 
 
 @lru_cache(maxsize=1)
@@ -58,4 +65,14 @@ def get_ai_settings_service() -> AISettingsService:
         settings_repository=get_ai_settings_repository(),
         model_router=get_model_router(),
         settings_cipher=get_settings_cipher(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_ai_job_service() -> AIJobService:
+    store = get_ai_job_store()
+    return AIJobService(
+        job_repository=store,
+        step_repository=store,
+        attempt_repository=store,
     )

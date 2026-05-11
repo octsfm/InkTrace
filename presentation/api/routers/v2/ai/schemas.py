@@ -28,3 +28,7 @@ class AISettingsUpdateRequest(V2AIBaseModel):
 
 class ProviderConnectionTestRequest(V2AIBaseModel):
     model_name: str = ""
+
+
+class CancelAIJobRequest(V2AIBaseModel):
+    reason: str = "user_cancelled"
