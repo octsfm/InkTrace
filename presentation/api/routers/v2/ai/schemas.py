@@ -37,3 +37,14 @@ class CancelAIJobRequest(V2AIBaseModel):
 class StartInitializationRequest(V2AIBaseModel):
     work_id: str
     created_by: str = "user_action"
+
+
+class BuildContextPackRequest(V2AIBaseModel):
+    work_id: str
+    chapter_id: str = ""
+    continuation_mode: str = "continue_chapter"
+    user_instruction: str = ""
+    max_context_tokens: int = 4000
+    model_role: str = "writer"
+    allow_degraded: bool = True
+    is_quick_trial: bool = False

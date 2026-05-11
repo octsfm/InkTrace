@@ -354,6 +354,68 @@ class LLMCallLog(AIBaseModel):
     output_schema_key: str = ""
 
 
+class ContextPackStatus(StrEnum):
+    READY = "ready"
+    DEGRADED = "degraded"
+    BLOCKED = "blocked"
+
+
+class ContextItem(AIBaseModel):
+    item_id: str
+    source_type: str
+    source_id: str = ""
+    priority: int = 10
+    content_text: str = ""
+    token_estimate: int = 0
+    required: bool = False
+    included: bool = True
+    trim_reason: str = ""
+    stale_status: str = "fresh"
+    warning: str = ""
+
+
+class ContextPackSnapshot(AIBaseModel):
+    context_pack_id: str
+    work_id: str
+    chapter_id: str = ""
+    source_initialization_id: str = ""
+    source_story_memory_snapshot_id: str = ""
+    source_story_state_id: str = ""
+    status: ContextPackStatus
+    blocked_reason: str = ""
+    degraded_reason: str = ""
+    warnings: list[str] = Field(default_factory=list)
+    vector_recall_status: str = "skipped"
+    context_items: list[ContextItem] = Field(default_factory=list)
+    token_budget: int = 0
+    estimated_token_count: int = 0
+    trimmed_items: list[ContextItem] = Field(default_factory=list)
+    stale: bool = False
+    stale_reason: str = ""
+    source_chapter_versions: dict[str, int] = Field(default_factory=dict)
+    summary: str = ""
+    created_at: str = ""
+
+
+class ContextPackBuildRequest(AIBaseModel):
+    work_id: str
+    chapter_id: str = ""
+    continuation_mode: str = "continue_chapter"
+    user_instruction: str = ""
+    max_context_tokens: int = 4000
+    model_role: str = "writer"
+    request_id: str = ""
+    trace_id: str = ""
+    allow_degraded: bool = True
+    is_quick_trial: bool = False
+
+
+class EmptyVectorRecallResult(AIBaseModel):
+    status: str = "unavailable"
+    items: list[ContextItem] = Field(default_factory=list)
+    error_reason: str = "vector_recall_disabled"
+
+
 def build_default_model_role_mappings() -> dict[str, ModelSelection]:
     return {
         ModelRole.OUTLINE_ANALYZER.value: ModelSelection(provider_name="kimi", model_name="kimi-analysis"),

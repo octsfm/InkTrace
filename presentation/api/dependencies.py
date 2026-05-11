@@ -15,6 +15,7 @@ from functools import lru_cache
 
 from application.services.ai.ai_job_service import AIJobService
 from application.services.ai.ai_settings_service import AISettingsService
+from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.initialization_service import InitializationApplicationService
 from application.services.ai.model_router import ModelRouter
 from application.services.ai.provider_registry import ProviderRegistry
@@ -22,6 +23,7 @@ from application.services.ai.security import SettingsCipher
 from infrastructure.ai.providers.fake_provider import FakeLLMProvider
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
+from infrastructure.database.repositories.ai.file_context_pack_store import FileContextPackStore
 from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
 from infrastructure.database.repositories.ai.file_llm_call_log_store import FileLLMCallLogStore
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
@@ -54,6 +56,11 @@ def get_story_memory_repository() -> FileStoryMemoryStore:
 @lru_cache(maxsize=1)
 def get_story_state_repository() -> FileStoryStateStore:
     return FileStoryStateStore()
+
+
+@lru_cache(maxsize=1)
+def get_context_pack_repository() -> FileContextPackStore:
+    return FileContextPackStore()
 
 
 @lru_cache(maxsize=1)
@@ -126,4 +133,15 @@ def get_initialization_service() -> InitializationApplicationService:
         initialization_repository=get_initialization_repository(),
         story_memory_repository=get_story_memory_repository(),
         story_state_repository=get_story_state_repository(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_context_pack_service() -> ContextPackService:
+    return ContextPackService(
+        chapter_service=get_chapter_service(),
+        initialization_repository=get_initialization_repository(),
+        story_memory_repository=get_story_memory_repository(),
+        story_state_repository=get_story_state_repository(),
+        context_pack_repository=get_context_pack_repository(),
     )
