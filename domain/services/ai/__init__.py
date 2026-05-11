@@ -5,6 +5,7 @@ from domain.services.ai.provider import (
     ProviderConfigurationError,
     ProviderNotFoundError,
 )
+from domain.services.ai.writer import WriterPort
 
 __all__ = [
     "AIInfraError",
@@ -12,4 +13,5 @@ __all__ = [
     "ModelRoleConfigError",
     "ProviderConfigurationError",
     "ProviderNotFoundError",
+    "WriterPort",
 ]

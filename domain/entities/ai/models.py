@@ -415,6 +415,63 @@ class EmptyVectorRecallResult(AIBaseModel):
     error_reason: str = "vector_recall_disabled"
 
 
+class CandidateDraftStatus(StrEnum):
+    GENERATED = "generated"
+    VALIDATION_FAILED = "validation_failed"
+    SAVE_FAILED = "save_failed"
+    SUPERSEDED = "superseded"
+
+
+class CandidateDraftValidationStatus(StrEnum):
+    PASSED = "passed"
+    FAILED = "failed"
+
+
+class WritingTask(AIBaseModel):
+    writing_task_id: str
+    work_id: str
+    target_chapter_id: str
+    continuation_mode: str = "continue_chapter"
+    user_instruction: str = ""
+    model_role: str = ModelRole.WRITER.value
+    created_by: str = "user_action"
+    created_at: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CandidateDraft(AIBaseModel):
+    candidate_draft_id: str
+    work_id: str
+    chapter_id: str
+    source_context_pack_id: str
+    source_job_id: str
+    status: CandidateDraftStatus
+    content: str = ""
+    content_preview: str = ""
+    word_count: int = 0
+    char_count: int = 0
+    validation_status: CandidateDraftValidationStatus = CandidateDraftValidationStatus.PASSED
+    validation_errors: list[str] = Field(default_factory=list)
+    writer_model_role: str = ModelRole.WRITER.value
+    provider_name: str = ""
+    model_name: str = ""
+    created_by: str = "user_action"
+    created_at: str = ""
+    updated_at: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ContinuationResult(AIBaseModel):
+    workflow_id: str
+    job_id: str
+    writing_task_id: str
+    candidate_draft_id: str = ""
+    status: str
+    warnings: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    error_message: str = ""
+
+
 def build_default_model_role_mappings() -> dict[str, ModelSelection]:
     return {
         ModelRole.OUTLINE_ANALYZER.value: ModelSelection(provider_name="kimi", model_name="kimi-analysis"),

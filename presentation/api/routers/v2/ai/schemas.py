@@ -47,3 +47,9 @@ class BuildContextPackRequest(V2AIBaseModel):
     max_context_tokens: int = 4000
     model_role: str = "writer"
     allow_degraded: bool = True
+
+
+class StartContinuationRequest(V2AIBaseModel):
+    work_id: str
+    chapter_id: str
+    user_instruction: str = ""

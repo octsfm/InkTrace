@@ -15,14 +15,17 @@ from functools import lru_cache
 
 from application.services.ai.ai_job_service import AIJobService
 from application.services.ai.ai_settings_service import AISettingsService
+from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
 from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.initialization_service import InitializationApplicationService
 from application.services.ai.model_router import ModelRouter
 from application.services.ai.provider_registry import ProviderRegistry
 from application.services.ai.security import SettingsCipher
 from infrastructure.ai.providers.fake_provider import FakeLLMProvider
+from infrastructure.ai.providers.fake_writer import FakeWriter
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
+from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
 from infrastructure.database.repositories.ai.file_context_pack_store import FileContextPackStore
 from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
 from infrastructure.database.repositories.ai.file_llm_call_log_store import FileLLMCallLogStore
@@ -61,6 +64,11 @@ def get_story_state_repository() -> FileStoryStateStore:
 @lru_cache(maxsize=1)
 def get_context_pack_repository() -> FileContextPackStore:
     return FileContextPackStore()
+
+
+@lru_cache(maxsize=1)
+def get_candidate_draft_repository() -> FileCandidateDraftStore:
+    return FileCandidateDraftStore()
 
 
 @lru_cache(maxsize=1)
@@ -144,4 +152,19 @@ def get_context_pack_service() -> ContextPackService:
         story_memory_repository=get_story_memory_repository(),
         story_state_repository=get_story_state_repository(),
         context_pack_repository=get_context_pack_repository(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_continuation_workflow() -> MinimalContinuationWorkflow:
+    store = get_ai_job_store()
+    return MinimalContinuationWorkflow(
+        work_service=get_work_service(),
+        chapter_service=get_chapter_service(),
+        context_pack_service=get_context_pack_service(),
+        candidate_draft_repository=get_candidate_draft_repository(),
+        writer=FakeWriter(),
+        job_repository=store,
+        step_repository=store,
+        attempt_repository=store,
     )
