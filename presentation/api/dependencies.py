@@ -15,13 +15,20 @@ from functools import lru_cache
 
 from application.services.ai.ai_job_service import AIJobService
 from application.services.ai.ai_settings_service import AISettingsService
+from application.services.ai.initialization_service import InitializationApplicationService
 from application.services.ai.model_router import ModelRouter
 from application.services.ai.provider_registry import ProviderRegistry
 from application.services.ai.security import SettingsCipher
 from infrastructure.ai.providers.fake_provider import FakeLLMProvider
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
+from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
 from infrastructure.database.repositories.ai.file_llm_call_log_store import FileLLMCallLogStore
+from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
+from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
+from application.services.v1.chapter_service import ChapterService
+from application.services.v1.work_service import WorkService
+from infrastructure.database.repositories import ChapterRepo, WorkRepo
 
 
 @lru_cache(maxsize=1)
@@ -32,6 +39,21 @@ def get_ai_settings_repository() -> FileAISettingsStore:
 @lru_cache(maxsize=1)
 def get_ai_job_store() -> FileAIJobStore:
     return FileAIJobStore()
+
+
+@lru_cache(maxsize=1)
+def get_initialization_repository() -> FileInitializationStore:
+    return FileInitializationStore()
+
+
+@lru_cache(maxsize=1)
+def get_story_memory_repository() -> FileStoryMemoryStore:
+    return FileStoryMemoryStore()
+
+
+@lru_cache(maxsize=1)
+def get_story_state_repository() -> FileStoryStateStore:
+    return FileStoryStateStore()
 
 
 @lru_cache(maxsize=1)
@@ -49,6 +71,20 @@ def get_provider_registry() -> ProviderRegistry:
     registry = ProviderRegistry()
     registry.register(FakeLLMProvider())
     return registry
+
+
+@lru_cache(maxsize=1)
+def get_work_service() -> WorkService:
+    work_repo = WorkRepo()
+    chapter_repo = ChapterRepo()
+    return WorkService(work_repo=work_repo, chapter_repo=chapter_repo)
+
+
+@lru_cache(maxsize=1)
+def get_chapter_service() -> ChapterService:
+    work_repo = WorkRepo()
+    chapter_repo = ChapterRepo()
+    return ChapterService(chapter_repo=chapter_repo, work_repo=work_repo)
 
 
 @lru_cache(maxsize=1)
@@ -75,4 +111,19 @@ def get_ai_job_service() -> AIJobService:
         job_repository=store,
         step_repository=store,
         attempt_repository=store,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_initialization_service() -> InitializationApplicationService:
+    store = get_ai_job_store()
+    return InitializationApplicationService(
+        work_service=get_work_service(),
+        chapter_service=get_chapter_service(),
+        job_repository=store,
+        step_repository=store,
+        attempt_repository=store,
+        initialization_repository=get_initialization_repository(),
+        story_memory_repository=get_story_memory_repository(),
+        story_state_repository=get_story_state_repository(),
     )

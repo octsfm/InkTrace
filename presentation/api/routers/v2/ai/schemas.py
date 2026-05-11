@@ -32,3 +32,8 @@ class ProviderConnectionTestRequest(V2AIBaseModel):
 
 class CancelAIJobRequest(V2AIBaseModel):
     reason: str = "user_cancelled"
+
+
+class StartInitializationRequest(V2AIBaseModel):
+    work_id: str
+    created_by: str = "user_action"

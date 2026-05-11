@@ -170,6 +170,120 @@ class AIJobAttempt(AIBaseModel):
     retry_reason: str = ""
 
 
+class InitializationStatus(StrEnum):
+    NOT_STARTED = "not_started"
+    OUTLINE_ANALYZING = "outline_analyzing"
+    MANUSCRIPT_ANALYZING = "manuscript_analyzing"
+    MEMORY_BUILDING = "memory_building"
+    STATE_BUILDING = "state_building"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    STALE = "stale"
+
+
+class InitializationCompletionStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+    PARTIAL_SUCCESS = "partial_success"
+    FAILED = "failed"
+    IGNORED = "ignored"
+
+
+class ChapterAnalysisStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    EMPTY = "empty"
+
+
+class OutlineAnalysisResult(AIBaseModel):
+    work_id: str
+    title: str = ""
+    chapter_order: list[str] = Field(default_factory=list)
+    chapter_titles: list[str] = Field(default_factory=list)
+    global_summary: str = ""
+    genre: str = ""
+    tone: str = ""
+    issues: list[str] = Field(default_factory=list)
+    outline_empty: bool = True
+
+
+class ChapterAnalysisResult(AIBaseModel):
+    chapter_id: str
+    chapter_title: str = ""
+    chapter_version: int = 1
+    status: ChapterAnalysisStatus
+    summary: str = ""
+    characters: list[str] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    plot_points: list[str] = Field(default_factory=list)
+    unresolved_threads: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    error_message: str = ""
+    is_empty: bool = False
+    analyzed_at: str = ""
+
+
+class StoryMemorySnapshot(AIBaseModel):
+    snapshot_id: str
+    work_id: str
+    source_initialization_id: str
+    source_job_id: str
+    source_chapter_ids: list[str] = Field(default_factory=list)
+    source_chapter_versions: dict[str, int] = Field(default_factory=dict)
+    global_summary: str = ""
+    chapter_summaries: list[dict[str, str]] = Field(default_factory=list)
+    characters: list[str] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    plot_threads: list[str] = Field(default_factory=list)
+    stale_status: str = "fresh"
+    stale_reason: str = ""
+    created_at: str = ""
+
+
+class StoryStateSnapshot(AIBaseModel):
+    story_state_id: str
+    work_id: str
+    source_initialization_id: str
+    source_job_id: str
+    latest_chapter_id: str = ""
+    latest_chapter_version: int = 0
+    current_position_summary: str = ""
+    active_characters: list[str] = Field(default_factory=list)
+    active_locations: list[str] = Field(default_factory=list)
+    unresolved_threads: list[str] = Field(default_factory=list)
+    continuity_notes: list[str] = Field(default_factory=list)
+    source_snapshot_id: str = ""
+    stale_status: str = "fresh"
+    stale_reason: str = ""
+    created_at: str = ""
+
+
+class InitializationRecord(AIBaseModel):
+    initialization_id: str
+    work_id: str
+    job_id: str
+    status: InitializationStatus
+    completion_status: InitializationCompletionStatus = InitializationCompletionStatus.FAILED
+    analyzed_chapter_count: int = 0
+    total_confirmed_chapter_count: int = 0
+    skipped_chapter_count: int = 0
+    empty_chapter_count: int = 0
+    failed_chapter_count: int = 0
+    partial_success_reason: str = ""
+    story_memory_snapshot_id: str = ""
+    story_state_snapshot_id: str = ""
+    error_code: str = ""
+    error_message: str = ""
+    stale: bool = False
+    stale_reason: str = ""
+    source_chapter_versions: dict[str, int] = Field(default_factory=dict)
+    outline_analysis: OutlineAnalysisResult | None = None
+    chapter_results: list[ChapterAnalysisResult] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+    finalized_at: str = ""
+
+
 class LLMUsage(AIBaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
