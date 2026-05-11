@@ -47,4 +47,3 @@ class BuildContextPackRequest(V2AIBaseModel):
     max_context_tokens: int = 4000
     model_role: str = "writer"
     allow_degraded: bool = True
-    is_quick_trial: bool = False

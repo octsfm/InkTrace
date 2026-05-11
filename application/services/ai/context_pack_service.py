@@ -18,17 +18,16 @@ from domain.repositories.ai.story_state_repository import StoryStateRepository
 
 
 class ContextPackService:
-    PRIORITY_SYSTEM_POLICY = 1
-    PRIORITY_USER_INSTRUCTION = 2
-    PRIORITY_STORY_STATE = 3
-    PRIORITY_CURRENT_CHAPTER = 4
-    PRIORITY_STORY_MEMORY = 5
-    PRIORITY_RECENT_CHAPTER_SUMMARY = 6
-    PRIORITY_CHARACTER = 7
-    PRIORITY_LOCATION = 8
-    PRIORITY_PLOT_THREAD = 9
-    PRIORITY_CONTINUITY_NOTE = 10
-    PRIORITY_VECTOR_RECALL = 11
+    PRIORITY_USER_INSTRUCTION = 1
+    PRIORITY_STORY_STATE = 2
+    PRIORITY_CURRENT_CHAPTER = 3
+    PRIORITY_STORY_MEMORY = 4
+    PRIORITY_RECENT_CHAPTER_SUMMARY = 5
+    PRIORITY_CHARACTER = 6
+    PRIORITY_LOCATION = 7
+    PRIORITY_PLOT_THREAD = 8
+    PRIORITY_CONTINUITY_NOTE = 9
+    PRIORITY_VECTOR_RECALL = 10
 
     def __init__(
         self,
@@ -52,63 +51,56 @@ class ContextPackService:
         initialization = self._initialization_repository.get_latest_by_work(request.work_id)
 
         # ---------- blocked checks ----------
-        if not request.is_quick_trial:
-            if initialization is None or initialization.status.value in ("not_started", "failed", "cancelled"):
-                return ContextPackSnapshot(
-                    context_pack_id=pack_id,
-                    work_id=request.work_id,
-                    chapter_id=request.chapter_id,
-                    status=ContextPackStatus.BLOCKED,
-                    blocked_reason="initialization_not_completed",
-                    warnings=["initialization_not_completed"],
-                    token_budget=request.max_context_tokens,
-                    created_at=now,
-                )
+        if initialization is None or initialization.status.value in ("not_started", "failed", "cancelled"):
+            return ContextPackSnapshot(
+                context_pack_id=pack_id,
+                work_id=request.work_id,
+                chapter_id=request.chapter_id,
+                status=ContextPackStatus.BLOCKED,
+                blocked_reason="initialization_not_completed",
+                warnings=["initialization_not_completed"],
+                token_budget=request.max_context_tokens,
+                created_at=now,
+            )
 
         story_memory = self._story_memory_repository.get_latest_snapshot_by_work(request.work_id)
         story_state = self._story_state_repository.get_latest_analysis_baseline_by_work(request.work_id)
 
-        if not request.is_quick_trial:
-            if story_memory is None:
-                return ContextPackSnapshot(
-                    context_pack_id=pack_id,
-                    work_id=request.work_id,
-                    chapter_id=request.chapter_id,
-                    status=ContextPackStatus.BLOCKED,
-                    blocked_reason="story_memory_missing",
-                    warnings=["story_memory_missing"],
-                    token_budget=request.max_context_tokens,
-                    created_at=now,
-                )
-            if story_state is None:
-                return ContextPackSnapshot(
-                    context_pack_id=pack_id,
-                    work_id=request.work_id,
-                    chapter_id=request.chapter_id,
-                    status=ContextPackStatus.BLOCKED,
-                    blocked_reason="story_state_missing",
-                    warnings=["story_state_missing"],
-                    token_budget=request.max_context_tokens,
-                    created_at=now,
-                )
+        if story_memory is None:
+            return ContextPackSnapshot(
+                context_pack_id=pack_id,
+                work_id=request.work_id,
+                chapter_id=request.chapter_id,
+                status=ContextPackStatus.BLOCKED,
+                blocked_reason="story_memory_missing",
+                warnings=["story_memory_missing"],
+                token_budget=request.max_context_tokens,
+                created_at=now,
+            )
+        if story_state is None:
+            return ContextPackSnapshot(
+                context_pack_id=pack_id,
+                work_id=request.work_id,
+                chapter_id=request.chapter_id,
+                status=ContextPackStatus.BLOCKED,
+                blocked_reason="story_state_missing",
+                warnings=["story_state_missing"],
+                token_budget=request.max_context_tokens,
+                created_at=now,
+            )
 
         # ---------- stale checks ----------
         stale = False
         stale_reason_parts: list[str] = []
-        if request.is_quick_trial:
-            stale = bool(initialization and (initialization.stale or initialization.status.value == "stale"))
-            if stale:
-                stale_reason_parts.append("stale_initialization")
-        else:
-            if initialization and (initialization.stale or initialization.status.value == "stale"):
-                stale = True
-                stale_reason_parts.append(initialization.stale_reason or "initialization_stale")
-                if story_memory and story_memory.stale_status == "stale":
-                    stale_reason_parts.append("story_memory_stale")
-                if story_state and story_state.stale_status == "stale":
-                    stale_reason_parts.append("story_state_stale")
+        if initialization and (initialization.stale or initialization.status.value == "stale"):
+            stale = True
+            stale_reason_parts.append(initialization.stale_reason or "initialization_stale")
+            if story_memory and story_memory.stale_status == "stale":
+                stale_reason_parts.append("story_memory_stale")
+            if story_state and story_state.stale_status == "stale":
+                stale_reason_parts.append("story_state_stale")
 
-        if stale and not request.is_quick_trial:
+        if stale:
             return ContextPackSnapshot(
                 context_pack_id=pack_id,
                 work_id=request.work_id,
@@ -132,16 +124,6 @@ class ContextPackService:
 
         if initialization:
             source_chapter_versions = dict(initialization.source_chapter_versions)
-
-        # system_policy
-        items.append(ContextItem(
-            item_id=f"{pack_id}_policy",
-            source_type="system_policy",
-            priority=self.PRIORITY_SYSTEM_POLICY,
-            content_text="你是一位专业的小说写作助手。请根据提供的上下文和用户指令，生成高质量的小说正文续写内容。",
-            token_estimate=self._estimate_tokens("你是一位专业的小说写作助手。请根据提供的上下文和用户指令，生成高质量的小说正文续写内容。"),
-            required=True,
-        ))
 
         # user_instruction
         if request.user_instruction:
@@ -187,19 +169,16 @@ class ContextPackService:
         elif request.chapter_id:
             chapters_list = self._chapter_service.list_chapters(request.work_id)
             if not chapters_list:
-                if request.is_quick_trial:
-                    degraded_reason_parts.append("no_confirmed_chapters")
-                else:
-                    return ContextPackSnapshot(
-                        context_pack_id=pack_id,
-                        work_id=request.work_id,
-                        chapter_id=request.chapter_id,
-                        status=ContextPackStatus.BLOCKED,
-                        blocked_reason="no_confirmed_chapters",
-                        warnings=["no_confirmed_chapters"],
-                        token_budget=request.max_context_tokens,
-                        created_at=now,
-                    )
+                return ContextPackSnapshot(
+                    context_pack_id=pack_id,
+                    work_id=request.work_id,
+                    chapter_id=request.chapter_id,
+                    status=ContextPackStatus.BLOCKED,
+                    blocked_reason="no_confirmed_chapters",
+                    warnings=["no_confirmed_chapters"],
+                    token_budget=request.max_context_tokens,
+                    created_at=now,
+                )
 
         # story_memory
         if story_memory:
@@ -345,10 +324,6 @@ class ContextPackService:
         else:
             status = ContextPackStatus.READY
 
-        if request.is_quick_trial:
-            degraded_reason_parts.append("quick_trial_context")
-            status = ContextPackStatus.DEGRADED
-
         summary_parts = [item.content_text[:100] for item in included if item.included and item.content_text]
         return ContextPackSnapshot(
             context_pack_id=pack_id,
@@ -389,16 +364,15 @@ class ContextPackService:
     def evaluate_readiness(self, work_id: str, chapter_id: str = "") -> dict[str, object]:
         request = ContextPackBuildRequest(work_id=work_id, chapter_id=chapter_id)
         snapshot = self.build(request)
-        saved = self._context_pack_repository.save(snapshot)
         return {
-            "context_pack_id": saved.context_pack_id,
-            "status": saved.status.value,
-            "blocked_reason": saved.blocked_reason,
-            "degraded_reason": saved.degraded_reason,
-            "warnings": saved.warnings,
-            "estimated_token_count": saved.estimated_token_count,
-            "stale": saved.stale,
-            "stale_reason": saved.stale_reason,
+            "context_pack_id": snapshot.context_pack_id,
+            "status": snapshot.status.value,
+            "blocked_reason": snapshot.blocked_reason,
+            "degraded_reason": snapshot.degraded_reason,
+            "warnings": snapshot.warnings,
+            "estimated_token_count": snapshot.estimated_token_count,
+            "stale": snapshot.stale,
+            "stale_reason": snapshot.stale_reason,
         }
 
     def _estimate_tokens(self, text: str) -> int:

@@ -407,7 +407,6 @@ class ContextPackBuildRequest(AIBaseModel):
     request_id: str = ""
     trace_id: str = ""
     allow_degraded: bool = True
-    is_quick_trial: bool = False
 
 
 class EmptyVectorRecallResult(AIBaseModel):

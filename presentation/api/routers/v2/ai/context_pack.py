@@ -95,10 +95,15 @@ def build_context_pack(payload: BuildReq, request: Request):
             request_id=getattr(request.state, "request_id", ""),
             trace_id=_trace_id(request),
             allow_degraded=payload.allow_degraded,
-            is_quick_trial=payload.is_quick_trial,
         )
         snapshot = service.build_and_save(req)
-        return _success(request, data=_serialize_context_pack(snapshot))
+        return _success(
+            request,
+            data={
+                "context_pack_id": snapshot.context_pack_id,
+                "status": snapshot.status.value,
+            },
+        )
     except ValueError as exc:
         return _error(request, error_code=str(exc), status_code=400)
     except Exception as exc:

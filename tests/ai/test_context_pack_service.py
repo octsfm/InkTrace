@@ -57,6 +57,7 @@ def test_context_pack_ready_with_story_memory_and_state() -> None:
     assert any(item.source_type == "story_memory" for item in snapshot.context_items)
     assert any(item.source_type == "current_chapter" for item in snapshot.context_items)
     assert any(item.source_type == "vector_recall" and not item.included for item in snapshot.context_items)
+    assert not any(item.source_type == "system_policy" for item in snapshot.context_items)
     assert snapshot.vector_recall_status == "skipped"
 
 
@@ -136,18 +137,20 @@ def test_context_pack_trims_items_when_over_budget() -> None:
         assert len(snapshot.context_items) > 0
 
 
-def test_context_pack_quick_trial_bypasses_initialization_requirement() -> None:
-    cp_service, _, work_service, chapter_service = _build_services()
-    work = work_service.create_work("试写作品", "作者")
+def test_context_pack_readiness_does_not_persist_snapshot() -> None:
+    cp_service, init_service, work_service, chapter_service = _build_services()
+    work = work_service.create_work("只读就绪性作品", "作者")
     chapter = chapter_service.list_chapters(work.id)[0]
-    chapter_service.update_chapter(chapter.id.value, title="试写章节", content="陆川在档案馆里发现旧地图。", expected_version=1)
+    chapter_service.update_chapter(chapter.id.value, title="第一章", content="陆川在档案馆里发现旧地图。", expected_version=1)
 
-    request = ContextPackBuildRequest(work_id=work.id, chapter_id=chapter.id.value, is_quick_trial=True, user_instruction="试试看")
-    snapshot = cp_service.build_and_save(request)
+    init_service.start_initialization(work.id, created_by="user_action")
 
-    assert snapshot.status != ContextPackStatus.BLOCKED
-    assert "quick_trial_context" in snapshot.degraded_reason or any("quick_trial_context" in warning for warning in snapshot.warnings)
-    assert snapshot.status == ContextPackStatus.DEGRADED
+    assert cp_service.list_by_work(work.id) == []
+
+    readiness = cp_service.evaluate_readiness(work.id, chapter_id=chapter.id.value)
+
+    assert readiness["status"] in {"ready", "degraded"}
+    assert cp_service.list_by_work(work.id) == []
 
 
 def test_context_pack_evaluate_readiness_returns_status() -> None:

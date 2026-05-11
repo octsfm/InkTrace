@@ -38,9 +38,11 @@ def test_context_pack_api_builds_and_returns_snapshot() -> None:
     build_payload = build_response.json()
     cp_id = build_payload["data"]["context_pack_id"]
     assert cp_id.startswith("cp_")
+    assert build_payload["data"] == {
+        "context_pack_id": cp_id,
+        "status": build_payload["data"]["status"],
+    }
     assert build_payload["data"]["status"] in {"ready", "degraded"}
-    assert "full_text" not in build_payload["data"]
-    assert "prompt" not in build_payload["data"]
 
     get_response = client.get(f"/api/v2/ai/context-packs/{cp_id}")
     assert get_response.status_code == 200
@@ -85,6 +87,26 @@ def test_context_pack_api_does_not_expose_full_chapter_text() -> None:
     assert build_response.status_code == 200
     payload = build_response.json()
 
-    for item in payload["data"]["context_items"]:
+    cp_id = payload["data"]["context_pack_id"]
+    get_response = client.get(f"/api/v2/ai/context-packs/{cp_id}")
+    assert get_response.status_code == 200
+    get_payload = get_response.json()
+
+    for item in get_payload["data"]["context_items"]:
         text = item.get("content_text", "") or ""
         assert len(text) <= 200, f"content_text too long: {len(text)} chars"
+
+
+def test_context_pack_api_rejects_quick_trial_field() -> None:
+    work_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v2/ai/context-packs",
+        json={
+            "work_id": work_id,
+            "is_quick_trial": True,
+        },
+    )
+
+    assert response.status_code == 422
