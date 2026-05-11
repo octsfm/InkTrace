@@ -1,0 +1,8 @@
+{
+  "prompt_key": "provider_connection_test_p0",
+  "prompt_version": "v1",
+  "model_role": "reviewer",
+  "output_schema_key": "provider_connection_result",
+  "template_text": "Ping provider {provider_name} with model {model_name} and return a short connection summary.",
+  "enabled": true
+}

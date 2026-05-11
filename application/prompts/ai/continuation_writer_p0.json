@@ -1,0 +1,8 @@
+{
+  "prompt_key": "continuation_writer_p0",
+  "prompt_version": "v1",
+  "model_role": "writer",
+  "output_schema_key": "plain_text",
+  "template_text": "Continue the chapter with the following user goal: {goal}",
+  "enabled": true
+}
