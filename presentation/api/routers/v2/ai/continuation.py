@@ -6,7 +6,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from presentation.api import dependencies
-from presentation.api.routers.v2.ai.schemas import StartContinuationRequest
+from presentation.api.routers.v2.ai.schemas import (
+    AcceptCandidateDraftRequest,
+    ApplyCandidateDraftRequest,
+    RejectCandidateDraftRequest,
+    StartContinuationRequest,
+)
 
 router = APIRouter(tags=["v2-ai-continuation"])
 
@@ -70,6 +75,16 @@ def _serialize_candidate_detail(draft) -> dict[str, object]:
     return payload
 
 
+def _candidate_error_status(error_code: str) -> int:
+    if error_code in {"candidate_draft_not_found", "chapter_not_found", "work_not_found"}:
+        return 404
+    if error_code in {"user_confirmation_required"}:
+        return 403
+    if error_code in {"chapter_version_conflict"}:
+        return 409
+    return 400
+
+
 @router.post("/api/v2/ai/continuations")
 def start_continuation(payload: StartContinuationRequest, request: Request):
     workflow = dependencies.get_continuation_workflow()
@@ -116,3 +131,53 @@ def get_candidate_draft(candidate_draft_id: str, request: Request):
     except ValueError as exc:
         return _error(request, error_code=str(exc), status_code=404)
     return _success(request, data=_serialize_candidate_detail(draft))
+
+
+@router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/accept")
+def accept_candidate_draft(candidate_draft_id: str, payload: AcceptCandidateDraftRequest, request: Request):
+    service = dependencies.get_candidate_review_service()
+    try:
+        draft = service.accept_candidate(
+            candidate_draft_id,
+            user_id=payload.user_id,
+            user_action=payload.user_action,
+        )
+    except ValueError as exc:
+        error_code = str(exc)
+        return _error(request, error_code=error_code, status_code=_candidate_error_status(error_code))
+    return _success(request, data=_serialize_candidate_detail(draft))
+
+
+@router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/reject")
+def reject_candidate_draft(candidate_draft_id: str, payload: RejectCandidateDraftRequest, request: Request):
+    service = dependencies.get_candidate_review_service()
+    try:
+        draft = service.reject_candidate(
+            candidate_draft_id,
+            user_id=payload.user_id,
+            reason=payload.reason,
+            user_action=payload.user_action,
+        )
+    except ValueError as exc:
+        error_code = str(exc)
+        return _error(request, error_code=error_code, status_code=_candidate_error_status(error_code))
+    return _success(request, data=_serialize_candidate_detail(draft))
+
+
+@router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/apply")
+def apply_candidate_draft(candidate_draft_id: str, payload: ApplyCandidateDraftRequest, request: Request):
+    service = dependencies.get_candidate_review_service()
+    try:
+        result = service.apply_candidate_to_draft(
+            candidate_draft_id,
+            user_id=payload.user_id,
+            expected_chapter_version=payload.expected_chapter_version,
+            user_action=payload.user_action,
+            apply_mode=payload.apply_mode,
+            selection_range=payload.selection_range,
+            cursor_position=payload.cursor_position,
+        )
+    except ValueError as exc:
+        error_code = str(exc)
+        return _error(request, error_code=error_code, status_code=_candidate_error_status(error_code))
+    return _success(request, data=result)

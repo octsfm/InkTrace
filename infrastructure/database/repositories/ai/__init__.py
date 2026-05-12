@@ -1,3 +1,4 @@
+from infrastructure.database.repositories.ai.file_ai_review_store import FileAIReviewStore
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
@@ -8,6 +9,7 @@ from infrastructure.database.repositories.ai.file_story_memory_store import File
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 
 __all__ = [
+    "FileAIReviewStore",
     "FileAIJobStore",
     "FileAISettingsStore",
     "FileCandidateDraftStore",

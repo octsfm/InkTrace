@@ -53,3 +53,39 @@ class StartContinuationRequest(V2AIBaseModel):
     work_id: str
     chapter_id: str
     user_instruction: str = ""
+
+
+class QuickTrialRunRequest(V2AIBaseModel):
+    model_role: str = ""
+    provider_name: str = ""
+    model_name: str = ""
+    input_text: str
+    system_prompt: str = ""
+    output_schema_key: str = "plain_text"
+    max_output_chars: int = 2000
+    created_by: str = "user_action"
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class AcceptCandidateDraftRequest(V2AIBaseModel):
+    user_action: bool = False
+    user_id: str = ""
+
+
+class RejectCandidateDraftRequest(V2AIBaseModel):
+    user_action: bool = False
+    user_id: str = ""
+    reason: str = ""
+
+
+class ApplyCandidateDraftRequest(V2AIBaseModel):
+    user_action: bool = False
+    user_id: str = ""
+    expected_chapter_version: int | None = None
+    apply_mode: str = "append_to_chapter_end"
+    selection_range: list[int] | None = None
+    cursor_position: int | None = None
+
+
+class ReviewCandidateDraftRequest(V2AIBaseModel):
+    user_instruction: str = ""

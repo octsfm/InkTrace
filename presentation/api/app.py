@@ -41,6 +41,8 @@ from presentation.api.routers.v2.ai import continuation as ai_continuation_v2
 from presentation.api.routers.v2.ai import context_pack as ai_context_pack_v2
 from presentation.api.routers.v2.ai import initialization as ai_initialization_v2
 from presentation.api.routers.v2.ai import jobs as ai_jobs_v2
+from presentation.api.routers.v2.ai import quick_trial as ai_quick_trial_v2
+from presentation.api.routers.v2.ai import review as ai_review_v2
 from presentation.api.routers.v2.ai import settings as ai_settings_v2
 from presentation.api.routers.v1.schemas import V1APIError, build_error_response
 
@@ -185,6 +187,8 @@ def create_app() -> FastAPI:
     app.include_router(ai_initialization_v2.router)
     app.include_router(ai_context_pack_v2.router)
     app.include_router(ai_continuation_v2.router)
+    app.include_router(ai_quick_trial_v2.router)
+    app.include_router(ai_review_v2.router)
     logger.info("routers registered", extra=build_log_context(event="app_router_registered", module="app", version=APP_VERSION))
 
     @app.exception_handler(FastAPIHTTPException)

@@ -417,6 +417,10 @@ class EmptyVectorRecallResult(AIBaseModel):
 
 class CandidateDraftStatus(StrEnum):
     GENERATED = "generated"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    APPLIED = "applied"
+    APPLY_FAILED = "apply_failed"
     VALIDATION_FAILED = "validation_failed"
     SAVE_FAILED = "save_failed"
     SUPERSEDED = "superseded"
@@ -470,6 +474,92 @@ class ContinuationResult(AIBaseModel):
     warnings: list[str] = Field(default_factory=list)
     error_code: str = ""
     error_message: str = ""
+
+
+class QuickTrialRequest(AIBaseModel):
+    trial_id: str = ""
+    model_role: str = ""
+    provider_name: str = ""
+    model_name: str = ""
+    input_text: str = ""
+    system_prompt: str = ""
+    output_schema_key: str = "plain_text"
+    max_output_chars: int = 2000
+    created_by: str = "user_action"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class QuickTrialResult(AIBaseModel):
+    trial_id: str
+    status: str
+    output_text: str = ""
+    output_preview: str = ""
+    validation_status: str
+    validation_errors: list[str] = Field(default_factory=list)
+    provider_name: str = ""
+    model_name: str = ""
+    model_role: str = ""
+    request_id: str = ""
+    created_at: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AIReviewTargetType(StrEnum):
+    CANDIDATE_DRAFT = "candidate_draft"
+    CHAPTER_DRAFT = "chapter_draft"
+
+
+class AIReviewStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class AIReviewRiskLevel(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ReviewIssue(AIBaseModel):
+    issue_id: str
+    severity: str = "medium"
+    category: str = "consistency"
+    message: str
+    suggestion: str = ""
+    source_ref: str = ""
+
+
+class AIReviewRequest(AIBaseModel):
+    review_id: str = ""
+    work_id: str
+    chapter_id: str
+    candidate_draft_id: str = ""
+    review_target_type: AIReviewTargetType
+    review_target_ref: str
+    review_mode: str = "candidate_draft_review"
+    created_by: str = "user_action"
+    user_instruction: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AIReviewResult(AIBaseModel):
+    review_id: str
+    work_id: str
+    chapter_id: str
+    candidate_draft_id: str = ""
+    status: AIReviewStatus
+    summary: str = ""
+    issues: list[ReviewIssue] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+    risk_level: AIReviewRiskLevel = AIReviewRiskLevel.LOW
+    consistency_notes: list[str] = Field(default_factory=list)
+    style_notes: list[str] = Field(default_factory=list)
+    logic_notes: list[str] = Field(default_factory=list)
+    reviewer_model_role: str = ModelRole.REVIEWER.value
+    provider_name: str = ""
+    model_name: str = ""
+    created_at: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 def build_default_model_role_mappings() -> dict[str, ModelSelection]:

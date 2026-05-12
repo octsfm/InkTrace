@@ -1,3 +1,4 @@
+from domain.repositories.ai.ai_review_repository import AIReviewRepository
 from domain.repositories.ai.ai_job_attempt_repository import AIJobAttemptRepository
 from domain.repositories.ai.ai_job_repository import AIJobRepository
 from domain.repositories.ai.ai_job_step_repository import AIJobStepRepository
@@ -10,6 +11,7 @@ from domain.repositories.ai.story_memory_repository import StoryMemoryRepository
 from domain.repositories.ai.story_state_repository import StoryStateRepository
 
 __all__ = [
+    "AIReviewRepository",
     "AIJobAttemptRepository",
     "AIJobRepository",
     "AIJobStepRepository",

@@ -14,15 +14,20 @@ def warmup_singletons_for_startup() -> None:
 from functools import lru_cache
 
 from application.services.ai.ai_job_service import AIJobService
+from application.services.ai.ai_review_service import AIReviewApplicationService
 from application.services.ai.ai_settings_service import AISettingsService
+from application.services.ai.candidate_review_service import CandidateReviewService
 from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
 from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.initialization_service import InitializationApplicationService
 from application.services.ai.model_router import ModelRouter
 from application.services.ai.provider_registry import ProviderRegistry
+from application.services.ai.quick_trial_service import QuickTrialApplicationService
 from application.services.ai.security import SettingsCipher
 from infrastructure.ai.providers.fake_provider import FakeLLMProvider
+from infrastructure.ai.providers.fake_reviewer import FakeReviewer
 from infrastructure.ai.providers.fake_writer import FakeWriter
+from infrastructure.database.repositories.ai.file_ai_review_store import FileAIReviewStore
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
@@ -69,6 +74,11 @@ def get_context_pack_repository() -> FileContextPackStore:
 @lru_cache(maxsize=1)
 def get_candidate_draft_repository() -> FileCandidateDraftStore:
     return FileCandidateDraftStore()
+
+
+@lru_cache(maxsize=1)
+def get_ai_review_repository() -> FileAIReviewStore:
+    return FileAIReviewStore()
 
 
 @lru_cache(maxsize=1)
@@ -156,6 +166,16 @@ def get_context_pack_service() -> ContextPackService:
 
 
 @lru_cache(maxsize=1)
+def get_quick_trial_service() -> QuickTrialApplicationService:
+    return QuickTrialApplicationService(
+        settings_repository=get_ai_settings_repository(),
+        model_router=get_model_router(),
+        provider_registry=get_provider_registry(),
+        llm_call_log_repository=get_llm_call_log_repository(),
+    )
+
+
+@lru_cache(maxsize=1)
 def get_continuation_workflow() -> MinimalContinuationWorkflow:
     store = get_ai_job_store()
     return MinimalContinuationWorkflow(
@@ -167,4 +187,27 @@ def get_continuation_workflow() -> MinimalContinuationWorkflow:
         job_repository=store,
         step_repository=store,
         attempt_repository=store,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_candidate_review_service() -> CandidateReviewService:
+    return CandidateReviewService(
+        candidate_draft_repository=get_candidate_draft_repository(),
+        chapter_service=get_chapter_service(),
+        initialization_service=get_initialization_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_ai_review_service() -> AIReviewApplicationService:
+    return AIReviewApplicationService(
+        work_service=get_work_service(),
+        chapter_service=get_chapter_service(),
+        candidate_draft_repository=get_candidate_draft_repository(),
+        ai_review_repository=get_ai_review_repository(),
+        reviewer=FakeReviewer(),
+        initialization_repository=get_initialization_repository(),
+        story_memory_repository=get_story_memory_repository(),
+        story_state_repository=get_story_state_repository(),
     )
