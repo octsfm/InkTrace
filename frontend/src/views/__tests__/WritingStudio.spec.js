@@ -18,6 +18,22 @@ const mockV1ChaptersReorder = vi.fn()
 const mockV1ChaptersForceOverride = vi.fn()
 const mockV1SessionsGet = vi.fn()
 const mockV1SessionsSave = vi.fn()
+const mockAIGetSettings = vi.fn()
+const mockAITestProvider = vi.fn()
+const mockAIStartInitialization = vi.fn()
+const mockAIGetJob = vi.fn()
+const mockAIGetLatestInitialization = vi.fn()
+const mockAIBuildContextPack = vi.fn()
+const mockAIGetContextPackReadiness = vi.fn()
+const mockAIStartContinuation = vi.fn()
+const mockAIListCandidateDrafts = vi.fn()
+const mockAIGetCandidateDraft = vi.fn()
+const mockAIAcceptCandidateDraft = vi.fn()
+const mockAIRejectCandidateDraft = vi.fn()
+const mockAIApplyCandidateDraft = vi.fn()
+const mockAIRunQuickTrial = vi.fn()
+const mockAIReviewCandidateDraft = vi.fn()
+const mockAIGetAIReview = vi.fn()
 const elMessage = {
   warning: vi.fn(),
   error: vi.fn(),
@@ -55,6 +71,24 @@ vi.mock('@/api', () => ({
   v1SessionsApi: {
     get: mockV1SessionsGet,
     save: mockV1SessionsSave
+  },
+  aiApi: {
+    getAISettings: mockAIGetSettings,
+    testProvider: mockAITestProvider,
+    startInitialization: mockAIStartInitialization,
+    getAIJob: mockAIGetJob,
+    getLatestInitialization: mockAIGetLatestInitialization,
+    buildContextPack: mockAIBuildContextPack,
+    getContextPackReadiness: mockAIGetContextPackReadiness,
+    startContinuation: mockAIStartContinuation,
+    listCandidateDrafts: mockAIListCandidateDrafts,
+    getCandidateDraft: mockAIGetCandidateDraft,
+    acceptCandidateDraft: mockAIAcceptCandidateDraft,
+    rejectCandidateDraft: mockAIRejectCandidateDraft,
+    applyCandidateDraft: mockAIApplyCandidateDraft,
+    runQuickTrial: mockAIRunQuickTrial,
+    reviewCandidateDraft: mockAIReviewCandidateDraft,
+    getAIReview: mockAIGetAIReview
   }
 }))
 
@@ -423,6 +457,48 @@ describe('WritingStudio focus mode', () => {
       configurable: true,
       value: true
     })
+
+    mockAIGetSettings.mockResolvedValue({
+      data: {
+        provider_configs: [],
+        model_role_mappings: {}
+      }
+    })
+    mockAITestProvider.mockResolvedValue({ data: { test_status: 'ok', message: 'ok' } })
+    mockAIStartInitialization.mockResolvedValue({ data: { initialization_id: 'init_1', job_id: 'job_1' } })
+    mockAIGetJob.mockResolvedValue({ data: { job_id: 'job_1', status: 'completed', steps: [] } })
+    mockAIGetLatestInitialization.mockResolvedValue({
+      data: {
+        status: 'completed',
+        analyzed_chapter_count: 0,
+        empty_chapter_count: 0,
+        failed_chapter_count: 0
+      }
+    })
+    mockAIBuildContextPack.mockResolvedValue({ data: { context_pack_id: 'cp_1', status: 'ready' } })
+    mockAIGetContextPackReadiness.mockResolvedValue({
+      data: {
+        status: 'ready',
+        blocked_reason: '',
+        degraded_reason: '',
+        warnings: []
+      }
+    })
+    mockAIStartContinuation.mockResolvedValue({
+      data: {
+        job_id: 'job_2',
+        candidate_draft_id: 'cd_1',
+        status: 'completed_with_candidate'
+      }
+    })
+    mockAIListCandidateDrafts.mockResolvedValue({ data: { items: [] } })
+    mockAIGetCandidateDraft.mockResolvedValue({ data: { candidate_draft_id: 'cd_1', content: '候选稿内容' } })
+    mockAIAcceptCandidateDraft.mockResolvedValue({ data: { status: 'accepted' } })
+    mockAIRejectCandidateDraft.mockResolvedValue({ data: { status: 'rejected' } })
+    mockAIApplyCandidateDraft.mockResolvedValue({ data: { status: 'applied' } })
+    mockAIRunQuickTrial.mockResolvedValue({ data: { status: 'succeeded', output_text: '试跑输出', validation_status: 'passed' } })
+    mockAIReviewCandidateDraft.mockResolvedValue({ data: { review_id: 'rv_1', status: 'succeeded', summary: '审阅完成' } })
+    mockAIGetAIReview.mockResolvedValue({ data: { review_id: 'rv_1', summary: '审阅完成', issues: [], suggestions: [], risk_level: 'low' } })
 
     mockV1WorksGet.mockResolvedValue({
       id: 'work-1',

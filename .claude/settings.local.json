@@ -6,7 +6,8 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(python -m pytest tests/ai/test_quick_trial_service.py tests/ai/test_quick_trial_api.py -v)",
-      "Bash(python -m pytest tests/ai/test_ai_review_service.py tests/ai/test_ai_review_api.py -v)"
+      "Bash(python -m pytest tests/ai/test_ai_review_service.py tests/ai/test_ai_review_api.py -v)",
+      "Bash(npx vitest *)"
     ]
   }
 }

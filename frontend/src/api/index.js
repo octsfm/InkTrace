@@ -206,6 +206,50 @@ export const exportApi = {
   }
 }
 
+// P0 AI (v2) minimal client. Keep it small and only wrap existing backend endpoints.
+export const aiApi = {
+  // Settings / provider
+  getAISettings: () => api.get('/v2/ai/settings'),
+  updateAISettings: (payload) => api.put('/v2/ai/settings', payload),
+  testProvider: (providerName, payload) => api.post(`/v2/ai/settings/providers/${encodeURIComponent(providerName)}/test`, payload),
+
+  // Jobs
+  getAIJob: (jobId) => api.get(`/v2/ai/jobs/${encodeURIComponent(jobId)}`),
+  listAIJobs: (params = {}) => api.get('/v2/ai/jobs', { params }),
+  cancelAIJob: (jobId, payload) => api.post(`/v2/ai/jobs/${encodeURIComponent(jobId)}/cancel`, payload),
+
+  // Initialization
+  startInitialization: (payload) => api.post('/v2/ai/initializations', payload),
+  getLatestInitialization: (workId) => api.get(`/v2/ai/works/${encodeURIComponent(workId)}/initialization/latest`),
+
+  // ContextPack
+  buildContextPack: (payload) => api.post('/v2/ai/context-packs', payload),
+  getLatestContextPack: (workId, chapterId = '') => api.get(
+    `/v2/ai/context-packs/works/${encodeURIComponent(workId)}/latest`,
+    { params: { chapter_id: chapterId } }
+  ),
+  getContextPackReadiness: (workId, chapterId = '') => api.get(
+    `/v2/ai/context-packs/works/${encodeURIComponent(workId)}/readiness`,
+    { params: { chapter_id: chapterId } }
+  ),
+
+  // Continuation / candidates
+  startContinuation: (payload) => api.post('/v2/ai/continuations', payload),
+  listCandidateDrafts: (params = {}) => api.get('/v2/ai/candidate-drafts', { params }),
+  getCandidateDraft: (candidateDraftId) => api.get(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}`),
+  acceptCandidateDraft: (candidateDraftId, payload) => api.post(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/accept`, payload),
+  rejectCandidateDraft: (candidateDraftId, payload) => api.post(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/reject`, payload),
+  applyCandidateDraft: (candidateDraftId, payload) => api.post(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/apply`, payload),
+
+  // Quick Trial
+  runQuickTrial: (payload) => api.post('/v2/ai/quick-trials', payload),
+
+  // AIReview
+  reviewCandidateDraft: (candidateDraftId, payload) => api.post(`/v2/ai/reviews/candidate-drafts/${encodeURIComponent(candidateDraftId)}`, payload),
+  getAIReview: (reviewId) => api.get(`/v2/ai/reviews/${encodeURIComponent(reviewId)}`),
+  listAIReviews: (params = {}) => api.get('/v2/ai/reviews', { params })
+}
+
 export const vectorApi = {
   index: (novelId) => api.post(`/novels/${novelId}/vector/index`),
   status: (novelId) => api.get(`/novels/${novelId}/vector/status`),

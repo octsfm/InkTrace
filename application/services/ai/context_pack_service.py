@@ -127,12 +127,13 @@ class ContextPackService:
 
         # user_instruction
         if request.user_instruction:
+            instruction_text = self._summarize_user_instruction(request.user_instruction)
             items.append(ContextItem(
                 item_id=f"{pack_id}_instruction",
                 source_type="user_instruction",
                 priority=self.PRIORITY_USER_INSTRUCTION,
-                content_text=request.user_instruction,
-                token_estimate=self._estimate_tokens(request.user_instruction),
+                content_text=instruction_text,
+                token_estimate=self._estimate_tokens(instruction_text),
                 required=True,
             ))
 
@@ -156,7 +157,7 @@ class ContextPackService:
         if current_chapter:
             content = getattr(current_chapter, "content", "")
             title = str(getattr(current_chapter, "title", "") or "")
-            chapter_text = f"章节标题: {title}\n正文片段: {self._truncate_text(content, 600)}"
+            chapter_text = self._build_current_chapter_context(title=title, content=content)
             items.append(ContextItem(
                 item_id=f"{pack_id}_chapter",
                 source_type="current_chapter",
@@ -377,6 +378,14 @@ class ContextPackService:
 
     def _estimate_tokens(self, text: str) -> int:
         return max(1, len(re.sub(r"\s+", "", text)) // 2)
+
+    def _summarize_user_instruction(self, text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", text or "").strip()
+        return f"用户续写意图已记录（长度 {len(cleaned)} 字）"
+
+    def _build_current_chapter_context(self, *, title: str, content: str) -> str:
+        cleaned = re.sub(r"\s+", " ", content or "").strip()
+        return f"章节标题: {title}\n正文概况: 已省略原文，仅保留章节定位与长度（{len(cleaned)}字）"
 
     def _truncate_text(self, text: str, max_chars: int) -> str:
         cleaned = re.sub(r"\s+", " ", text or "").strip()

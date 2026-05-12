@@ -139,6 +139,12 @@
                 @scroll-change="handleScrollChange"
               />
             </div>
+            <AIPanel
+              v-show="!isFocusMode"
+              :work-id="workId"
+              :chapter-id="chapterDataStore.activeChapterId"
+              :chapter-version="Number(chapterDataStore.activeChapter?.version || 0)"
+            />
           </div>
         </div>
       </main>
@@ -217,6 +223,7 @@ import { useWritingAssetStore } from '@/stores/writingAsset'
 import { countEffectiveCharacters } from '@/utils/textMetrics'
 import AssetDrawer from '@/components/workspace/AssetDrawer.vue'
 import AssetRail from '@/components/workspace/AssetRail.vue'
+import AIPanel from '@/components/workspace/AIPanel.vue'
 import CharacterPanel from '@/components/workspace/CharacterPanel.vue'
 import ForeshadowPanel from '@/components/workspace/ForeshadowPanel.vue'
 import FocusModeToggle from '@/components/workspace/FocusModeToggle.vue'

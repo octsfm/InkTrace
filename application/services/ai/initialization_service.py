@@ -311,11 +311,17 @@ class InitializationApplicationService:
                 is_empty=True,
                 analyzed_at=self._now(),
             )
-        summary = re.sub(r"\s+", " ", normalized)[:120]
         characters = self._extract_named_tokens(normalized, suffixes=("林", "顾", "沈", "陆", "温", "顾迟", "林舟", "沈砚"))
         locations = self._extract_location_tokens(normalized)
-        plot_points = [summary]
         unresolved = ["pending_follow_up"] if "?" in normalized or "？" in normalized else []
+        summary = self._build_chapter_summary(
+            title=title,
+            normalized=normalized,
+            characters=characters,
+            locations=locations,
+            unresolved=unresolved,
+        )
+        plot_points = [summary]
         return ChapterAnalysisResult(
             chapter_id=chapter_id,
             chapter_title=title,
@@ -328,6 +334,25 @@ class InitializationApplicationService:
             unresolved_threads=unresolved,
             analyzed_at=self._now(),
         )
+
+    def _build_chapter_summary(
+        self,
+        *,
+        title: str,
+        normalized: str,
+        characters: list[str],
+        locations: list[str],
+        unresolved: list[str],
+    ) -> str:
+        parts = [f"{title or '本章'}已完成最小分析"]
+        if characters:
+            parts.append(f"角色:{', '.join(characters[:3])}")
+        if locations:
+            parts.append(f"地点:{', '.join(locations[:2])}")
+        if unresolved:
+            parts.append("存在待跟进线索")
+        parts.append(f"原文长度:{len(normalized)}字")
+        return "；".join(parts)[:120]
 
     def _extract_named_tokens(self, text: str, *, suffixes: tuple[str, ...]) -> list[str]:
         results: list[str] = []
