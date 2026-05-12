@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 from application.services.ai.provider_registry import ProviderRegistry
+from application.services.ai.security import SettingsCipher
 from domain.entities.ai.models import AIProviderConfig, LLMRequest, LLMResponse, ModelSelection
 from domain.repositories.ai.ai_settings_repository import AISettingsRepository
 from domain.services.ai.provider import ModelRoleConfigError, ProviderConfigurationError
 
 
 class ModelRouter:
-    def __init__(self, settings_repository: AISettingsRepository, provider_registry: ProviderRegistry) -> None:
+    def __init__(
+        self,
+        settings_repository: AISettingsRepository,
+        provider_registry: ProviderRegistry,
+        settings_cipher: SettingsCipher | None = None,
+    ) -> None:
         self._settings_repository = settings_repository
         self._provider_registry = provider_registry
+        self._settings_cipher = settings_cipher or SettingsCipher()
 
     def resolve_model(self, model_role: str) -> ModelSelection:
         settings = self._settings_repository.load()
@@ -51,4 +58,11 @@ class ModelRouter:
             raise ProviderConfigurationError("provider_config_missing")
         if not provider_config.enabled:
             raise ProviderConfigurationError("provider_disabled")
+        encrypted_api_key = provider_config.encrypted_api_key
+        if encrypted_api_key:
+            try:
+                decrypted_api_key = self._settings_cipher.decrypt(encrypted_api_key)
+            except Exception as exc:
+                raise ProviderConfigurationError("provider_key_invalid") from exc
+            return provider_config.model_copy(update={"encrypted_api_key": decrypted_api_key})
         return provider_config

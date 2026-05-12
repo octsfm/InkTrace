@@ -25,6 +25,7 @@ from application.services.ai.provider_registry import ProviderRegistry
 from application.services.ai.quick_trial_service import QuickTrialApplicationService
 from application.services.ai.security import SettingsCipher
 from infrastructure.ai.providers.fake_provider import FakeLLMProvider
+from infrastructure.ai.providers.openai_compatible_provider import OpenAICompatibleProvider
 from infrastructure.ai.providers.fake_reviewer import FakeReviewer
 from infrastructure.ai.providers.fake_writer import FakeWriter
 from infrastructure.database.repositories.ai.file_ai_review_store import FileAIReviewStore
@@ -95,6 +96,18 @@ def get_settings_cipher() -> SettingsCipher:
 def get_provider_registry() -> ProviderRegistry:
     registry = ProviderRegistry()
     registry.register(FakeLLMProvider())
+    registry.register(
+        OpenAICompatibleProvider(
+            provider_name="kimi",
+            default_base_url="https://api.moonshot.cn/v1",
+        )
+    )
+    registry.register(
+        OpenAICompatibleProvider(
+            provider_name="deepseek",
+            default_base_url="https://api.deepseek.com/v1",
+        )
+    )
     return registry
 
 
@@ -117,6 +130,7 @@ def get_model_router() -> ModelRouter:
     return ModelRouter(
         settings_repository=get_ai_settings_repository(),
         provider_registry=get_provider_registry(),
+        settings_cipher=get_settings_cipher(),
     )
 
 
