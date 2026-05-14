@@ -94,6 +94,7 @@ def test_ai_settings_provider_test_reports_success_and_failure(monkeypatch, tmp_
     provider = settings.json()["data"]["provider_configs"][0]
     assert provider["last_test_status"] == "failed"
     assert provider["last_test_error_code"] == "model_not_supported"
+    assert provider["last_test_error_message"] == "model_not_supported"
     assert "api_key" not in provider
 
 
@@ -151,7 +152,7 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
     assert continuation_1.status_code == 200
     continuation_data_1 = continuation_1.json()["data"]
     candidate_1 = continuation_data_1["candidate_draft_id"]
-    assert continuation_data_1["status"] == "degraded_completed"
+    assert continuation_data_1["status"] == "pending_review"
 
     candidate_list = client.get("/api/v2/ai/candidate-drafts", params={"work_id": work_id, "chapter_id": chapter_id})
     assert candidate_list.status_code == 200
@@ -172,7 +173,7 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
     )
     assert review_response.status_code == 200
     review_data = review_response.json()["data"]
-    assert review_data["status"] in {"succeeded", "failed"}
+    assert review_data["status"] in {"completed", "completed_with_warnings", "failed", "skipped", "blocked"}
     chapter_after_review = next(item for item in chapter_service.list_chapters(work_id) if item.id.value == chapter_id)
     assert chapter_after_review.content == original_content
 
@@ -203,7 +204,7 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
 
     rejected_apply = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_2}/apply",
-        json={"user_action": True, "user_id": "u1", "expected_chapter_version": chapter_before.version},
+        json={"user_action": True, "user_id": "u1", "expected_chapter_version": chapter_before.version, "idempotency_key": "apply-rejected-e2e"},
     )
     assert rejected_apply.status_code == 400
     assert rejected_apply.json()["error"]["error_code"] == "candidate_already_rejected"
@@ -233,6 +234,7 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
             "user_action": True,
             "user_id": "u1",
             "expected_chapter_version": chapter_before.version,
+            "idempotency_key": "apply-e2e-success",
         },
     )
     assert apply_response.status_code == 200

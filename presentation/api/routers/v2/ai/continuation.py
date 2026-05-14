@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import uuid
-
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from presentation.api import dependencies
+from presentation.api.routers.v2.ai.response_utils import error_response, success_response
 from presentation.api.routers.v2.ai.schemas import (
     AcceptCandidateDraftRequest,
     ApplyCandidateDraftRequest,
@@ -14,36 +13,6 @@ from presentation.api.routers.v2.ai.schemas import (
 )
 
 router = APIRouter(tags=["v2-ai-continuation"])
-
-
-def _trace_id(request: Request) -> str:
-    header_value = request.headers.get("X-Trace-Id", "").strip()
-    return header_value or f"trace_{uuid.uuid4().hex[:12]}"
-
-
-def _success(request: Request, *, data: dict[str, object]) -> dict[str, object]:
-    return {
-        "request_id": getattr(request.state, "request_id", ""),
-        "trace_id": _trace_id(request),
-        "status": "ok",
-        "data": data,
-    }
-
-
-def _error(request: Request, *, error_code: str, status_code: int = 400) -> JSONResponse:
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "request_id": getattr(request.state, "request_id", ""),
-            "trace_id": _trace_id(request),
-            "status": "error",
-            "error": {
-                "error_code": error_code,
-                "safe_message": error_code,
-                "retryable": False,
-            },
-        },
-    )
 
 
 def _serialize_candidate_summary(draft) -> dict[str, object]:
@@ -85,17 +54,26 @@ def _candidate_error_status(error_code: str) -> int:
     return 400
 
 
+def _reject_invalid_caller_type(request: Request, *, caller_type: str) -> JSONResponse | None:
+    if caller_type and caller_type != "user_action":
+        return error_response(request, error_code="caller_type_not_allowed", status_code=403)
+    return None
+
+
 @router.post("/api/v2/ai/continuations")
 def start_continuation(payload: StartContinuationRequest, request: Request):
+    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    if denied is not None:
+        return denied
     workflow = dependencies.get_continuation_workflow()
     try:
         result = workflow.start_continuation(
             payload.work_id,
             payload.chapter_id,
             user_instruction=payload.user_instruction,
-            created_by="user_action",
+            created_by=payload.caller_type or "user_action",
         )
-        return _success(
+        return success_response(
             request,
             data={
                 "workflow_id": result.workflow_id,
@@ -105,12 +83,14 @@ def start_continuation(payload: StartContinuationRequest, request: Request):
                 "status": result.status,
                 "warnings": result.warnings,
                 "error_code": result.error_code,
+                "caller_type": payload.caller_type,
+                "idempotency_key": payload.idempotency_key,
             },
         )
     except ValueError as exc:
         error_code = str(exc)
         status_code = 404 if error_code in {"work_not_found", "chapter_not_found"} else 400
-        return _error(request, error_code=error_code, status_code=status_code)
+        return error_response(request, error_code=error_code, status_code=status_code)
 
 
 @router.get("/api/v2/ai/candidate-drafts")
@@ -119,8 +99,8 @@ def list_candidate_drafts(work_id: str, request: Request, chapter_id: str = ""):
     try:
         drafts = workflow.list_candidate_drafts(work_id, chapter_id=chapter_id or None)
     except ValueError as exc:
-        return _error(request, error_code=str(exc), status_code=400)
-    return _success(request, data={"items": [_serialize_candidate_summary(item) for item in drafts]})
+        return error_response(request, error_code=str(exc), status_code=400)
+    return success_response(request, data={"items": [_serialize_candidate_summary(item) for item in drafts]})
 
 
 @router.get("/api/v2/ai/candidate-drafts/{candidate_draft_id}")
@@ -129,12 +109,15 @@ def get_candidate_draft(candidate_draft_id: str, request: Request):
     try:
         draft = workflow.get_candidate_draft(candidate_draft_id)
     except ValueError as exc:
-        return _error(request, error_code=str(exc), status_code=404)
-    return _success(request, data=_serialize_candidate_detail(draft))
+        return error_response(request, error_code=str(exc), status_code=404)
+    return success_response(request, data=_serialize_candidate_detail(draft))
 
 
 @router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/accept")
 def accept_candidate_draft(candidate_draft_id: str, payload: AcceptCandidateDraftRequest, request: Request):
+    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    if denied is not None:
+        return denied
     service = dependencies.get_candidate_review_service()
     try:
         draft = service.accept_candidate(
@@ -144,12 +127,15 @@ def accept_candidate_draft(candidate_draft_id: str, payload: AcceptCandidateDraf
         )
     except ValueError as exc:
         error_code = str(exc)
-        return _error(request, error_code=error_code, status_code=_candidate_error_status(error_code))
-    return _success(request, data=_serialize_candidate_detail(draft))
+        return error_response(request, error_code=error_code, status_code=_candidate_error_status(error_code))
+    return success_response(request, data=_serialize_candidate_detail(draft))
 
 
 @router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/reject")
 def reject_candidate_draft(candidate_draft_id: str, payload: RejectCandidateDraftRequest, request: Request):
+    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    if denied is not None:
+        return denied
     service = dependencies.get_candidate_review_service()
     try:
         draft = service.reject_candidate(
@@ -160,12 +146,15 @@ def reject_candidate_draft(candidate_draft_id: str, payload: RejectCandidateDraf
         )
     except ValueError as exc:
         error_code = str(exc)
-        return _error(request, error_code=error_code, status_code=_candidate_error_status(error_code))
-    return _success(request, data=_serialize_candidate_detail(draft))
+        return error_response(request, error_code=error_code, status_code=_candidate_error_status(error_code))
+    return success_response(request, data=_serialize_candidate_detail(draft))
 
 
 @router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/apply")
 def apply_candidate_draft(candidate_draft_id: str, payload: ApplyCandidateDraftRequest, request: Request):
+    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    if denied is not None:
+        return denied
     service = dependencies.get_candidate_review_service()
     try:
         result = service.apply_candidate_to_draft(
@@ -176,8 +165,9 @@ def apply_candidate_draft(candidate_draft_id: str, payload: ApplyCandidateDraftR
             apply_mode=payload.apply_mode,
             selection_range=payload.selection_range,
             cursor_position=payload.cursor_position,
+            idempotency_key=payload.idempotency_key,
         )
     except ValueError as exc:
         error_code = str(exc)
-        return _error(request, error_code=error_code, status_code=_candidate_error_status(error_code))
-    return _success(request, data=result)
+        return error_response(request, error_code=error_code, status_code=_candidate_error_status(error_code))
+    return success_response(request, data=result)

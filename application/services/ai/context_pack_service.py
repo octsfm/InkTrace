@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from application.services.v1.chapter_service import ChapterService
@@ -37,12 +38,14 @@ class ContextPackService:
         story_memory_repository: StoryMemoryRepository,
         story_state_repository: StoryStateRepository,
         context_pack_repository: ContextPackRepository,
+        vector_recall_service=None,
     ) -> None:
         self._chapter_service = chapter_service
         self._initialization_repository = initialization_repository
         self._story_memory_repository = story_memory_repository
         self._story_state_repository = story_state_repository
         self._context_pack_repository = context_pack_repository
+        self._vector_recall_service = vector_recall_service
 
     def build(self, request: ContextPackBuildRequest) -> ContextPackSnapshot:
         now = self._now()
@@ -151,6 +154,8 @@ class ContextPackService:
                 stale_status=story_state.stale_status,
             ))
 
+        chapter_text = ""
+
         # current_chapter
         chapters = self._chapter_service.list_chapters(request.work_id)
         current_chapter = next((ch for ch in chapters if getattr(ch, "id", None) and getattr(ch.id, "value", "") == request.chapter_id), None)
@@ -257,18 +262,15 @@ class ContextPackService:
                     required=False,
                 ))
 
-        # ---------- VectorRecall stub ----------
-        items.append(ContextItem(
-            item_id=f"{pack_id}_recall_stub",
-            source_type="vector_recall",
-            priority=self.PRIORITY_VECTOR_RECALL,
-            content_text="",
-            token_estimate=0,
-            required=False,
-            included=False,
-            trim_reason="vector_recall_unavailable",
-        ))
-        degraded_reason_parts.append("vector_recall_unavailable")
+        vector_recall_items, vector_recall_status, vector_recall_warnings = self._build_vector_recall_items(
+            request=request,
+            pack_id=pack_id,
+            chapter_text=chapter_text,
+            story_memory=story_memory,
+            story_state=story_state,
+        )
+        items.extend(vector_recall_items)
+        degraded_reason_parts.extend(vector_recall_warnings)
 
         # ---------- Priority sort ----------
         items.sort(key=lambda item: item.priority)
@@ -290,7 +292,7 @@ class ContextPackService:
                 status=ContextPackStatus.BLOCKED,
                 blocked_reason="required_context_over_budget",
                 warnings=degraded_reason_parts + ["required_context_over_budget"],
-                vector_recall_status="skipped",
+                vector_recall_status=vector_recall_status,
                 context_items=[item.model_copy(update={"included": False, "trim_reason": "required_over_budget"}) for item in items],
                 token_budget=request.max_context_tokens,
                 estimated_token_count=required_tokens,
@@ -337,7 +339,7 @@ class ContextPackService:
             blocked_reason="",
             degraded_reason="; ".join(degraded_reason_parts) if degraded_reason_parts and status == ContextPackStatus.DEGRADED else "",
             warnings=degraded_reason_parts,
-            vector_recall_status="skipped",
+            vector_recall_status=vector_recall_status,
             context_items=included,
             token_budget=request.max_context_tokens,
             estimated_token_count=total_tokens,
@@ -387,9 +389,83 @@ class ContextPackService:
         cleaned = re.sub(r"\s+", " ", content or "").strip()
         return f"章节标题: {title}\n正文概况: 已省略原文，仅保留章节定位与长度（{len(cleaned)}字）"
 
+    def _build_vector_recall_items(
+        self,
+        *,
+        request: ContextPackBuildRequest,
+        pack_id: str,
+        chapter_text: str,
+        story_memory,
+        story_state,
+    ) -> tuple[list[ContextItem], str, list[str]]:
+        if self._vector_recall_service is None:
+            return [], "degraded", ["vector_recall_unavailable"]
+
+        try:
+            query_text = self._build_vector_query_text(request, chapter_text, story_memory, story_state)
+        except Exception:
+            return [], "skipped", ["query_text_build_failed", "rag_skipped"]
+
+        recall_query = _RecallQuery(query_text=query_text, allow_stale=request.allow_stale_vector)
+        try:
+            raw_items = self._vector_recall_service.recall(recall_query)
+        except Exception:
+            return [], "degraded", ["vector_recall_unavailable"]
+
+        recall_items = self._normalize_vector_recall_items(pack_id, raw_items)
+        if not recall_items:
+            return [], "degraded", ["vector_recall_unavailable"]
+        return recall_items, "ready", []
+
+    def _build_vector_query_text(self, request: ContextPackBuildRequest, chapter_text: str, story_memory, story_state) -> str:
+        parts = [
+            str(request.user_instruction or "").strip(),
+            str(story_state.current_position_summary if story_state else "").strip(),
+            str(story_memory.global_summary if story_memory else "").strip(),
+            str(chapter_text or "").strip(),
+        ]
+        query_text = " ".join(part for part in parts if part).strip()
+        if not query_text:
+            raise ValueError("query_text_build_failed")
+        return query_text[:500]
+
+    def _normalize_vector_recall_items(self, pack_id: str, raw_items: object) -> list[ContextItem]:
+        normalized: list[ContextItem] = []
+        for index, raw_item in enumerate(raw_items or []):
+            if isinstance(raw_item, ContextItem):
+                normalized.append(raw_item.model_copy(update={"priority": self.PRIORITY_VECTOR_RECALL}))
+                continue
+            if not isinstance(raw_item, dict):
+                continue
+            content_text = str(raw_item.get("content_text", "") or "").strip()
+            if not content_text:
+                continue
+            normalized.append(
+                ContextItem(
+                    item_id=str(raw_item.get("item_id", f"{pack_id}_recall_{index}")),
+                    source_type="vector_recall",
+                    source_id=str(raw_item.get("source_id", "")),
+                    priority=self.PRIORITY_VECTOR_RECALL,
+                    content_text=content_text[:200],
+                    token_estimate=int(raw_item.get("token_estimate", self._estimate_tokens(content_text))),
+                    required=False,
+                    included=True,
+                    stale_status=str(raw_item.get("stale_status", "fresh")),
+                    warning=str(raw_item.get("warning", "")),
+                    filter_reason=str(raw_item.get("filter_reason", "")),
+                )
+            )
+        return normalized
+
     def _truncate_text(self, text: str, max_chars: int) -> str:
         cleaned = re.sub(r"\s+", " ", text or "").strip()
         return cleaned[:max_chars] + ("..." if len(cleaned) > max_chars else "")
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()
+
+
+@dataclass(slots=True)
+class _RecallQuery:
+    query_text: str
+    allow_stale: bool = False

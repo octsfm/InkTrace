@@ -41,6 +41,9 @@ def test_context_pack_api_builds_and_returns_snapshot() -> None:
     assert build_payload["data"] == {
         "context_pack_id": cp_id,
         "status": build_payload["data"]["status"],
+        "warnings": build_payload["data"]["warnings"],
+        "caller_type": "user_action",
+        "idempotency_key": "",
     }
     assert build_payload["data"]["status"] in {"ready", "degraded"}
 
@@ -91,10 +94,18 @@ def test_context_pack_api_does_not_expose_full_chapter_text() -> None:
     get_response = client.get(f"/api/v2/ai/context-packs/{cp_id}")
     assert get_response.status_code == 200
     get_payload = get_response.json()
+    raw_body = get_response.text
+
+    assert "顾迟在海边灯塔醒来，发现整个世界已不同。" not in raw_body
 
     for item in get_payload["data"]["context_items"]:
-        text = item.get("content_text", "") or ""
-        assert len(text) <= 200, f"content_text too long: {len(text)} chars"
+        assert "content_text" not in item
+        assert "source_id" not in item
+
+    assert "source_story_memory_snapshot_id" not in get_payload["data"]
+    assert "source_story_state_id" not in get_payload["data"]
+    assert "source_chapter_versions" not in get_payload["data"]
+    assert "summary" not in get_payload["data"]
 
 
 def test_context_pack_api_rejects_quick_trial_field() -> None:
@@ -110,3 +121,19 @@ def test_context_pack_api_rejects_quick_trial_field() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_context_pack_api_rejects_non_user_action_caller_type() -> None:
+    work_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v2/ai/context-packs",
+        json={
+            "work_id": work_id,
+            "caller_type": "workflow",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["error_code"] == "caller_type_not_allowed"

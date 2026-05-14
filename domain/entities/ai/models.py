@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AIBaseModel(BaseModel):
@@ -370,6 +370,7 @@ class ContextItem(AIBaseModel):
     required: bool = False
     included: bool = True
     trim_reason: str = ""
+    filter_reason: str = ""
     stale_status: str = "fresh"
     warning: str = ""
 
@@ -407,6 +408,7 @@ class ContextPackBuildRequest(AIBaseModel):
     request_id: str = ""
     trace_id: str = ""
     allow_degraded: bool = True
+    allow_stale_vector: bool = False
 
 
 class EmptyVectorRecallResult(AIBaseModel):
@@ -416,13 +418,11 @@ class EmptyVectorRecallResult(AIBaseModel):
 
 
 class CandidateDraftStatus(StrEnum):
-    GENERATED = "generated"
+    PENDING_REVIEW = "pending_review"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
     APPLIED = "applied"
-    APPLY_FAILED = "apply_failed"
-    VALIDATION_FAILED = "validation_failed"
-    SAVE_FAILED = "save_failed"
+    STALE = "stale"
     SUPERSEDED = "superseded"
 
 
@@ -463,6 +463,15 @@ class CandidateDraft(AIBaseModel):
     created_at: str = ""
     updated_at: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_legacy_status(cls, value: object) -> object:
+        if value == "generated":
+            return CandidateDraftStatus.PENDING_REVIEW
+        if value in {"apply_failed", "validation_failed", "save_failed"}:
+            return CandidateDraftStatus.STALE
+        return value
 
 
 class ContinuationResult(AIBaseModel):
@@ -510,8 +519,11 @@ class AIReviewTargetType(StrEnum):
 
 
 class AIReviewStatus(StrEnum):
-    SUCCEEDED = "succeeded"
+    COMPLETED = "completed"
+    COMPLETED_WITH_WARNINGS = "completed_with_warnings"
     FAILED = "failed"
+    SKIPPED = "skipped"
+    BLOCKED = "blocked"
 
 
 class AIReviewRiskLevel(StrEnum):
@@ -537,6 +549,9 @@ class AIReviewRequest(AIBaseModel):
     review_target_type: AIReviewTargetType
     review_target_ref: str
     review_mode: str = "candidate_draft_review"
+    review_scope: str = "basic_quality+apply_risk"
+    allow_degraded: bool = True
+    idempotency_key: str = ""
     created_by: str = "user_action"
     user_instruction: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -549,6 +564,7 @@ class AIReviewResult(AIBaseModel):
     candidate_draft_id: str = ""
     status: AIReviewStatus
     summary: str = ""
+    warnings: list[str] = Field(default_factory=list)
     issues: list[ReviewIssue] = Field(default_factory=list)
     suggestions: list[str] = Field(default_factory=list)
     risk_level: AIReviewRiskLevel = AIReviewRiskLevel.LOW

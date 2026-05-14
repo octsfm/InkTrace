@@ -1,44 +1,12 @@
 from __future__ import annotations
 
-import uuid
-
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
 
 from presentation.api import dependencies
+from presentation.api.routers.v2.ai.response_utils import error_response, success_response
 from presentation.api.routers.v2.ai.schemas import StartInitializationRequest
 
 router = APIRouter(tags=["v2-ai-initialization"])
-
-
-def _trace_id(request: Request) -> str:
-    header_value = request.headers.get("X-Trace-Id", "").strip()
-    return header_value or f"trace_{uuid.uuid4().hex[:12]}"
-
-
-def _success(request: Request, *, data: dict[str, object]) -> dict[str, object]:
-    return {
-        "request_id": getattr(request.state, "request_id", ""),
-        "trace_id": _trace_id(request),
-        "status": "ok",
-        "data": data,
-    }
-
-
-def _error(request: Request, *, error_code: str, status_code: int = 400) -> JSONResponse:
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "request_id": getattr(request.state, "request_id", ""),
-            "trace_id": _trace_id(request),
-            "status": "error",
-            "error": {
-                "error_code": error_code,
-                "safe_message": error_code,
-                "retryable": False,
-            },
-        },
-    )
 
 
 def _serialize_initialization(item) -> dict[str, object]:
@@ -73,8 +41,8 @@ def start_initialization(payload: StartInitializationRequest, request: Request):
     except ValueError as exc:
         error_code = str(exc)
         status_code = 404 if error_code == "work_not_found" else 400
-        return _error(request, error_code=error_code, status_code=status_code)
-    return _success(request, data=_serialize_initialization(initialization))
+        return error_response(request, error_code=error_code, status_code=status_code)
+    return success_response(request, data=_serialize_initialization(initialization))
 
 
 @router.get("/api/v2/ai/initializations/{initialization_id}")
@@ -83,8 +51,8 @@ def get_initialization(initialization_id: str, request: Request):
     try:
         initialization = service.get_initialization(initialization_id)
     except ValueError as exc:
-        return _error(request, error_code=str(exc), status_code=404)
-    return _success(request, data=_serialize_initialization(initialization))
+        return error_response(request, error_code=str(exc), status_code=404)
+    return success_response(request, data=_serialize_initialization(initialization))
 
 
 @router.get("/api/v2/ai/works/{work_id}/initialization/latest")
@@ -92,8 +60,8 @@ def get_latest_initialization(work_id: str, request: Request):
     service = dependencies.get_initialization_service()
     initialization = service.get_latest_initialization(work_id)
     if initialization is None:
-        return _error(request, error_code="initialization_not_found", status_code=404)
-    return _success(request, data=_serialize_initialization(initialization))
+        return error_response(request, error_code="initialization_not_found", status_code=404)
+    return success_response(request, data=_serialize_initialization(initialization))
 
 
 @router.get("/api/v2/ai/works/{work_id}/story-memory/latest")
@@ -101,8 +69,8 @@ def get_latest_story_memory(work_id: str, request: Request):
     service = dependencies.get_initialization_service()
     snapshot = service.get_latest_story_memory(work_id)
     if snapshot is None:
-        return _error(request, error_code="story_memory_not_found", status_code=404)
-    return _success(
+        return error_response(request, error_code="story_memory_not_found", status_code=404)
+    return success_response(
         request,
         data={
             "snapshot_id": snapshot.snapshot_id,
@@ -128,8 +96,8 @@ def get_latest_story_state(work_id: str, request: Request):
     service = dependencies.get_initialization_service()
     story_state = service.get_latest_story_state(work_id)
     if story_state is None:
-        return _error(request, error_code="story_state_not_found", status_code=404)
-    return _success(
+        return error_response(request, error_code="story_state_not_found", status_code=404)
+    return success_response(
         request,
         data={
             "story_state_id": story_state.story_state_id,

@@ -81,3 +81,21 @@ def test_continuation_api_returns_blocked_when_context_pack_is_blocked() -> None
     assert payload["data"]["status"] == "blocked"
     assert payload["data"]["candidate_draft_id"] == ""
     assert payload["data"]["error_code"] == "context_pack_blocked"
+
+
+def test_continuation_api_rejects_non_user_action_caller_type() -> None:
+    work_id, chapter_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v2/ai/continuations",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "继续写作",
+            "caller_type": "workflow",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["error_code"] == "caller_type_not_allowed"

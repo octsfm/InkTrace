@@ -5,6 +5,7 @@ from pathlib import Path
 from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.initialization_service import InitializationApplicationService
 from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
+from application.services.ai.tool_facade import CoreToolFacade
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
 from domain.entities.ai.models import ContextPackBuildRequest, ContextPackSnapshot, ContextPackStatus
@@ -114,12 +115,16 @@ def test_start_continuation_saves_candidate_draft_when_context_pack_ready(tmp_pa
         )
     )
     candidate_store = FileCandidateDraftStore(tmp_path / "candidate_drafts.json")
-    workflow = MinimalContinuationWorkflow(
-        work_service=work_service,
-        chapter_service=chapter_service,
+    tool_facade = CoreToolFacade(
         context_pack_service=static_context_pack,
         candidate_draft_repository=candidate_store,
         writer=writer,
+    )
+    workflow = MinimalContinuationWorkflow(
+        work_service=work_service,
+        chapter_service=chapter_service,
+        tool_facade=tool_facade,
+        candidate_draft_repository=candidate_store,
         job_repository=job_store,
         step_repository=job_store,
         attempt_repository=job_store,
@@ -130,10 +135,10 @@ def test_start_continuation_saves_candidate_draft_when_context_pack_ready(tmp_pa
     draft = workflow.get_candidate_draft(result.candidate_draft_id)
     chapter_after = chapter_service.list_chapters(work.id)[0]
 
-    assert result.status == "completed_with_candidate"
+    assert result.status == "pending_review"
     assert result.candidate_draft_id.startswith("cd_")
     assert writer.calls == 1
-    assert draft.status == "generated"
+    assert draft.status == "pending_review"
     assert draft.content == writer.output
     assert chapter_after.content == chapter.content
     assert init_service.get_latest_story_memory(work.id).snapshot_id == memory_before.snapshot_id
@@ -156,12 +161,16 @@ def test_start_continuation_allows_degraded_context_pack_and_records_warning(tmp
         )
     )
     candidate_store = FileCandidateDraftStore(tmp_path / "candidate_drafts.json")
-    workflow = MinimalContinuationWorkflow(
-        work_service=work_service,
-        chapter_service=chapter_service,
+    tool_facade = CoreToolFacade(
         context_pack_service=static_context_pack,
         candidate_draft_repository=candidate_store,
         writer=writer,
+    )
+    workflow = MinimalContinuationWorkflow(
+        work_service=work_service,
+        chapter_service=chapter_service,
+        tool_facade=tool_facade,
+        candidate_draft_repository=candidate_store,
         job_repository=job_store,
         step_repository=job_store,
         attempt_repository=job_store,
@@ -170,7 +179,7 @@ def test_start_continuation_allows_degraded_context_pack_and_records_warning(tmp
     result = workflow.start_continuation(work.id, chapter.id.value, user_instruction="继续")
     draft = workflow.get_candidate_draft(result.candidate_draft_id)
 
-    assert result.status == "degraded_completed"
+    assert result.status == "pending_review"
     assert "vector_recall_unavailable" in result.warnings
     assert draft.metadata["context_pack_status"] == "degraded"
     assert draft.metadata["degraded_reason"] == "vector_recall_unavailable"
@@ -191,12 +200,16 @@ def test_start_continuation_stops_when_context_pack_blocked(tmp_path: Path) -> N
         )
     )
     candidate_store = FileCandidateDraftStore(tmp_path / "candidate_drafts.json")
-    workflow = MinimalContinuationWorkflow(
-        work_service=work_service,
-        chapter_service=chapter_service,
+    tool_facade = CoreToolFacade(
         context_pack_service=static_context_pack,
         candidate_draft_repository=candidate_store,
         writer=writer,
+    )
+    workflow = MinimalContinuationWorkflow(
+        work_service=work_service,
+        chapter_service=chapter_service,
+        tool_facade=tool_facade,
+        candidate_draft_repository=candidate_store,
         job_repository=job_store,
         step_repository=job_store,
         attempt_repository=job_store,
@@ -215,12 +228,16 @@ def test_start_continuation_does_not_save_candidate_when_validation_fails(tmp_pa
     work_service, chapter_service, _, context_pack_service, job_store, work, chapter = _create_initialized_work(tmp_path)
     writer = _StubWriter(output="error: provider_auth_failed")
     candidate_store = FileCandidateDraftStore(tmp_path / "candidate_drafts.json")
-    workflow = MinimalContinuationWorkflow(
-        work_service=work_service,
-        chapter_service=chapter_service,
+    tool_facade = CoreToolFacade(
         context_pack_service=context_pack_service,
         candidate_draft_repository=candidate_store,
         writer=writer,
+    )
+    workflow = MinimalContinuationWorkflow(
+        work_service=work_service,
+        chapter_service=chapter_service,
+        tool_facade=tool_facade,
+        candidate_draft_repository=candidate_store,
         job_repository=job_store,
         step_repository=job_store,
         attempt_repository=job_store,
@@ -238,12 +255,16 @@ def test_start_continuation_reports_candidate_save_failed_without_writing_chapte
     work_service, chapter_service, _, context_pack_service, job_store, work, chapter = _create_initialized_work(tmp_path)
     original_content = chapter.content
     writer = _StubWriter()
-    workflow = MinimalContinuationWorkflow(
-        work_service=work_service,
-        chapter_service=chapter_service,
+    tool_facade = CoreToolFacade(
         context_pack_service=context_pack_service,
         candidate_draft_repository=_FailingCandidateDraftStore(tmp_path / "candidate_drafts.json"),
         writer=writer,
+    )
+    workflow = MinimalContinuationWorkflow(
+        work_service=work_service,
+        chapter_service=chapter_service,
+        tool_facade=tool_facade,
+        candidate_draft_repository=_FailingCandidateDraftStore(tmp_path / "candidate_drafts.json"),
         job_repository=job_store,
         step_repository=job_store,
         attempt_repository=job_store,

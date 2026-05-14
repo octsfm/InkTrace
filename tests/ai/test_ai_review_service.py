@@ -55,7 +55,7 @@ def _seed_candidate(tmp_path: Path) -> tuple[str, str, str]:
         chapter_id=chapter.id.value,
         source_context_pack_id="cp_x",
         source_job_id="job_x",
-        status=CandidateDraftStatus.GENERATED,
+        status=CandidateDraftStatus.PENDING_REVIEW,
         content="续写候选稿：顾迟推开门，灯塔的光像呼吸一样明灭。",
         content_preview="续写候选稿：顾迟推开门，灯塔的光像呼吸一样明灭。",
         word_count=10,
@@ -94,7 +94,7 @@ def test_review_candidate_draft_creates_ai_review_result_without_modifying_candi
     after_candidate = candidate_store.get(candidate_id)
     after_chapter = [c for c in chapter_service.list_chapters(work_id) if c.id.value == chapter_id][0]
 
-    assert result.status == AIReviewStatus.SUCCEEDED.value
+    assert result.status == AIReviewStatus.COMPLETED.value
     assert review.review_id == result.review_id
     assert review.candidate_draft_id == candidate_id
     assert reviewer.calls == 1
@@ -147,6 +147,37 @@ def test_reviewer_failure_returns_review_failed_and_still_persists_result(tmp_pa
     assert saved.status == AIReviewStatus.FAILED
 
 
+def test_review_degraded_candidate_returns_completed_with_warnings(tmp_path: Path) -> None:
+    _, _, candidate_id = _seed_candidate(tmp_path)
+    work_service, chapter_service, candidate_store, review_store, init_store, memory_store, state_store = _build_services(tmp_path)
+    reviewer = FakeReviewer()
+    degraded = candidate_store.get(candidate_id).model_copy(
+        update={
+            "status": CandidateDraftStatus.PENDING_REVIEW,
+            "metadata": {
+                "context_pack_status": "degraded",
+                "degraded_reason": "vector_recall_unavailable",
+            },
+        }
+    )
+    candidate_store.save(degraded)
+    service = AIReviewApplicationService(
+        work_service=work_service,
+        chapter_service=chapter_service,
+        candidate_draft_repository=candidate_store,
+        ai_review_repository=review_store,
+        reviewer=reviewer,
+        initialization_repository=init_store,
+        story_memory_repository=memory_store,
+        story_state_repository=state_store,
+    )
+
+    result = service.review_candidate_draft(candidate_id, created_by="user_action", user_instruction="")
+
+    assert result.status == AIReviewStatus.COMPLETED_WITH_WARNINGS.value
+    assert "degraded_candidate_warning" in result.metadata["warnings"]
+
+
 def test_list_ai_reviews_filters_by_work_and_candidate(tmp_path: Path) -> None:
     work_id, _, candidate_id = _seed_candidate(tmp_path)
     work_service, chapter_service, candidate_store, review_store, init_store, memory_store, state_store = _build_services(tmp_path)
@@ -197,3 +228,4 @@ def test_review_request_struct_fields(tmp_path: Path) -> None:
         created_by="user_action",
     )
     assert request.review_mode == "candidate_draft_review"
+    assert request.review_scope == "basic_quality+apply_risk"

@@ -108,7 +108,7 @@ class AISettingsService:
                     "last_test_status": AIProviderTestStatus.FAILED,
                     "last_test_at": datetime.now(UTC).isoformat(),
                     "last_test_error_code": error_code,
-                    "last_test_error_message": str(exc),
+                    "last_test_error_message": error_code,
                 }
             )
             settings.provider_configs[provider_name] = config

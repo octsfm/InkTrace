@@ -7,6 +7,7 @@ from application.services.ai.candidate_review_service import CandidateReviewServ
 from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
 from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.initialization_service import InitializationApplicationService
+from application.services.ai.tool_facade import CoreToolFacade
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
 from domain.entities.ai.models import CandidateDraftStatus
@@ -173,9 +174,12 @@ def test_validation_failed_continuation_does_not_persist_candidate_draft(tmp_pat
     workflow = MinimalContinuationWorkflow(
         work_service=work_service,
         chapter_service=chapter_service,
-        context_pack_service=context_service,
+        tool_facade=CoreToolFacade(
+            context_pack_service=context_service,
+            candidate_draft_repository=candidate_store,
+            writer=_ShortOutputWriter(),
+        ),
         candidate_draft_repository=candidate_store,
-        writer=_ShortOutputWriter(),
         job_repository=job_store,
         step_repository=job_store,
         attempt_repository=job_store,
@@ -205,9 +209,12 @@ def test_ai_review_failure_does_not_auto_apply_and_does_not_block_manual_apply(t
     workflow = MinimalContinuationWorkflow(
         work_service=work_service,
         chapter_service=chapter_service,
-        context_pack_service=context_service,
+        tool_facade=CoreToolFacade(
+            context_pack_service=context_service,
+            candidate_draft_repository=candidate_store,
+            writer=FakeWriter(),
+        ),
         candidate_draft_repository=candidate_store,
-        writer=FakeWriter(),
         job_repository=job_store,
         step_repository=job_store,
         attempt_repository=job_store,
@@ -221,7 +228,7 @@ def test_ai_review_failure_does_not_auto_apply_and_does_not_block_manual_apply(t
     after_review = workflow.get_candidate_draft(candidate_id)
 
     assert review.status.value == "failed"
-    assert after_review.status == CandidateDraftStatus.GENERATED
+    assert after_review.status == CandidateDraftStatus.PENDING_REVIEW
     assert chapter_service.list_chapters(work.id)[0].content == before_apply.content
 
     applied = review_service.apply_candidate_to_draft(
@@ -229,6 +236,7 @@ def test_ai_review_failure_does_not_auto_apply_and_does_not_block_manual_apply(t
         user_id="u1",
         expected_chapter_version=before_apply.version,
         user_action=True,
+        idempotency_key="apply-regression-1",
     )
     chapter_after_apply = chapter_service.list_chapters(work.id)[0]
 

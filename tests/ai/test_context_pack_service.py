@@ -56,9 +56,9 @@ def test_context_pack_ready_with_story_memory_and_state() -> None:
     assert any(item.source_type == "story_state" for item in snapshot.context_items)
     assert any(item.source_type == "story_memory" for item in snapshot.context_items)
     assert any(item.source_type == "current_chapter" for item in snapshot.context_items)
-    assert any(item.source_type == "vector_recall" and not item.included for item in snapshot.context_items)
+    assert not any(item.source_type == "vector_recall" for item in snapshot.context_items)
     assert not any(item.source_type == "system_policy" for item in snapshot.context_items)
-    assert snapshot.vector_recall_status == "skipped"
+    assert snapshot.vector_recall_status == "degraded"
 
 
 def test_context_pack_blocked_when_no_story_memory() -> None:
@@ -166,3 +166,61 @@ def test_context_pack_evaluate_readiness_returns_status() -> None:
     assert readiness["status"] in {"ready", "degraded"}
     assert "context_pack_id" in readiness
     assert "estimated_token_count" in readiness
+
+
+def test_context_pack_query_text_build_failure_degrades_and_skips_rag(monkeypatch) -> None:
+    cp_service, init_service, work_service, chapter_service = _build_services()
+    cp_service._vector_recall_service = type("_NoopRecall", (), {"recall": lambda self, query: []})()  # type: ignore[attr-defined]
+    work = work_service.create_work("查询失败作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(chapter.id.value, title="第一章", content="顾宁在废墟边缘看见旧时代的回声。", expected_version=1)
+    init_service.start_initialization(work.id, created_by="user_action")
+
+    def _fail_build_query_text(self, request, chapter_text, story_memory, story_state):  # noqa: ANN001
+        raise ValueError("query_text_build_failed")
+
+    monkeypatch.setattr(
+        ContextPackService,
+        "_build_vector_query_text",
+        _fail_build_query_text,
+        raising=False,
+    )
+
+    snapshot = cp_service.build_and_save(
+        ContextPackBuildRequest(work_id=work.id, chapter_id=chapter.id.value, user_instruction="继续")
+    )
+
+    assert snapshot.status == ContextPackStatus.DEGRADED
+    assert snapshot.vector_recall_status == "skipped"
+    assert "query_text_build_failed" in snapshot.warnings
+    assert "rag_skipped" in snapshot.warnings
+
+
+def test_context_pack_forwards_allow_stale_vector_to_vector_recall_service() -> None:
+    calls: list[dict[str, object]] = []
+
+    class _SpyVectorRecallService:
+        def recall(self, query):  # noqa: ANN001
+            calls.append({"allow_stale": getattr(query, "allow_stale", None), "query_text": getattr(query, "query_text", "")})
+            return []
+
+    cp_service, init_service, work_service, chapter_service = _build_services()
+    cp_service._vector_recall_service = _SpyVectorRecallService()  # type: ignore[attr-defined]
+
+    work = work_service.create_work("陈旧召回作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(chapter.id.value, title="第一章", content="温遥从海雾中穿过，旧港的灯光忽明忽暗。", expected_version=1)
+    init_service.start_initialization(work.id, created_by="user_action")
+
+    snapshot = cp_service.build_and_save(
+        ContextPackBuildRequest(
+            work_id=work.id,
+            chapter_id=chapter.id.value,
+            user_instruction="继续",
+            allow_stale_vector=True,
+        )
+    )
+
+    assert snapshot.status == ContextPackStatus.DEGRADED
+    assert snapshot.vector_recall_status == "degraded"
+    assert calls and calls[0]["allow_stale"] is True

@@ -79,3 +79,23 @@ def test_quick_trial_api_returns_error_for_empty_input(monkeypatch, tmp_path) ->
     assert response.status_code == 400
     payload = response.json()
     assert payload["error"]["error_code"] == "quick_trial_input_empty"
+
+
+def test_quick_trial_api_rejects_non_user_action_caller_type(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
+    get_database_path.cache_clear()
+    _clear_ai_singletons()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v2/ai/quick-trials",
+        json={
+            "provider_name": "fake",
+            "model_name": "fake-chat",
+            "input_text": "测试",
+            "caller_type": "workflow",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["error_code"] == "caller_type_not_allowed"

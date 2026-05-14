@@ -34,7 +34,7 @@ def test_ai_review_api_review_get_list(monkeypatch, tmp_path) -> None:
     payload = review.json()
     review_id = payload["data"]["review_id"]
     assert review_id.startswith("rv_")
-    assert payload["data"]["status"] in {"succeeded", "failed"}
+    assert payload["data"]["status"] in {"completed", "completed_with_warnings", "failed", "skipped", "blocked"}
     assert "api_key" not in str(payload)
 
     get_resp = client.get(f"/api/v2/ai/reviews/{review_id}")
@@ -69,3 +69,47 @@ def test_ai_review_api_requires_work_id_for_list(monkeypatch, tmp_path) -> None:
 
     resp = client.get("/api/v2/ai/reviews")
     assert resp.status_code == 422
+
+
+def test_ai_review_api_rejects_non_user_action_caller_type(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
+    get_database_path.cache_clear()
+    _clear_singletons()
+    client = TestClient(app)
+
+    work_id, chapter_id = _seed_initialized_work(client)
+    start = client.post("/api/v2/ai/continuations", json={"work_id": work_id, "chapter_id": chapter_id, "user_instruction": "继续"})
+    assert start.status_code == 200
+    candidate_id = start.json()["data"]["candidate_draft_id"]
+
+    review = client.post(
+        f"/api/v2/ai/reviews/candidate-drafts/{candidate_id}",
+        json={"user_instruction": "关注一致性", "caller_type": "workflow"},
+    )
+    assert review.status_code == 403
+    assert review.json()["error"]["error_code"] == "caller_type_not_allowed"
+
+
+def test_ai_review_api_rejects_invalid_caller_type_before_service_invocation(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
+    get_database_path.cache_clear()
+    _clear_singletons()
+    client = TestClient(app)
+    work_id, chapter_id = _seed_initialized_work(client)
+    start = client.post("/api/v2/ai/continuations", json={"work_id": work_id, "chapter_id": chapter_id, "user_instruction": "继续"})
+    assert start.status_code == 200
+    candidate_id = start.json()["data"]["candidate_draft_id"]
+
+    class _ExplodingReviewService:
+        def review_candidate_draft(self, *args, **kwargs):
+            raise AssertionError("service_should_not_be_called")
+
+    monkeypatch.setattr(dependencies, "get_ai_review_service", lambda: _ExplodingReviewService())
+
+    review = client.post(
+        f"/api/v2/ai/reviews/candidate-drafts/{candidate_id}",
+        json={"user_instruction": "关注一致性", "caller_type": "workflow"},
+    )
+
+    assert review.status_code == 403
+    assert review.json()["error"]["error_code"] == "caller_type_not_allowed"

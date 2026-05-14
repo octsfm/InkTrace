@@ -24,6 +24,7 @@ from application.services.ai.model_router import ModelRouter
 from application.services.ai.provider_registry import ProviderRegistry
 from application.services.ai.quick_trial_service import QuickTrialApplicationService
 from application.services.ai.security import SettingsCipher
+from application.services.ai.tool_facade import CoreToolFacade
 from infrastructure.ai.providers.fake_provider import FakeLLMProvider
 from infrastructure.ai.providers.openai_compatible_provider import OpenAICompatibleProvider
 from infrastructure.ai.providers.fake_reviewer import FakeReviewer
@@ -190,14 +191,23 @@ def get_quick_trial_service() -> QuickTrialApplicationService:
 
 
 @lru_cache(maxsize=1)
+def get_core_tool_facade() -> CoreToolFacade:
+    return CoreToolFacade(
+        context_pack_service=get_context_pack_service(),
+        candidate_draft_repository=get_candidate_draft_repository(),
+        writer=FakeWriter(),
+        job_service=get_ai_job_service(),
+    )
+
+
+@lru_cache(maxsize=1)
 def get_continuation_workflow() -> MinimalContinuationWorkflow:
     store = get_ai_job_store()
     return MinimalContinuationWorkflow(
         work_service=get_work_service(),
         chapter_service=get_chapter_service(),
-        context_pack_service=get_context_pack_service(),
+        tool_facade=get_core_tool_facade(),
         candidate_draft_repository=get_candidate_draft_repository(),
-        writer=FakeWriter(),
         job_repository=store,
         step_repository=store,
         attempt_repository=store,

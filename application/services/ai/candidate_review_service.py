@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from typing import Sequence
 
@@ -33,7 +34,7 @@ class CandidateReviewService:
             raise ValueError("candidate_already_applied")
         if draft.status == CandidateDraftStatus.REJECTED:
             raise ValueError("candidate_already_rejected")
-        if draft.status not in {CandidateDraftStatus.GENERATED, CandidateDraftStatus.ACCEPTED}:
+        if draft.status not in {CandidateDraftStatus.PENDING_REVIEW, CandidateDraftStatus.ACCEPTED}:
             raise ValueError("candidate_status_invalid")
         if draft.status == CandidateDraftStatus.ACCEPTED:
             return draft
@@ -61,7 +62,7 @@ class CandidateReviewService:
             raise ValueError("candidate_already_applied")
         if draft.status == CandidateDraftStatus.REJECTED:
             return draft
-        if draft.status not in {CandidateDraftStatus.GENERATED, CandidateDraftStatus.ACCEPTED}:
+        if draft.status not in {CandidateDraftStatus.PENDING_REVIEW, CandidateDraftStatus.ACCEPTED}:
             raise ValueError("candidate_status_invalid")
         return self._save_with_status(
             draft,
@@ -84,16 +85,31 @@ class CandidateReviewService:
         apply_mode: str = "append_to_chapter_end",
         selection_range: Sequence[int] | None = None,
         cursor_position: int | None = None,
+        idempotency_key: str = "",
     ) -> dict[str, object]:
         self._require_user_action(user_action)
         if expected_chapter_version is None:
             raise ValueError("expected_chapter_version_required")
+        if not str(idempotency_key or "").strip():
+            raise ValueError("idempotency_key_missing")
         draft = self.get_candidate_draft(candidate_draft_id)
+        existing_idempotency_hash = str(draft.metadata.get("apply_idempotency_key_hash", "") or "")
+        new_idempotency_hash = self._hash_idempotency_key(idempotency_key)
         if draft.status == CandidateDraftStatus.REJECTED:
             raise ValueError("candidate_already_rejected")
         if draft.status == CandidateDraftStatus.APPLIED:
+            if existing_idempotency_hash and existing_idempotency_hash == new_idempotency_hash:
+                return {
+                    "candidate_draft_id": draft.candidate_draft_id,
+                    "status": draft.status.value,
+                    "applied_chapter_id": str(draft.metadata.get("applied_chapter_id", draft.chapter_id)),
+                    "chapter_version": int(draft.metadata.get("applied_chapter_version", expected_chapter_version)),
+                    "apply_result_ref": draft.metadata.get("apply_result_ref", ""),
+                    "stale_marked": True,
+                    "duplicate_request": True,
+                }
             raise ValueError("candidate_already_applied")
-        if draft.status not in {CandidateDraftStatus.GENERATED, CandidateDraftStatus.ACCEPTED}:
+        if draft.status not in {CandidateDraftStatus.PENDING_REVIEW, CandidateDraftStatus.ACCEPTED}:
             raise ValueError("candidate_status_invalid")
         if not str(draft.content or "").strip():
             raise ValueError("candidate_content_empty")
@@ -135,6 +151,7 @@ class CandidateReviewService:
                 "apply_mode": apply_mode,
                 "apply_result_ref": f"chapter:{draft.chapter_id}:version:{updated_chapter.version}",
                 "applied_chapter_version": updated_chapter.version,
+                "apply_idempotency_key_hash": new_idempotency_hash,
             },
         )
         self._mark_stale(draft.work_id)
@@ -211,3 +228,7 @@ class CandidateReviewService:
     @staticmethod
     def _now() -> str:
         return datetime.now(UTC).isoformat()
+
+    @staticmethod
+    def _hash_idempotency_key(idempotency_key: str) -> str:
+        return hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()

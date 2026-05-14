@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import UTC, datetime
 
@@ -49,10 +50,27 @@ class AIReviewApplicationService:
         *,
         created_by: str | None = None,
         user_instruction: str | None = None,
+        review_scope: str = "basic_quality+apply_risk",
+        allow_degraded: bool = True,
+        idempotency_key: str = "",
     ) -> AIReviewResult:
         draft = self._candidate_draft_repository.get(candidate_draft_id)
         chapter = self._get_chapter(draft.work_id, draft.chapter_id)
         self._work_service.get_work(draft.work_id)
+        existing = self._find_existing_review(
+            candidate_draft_id=candidate_draft_id,
+            review_scope=review_scope,
+            idempotency_key=idempotency_key,
+        )
+        if existing is not None:
+            return existing
+
+        created_by = created_by or "user_action"
+        if created_by != "user_action":
+            raise ValueError("caller_type_not_allowed")
+
+        warnings = self._collect_review_warnings(draft)
+        status = AIReviewStatus.COMPLETED_WITH_WARNINGS if warnings else AIReviewStatus.COMPLETED
         request = AIReviewRequest(
             review_id=f"rv_{uuid.uuid4().hex[:12]}",
             work_id=draft.work_id,
@@ -61,7 +79,10 @@ class AIReviewApplicationService:
             review_target_type=AIReviewTargetType.CANDIDATE_DRAFT,
             review_target_ref=f"candidate_draft:{draft.candidate_draft_id}",
             review_mode="candidate_draft_review",
-            created_by=created_by or "user_action",
+            review_scope=review_scope,
+            allow_degraded=allow_degraded,
+            idempotency_key=idempotency_key,
+            created_by=created_by,
             user_instruction=str(user_instruction or "").strip(),
         )
         review_context = self.build_review_context(
@@ -81,8 +102,9 @@ class AIReviewApplicationService:
                 work_id=draft.work_id,
                 chapter_id=draft.chapter_id,
                 candidate_draft_id=draft.candidate_draft_id,
-                status=AIReviewStatus.SUCCEEDED,
+                status=status,
                 summary=str(validated.get("summary", "")),
+                warnings=warnings,
                 issues=[ReviewIssue.model_validate(item) for item in validated.get("issues", [])],
                 suggestions=[str(item) for item in validated.get("suggestions", [])],
                 risk_level=AIReviewRiskLevel(str(validated.get("risk_level", "low"))),
@@ -95,9 +117,12 @@ class AIReviewApplicationService:
                 created_at=self._now(),
                 metadata={
                     "review_mode": request.review_mode,
+                    "review_scope": request.review_scope,
                     "review_target_type": request.review_target_type.value,
                     "review_target_ref": request.review_target_ref,
                     "chapter_title": chapter.title,
+                    "warnings": warnings,
+                    "idempotency_key_hash": self._hash_idempotency_key(idempotency_key),
                 },
             )
         except Exception as exc:
@@ -120,7 +145,9 @@ class AIReviewApplicationService:
                 created_at=self._now(),
                 metadata={
                     "review_mode": request.review_mode,
-                    "review_error": str(exc),
+                    "review_scope": request.review_scope,
+                    "review_error_code": exc.__class__.__name__,
+                    "idempotency_key_hash": self._hash_idempotency_key(idempotency_key),
                 },
             )
         return self._ai_review_repository.save(result)
@@ -170,6 +197,37 @@ class AIReviewApplicationService:
         if not isinstance(issues, list):
             raise ValueError("review_output_invalid")
         return raw_output
+
+    def _find_existing_review(self, *, candidate_draft_id: str, review_scope: str, idempotency_key: str) -> AIReviewResult | None:
+        if not idempotency_key:
+            return None
+        idempotency_hash = self._hash_idempotency_key(idempotency_key)
+        items = self._ai_review_repository.list_reviews(work_id=self._candidate_draft_repository.get(candidate_draft_id).work_id)
+        for item in items:
+            if item.candidate_draft_id != candidate_draft_id:
+                continue
+            if item.metadata.get("idempotency_key_hash") != idempotency_hash:
+                continue
+            if item.metadata.get("review_scope", "basic_quality+apply_risk") != review_scope:
+                raise ValueError("review_idempotency_conflict")
+            return item
+        return None
+
+    @staticmethod
+    def _collect_review_warnings(draft) -> list[str]:  # noqa: ANN001
+        warnings: list[str] = []
+        context_pack_status = str(draft.metadata.get("context_pack_status", "") or "")
+        if context_pack_status == "degraded":
+            warnings.append("degraded_candidate_warning")
+        if str(draft.metadata.get("stale", "") or "").lower() in {"1", "true", "yes", "stale"}:
+            warnings.append("stale_candidate_warning")
+        return warnings
+
+    @staticmethod
+    def _hash_idempotency_key(idempotency_key: str) -> str:
+        if not idempotency_key:
+            return ""
+        return hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
 
     def _get_chapter(self, work_id: str, chapter_id: str):
         chapters = self._chapter_service.list_chapters(work_id)
