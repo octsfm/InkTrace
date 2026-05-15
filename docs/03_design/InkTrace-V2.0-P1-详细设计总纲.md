@@ -10,18 +10,18 @@
 - `docs/01_requirements/InkTrace-V2.0-需求规格说明书.md`
 - `docs/07_overview/InkTrace-V2.0-概要设计说明书.md`
 - `docs/02_architecture/InkTrace-V2.0-架构设计说明书.md`
-- `docs/03_design/InkTrace-V2.0-P0-详细设计总纲.md`
-- `docs/03_design/InkTrace-V2.0-P0-01-AI基础设施详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P0-02-AIJobSystem详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P0-03-初始化流程详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P0-04-StoryMemory与StoryState详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P0-05-VectorRecall详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P0-06-ContextPack详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P0-07-ToolFacade与权限详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P0-08-MinimalContinuationWorkflow详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P0-09-CandidateDraft与HumanReviewGate详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P0-10-AIReview详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P0-11-API与集成边界详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-详细设计总纲.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-01-AI基础设施详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-02-AIJobSystem详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-03-初始化流程详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-04-StoryMemory与StoryState详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-05-VectorRecall详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-06-ContextPack详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-07-ToolFacade与权限详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-08-MinimalContinuationWorkflow详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-09-CandidateDraft与HumanReviewGate详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-10-AIReview详细设计.md`
+- `docs/03_design/V2/InkTrace-V2.0-P0-11-API与集成边界详细设计.md`
 
 说明：本文档忽略所有 `_001.md` 文件。本文档不推翻 P0 已冻结设计，不修改 P0 已实现边界。
 

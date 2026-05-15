@@ -607,7 +607,7 @@ AgentSession 表示一次完整 Agent 任务的业务会话容器。它是 Agent
 | result | AgentResult | 最终输出（见第九章） |
 | trace_id | string | 关联 AgentTrace ID |
 | request_id | string | 请求 ID |
-| caller_type | string | 触发来源：user_action / system |
+| caller_type | string | 触发来源：user_action / agent / workflow_compat / system_maintenance / quick_trial |
 | allow_degraded | boolean | 是否允许 degraded 上下文，默认 true |
 | user_instruction | string | 用户指令摘要（安全脱敏，不记录完整正文） |
 | metadata | object | 脱敏元数据（不保存完整正文 / Prompt / CandidateDraft / API Key） |
@@ -1336,7 +1336,7 @@ AgentRuntimeService 是 Application 层服务，负责 AgentSession / AgentStep 
 
 **约束**：
 - work_id 必须存在。
-- caller_type 必须合法（user_action 或 system）。
+- caller_type 必须合法（user_action / agent / workflow_compat / system_maintenance / quick_trial）。
 - user_instruction 脱敏后存储。
 
 ### 10.3 start_session
