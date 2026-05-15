@@ -81,6 +81,23 @@ class AIJobService:
             self._step_repository.save_step(step)
         return steps
 
+    def add_step(self, job_id: str, *, step_type: str, step_name: str, metadata: dict[str, object] | None = None) -> AIJobStep:
+        job = self._job_repository.get_job(job_id)
+        order_index = len(self._step_repository.list_steps(job_id)) + 1
+        step = AIJobStep(
+            step_id=f"step_{uuid.uuid4().hex[:12]}",
+            job_id=job.job_id,
+            step_type=step_type,
+            step_name=step_name,
+            status=AIJobStepStatus.PENDING,
+            order_index=order_index,
+            label=step_name,
+            metadata=self._sanitize_mapping(metadata or {}),
+        )
+        saved = self._step_repository.create_step(step)
+        self._job_repository.save_job(self._sync_progress(job))
+        return saved
+
     def start_job(self, job_id: str) -> AIJob:
         job = self._job_repository.get_job(job_id)
         if job.status not in {AIJobStatus.QUEUED, AIJobStatus.PAUSED}:
@@ -96,6 +113,30 @@ class AIJobService:
             }
         )
         return self._job_repository.save_job(self._sync_progress(updated))
+
+    def pause_job(self, job_id: str, *, reason: str) -> AIJob:
+        job = self._job_repository.get_job(job_id)
+        if job.status not in {AIJobStatus.RUNNING, AIJobStatus.QUEUED}:
+            raise ValueError("job_not_pausable")
+        now = self._now()
+        updated = job.model_copy(
+            update={
+                "status": AIJobStatus.PAUSED,
+                "paused_at": now,
+                "updated_at": now,
+                "status_reason": reason,
+            }
+        )
+        saved = self._job_repository.save_job(self._sync_progress(updated))
+        for step in self._step_repository.list_steps(job_id):
+            if step.status == AIJobStepStatus.RUNNING:
+                self._step_repository.save_step(
+                    self._enrich_step(
+                        step.model_copy(update={"status": AIJobStepStatus.PAUSED, "status_reason": reason}),
+                        AIJobStatus.PAUSED,
+                    )
+                )
+        return saved
 
     def mark_step_running(self, job_id: str, step_id: str) -> AIJobStep:
         step = self._get_step(job_id, step_id)

@@ -170,6 +170,144 @@ class AIJobAttempt(AIBaseModel):
     retry_reason: str = ""
 
 
+class AgentWorkflowType(StrEnum):
+    CONTINUATION = "continuation"
+    MEMORY_REFRESH = "memory_refresh"
+    REVIEW = "review"
+
+
+class AgentSessionStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    WAITING_FOR_USER = "waiting_for_user"
+    PAUSED = "paused"
+    CANCELLING = "cancelling"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+    COMPLETED = "completed"
+    PARTIAL_SUCCESS = "partial_success"
+
+
+class AgentStepStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    WAITING_OBSERVATION = "waiting_observation"
+    WAITING_USER = "waiting_user"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    CANCELLED = "cancelled"
+    IGNORED_LATE_RESULT = "ignored_late_result"
+
+
+class AgentObservationType(StrEnum):
+    TOOL_RESULT = "tool_result"
+    USER_DECISION = "user_decision"
+    VALIDATION_RESULT = "validation_result"
+    STATE_CHANGE = "state_change"
+    SYSTEM_EVENT = "system_event"
+    ERROR = "error"
+
+
+class AgentSession(AIBaseModel):
+    session_id: str
+    job_id: str
+    work_id: str
+    chapter_id: str | None = None
+    workflow_type: AgentWorkflowType
+    status: AgentSessionStatus
+    caller_type: str = "user_action"
+    user_instruction: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    current_step_id: str = ""
+    current_phase: str = ""
+    result_ref: str = ""
+    result: AgentResult | None = None
+    warning_codes: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    error_message: str = ""
+    status_reason: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
+    started_at: str = ""
+    waiting_at: str = ""
+    paused_at: str = ""
+    cancelling_at: str = ""
+    cancelled_at: str = ""
+    finished_at: str = ""
+
+
+class AgentStep(AIBaseModel):
+    step_id: str
+    session_id: str
+    job_id: str
+    job_step_id: str = ""
+    agent_type: str
+    step_type: str
+    action: str
+    order_index: int
+    status: AgentStepStatus
+    step_phase: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    attempt_count: int = 0
+    max_attempts: int = 3
+    warning_codes: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    error_message: str = ""
+    status_reason: str = ""
+    observation_id: str = ""
+    prior_observation_refs: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+
+
+class AgentObservation(AIBaseModel):
+    observation_id: str
+    session_id: str
+    step_id: str
+    observation_type: AgentObservationType
+    source_type: str
+    status: str
+    safe_message: str = ""
+    decision: str = ""
+    warning_codes: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""
+
+
+class AgentRunContext(AIBaseModel):
+    session_id: str
+    step_id: str = ""
+    work_id: str
+    chapter_id: str | None = None
+    current_agent_type: str
+    user_instruction: str = ""
+    context_refs: list[str] = Field(default_factory=list)
+    selected_direction_id: str = ""
+    selected_chapter_plan_id: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    allow_degraded: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentResult(AIBaseModel):
+    session_id: str
+    status: str
+    result_refs: list[str] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class InitializationStatus(StrEnum):
     NOT_STARTED = "not_started"
     OUTLINE_ANALYZING = "outline_analyzing"

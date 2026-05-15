@@ -164,6 +164,130 @@ def test_tool_facade_returns_structured_tool_error_for_disabled_and_unknown_tool
         assert result.error.occurred_at
 
 
+def test_tool_facade_rejects_agent_call_without_required_runtime_context(tmp_path: Path) -> None:
+    _, _, _, _, tool_facade, work, chapter = _build_context(tmp_path)
+    tool_facade.register_tool(
+        ToolDefinition(
+            tool_name="agent_read_tool",
+            allowed_callers={"agent"},
+            side_effect_level="read_only",
+            enabled=True,
+        ),
+        lambda payload: {"ok": True},
+    )
+    context = ToolExecutionContext(
+        caller_type="agent",
+        work_id=work.id,
+        chapter_id=chapter.id.value,
+        request_id="req_agent_invalid",
+        trace_id="trace_agent_invalid",
+        agent_type="writer",
+        session_status="running",
+        step_status="waiting_observation",
+    )
+
+    result = tool_facade.call("agent_read_tool", context=context, payload={})
+
+    assert result.ok is False
+    assert result.error_code == "tool_context_invalid"
+
+
+def test_tool_facade_accepts_agent_call_with_runtime_context(tmp_path: Path) -> None:
+    _, _, _, _, tool_facade, work, chapter = _build_context(tmp_path)
+    tool_facade.register_tool(
+        ToolDefinition(
+            tool_name="agent_read_tool",
+            allowed_callers={"agent"},
+            side_effect_level="read_only",
+            enabled=True,
+        ),
+        lambda payload: {"echo": payload["value"]},
+    )
+    context = ToolExecutionContext(
+        caller_type="agent",
+        work_id=work.id,
+        chapter_id=chapter.id.value,
+        request_id="req_agent_ok",
+        trace_id="trace_agent_ok",
+        agent_session_id="agent_session_1",
+        agent_step_id="agent_step_1",
+        agent_type="writer",
+        session_status="running",
+        step_status="waiting_observation",
+        resource_scope_refs=[f"work:{work.id}", f"chapter:{chapter.id.value}"],
+        side_effect_level="read_only",
+    )
+
+    result = tool_facade.call("agent_read_tool", context=context, payload={"value": "ok"})
+
+    assert result.ok is True
+    assert result.payload["echo"] == "ok"
+
+
+def test_tool_facade_rejects_agent_call_with_missing_resource_scope(tmp_path: Path) -> None:
+    _, _, _, _, tool_facade, work, chapter = _build_context(tmp_path)
+    tool_facade.register_tool(
+        ToolDefinition(
+            tool_name="agent_read_tool",
+            allowed_callers={"agent"},
+            side_effect_level="read_only",
+            enabled=True,
+        ),
+        lambda payload: {"echo": "ok"},
+    )
+    context = ToolExecutionContext(
+        caller_type="agent",
+        work_id=work.id,
+        chapter_id=chapter.id.value,
+        request_id="req_agent_scope",
+        trace_id="trace_agent_scope",
+        agent_session_id="agent_session_1",
+        agent_step_id="agent_step_1",
+        agent_type="writer",
+        session_status="running",
+        step_status="waiting_observation",
+        resource_scope_refs=[],
+        side_effect_level="read_only",
+    )
+
+    result = tool_facade.call("agent_read_tool", context=context, payload={})
+
+    assert result.ok is False
+    assert result.error_code == "tool_context_invalid"
+
+
+def test_tool_facade_rejects_agent_call_with_side_effect_mismatch(tmp_path: Path) -> None:
+    _, _, _, _, tool_facade, work, chapter = _build_context(tmp_path)
+    tool_facade.register_tool(
+        ToolDefinition(
+            tool_name="agent_read_tool",
+            allowed_callers={"agent"},
+            side_effect_level="read_only",
+            enabled=True,
+        ),
+        lambda payload: {"echo": "ok"},
+    )
+    context = ToolExecutionContext(
+        caller_type="agent",
+        work_id=work.id,
+        chapter_id=chapter.id.value,
+        request_id="req_agent_side_effect",
+        trace_id="trace_agent_side_effect",
+        agent_session_id="agent_session_1",
+        agent_step_id="agent_step_1",
+        agent_type="writer",
+        session_status="running",
+        step_status="waiting_observation",
+        resource_scope_refs=[f"work:{work.id}"],
+        side_effect_level="draft_write",
+    )
+
+    result = tool_facade.call("agent_read_tool", context=context, payload={})
+
+    assert result.ok is False
+    assert result.error_code == "tool_context_invalid"
+
+
 def test_continuation_workflow_runs_through_tool_facade_only(tmp_path: Path) -> None:
     work_service, chapter_service, job_store, candidate_store, tool_facade, work, chapter = _build_context(tmp_path)
     workflow = MinimalContinuationWorkflow(

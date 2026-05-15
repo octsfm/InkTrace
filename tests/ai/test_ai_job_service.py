@@ -124,6 +124,23 @@ def test_ai_job_service_recover_after_restart_pauses_running_job(tmp_path) -> No
     assert refreshed_step.status == AIJobStepStatus.PAUSED
 
 
+def test_ai_job_service_can_pause_and_restart_job(tmp_path) -> None:
+    service = _build_service(tmp_path)
+    job = service.create_job(
+        job_type="continuation",
+        work_id="work-1",
+        steps=[{"step_type": "run_writer_step", "step_name": "Run Writer Step"}],
+    )
+
+    service.start_job(job.job_id)
+    paused = service.pause_job(job.job_id, reason="user_requested_pause")
+    resumed = service.start_job(job.job_id)
+
+    assert paused.status == AIJobStatus.PAUSED
+    assert paused.status_reason == "user_requested_pause"
+    assert resumed.status == AIJobStatus.RUNNING
+
+
 def test_ai_job_service_rejects_invalid_terminal_transition(tmp_path) -> None:
     service = _build_service(tmp_path)
     job = service.create_job(

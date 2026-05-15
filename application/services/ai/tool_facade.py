@@ -23,6 +23,12 @@ class ToolExecutionContext:
     chapter_id: str = ""
     request_id: str = ""
     trace_id: str = ""
+    agent_session_id: str = ""
+    agent_step_id: str = ""
+    agent_type: str = ""
+    session_status: str = ""
+    step_status: str = ""
+    resource_scope_refs: list[str] = field(default_factory=list)
     side_effect_level: str = ""
     idempotency_key: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -124,6 +130,18 @@ class CoreToolFacade:
         self._handlers[definition.tool_name] = handler
 
     def call(self, tool_name: str, *, context: ToolExecutionContext, payload: dict[str, Any]) -> ToolResultEnvelope:
+        if not self._is_valid_context(context):
+            envelope = self._error_envelope(
+                tool_name=tool_name,
+                context=context,
+                error_code="tool_context_invalid",
+                safe_message="tool_context_invalid",
+                retryable=False,
+                user_visible=True,
+                source_service="tool_execution_context",
+            )
+            self._record_audit(tool_name, context, envelope)
+            return envelope
         if self._permission_policy.is_reserved_denied(tool_name=tool_name, caller_type=context.caller_type):
             envelope = self._error_envelope(
                 tool_name=tool_name,
@@ -146,6 +164,18 @@ class CoreToolFacade:
                 retryable=False,
                 user_visible=True,
                 source_service="tool_registry",
+            )
+            self._record_audit(tool_name, context, envelope)
+            return envelope
+        if not self._is_valid_definition_context(definition, context):
+            envelope = self._error_envelope(
+                tool_name=tool_name,
+                context=context,
+                error_code="tool_context_invalid",
+                safe_message="tool_context_invalid",
+                retryable=False,
+                user_visible=True,
+                source_service="tool_execution_context",
             )
             self._record_audit(tool_name, context, envelope)
             return envelope
@@ -183,7 +213,7 @@ class CoreToolFacade:
                 context=context,
                 error_code=error_code,
                 safe_message=error_code,
-                retryable=False,
+                retryable=self._is_retryable_error(error_code),
                 user_visible=True,
                 source_service=definition.source_service,
             )
@@ -200,6 +230,28 @@ class CoreToolFacade:
         )
         self._record_audit(tool_name, context, envelope)
         return envelope
+
+    def _is_retryable_error(self, error_code: str) -> bool:
+        normalized = str(error_code or "").strip().lower()
+        return normalized in {"temporary_unavailable", "provider_timeout", "tool_execution_failed", "rate_limited"}
+
+    def _is_valid_context(self, context: ToolExecutionContext) -> bool:
+        if context.caller_type != "agent":
+            return True
+        if not context.agent_session_id or not context.agent_step_id or not context.agent_type:
+            return False
+        if not context.resource_scope_refs:
+            return False
+        if context.session_status not in {"running", "waiting_for_user", "paused"}:
+            return False
+        if context.step_status not in {"running", "waiting_observation", "waiting_user"}:
+            return False
+        return True
+
+    def _is_valid_definition_context(self, definition: ToolDefinition, context: ToolExecutionContext) -> bool:
+        if context.caller_type != "agent":
+            return True
+        return context.side_effect_level == definition.side_effect_level
 
     def _build_context_pack(self, payload: dict[str, Any]) -> dict[str, Any]:
         snapshot = self._context_pack_service.build_and_save(
