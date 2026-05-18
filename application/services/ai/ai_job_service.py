@@ -81,6 +81,12 @@ class AIJobService:
             self._step_repository.save_step(step)
         return steps
 
+    def list_attempts(self, step_id: str) -> list[AIJobAttempt]:
+        return self._attempt_repository.list_attempts(step_id)
+
+    def save_attempt(self, attempt: AIJobAttempt) -> AIJobAttempt:
+        return self._attempt_repository.save_attempt(attempt)
+
     def add_step(self, job_id: str, *, step_type: str, step_name: str, metadata: dict[str, object] | None = None) -> AIJobStep:
         job = self._job_repository.get_job(job_id)
         order_index = len(self._step_repository.list_steps(job_id)) + 1

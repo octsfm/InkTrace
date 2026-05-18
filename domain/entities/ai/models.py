@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class AIBaseModel(BaseModel):
@@ -170,10 +170,20 @@ class AIJobAttempt(AIBaseModel):
     retry_reason: str = ""
 
 
+def _normalize_agent_workflow_type(value: object) -> object:
+    if value == "memory_refresh":
+        return "memory_update"
+    if value == "review":
+        return "revision"
+    return value
+
+
 class AgentWorkflowType(StrEnum):
     CONTINUATION = "continuation"
-    MEMORY_REFRESH = "memory_refresh"
-    REVIEW = "review"
+    REVISION = "revision"
+    PLANNING = "planning"
+    MEMORY_UPDATE = "memory_update"
+    FULL_WORKFLOW = "full_workflow"
 
 
 class AgentSessionStatus(StrEnum):
@@ -202,11 +212,23 @@ class AgentStepStatus(StrEnum):
 
 class AgentObservationType(StrEnum):
     TOOL_RESULT = "tool_result"
+    MODEL_RESULT = "model_result"
     USER_DECISION = "user_decision"
     VALIDATION_RESULT = "validation_result"
     STATE_CHANGE = "state_change"
     SYSTEM_EVENT = "system_event"
+    ERROR_EVENT = "error_event"
+    WARNING = "warning"
+    TIMEOUT = "timeout"
+    LATE_RESULT_IGNORED = "late_result_ignored"
     ERROR = "error"
+
+
+class PPAOPhase(StrEnum):
+    PERCEPTION = "perception"
+    PLANNING = "planning"
+    ACTION = "action"
+    OBSERVATION = "observation"
 
 
 class AgentSession(AIBaseModel):
@@ -214,14 +236,16 @@ class AgentSession(AIBaseModel):
     job_id: str
     work_id: str
     chapter_id: str | None = None
-    workflow_type: AgentWorkflowType
+    agent_workflow_type: AgentWorkflowType
     status: AgentSessionStatus
+    current_agent_type: str = ""
+    allow_degraded: bool = True
     caller_type: str = "user_action"
     user_instruction: str = ""
     request_id: str = ""
     trace_id: str = ""
     current_step_id: str = ""
-    current_phase: str = ""
+    current_phase: PPAOPhase | Literal[""] = ""
     result_ref: str = ""
     result: AgentResult | None = None
     warning_codes: list[str] = Field(default_factory=list)
@@ -234,9 +258,47 @@ class AgentSession(AIBaseModel):
     started_at: str = ""
     waiting_at: str = ""
     paused_at: str = ""
+    resumed_at: str = ""
     cancelling_at: str = ""
     cancelled_at: str = ""
     finished_at: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_keys(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        if "workflow_type" in payload and "agent_workflow_type" not in payload:
+            payload["agent_workflow_type"] = payload.pop("workflow_type")
+        if "agent_workflow_type" in payload:
+            payload["agent_workflow_type"] = _normalize_agent_workflow_type(payload["agent_workflow_type"])
+        if "allow_degraded" not in payload:
+            metadata = payload.get("metadata")
+            if isinstance(metadata, dict) and "allow_degraded" in metadata:
+                payload["allow_degraded"] = bool(metadata.get("allow_degraded", True))
+        return payload
+
+    @property
+    def workflow_type(self) -> AgentWorkflowType:
+        return self.agent_workflow_type
+
+
+class ToolCallRef(AIBaseModel):
+    tool_call_id: str
+    tool_name: str
+    status: str = ""
+    result_ref: str = ""
+    error_code: str = ""
+
+
+class StepPlan(AIBaseModel):
+    next_action_type: str = ""
+    target_tool_name: str = ""
+    expected_observation_type: str = ""
+    retryable: bool = True
+    requires_user_decision: bool = False
+    side_effect_level: str = ""
 
 
 class AgentStep(AIBaseModel):
@@ -249,11 +311,19 @@ class AgentStep(AIBaseModel):
     action: str
     order_index: int
     status: AgentStepStatus
-    step_phase: str = ""
+    step_phase: PPAOPhase | Literal[""] = ""
     request_id: str = ""
     trace_id: str = ""
+    tool_calls: list[ToolCallRef] = Field(default_factory=list)
+    step_plan: StepPlan | None = None
+    input_ref: str = ""
+    output_refs: list[str] = Field(default_factory=list)
     attempt_count: int = 0
     max_attempts: int = 3
+    retryable: bool = True
+    skippable: bool = False
+    requires_user_decision: bool = False
+    skip_reason: str = ""
     warning_codes: list[str] = Field(default_factory=list)
     error_code: str = ""
     error_message: str = ""
@@ -263,7 +333,22 @@ class AgentStep(AIBaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: str = ""
     started_at: str = ""
+    waiting_at: str = ""
     finished_at: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_keys(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        if "step_order" in payload and "order_index" not in payload:
+            payload["order_index"] = payload.pop("step_order")
+        return payload
+
+    @property
+    def step_order(self) -> int:
+        return self.order_index
 
 
 class AgentObservation(AIBaseModel):
@@ -272,11 +357,19 @@ class AgentObservation(AIBaseModel):
     step_id: str
     observation_type: AgentObservationType
     source_type: str
+    source_ref: str = ""
     status: str
+    data_ref: str = ""
     safe_message: str = ""
+    summary: str = ""
     decision: str = ""
+    decision_reason: str = ""
+    source_tool_call_id: str = ""
+    source_attempt_no: int = 0
     warning_codes: list[str] = Field(default_factory=list)
     error_code: str = ""
+    error_message: str = ""
+    next_action_hint: str = ""
     request_id: str = ""
     trace_id: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -285,10 +378,14 @@ class AgentObservation(AIBaseModel):
 
 class AgentRunContext(AIBaseModel):
     session_id: str
+    job_id: str = ""
     step_id: str = ""
     work_id: str
     chapter_id: str | None = None
+    agent_workflow_type: AgentWorkflowType = AgentWorkflowType.CONTINUATION
     current_agent_type: str
+    current_phase: PPAOPhase | Literal[""] = ""
+    caller_type: str = "user_action"
     user_instruction: str = ""
     context_refs: list[str] = Field(default_factory=list)
     selected_direction_id: str = ""
@@ -296,15 +393,71 @@ class AgentRunContext(AIBaseModel):
     request_id: str = ""
     trace_id: str = ""
     allow_degraded: bool = True
+    warning_codes: list[str] = Field(default_factory=list)
+    resource_scope_refs: list[str] = Field(default_factory=list)
+    prior_observation_refs: list[str] = Field(default_factory=list)
+    execution_guard_flags: dict[str, bool] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_workflow_type(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        if "workflow_type" in payload and "agent_workflow_type" not in payload:
+            payload["agent_workflow_type"] = payload.pop("workflow_type")
+        if "agent_workflow_type" in payload:
+            payload["agent_workflow_type"] = _normalize_agent_workflow_type(payload["agent_workflow_type"])
+        return payload
+
+
+class ResultRef(AIBaseModel):
+    ref_type: str
+    ref_id: str
+    source_agent_type: str = ""
+    source_step_id: str = ""
+    status: str = ""
+
+
+class StepSummaryItem(AIBaseModel):
+    step_id: str
+    agent_type: str
+    step_type: str
+    action: str
+    status: str
+    step_phase: PPAOPhase | Literal[""] = ""
+    status_reason: str = ""
+    safe_message: str = ""
+    error_code: str = ""
+    error_message: str = ""
+    warning_codes: list[str] = Field(default_factory=list)
+    started_at: str = ""
+    waiting_at: str = ""
+    finished_at: str = ""
+
+
+class StepSummary(AIBaseModel):
+    steps: list[StepSummaryItem] = Field(default_factory=list)
 
 
 class AgentResult(AIBaseModel):
     session_id: str
     status: str
-    result_refs: list[str] = Field(default_factory=list)
+    result_refs: list[ResultRef] = Field(default_factory=list)
+    primary_output_type: str = ""
+    primary_output_ref: str = ""
+    step_summary: StepSummary | None = None
     warning_codes: list[str] = Field(default_factory=list)
     error_code: str = ""
+    error_message: str = ""
+    next_user_action: str = ""
+    total_steps: int = 0
+    succeeded_steps: int = 0
+    failed_steps: int = 0
+    skipped_steps: int = 0
+    total_elapsed_ms: int = 0
+    finished_at: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

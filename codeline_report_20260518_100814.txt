@@ -1,0 +1,438 @@
+======================================================================
+✅ 有效代码行数统计报告 (ELOC)
+======================================================================
+📊 项目根目录: D:\Work\InkTrace\ink-trace
+📅 生成时间: 2026-05-18 10:08:14
+🧩 扩展名: .py, .js, .ts, .html, .css
+
+📈 总览（含生产 + 测试）:
+   📁 总文件数: 348
+   🔢 有效代码行数: 33,451
+
+🏭 生产代码（非 tests/ 目录）:
+   📁 文件数: 281
+   🔢 有效代码行数: 25,924
+
+🧪 测试代码（仅 tests/ 目录）:
+   📁 文件数: 67
+   🔢 有效代码行数: 7,527
+----------------------------------------------------------------------
+📂 文件详情（按目录结构缩进，含标识）:
+
+      111 | add_file_descriptions.py [PROD]
+       88 | add_file_descriptions_v2.py [PROD]
+       64 | add_file_paths.py [PROD]
+📁 application
+            4 | __init__.py [PROD]
+    📁 config
+               15 | story_defaults.py [PROD]
+    📁 prompts
+               35 | prompt_constants.py [PROD]
+              178 | prompt_input_builder.py [PROD]
+               18 | prompt_labels.py [PROD]
+              123 | prompt_parser.py [PROD]
+               66 | prompt_rules.py [PROD]
+              119 | prompt_templates.py [PROD]
+    📁 services
+                4 | __init__.py [PROD]
+        📁 ai
+                   38 | __init__.py [PROD]
+                  850 | agent_runtime_service.py [PROD]
+                   22 | ai_job_runner.py [PROD]
+                  377 | ai_job_service.py [PROD]
+                  225 | ai_review_service.py [PROD]
+                  128 | ai_settings_service.py [PROD]
+                  215 | candidate_review_service.py [PROD]
+                  410 | context_pack_service.py [PROD]
+                  364 | continuation_workflow.py [PROD]
+                  349 | initialization_service.py [PROD]
+                   46 | llm_call_logger.py [PROD]
+                   61 | model_router.py [PROD]
+                   31 | output_validation_service.py [PROD]
+                   35 | prompt_registry.py [PROD]
+                   14 | provider_registry.py [PROD]
+                  149 | quick_trial_service.py [PROD]
+                   36 | security.py [PROD]
+                   48 | story_memory_service.py [PROD]
+                   46 | story_state_service.py [PROD]
+                  484 | tool_facade.py [PROD]
+                    8 | writer_service.py [PROD]
+              170 | character_service.py [PROD]
+               94 | config_service.py [PROD]
+              360 | content_service.py [PROD]
+              241 | export_service.py [PROD]
+              112 | logging_service.py [PROD]
+              168 | project_service.py [PROD]
+              147 | runtime_metrics_service.py [PROD]
+              105 | template_service.py [PROD]
+        📁 v1
+                   22 | __init__.py [PROD]
+                  196 | chapter_service.py [PROD]
+                   71 | content_tree_schema.py [PROD]
+                  102 | io_service.py [PROD]
+                   35 | logging.py [PROD]
+                   50 | service_factory.py [PROD]
+                   57 | session_service.py [PROD]
+                   11 | text_metrics.py [PROD]
+                   66 | work_service.py [PROD]
+                  357 | writing_asset_service.py [PROD]
+              177 | worldview_service.py [PROD]
+              253 | writing_service.py [PROD]
+📁 backend
+            1 | __init__.py [PROD]
+    📁 src
+                1 | __init__.py [PROD]
+        📁 application
+                    1 | __init__.py [PROD]
+            📁 workflows
+                        1 | __init__.py [PROD]
+                      108 | workflows.py [PROD]
+        📁 domain
+                    1 | __init__.py [PROD]
+            📁 shared
+                        1 | __init__.py [PROD]
+                📁 repositories
+                            1 | __init__.py [PROD]
+                          102 | interfaces.py [PROD]
+                📁 types
+                            1 | __init__.py [PROD]
+                          219 | models.py [PROD]
+        📁 presentation
+                    1 | __init__.py [PROD]
+            📁 api
+                        1 | __init__.py [PROD]
+                      135 | app.py [PROD]
+                📁 routers
+                            1 | __init__.py [PROD]
+                           95 | projects_router.py [PROD]
+                       33 | schemas.py [PROD]
+       50 | collect_code.py [PROD]
+       23 | config.py [PROD]
+       41 | debug-desktop.js [PROD]
+📁 desktop
+           56 | ipc-handlers.js [PROD]
+          184 | main.js [PROD]
+           21 | preload.js [PROD]
+          246 | process-manager.js [PROD]
+           80 | tray-manager.js [PROD]
+📁 domain
+           18 | __init__.py [PROD]
+    📁 constants
+               19 | story_constants.py [PROD]
+               38 | story_enums.py [PROD]
+               12 | workflow_constants.py [PROD]
+    📁 entities
+               18 | __init__.py [PROD]
+        📁 ai
+                   96 | __init__.py [PROD]
+                  624 | models.py [PROD]
+               94 | chapter.py [PROD]
+               19 | edit_session.py [PROD]
+              125 | novel.py [PROD]
+              193 | outline.py [PROD]
+               89 | project.py [PROD]
+               40 | work.py [PROD]
+               55 | writing_assets.py [PROD]
+          109 | exceptions.py [PROD]
+    📁 repositories
+               24 | __init__.py [PROD]
+        📁 ai
+                   30 | __init__.py [PROD]
+                   10 | agent_observation_repository.py [PROD]
+                   16 | agent_session_repository.py [PROD]
+                   16 | agent_step_repository.py [PROD]
+                   13 | ai_job_attempt_repository.py [PROD]
+                   16 | ai_job_repository.py [PROD]
+                   13 | ai_job_step_repository.py [PROD]
+                   19 | ai_review_repository.py [PROD]
+                   10 | ai_settings_repository.py [PROD]
+                   13 | candidate_draft_repository.py [PROD]
+                   16 | context_pack_repository.py [PROD]
+                   16 | initialization_repository.py [PROD]
+                    7 | llm_call_log_repository.py [PROD]
+                   13 | story_memory_repository.py [PROD]
+                   13 | story_state_repository.py [PROD]
+               57 | chapter_repository.py [PROD]
+               44 | novel_repository.py [PROD]
+               20 | outline_document_repository.py [PROD]
+               46 | outline_repository.py [PROD]
+                6 | project_cleanup_repository.py [PROD]
+               34 | project_repository.py [PROD]
+               67 | vector_repository.py [PROD]
+               57 | workbench.py [PROD]
+    📁 services
+               32 | __init__.py [PROD]
+        📁 ai
+                   18 | __init__.py [PROD]
+                   26 | provider.py [PROD]
+                    6 | reviewer.py [PROD]
+                    7 | writer.py [PROD]
+              160 | consistency_checker.py [PROD]
+              161 | plot_analyzer.py [PROD]
+               96 | rag_context_builder.py [PROD]
+              209 | style_analyzer.py [PROD]
+              118 | worldview_checker.py [PROD]
+              139 | writing_engine.py [PROD]
+          199 | types.py [PROD]
+           94 | utils.py [PROD]
+    📁 value_objects
+               12 | __init__.py [PROD]
+               21 | character_state.py [PROD]
+               61 | embedding.py [PROD]
+               19 | style_profile.py [PROD]
+               17 | writing_config.py [PROD]
+📁 frontend
+           13 | index.html [PROD]
+    📁 src
+        📁 api
+            📁 __tests__
+                       78 | ai.spec.js [PROD]
+                       93 | works.spec.js [PROD]
+                  194 | config.js [PROD]
+                  344 | index.js [PROD]
+                  107 | works.js [PROD]
+        📁 components
+            📁 works
+                📁 __tests__
+                           49 | CreateWorkModal.spec.js [PROD]
+                           32 | ExportTxtModal.spec.js [PROD]
+                           31 | ImportModal.spec.js [PROD]
+                           95 | WorkCard.spec.js [PROD]
+            📁 workspace
+                📁 __tests__
+                          116 | AIPanel.spec.js [PROD]
+                           48 | AssetConflictModal.spec.js [PROD]
+                           76 | AssetDrawer.spec.js [PROD]
+                           53 | AssetRail.spec.js [PROD]
+                          140 | ChapterSidebar.spec.js [PROD]
+                           45 | ChapterTitleInput.spec.js [PROD]
+                          241 | CharacterPanel.spec.js [PROD]
+                          207 | ForeshadowPanel.spec.js [PROD]
+                           20 | ManualSyncButton.spec.js [PROD]
+                           87 | OutlineImportModal.spec.js [PROD]
+                          286 | OutlinePanel.spec.js [PROD]
+                          126 | PureTextEditor.spec.js [PROD]
+                           66 | StatusBar.spec.js [PROD]
+                          222 | TimelinePanel.spec.js [PROD]
+                           48 | VersionConflictModal.spec.js [PROD]
+                           41 | WritingPreferencePanel.spec.js [PROD]
+        📁 composables
+                   55 | useAIJobPolling.js [PROD]
+                   80 | useLocalCache.js [PROD]
+                   38 | useLocalCache.spec.js [PROD]
+        📁 constants
+                   41 | display.js [PROD]
+                   51 | storyEnums.js [PROD]
+                   51 | storyLabels.js [PROD]
+                    5 | uiDefaults.js [PROD]
+               17 | main.js [PROD]
+        📁 router
+            📁 __tests__
+                       13 | index.spec.js [PROD]
+                   32 | index.js [PROD]
+        📁 stores
+            📁 __tests__
+                       70 | useChapterDataStore.spec.js [PROD]
+                       96 | usePreferenceStore.spec.js [PROD]
+                      326 | useSaveStateStore.spec.js [PROD]
+                      168 | useWorkspaceStore.spec.js [PROD]
+                      341 | useWritingAssetStore.spec.js [PROD]
+                       51 | workbenchStores.spec.js [PROD]
+                   17 | chapterData.js [PROD]
+                  186 | config.js [PROD]
+                  126 | preference.js [PROD]
+                   17 | saveState.js [PROD]
+                  170 | useChapterDataStore.js [PROD]
+                  328 | useSaveStateStore.js [PROD]
+                  227 | useWorkspaceStore.js [PROD]
+                   19 | workspace.js [PROD]
+                  425 | writingAsset.js [PROD]
+        📁 styles
+                   65 | main.css [PROD]
+        📁 utils
+            📁 __tests__
+                      174 | localCache.spec.js [PROD]
+                       22 | textMetrics.spec.js [PROD]
+                  144 | localCache.js [PROD]
+                   62 | outlineImport.js [PROD]
+                    8 | textMetrics.js [PROD]
+                   24 | workbenchLogger.js [PROD]
+        📁 views
+            📁 __tests__
+                      192 | WorksList.spec.js [PROD]
+                      807 | WritingStudio.spec.js [PROD]
+            📁 novel
+                📁 __tests__
+                          133 | NovelImport.interaction.spec.js [PROD]
+           40 | vite.config.js [PROD]
+           15 | vitest.config.js [PROD]
+📁 infrastructure
+            4 | __init__.py [PROD]
+    📁 ai
+        📁 providers
+                    2 | __init__.py [PROD]
+                   39 | fake_provider.py [PROD]
+                   32 | fake_reviewer.py [PROD]
+                   14 | fake_writer.py [PROD]
+                  115 | openai_compatible_provider.py [PROD]
+    📁 database
+               16 | __init__.py [PROD]
+               18 | models.py [PROD]
+        📁 repositories
+                   17 | __init__.py [PROD]
+            📁 ai
+                       20 | __init__.py [PROD]
+                       71 | file_agent_runtime_store.py [PROD]
+                       65 | file_ai_job_store.py [PROD]
+                       41 | file_ai_review_store.py [PROD]
+                       18 | file_ai_settings_store.py [PROD]
+                       33 | file_candidate_draft_store.py [PROD]
+                       39 | file_context_pack_store.py [PROD]
+                       39 | file_initialization_store.py [PROD]
+                       13 | file_llm_call_log_store.py [PROD]
+                       38 | file_story_memory_store.py [PROD]
+                       38 | file_story_state_store.py [PROD]
+                  152 | chapter_repo.py [PROD]
+                  115 | character_repo.py [PROD]
+                   48 | edit_session_repo.py [PROD]
+                  107 | foreshadow_repo.py [PROD]
+                  160 | outline_asset_repo.py [PROD]
+                  104 | timeline_event_repo.py [PROD]
+                   57 | work_repo.py [PROD]
+               39 | session.py [PROD]
+        📁 v1
+                   10 | __init__.py [PROD]
+                  253 | models.py [PROD]
+            📁 repositories
+                        4 | __init__.py [PROD]
+                   45 | session.py [PROD]
+    📁 file
+                6 | __init__.py [PROD]
+              102 | markdown_exporter.py [PROD]
+               28 | txt_exporter.py [PROD]
+              267 | txt_parser.py [PROD]
+    📁 persistence
+                5 | __init__.py [PROD]
+              107 | sqlite_chapter_repo.py [PROD]
+              100 | sqlite_novel_repo.py [PROD]
+               87 | sqlite_outline_document_repo.py [PROD]
+              157 | sqlite_outline_repo.py [PROD]
+               98 | sqlite_project_cleanup_repo.py [PROD]
+              121 | sqlite_project_repo.py [PROD]
+               97 | sqlite_utils.py [PROD]
+       67 | list_code_files.py [PROD]
+       25 | main.py [PROD]
+📁 migrations
+            6 | migrate_structured_story_data.py [PROD]
+      101 | plaintext.py [PROD]
+📁 presentation
+            4 | __init__.py [PROD]
+    📁 api
+                9 | __init__.py [PROD]
+              270 | app.py [PROD]
+              184 | dependencies.py [PROD]
+        📁 routers
+                    6 | __init__.py [PROD]
+            📁 v1
+                        2 | __init__.py [PROD]
+                       86 | chapters.py [PROD]
+                       75 | characters.py [PROD]
+                       78 | foreshadows.py [PROD]
+                       13 | health.py [PROD]
+                       57 | io.py [PROD]
+                       92 | outlines.py [PROD]
+                      360 | schemas.py [PROD]
+                       33 | sessions.py [PROD]
+                       92 | timeline.py [PROD]
+                       52 | works.py [PROD]
+            📁 v2
+                📁 ai
+                            8 | __init__.py [PROD]
+                           99 | context_pack.py [PROD]
+                          150 | continuation.py [PROD]
+                          104 | initialization.py [PROD]
+                           92 | jobs.py [PROD]
+                           58 | quick_trial.py [PROD]
+                           54 | response_utils.py [PROD]
+                           77 | review.py [PROD]
+                           66 | schemas.py [PROD]
+                           32 | settings.py [PROD]
+📁 scripts
+           63 | db_orphan_inspector.py [PROD]
+          122 | detect_mojibake_literals.py [PROD]
+          216 | long_form_strategy_replay.py [PROD]
+            3 | migrate_structured_story_data.py [PROD]
+           30 | run_agent_mvp.py [PROD]
+           38 | run_continue_writing_mvp.py [PROD]
+           39 | run_memory_mvp.py [PROD]
+           71 | verify_stage0_v1.py [PROD]
+           76 | workspace_enter_exit_replay.py [PROD]
+📁 tests
+            0 | __init__.py [TEST]
+    📁 ai
+             1331 | test_agent_runtime_service.py [TEST]
+               34 | test_ai_job_api.py [TEST]
+               72 | test_ai_job_repository.py [TEST]
+               46 | test_ai_job_runner.py [TEST]
+              122 | test_ai_job_service.py [TEST]
+               88 | test_ai_review_api.py [TEST]
+              196 | test_ai_review_service.py [TEST]
+               93 | test_ai_settings_api.py [TEST]
+               84 | test_candidate_draft_api.py [TEST]
+               18 | test_candidate_draft_status_model.py [TEST]
+              111 | test_context_pack_api.py [TEST]
+              171 | test_context_pack_service.py [TEST]
+              241 | test_continuation_service.py [TEST]
+              312 | test_human_review_gate.py [TEST]
+               43 | test_initialization_api.py [TEST]
+               94 | test_initialization_service.py [TEST]
+               48 | test_llm_call_logger.py [TEST]
+               39 | test_model_router.py [TEST]
+               12 | test_output_validation_service.py [TEST]
+              194 | test_p0_boundaries.py [TEST]
+              213 | test_p0_e2e.py [TEST]
+              220 | test_p0_regression.py [TEST]
+               20 | test_prompt_registry.py [TEST]
+               15 | test_provider_registry.py [TEST]
+               84 | test_quick_trial_api.py [TEST]
+              135 | test_quick_trial_service.py [TEST]
+               96 | test_real_provider.py [TEST]
+               87 | test_real_provider_smoke.py [TEST]
+               13 | test_response_utils.py [TEST]
+              314 | test_tool_facade.py [TEST]
+           24 | conftest.py [TEST]
+           27 | test_utils.py [TEST]
+           23 | test_v1_chapter_entity.py [TEST]
+          200 | test_v1_chapter_service.py [TEST]
+           76 | test_v1_chapters_router.py [TEST]
+           57 | test_v1_character_repositories.py [TEST]
+           76 | test_v1_characters_router.py [TEST]
+           40 | test_v1_content_tree_schema.py [TEST]
+          171 | test_v1_core_schema_migration.py [TEST]
+           44 | test_v1_database_models.py [TEST]
+           51 | test_v1_database_repositories.py [TEST]
+          125 | test_v1_database_session.py [TEST]
+           18 | test_v1_edit_session_entity.py [TEST]
+           63 | test_v1_foreshadow_repositories.py [TEST]
+           92 | test_v1_foreshadows_router.py [TEST]
+           76 | test_v1_io_router.py [TEST]
+          234 | test_v1_io_service.py [TEST]
+           93 | test_v1_outline_repositories.py [TEST]
+           99 | test_v1_outlines_router.py [TEST]
+           63 | test_v1_repositories_stage1.py [TEST]
+            9 | test_v1_router_boundary.py [TEST]
+          362 | test_v1_routes_smoke.py [TEST]
+           61 | test_v1_schemas.py [TEST]
+          109 | test_v1_session_service.py [TEST]
+           67 | test_v1_sessions_router.py [TEST]
+           15 | test_v1_text_metrics.py [TEST]
+           66 | test_v1_timeline_repositories.py [TEST]
+           82 | test_v1_timeline_router.py [TEST]
+           17 | test_v1_work_entity.py [TEST]
+          117 | test_v1_work_service.py [TEST]
+           63 | test_v1_works_router.py [TEST]
+           34 | test_v1_writing_asset_repositories.py [TEST]
+           76 | test_v1_writing_asset_service_character.py [TEST]
+           79 | test_v1_writing_asset_service_foreshadow.py [TEST]
+           84 | test_v1_writing_asset_service_outline.py [TEST]
+           88 | test_v1_writing_asset_service_timeline.py [TEST]

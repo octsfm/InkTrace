@@ -9,11 +9,14 @@ CHROMA_DIR = os.getenv("INKTRACE_CHROMA_DIR", str(Path("data") / "chroma"))
 
 
 def warmup_singletons_for_startup() -> None:
+    get_agent_runtime_service().recover_after_restart()
+    get_ai_job_service().recover_after_restart()
     return None
 
 from functools import lru_cache
 
 from application.services.ai.ai_job_service import AIJobService
+from application.services.ai.agent_runtime_service import AgentRuntimeService
 from application.services.ai.ai_review_service import AIReviewApplicationService
 from application.services.ai.ai_settings_service import AISettingsService
 from application.services.ai.candidate_review_service import CandidateReviewService
@@ -32,6 +35,7 @@ from infrastructure.ai.providers.fake_writer import FakeWriter
 from infrastructure.database.repositories.ai.file_ai_review_store import FileAIReviewStore
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
+from infrastructure.database.repositories.ai.file_agent_runtime_store import FileAgentRuntimeStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
 from infrastructure.database.repositories.ai.file_context_pack_store import FileContextPackStore
 from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
@@ -151,6 +155,23 @@ def get_ai_job_service() -> AIJobService:
         job_repository=store,
         step_repository=store,
         attempt_repository=store,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_agent_runtime_store() -> FileAgentRuntimeStore:
+    return FileAgentRuntimeStore()
+
+
+@lru_cache(maxsize=1)
+def get_agent_runtime_service() -> AgentRuntimeService:
+    store = get_agent_runtime_store()
+    return AgentRuntimeService(
+        session_repository=store,
+        step_repository=store,
+        observation_repository=store,
+        ai_job_service=get_ai_job_service(),
+        tool_facade=get_core_tool_facade(),
     )
 
 
