@@ -10,6 +10,7 @@ const mockListForeshadows = vi.fn()
 const mockCreateForeshadow = vi.fn()
 const mockUpdateForeshadow = vi.fn()
 const mockDeleteForeshadow = vi.fn()
+const mockGetContextPackReadiness = vi.fn()
 
 vi.mock('@/api', () => ({
   v1WritingAssetsApi: {
@@ -27,6 +28,9 @@ vi.mock('@/api', () => ({
     updateForeshadow: (...args) => mockUpdateForeshadow(...args),
     deleteForeshadow: (...args) => mockDeleteForeshadow(...args),
     listCharacters: vi.fn().mockResolvedValue([])
+  },
+  aiApi: {
+    getContextPackReadiness: (...args) => mockGetContextPackReadiness(...args)
   }
 }))
 
@@ -38,6 +42,21 @@ describe('ForeshadowPanel', () => {
     mockCreateForeshadow.mockReset()
     mockUpdateForeshadow.mockReset()
     mockDeleteForeshadow.mockReset()
+    mockGetContextPackReadiness.mockReset()
+    mockGetContextPackReadiness.mockResolvedValue({
+      data: {
+        status: 'degraded',
+        plot_arc_statuses: {
+          volume_arc: { status: 'pending', quality_level: 'placeholder', warning_codes: ['arc_placeholder_only'] }
+        },
+        plot_arc_summary: {
+          volume_arc: {
+            stage_goal: '确认灯塔背后的势力',
+            stage_open_loops: ['地图来源', '灯塔来历']
+          }
+        }
+      }
+    })
   })
 
   it('loads open foreshadows by default and switches to resolved filter', async () => {
@@ -62,6 +81,21 @@ describe('ForeshadowPanel', () => {
 
     expect(mockListForeshadows).toHaveBeenCalledWith('work-1', 'resolved')
     expect(wrapper.find('.foreshadow-item').attributes('data-item-id')).toBe('f-2')
+  })
+
+  it('shows volume arc open loops for the active chapter context', async () => {
+    mockListForeshadows.mockResolvedValue([])
+
+    const wrapper = mount(ForeshadowPanel, {
+      props: { workId: 'work-1', activeChapterId: 'chapter-2' }
+    })
+    await flushPromises()
+
+    expect(mockGetContextPackReadiness).toHaveBeenCalledWith('work-1', 'chapter-2')
+    expect(wrapper.text()).toContain('卷弧提示')
+    expect(wrapper.text()).toContain('确认灯塔背后的势力')
+    expect(wrapper.text()).toContain('地图来源')
+    expect(wrapper.text()).toContain('灯塔来历')
   })
 
   it('creates a new foreshadow with current status and chapter refs', async () => {

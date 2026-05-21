@@ -1,5 +1,6 @@
 from application.services.ai.ai_job_runner import AIJobRunner
 from application.services.ai.ai_job_service import AIJobService
+from application.services.ai.agent_workflow import AgentOrchestrator, AgentWorkflowDefinitionRegistry
 from application.services.ai.agent_runtime_service import AgentRuntimeService
 from application.services.ai.ai_settings_service import AISettingsService
 from application.services.ai.ai_review_service import AIReviewApplicationService
@@ -20,6 +21,8 @@ from application.services.ai.writer_service import WriterService
 __all__ = [
     "AIJobRunner",
     "AIJobService",
+    "AgentOrchestrator",
+    "AgentWorkflowDefinitionRegistry",
     "AgentRuntimeService",
     "AISettingsService",
     "AIReviewApplicationService",

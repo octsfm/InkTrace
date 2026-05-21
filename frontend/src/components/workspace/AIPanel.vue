@@ -64,6 +64,28 @@
       </ul>
     </div>
 
+    <div v-if="plotArcVisible" class="ai-section">
+      <h4>剧情轨道</h4>
+      <div class="ai-meta">
+        <span>{{ contextPackReadiness.status || 'unknown' }}</span>
+        <span v-if="masterArcSummary.arc_title">{{ masterArcSummary.arc_title }}</span>
+        <span v-if="volumeArcSummary.stage_goal">{{ volumeArcSummary.stage_goal }}</span>
+      </div>
+      <ul class="ai-list">
+        <li v-if="sequenceArcSummary.sequence_goal">
+          {{ sequenceArcSummary.sequence_goal }}
+        </li>
+        <li v-for="event in sequenceKeyEvents" :key="event">{{ event }}</li>
+        <li v-for="summary in immediateRecentSummary" :key="summary">{{ summary }}</li>
+        <li v-for="thread in immediateThreads" :key="thread">{{ thread }}</li>
+      </ul>
+      <div class="ai-meta">
+        <span v-for="(value, key) in plotArcStatuses" :key="key">
+          {{ key }}: {{ value.status || 'unknown' }}
+        </span>
+      </div>
+    </div>
+
     <div class="ai-section">
       <h4>续写与候选稿</h4>
       <div class="ai-actions">
@@ -167,6 +189,33 @@ const quickTrialForm = reactive({
 const providerConfigs = computed(() => settings.value?.provider_configs || [])
 const jobSteps = computed(() => polling.job.value?.steps || [])
 const jobStatusText = computed(() => String(polling.job.value?.status || ''))
+const plotArcStatuses = computed(() => contextPackReadiness.value?.plot_arc_statuses || {})
+const plotArcSummary = computed(() => contextPackReadiness.value?.plot_arc_summary || {})
+const masterArcSummary = computed(() => plotArcSummary.value?.master_arc || {})
+const volumeArcSummary = computed(() => plotArcSummary.value?.volume_arc || {})
+const sequenceArcSummary = computed(() => plotArcSummary.value?.sequence_arc || {})
+const immediateSummary = computed(() => plotArcSummary.value?.immediate_window || {})
+const sequenceKeyEvents = computed(() => {
+  const items = sequenceArcSummary.value?.key_events
+  return Array.isArray(items) ? items.filter(Boolean) : []
+})
+const immediateRecentSummary = computed(() => {
+  const items = immediateSummary.value?.recent_chapters_summary
+  return Array.isArray(items) ? items.filter(Boolean) : []
+})
+const immediateThreads = computed(() => {
+  const items = immediateSummary.value?.active_plot_threads
+  return Array.isArray(items) ? items.filter(Boolean) : []
+})
+const plotArcVisible = computed(() => Boolean(
+  masterArcSummary.value.arc_title ||
+  volumeArcSummary.value.stage_goal ||
+  sequenceArcSummary.value.sequence_goal ||
+  sequenceKeyEvents.value.length ||
+  immediateRecentSummary.value.length ||
+  immediateThreads.value.length ||
+  Object.keys(plotArcStatuses.value).length
+))
 const initializationSummary = computed(() => ({
   analyzed: Number(initializationInfo.value?.analyzed_chapter_count || initializationInfo.value?.data?.analyzed_chapter_count || 0),
   empty: Number(initializationInfo.value?.empty_chapter_count || initializationInfo.value?.data?.empty_chapter_count || 0),

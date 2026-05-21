@@ -35,6 +35,32 @@
       </div>
     </header>
 
+    <section v-if="plotArcVisible" class="plot-arc-section">
+      <header class="plot-arc-header">
+        <h4>剧情轨道</h4>
+        <span class="plot-arc-status">{{ plotArcStatusLabel }}</span>
+      </header>
+      <div class="plot-arc-grid">
+        <article class="plot-arc-card">
+          <h5>Master Arc</h5>
+          <p v-if="masterArcSummary.arc_title">{{ masterArcSummary.arc_title }}</p>
+          <p v-if="masterArcSummary.current_stage">当前阶段：{{ masterArcSummary.current_stage }}</p>
+          <p v-if="masterArcSummary.ultimate_goal">终局目标：{{ masterArcSummary.ultimate_goal }}</p>
+        </article>
+        <article class="plot-arc-card">
+          <h5>Volume Arc</h5>
+          <p v-if="volumeArcSummary.stage_goal">{{ volumeArcSummary.stage_goal }}</p>
+        </article>
+        <article class="plot-arc-card">
+          <h5>Sequence Arc</h5>
+          <p v-if="sequenceArcSummary.sequence_goal">{{ sequenceArcSummary.sequence_goal }}</p>
+          <ul v-if="sequenceKeyEvents.length" class="plot-arc-list">
+            <li v-for="event in sequenceKeyEvents" :key="event">{{ event }}</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
     <div class="outline-editor-shell">
       <template v-if="currentMode === 'work'">
         <p class="outline-description">`content_text` 是唯一真源，树结构仅作为派生缓存保存。</p>
@@ -153,6 +179,18 @@ const saveStatus = computed(() => assetStore.getAssetSaveStatus('work_outline', 
 const chapterSaveStatus = computed(() => assetStore.getAssetSaveStatus('chapter_outline', activeChapterId.value))
 const saveStatusLabel = computed(() => saveStatusLabelMap[saveStatus.value] || saveStatusLabelMap.idle)
 const chapterSaveStatusLabel = computed(() => saveStatusLabelMap[chapterSaveStatus.value] || saveStatusLabelMap.idle)
+const plotArcVisible = computed(() => Boolean(
+  Object.keys(assetStore.plotArcSummary || {}).length ||
+  Object.keys(assetStore.plotArcStatuses || {}).length
+))
+const plotArcStatusLabel = computed(() => String(assetStore.contextPackReadiness?.status || 'unknown'))
+const masterArcSummary = computed(() => assetStore.plotArcSummary?.master_arc || {})
+const volumeArcSummary = computed(() => assetStore.plotArcSummary?.volume_arc || {})
+const sequenceArcSummary = computed(() => assetStore.plotArcSummary?.sequence_arc || {})
+const sequenceKeyEvents = computed(() => {
+  const items = sequenceArcSummary.value?.key_events
+  return Array.isArray(items) ? items.filter(Boolean) : []
+})
 const modeSwitchGuardVisible = computed(() => Boolean(pendingModeSwitch.value))
 const conflictAssetType = computed(() => String(assetStore.assetConflictPayload?.asset_type || ''))
 const conflictVisible = computed(() => (
@@ -182,6 +220,11 @@ const syncChapterFromStore = () => {
     chapterOutline.value?.content_text ??
     ''
   )
+}
+
+const loadPlotArcSummary = async () => {
+  if (!props.workId || !activeChapterId.value) return
+  await assetStore.loadPlotArcContext(props.workId, activeChapterId.value)
 }
 
 const buildSavePayload = (content = draftText.value, overrides = {}) => ({
@@ -357,6 +400,7 @@ onMounted(async () => {
     if (!assetStore.chapterOutlines[activeChapterId.value]) {
       await assetStore.loadChapterOutline(activeChapterId.value)
     }
+    await loadPlotArcSummary()
   }
   syncFromStore()
   syncChapterFromStore()
@@ -378,6 +422,7 @@ watch(
     if (!assetStore.chapterOutlines[nextChapterId]) {
       await assetStore.loadChapterOutline(nextChapterId)
     }
+    await loadPlotArcSummary()
     syncChapterFromStore()
   }
 )
@@ -401,6 +446,62 @@ defineExpose({
 .outline-panel {
   display: grid;
   gap: 14px;
+}
+
+.plot-arc-section {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.plot-arc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plot-arc-header h4,
+.plot-arc-card h5 {
+  margin: 0;
+  color: #111827;
+}
+
+.plot-arc-status {
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.plot-arc-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.plot-arc-card {
+  display: grid;
+  gap: 6px;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.plot-arc-card p,
+.plot-arc-list {
+  margin: 0;
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.plot-arc-list {
+  padding-left: 18px;
 }
 
 .outline-header,

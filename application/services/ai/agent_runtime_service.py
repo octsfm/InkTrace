@@ -3,11 +3,15 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
+from application.services.ai.agent_profile_registry import build_default_agent_profile_registry
 from application.services.ai.ai_job_service import AIJobService
 from application.services.ai.tool_facade import CoreToolFacade, ToolExecutionContext
 from domain.entities.ai.models import (
+    AgentInput,
+    AgentOutput,
     AgentObservation,
     AgentObservationType,
+    AgentResultRef,
     PPAOPhase,
     AgentResult,
     AgentRunContext,
@@ -40,12 +44,14 @@ class AgentRuntimeService:
         observation_repository: AgentObservationRepository,
         ai_job_service: AIJobService,
         tool_facade: CoreToolFacade | None = None,
+        agent_profile_registry=None,
     ) -> None:
         self._session_repository = session_repository
         self._step_repository = step_repository
         self._observation_repository = observation_repository
         self._ai_job_service = ai_job_service
         self._tool_facade = tool_facade
+        self._agent_profile_registry = agent_profile_registry or build_default_agent_profile_registry()
 
     def create_session(
         self,
@@ -331,7 +337,10 @@ class AgentRuntimeService:
             )
             status = AgentSessionStatus.PARTIAL_SUCCESS
         else:
-            if steps and any(step.status != AgentStepStatus.SUCCEEDED for step in steps):
+            if steps and any(
+                not self._is_step_completion_compatible(step, steps)
+                for step in steps
+            ):
                 raise ValueError("session_not_completable")
             self._ai_job_service.mark_job_completed(
                 session.job_id,
@@ -401,6 +410,15 @@ class AgentRuntimeService:
 
     def create_step(self, session_id: str, *, agent_type: str, step_type: str, action: str) -> AgentStep:
         session = self.get_session(session_id)
+        step_metadata: dict[str, object] = {}
+        if agent_type != "workflow":
+            profile = self._agent_profile_registry.require_profile(agent_type)
+            step_metadata = {
+                "model_role": profile.model_role,
+                "trace_level": profile.trace_level,
+                "output_schema_key": profile.output_schema_key,
+                "formal_write_forbidden": bool(profile.metadata.get("formal_write_forbidden", False)),
+            }
         order_index = len(self._step_repository.list_steps(session_id)) + 1
         now = self._now()
         step_flags = self._resolve_step_runtime_flags(step_type=step_type, action=action)
@@ -425,6 +443,7 @@ class AgentRuntimeService:
             retryable=step_flags["retryable"],
             skippable=step_flags["skippable"],
             requires_user_decision=step_flags["requires_user_decision"],
+            metadata=step_metadata,
             created_at=now,
         )
         return self._step_repository.create_step(step)
@@ -464,6 +483,94 @@ class AgentRuntimeService:
             execution_guard_flags={},
             metadata=dict(session.metadata),
         )
+
+    def build_agent_input(
+        self,
+        session_id: str,
+        *,
+        step_id: str,
+        stage: str,
+        agent_type: str,
+        context_refs: list[str] | None = None,
+    ) -> AgentInput:
+        self._agent_profile_registry.require_profile(agent_type)
+        session = self.get_session(session_id)
+        metadata = dict(session.metadata)
+        return AgentInput(
+            session_id=session.session_id,
+            workflow_type=session.agent_workflow_type,
+            stage=stage,
+            agent_type=agent_type,
+            work_id=session.work_id,
+            chapter_id=session.chapter_id,
+            user_instruction=session.user_instruction,
+            context_refs=list(context_refs or []),
+            selected_direction_id=str(metadata.get("selected_direction_id", "")),
+            selected_chapter_plan_id=str(metadata.get("selected_chapter_plan_id", "")),
+            current_candidate_draft_id=str(metadata.get("current_candidate_draft_id", "")),
+            current_candidate_version_id=str(metadata.get("current_candidate_version_id", "")),
+            review_id=str(metadata.get("review_id", "")),
+            allow_degraded=session.allow_degraded,
+            warning_codes=list(session.warning_codes),
+            metadata={**metadata, "step_id": step_id, "allow_degraded": session.allow_degraded},
+        )
+
+    def build_agent_output(
+        self,
+        session_id: str,
+        *,
+        step_id: str,
+        agent_type: str,
+        status: str,
+        result_refs: list[str] | None = None,
+        warning_codes: list[str] | None = None,
+        error_code: str = "",
+        decision_hint: str = "",
+        suggested_next_stage: str = "",
+        requires_user_action: bool = False,
+    ) -> AgentOutput:
+        profile = self._agent_profile_registry.require_profile(agent_type)
+        session = self.get_session(session_id)
+        step = self.get_step(step_id)
+        structured_result_refs: list[AgentResultRef] = []
+        for ref in list(result_refs or []):
+            ref_type, _, _ = ref.partition(":")
+            structured_result_refs.append(
+                AgentResultRef(
+                    ref_type=ref_type,
+                    ref_id=ref,
+                    source_agent_type=agent_type,
+                    source_step_id=step.step_id,
+                    status=status,
+                    ref_scope="chapter" if session.chapter_id else "work",
+                    summary=ref_type,
+                    created_at=self._now(),
+                )
+            )
+        return AgentOutput(
+            agent_type=agent_type,
+            step_id=step_id,
+            status=status,
+            result_refs=structured_result_refs,
+            warning_codes=list(warning_codes or []),
+            error_code=error_code,
+            decision_hint=decision_hint,
+            suggested_next_stage=suggested_next_stage,
+            requires_user_action=requires_user_action,
+            metadata={
+                "model_role": profile.model_role,
+                "trace_level": profile.trace_level,
+                "output_schema_key": profile.output_schema_key,
+                "formal_write_forbidden": bool(profile.metadata.get("formal_write_forbidden", False)),
+            },
+        )
+
+    def update_session_metadata(self, session_id: str, *, metadata_updates: dict[str, object]) -> AgentSession:
+        session = self.get_session(session_id)
+        metadata = dict(session.metadata)
+        metadata.update(metadata_updates)
+        updated = session.model_copy(update={"metadata": metadata, "updated_at": self._now()})
+        return self._session_repository.save_session(updated)
 
     def build_tool_execution_context(
         self,
@@ -709,7 +816,13 @@ class AgentRuntimeService:
     def recover_after_restart(self) -> list[str]:
         recovered_ids: list[str] = []
         self._ai_job_service.recover_after_restart()
-        for session in self._session_repository.list_sessions(status=AgentSessionStatus.RUNNING.value):
+        candidate_sessions = list(self._session_repository.list_sessions(status=AgentSessionStatus.RUNNING.value))
+        candidate_sessions.extend(self._session_repository.list_sessions(status=AgentSessionStatus.WAITING_FOR_USER.value))
+        seen_session_ids: set[str] = set()
+        for session in candidate_sessions:
+            if session.session_id in seen_session_ids:
+                continue
+            seen_session_ids.add(session.session_id)
             now = self._now()
             paused = session.model_copy(
                 update={
@@ -1401,6 +1514,25 @@ class AgentRuntimeService:
             "failed_steps": sum(1 for step in steps if step.status == AgentStepStatus.FAILED),
             "skipped_steps": sum(1 for step in steps if step.status == AgentStepStatus.SKIPPED),
         }
+
+    def _is_step_completion_compatible(self, step: AgentStep, steps: list[AgentStep]) -> bool:
+        if step.status in {
+            AgentStepStatus.SUCCEEDED,
+            AgentStepStatus.SKIPPED,
+            AgentStepStatus.CANCELLED,
+            AgentStepStatus.IGNORED_LATE_RESULT,
+        }:
+            return True
+        if step.status != AgentStepStatus.FAILED:
+            return False
+        return any(
+            later_step.order_index > step.order_index
+            and later_step.agent_type == step.agent_type
+            and later_step.step_type == step.step_type
+            and later_step.action == step.action
+            and later_step.status == AgentStepStatus.SUCCEEDED
+            for later_step in steps
+        )
 
     def _merge_warning_codes(self, existing: list[str], incoming: list[str]) -> list[str]:
         merged = list(existing)

@@ -65,7 +65,8 @@ const items = [
   { key: 'outline', label: '大纲' },
   { key: 'timeline', label: '时间线' },
   { key: 'foreshadow', label: '伏笔' },
-  { key: 'character', label: '人物' }
+  { key: 'character', label: '人物' },
+  { key: 'ai', label: 'AI' }
 ]
 
 const pendingAction = ref(null)

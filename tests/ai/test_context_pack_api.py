@@ -63,6 +63,9 @@ def test_context_pack_api_builds_and_returns_snapshot() -> None:
     readiness_payload = readiness_response.json()
     assert readiness_payload["data"]["status"] in {"ready", "degraded"}
     assert "estimated_token_count" in readiness_payload["data"]
+    assert "plot_arc_statuses" in readiness_payload["data"]
+    assert "plot_arc_summary" in readiness_payload["data"]
+    assert readiness_payload["data"]["plot_arc_summary"]["master_arc"]["arc_title"] != ""
 
 
 def test_context_pack_api_returns_blocked_when_not_initialized() -> None:
@@ -101,6 +104,8 @@ def test_context_pack_api_does_not_expose_full_chapter_text() -> None:
     for item in get_payload["data"]["context_items"]:
         assert "content_text" not in item
         assert "source_id" not in item
+        if item["source_type"].startswith("plot_arc_"):
+            assert "summary" in item
 
     assert "source_story_memory_snapshot_id" not in get_payload["data"]
     assert "source_story_state_id" not in get_payload["data"]

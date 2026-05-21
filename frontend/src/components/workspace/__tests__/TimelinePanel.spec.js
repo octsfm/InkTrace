@@ -11,6 +11,7 @@ const mockCreateTimeline = vi.fn()
 const mockUpdateTimeline = vi.fn()
 const mockDeleteTimeline = vi.fn()
 const mockReorderTimeline = vi.fn()
+const mockGetContextPackReadiness = vi.fn()
 
 vi.mock('@/api', () => ({
   v1WritingAssetsApi: {
@@ -25,6 +26,9 @@ vi.mock('@/api', () => ({
     reorderTimeline: (...args) => mockReorderTimeline(...args),
     listForeshadows: vi.fn().mockResolvedValue([]),
     listCharacters: vi.fn().mockResolvedValue([])
+  },
+  aiApi: {
+    getContextPackReadiness: (...args) => mockGetContextPackReadiness(...args)
   }
 }))
 
@@ -37,6 +41,26 @@ describe('TimelinePanel', () => {
     mockUpdateTimeline.mockReset()
     mockDeleteTimeline.mockReset()
     mockReorderTimeline.mockReset()
+    mockGetContextPackReadiness.mockReset()
+    mockGetContextPackReadiness.mockResolvedValue({
+      data: {
+        status: 'ready',
+        plot_arc_statuses: {
+          immediate_window: { status: 'ready', quality_level: 'complete', warning_codes: [] },
+          sequence_arc: { status: 'ready', quality_level: 'minimal', warning_codes: [] }
+        },
+        plot_arc_summary: {
+          immediate_window: {
+            active_plot_threads: ['灯塔谜团'],
+            recent_chapters_summary: ['顾迟进入灯塔', '旧地图现身']
+          },
+          sequence_arc: {
+            sequence_goal: '完成第一轮追索',
+            key_events: ['发现旧地图']
+          }
+        }
+      }
+    })
   })
 
   it('loads timeline events in order_index asc order', async () => {
@@ -55,6 +79,21 @@ describe('TimelinePanel', () => {
     expect(items).toHaveLength(2)
     expect(items[0].attributes('data-event-id')).toBe('event-1')
     expect(items[1].attributes('data-event-id')).toBe('event-2')
+  })
+
+  it('shows immediate window summary for the active chapter context', async () => {
+    mockListTimeline.mockResolvedValue([])
+
+    const wrapper = mount(TimelinePanel, {
+      props: { workId: 'work-1', activeChapterId: 'chapter-2' }
+    })
+    await flushPromises()
+
+    expect(mockGetContextPackReadiness).toHaveBeenCalledWith('work-1', 'chapter-2')
+    expect(wrapper.text()).toContain('近期剧情窗口')
+    expect(wrapper.text()).toContain('灯塔谜团')
+    expect(wrapper.text()).toContain('顾迟进入灯塔')
+    expect(wrapper.text()).toContain('完成第一轮追索')
   })
 
   it('creates a new timeline event from explicit save', async () => {

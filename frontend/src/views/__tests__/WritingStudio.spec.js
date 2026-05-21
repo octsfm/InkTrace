@@ -281,8 +281,16 @@ describe('WritingStudio layout contract', () => {
     expect(source).toContain('<TimelinePanel')
     expect(source).toContain('<ForeshadowPanel')
     expect(source).toContain('<CharacterPanel')
+    expect(source).toContain('<AIPanel')
+    expect(source).toContain("v-else-if=\"activeTab === 'ai'\"")
     expect(source).not.toContain('outline_file')
     expect(source).not.toContain('导入大纲')
+  })
+
+  it('moves ai panel into the right workspace drawer instead of keeping it below the editor', () => {
+    expect(source).toContain("activeTab === 'ai'")
+    expect(source).toContain(':chapter-id="chapterDataStore.activeChapterId"')
+    expect(source).not.toContain('<AIPanel\n              v-show="!isFocusMode"')
   })
 
   it('defines header title editing and rename behavior without exposing work id', () => {

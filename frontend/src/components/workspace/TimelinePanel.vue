@@ -10,6 +10,25 @@
       </button>
     </header>
 
+    <section v-if="plotArcVisible" class="plot-arc-section">
+      <header class="plot-arc-header">
+        <h4>近期剧情窗口</h4>
+        <span class="plot-arc-status">{{ plotArcStatusLabel }}</span>
+      </header>
+      <p v-if="sequenceSummary.sequence_goal" class="plot-arc-text">
+        序列目标：{{ sequenceSummary.sequence_goal }}
+      </p>
+      <ul v-if="sequenceKeyEvents.length" class="plot-arc-list">
+        <li v-for="event in sequenceKeyEvents" :key="event">{{ event }}</li>
+      </ul>
+      <p v-if="activeThreads.length" class="plot-arc-text">
+        活跃线索：{{ activeThreads.join(' / ') }}
+      </p>
+      <ul v-if="recentChapterSummaries.length" class="plot-arc-list">
+        <li v-for="summary in recentChapterSummaries" :key="summary">{{ summary }}</li>
+      </ul>
+    </section>
+
     <div class="timeline-layout">
       <aside class="timeline-list">
         <button
@@ -149,6 +168,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
+import { aiApi } from '@/api'
 import { useWritingAssetStore } from '@/stores/writingAsset'
 import AssetConflictModal from './AssetConflictModal.vue'
 
@@ -160,6 +180,10 @@ const props = defineProps({
   chapters: {
     type: Array,
     default: () => []
+  },
+  activeChapterId: {
+    type: String,
+    default: ''
   }
 })
 
@@ -218,6 +242,27 @@ const chapterOptions = computed(() => (
     }
   }).filter((chapter) => chapter.id)
 ))
+const plotArcStatusLabel = computed(() => String(assetStore.contextPackReadiness?.status || 'unknown'))
+const sequenceSummary = computed(() => assetStore.plotArcSummary?.sequence_arc || {})
+const immediateSummary = computed(() => assetStore.plotArcSummary?.immediate_window || {})
+const sequenceKeyEvents = computed(() => {
+  const items = sequenceSummary.value?.key_events
+  return Array.isArray(items) ? items.filter(Boolean) : []
+})
+const recentChapterSummaries = computed(() => {
+  const items = immediateSummary.value?.recent_chapters_summary
+  return Array.isArray(items) ? items.filter(Boolean) : []
+})
+const activeThreads = computed(() => {
+  const items = immediateSummary.value?.active_plot_threads
+  return Array.isArray(items) ? items.filter(Boolean) : []
+})
+const plotArcVisible = computed(() => Boolean(
+  sequenceSummary.value?.sequence_goal ||
+  sequenceKeyEvents.value.length ||
+  recentChapterSummaries.value.length ||
+  activeThreads.value.length
+))
 const localConflictContent = computed(() => {
   const payload = assetStore.assetConflictPayload?.payload || {}
   return [
@@ -227,6 +272,16 @@ const localConflictContent = computed(() => {
   ].join('\n')
 })
 const serverConflictContent = computed(() => String(assetStore.assetConflictPayload?.server_content || ''))
+
+const loadPlotArcSummary = async () => {
+  if (!props.workId || !props.activeChapterId) return
+  const payload = await aiApi.getContextPackReadiness(props.workId, props.activeChapterId)
+  const readiness = payload?.data ?? payload ?? {}
+  assetStore.contextPackReadiness = readiness
+  assetStore.plotArcStatuses = readiness.plot_arc_statuses || {}
+  assetStore.plotArcSummary = readiness.plot_arc_summary || {}
+  assetStore.plotArcChapterId = String(props.activeChapterId || '')
+}
 
 const buildDraftPayload = (event = selectedEvent.value) => ({
   title: String(draft.title || ''),
@@ -404,6 +459,7 @@ onMounted(async () => {
       await assetStore.loadTimeline(props.workId)
     }
   }
+  await loadPlotArcSummary()
   ensureSelection()
   syncDraftFromSelected()
 })
@@ -417,6 +473,14 @@ watch(
     isCreating.value = false
     ensureSelection()
     syncDraftFromSelected()
+  }
+)
+
+watch(
+  () => props.activeChapterId,
+  async (nextChapterId, previousChapterId) => {
+    if (!nextChapterId || nextChapterId === previousChapterId) return
+    await loadPlotArcSummary()
   }
 )
 
@@ -440,6 +504,48 @@ defineExpose({
 .timeline-panel {
   display: grid;
   gap: 14px;
+}
+
+.plot-arc-section {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.plot-arc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plot-arc-header h4 {
+  margin: 0;
+  color: #111827;
+}
+
+.plot-arc-status {
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.plot-arc-text,
+.plot-arc-list {
+  margin: 0;
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.plot-arc-list {
+  padding-left: 18px;
 }
 
 .timeline-header,

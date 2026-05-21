@@ -4,16 +4,17 @@ import { mount } from '@vue/test-utils'
 import AssetRail from '../AssetRail.vue'
 
 describe('AssetRail', () => {
-  it('renders four single-character non-AI writing asset entries with full labels in accessibility attrs', () => {
+  it('renders writing asset entries together with the AI workspace entry', () => {
     const wrapper = mount(AssetRail)
 
     const buttons = wrapper.findAll('.asset-rail-button')
-    expect(buttons).toHaveLength(4)
-    expect(buttons.map((button) => button.text())).toEqual(['纲', '线', '伏', '人'])
+    expect(buttons).toHaveLength(5)
+    expect(buttons.map((button) => button.text())).toEqual(['纲', '线', '伏', '人', 'AI'])
     expect(wrapper.find('[data-asset-tab="outline"]').attributes('title')).toBe('大纲')
     expect(wrapper.find('[data-asset-tab="timeline"]').attributes('aria-label')).toBe('时间线')
     expect(wrapper.find('[data-asset-tab="foreshadow"]').attributes('title')).toBe('伏笔')
     expect(wrapper.find('[data-asset-tab="character"]').attributes('aria-label')).toBe('人物')
+    expect(wrapper.find('[data-asset-tab="ai"]').attributes('title')).toBe('AI')
   })
 
   it('emits selected tab when clicking an inactive entry', async () => {
@@ -49,7 +50,7 @@ describe('AssetRail', () => {
     })
 
     expect(wrapper.find('[data-asset-tab="outline"]').exists()).toBe(false)
-    expect(wrapper.findAll('.asset-rail-button')).toHaveLength(3)
+    expect(wrapper.findAll('.asset-rail-button')).toHaveLength(4)
     expect(wrapper.find('[data-asset-tab="timeline"]').exists()).toBe(true)
   })
 

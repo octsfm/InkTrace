@@ -4,21 +4,27 @@ from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.initialization_service import InitializationApplicationService
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
-from domain.entities.ai.models import ContextPackBuildRequest, ContextPackStatus
+from domain.entities.ai.models import (
+    ContextItem,
+    ContextPackBuildRequest,
+    ContextPackStatus,
+)
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from infrastructure.database.repositories.ai.file_context_pack_store import FileContextPackStore
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
+from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlotArcStore
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 
 
-def _build_services() -> tuple[ContextPackService, InitializationApplicationService, WorkService, ChapterService]:
+def _build_services() -> tuple[ContextPackService, InitializationApplicationService, WorkService, ChapterService, FilePlotArcStore]:
     work_repo = WorkRepo()
     chapter_repo = ChapterRepo()
     work_service = WorkService(work_repo=work_repo, chapter_repo=chapter_repo)
     chapter_service = ChapterService(chapter_repo=chapter_repo, work_repo=work_repo)
     job_store = FileAIJobStore()
+    plot_arc_store = FilePlotArcStore()
     init_service = InitializationApplicationService(
         work_service=work_service,
         chapter_service=chapter_service,
@@ -28,6 +34,7 @@ def _build_services() -> tuple[ContextPackService, InitializationApplicationServ
         initialization_repository=FileInitializationStore(),
         story_memory_repository=FileStoryMemoryStore(),
         story_state_repository=FileStoryStateStore(),
+        plot_arc_repository=plot_arc_store,
     )
     cp_service = ContextPackService(
         chapter_service=chapter_service,
@@ -35,12 +42,13 @@ def _build_services() -> tuple[ContextPackService, InitializationApplicationServ
         story_memory_repository=FileStoryMemoryStore(),
         story_state_repository=FileStoryStateStore(),
         context_pack_repository=FileContextPackStore(),
+        plot_arc_repository=plot_arc_store,
     )
-    return cp_service, init_service, work_service, chapter_service
+    return cp_service, init_service, work_service, chapter_service, plot_arc_store
 
 
 def test_context_pack_ready_with_story_memory_and_state() -> None:
-    cp_service, init_service, work_service, chapter_service = _build_services()
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
     work = work_service.create_work("上下文作品", "作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter_service.update_chapter(chapter.id.value, title="第一章", content="顾迟在海边灯塔醒来，发现整个世界已不同。", expected_version=1)
@@ -59,10 +67,36 @@ def test_context_pack_ready_with_story_memory_and_state() -> None:
     assert not any(item.source_type == "vector_recall" for item in snapshot.context_items)
     assert not any(item.source_type == "system_policy" for item in snapshot.context_items)
     assert snapshot.vector_recall_status == "degraded"
+    assert any(item.source_type == "plot_arc_master" for item in snapshot.context_items)
+    assert any(item.source_type == "plot_arc_volume" for item in snapshot.context_items)
+    assert any(item.source_type == "plot_arc_sequence" for item in snapshot.context_items)
+    assert any(item.source_type == "plot_arc_immediate" for item in snapshot.context_items)
+
+
+def test_context_pack_immediate_window_includes_scene_details_from_story_memory() -> None:
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
+    work = work_service.create_work("场景上下文作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(
+        chapter.id.value,
+        title="第一章",
+        content="夜里，顾迟在灯塔顶层翻看旧航海图。沈砚守在楼梯口。海雾里忽然传来钟声，顾迟意识到父亲留下的标记就在地图夹层。",
+        expected_version=1,
+    )
+
+    init_service.start_initialization(work.id, created_by="user_action")
+    readiness = cp_service.evaluate_readiness(work.id, chapter_id=chapter.id.value)
+
+    scene_details = readiness["plot_arc_summary"]["immediate_window"]["scene_details"]
+
+    assert scene_details
+    assert scene_details[0]["location"] != ""
+    assert "顾迟" in scene_details[0]["characters_present"]
+    assert scene_details[0]["reveal_points"]
 
 
 def test_context_pack_blocked_when_no_story_memory() -> None:
-    cp_service, _, work_service, chapter_service = _build_services()
+    cp_service, _, work_service, chapter_service, _plot_arc_store = _build_services()
     work = work_service.create_work("无记忆作品", "作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter_service.update_chapter(chapter.id.value, title="第一章", content="测试内容。", expected_version=1)
@@ -75,7 +109,7 @@ def test_context_pack_blocked_when_no_story_memory() -> None:
 
 
 def test_context_pack_blocked_when_initialization_not_completed() -> None:
-    cp_service, _, work_service, _ = _build_services()
+    cp_service, _, work_service, _, _plot_arc_store = _build_services()
     work = work_service.create_work("未初始化作品", "作者")
 
     request = ContextPackBuildRequest(work_id=work.id)
@@ -85,8 +119,8 @@ def test_context_pack_blocked_when_initialization_not_completed() -> None:
     assert "initialization_not_completed" in snapshot.blocked_reason
 
 
-def test_context_pack_blocked_when_stale_and_not_quick_trial() -> None:
-    cp_service, init_service, work_service, chapter_service = _build_services()
+def test_context_pack_degraded_when_story_memory_or_state_stale() -> None:
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
     work = work_service.create_work("过时作品", "作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter_service.update_chapter(chapter.id.value, title="第一章", content="沈砚在雨夜回到旧城。", expected_version=1)
@@ -97,14 +131,41 @@ def test_context_pack_blocked_when_stale_and_not_quick_trial() -> None:
     request = ContextPackBuildRequest(work_id=work.id, chapter_id=chapter.id.value)
     snapshot = cp_service.build_and_save(request)
 
-    assert snapshot.status == ContextPackStatus.BLOCKED
+    assert snapshot.status == ContextPackStatus.DEGRADED
     assert snapshot.stale is True
-    assert "stale" in snapshot.blocked_reason
+    assert snapshot.blocked_reason == ""
+    assert "stale" in snapshot.degraded_reason
     assert any("stale" in warning for warning in snapshot.warnings)
 
 
+def test_context_pack_readiness_returns_plot_arc_projection_summary() -> None:
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
+    work = work_service.create_work("轨道作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(
+        chapter.id.value,
+        title="第一章",
+        content="顾迟在灯塔里发现旧地图，意识到海雾背后藏着更大的秘密。",
+        expected_version=1,
+    )
+
+    init_service.start_initialization(work.id, created_by="user_action")
+
+    readiness = cp_service.evaluate_readiness(work.id, chapter_id=chapter.id.value)
+
+    assert readiness["status"] == "degraded"
+    assert "plot_arc_statuses" in readiness
+    assert readiness["plot_arc_statuses"]["master_arc"]["status"] in {"ready", "degraded"}
+    assert readiness["plot_arc_statuses"]["volume_arc"]["status"] in {"pending", "degraded", "empty"}
+    assert readiness["plot_arc_statuses"]["sequence_arc"]["status"] in {"pending", "degraded", "empty"}
+    assert readiness["plot_arc_statuses"]["immediate_window"]["status"] in {"ready", "degraded"}
+    assert "plot_arc_summary" in readiness
+    assert readiness["plot_arc_summary"]["master_arc"]["arc_title"] != ""
+    assert "recent_chapters_summary" in readiness["plot_arc_summary"]["immediate_window"]
+
+
 def test_context_pack_degraded_when_vector_recall_unavailable() -> None:
-    cp_service, init_service, work_service, chapter_service = _build_services()
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
     work = work_service.create_work("降级作品", "作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter_service.update_chapter(chapter.id.value, title="第一章", content="林舟来到白塔城，遇见顾宁。", expected_version=1)
@@ -120,7 +181,7 @@ def test_context_pack_degraded_when_vector_recall_unavailable() -> None:
 
 
 def test_context_pack_trims_items_when_over_budget() -> None:
-    cp_service, init_service, work_service, chapter_service = _build_services()
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
     work = work_service.create_work("预算作品", "作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter_service.update_chapter(chapter.id.value, title="第一章", content="温遥离开港口，前往群岛。", expected_version=1)
@@ -137,8 +198,136 @@ def test_context_pack_trims_items_when_over_budget() -> None:
         assert len(snapshot.context_items) > 0
 
 
+def test_initialization_persists_master_and_volume_arcs_for_independent_reads() -> None:
+    cp_service, init_service, work_service, chapter_service, plot_arc_store = _build_services()
+    work = work_service.create_work("持久化轨道作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(
+        chapter.id.value,
+        title="第一章",
+        content="顾迟在海边灯塔醒来，决定追查父亲失踪与旧城海雾的关系。",
+        expected_version=1,
+    )
+
+    initialization = init_service.start_initialization(work.id, created_by="user_action")
+    master_arc = plot_arc_store.get_master_arc(work.id)
+    volume_arc = plot_arc_store.get_active_volume_arc(work.id, chapter_no=1)
+    sequence_arc = plot_arc_store.get_active_sequence_arc(work.id, chapter_no=1)
+
+    assert initialization.status.value == "completed"
+    assert master_arc is not None
+    assert master_arc.source_initialization_id == initialization.initialization_id
+    assert master_arc.version == 1
+    assert master_arc.built_by == "memory_agent"
+    assert master_arc.last_updated_by == "memory_agent"
+    assert master_arc.protagonist_motivation != ""
+    assert volume_arc is not None
+    assert volume_arc.version == 1
+    assert volume_arc.built_by == "planner_agent"
+    assert volume_arc.chapter_range["from_chapter"] == 1
+    assert "to_chapter_estimate" in volume_arc.chapter_range
+    assert sequence_arc is None
+    assert cp_service.evaluate_readiness(work.id, chapter_id=chapter.id.value)["plot_arc_summary"]["master_arc"]["arc_title"] != ""
+
+
+def test_context_pack_prefers_repository_plot_arcs_over_dynamic_fallback() -> None:
+    cp_service, init_service, work_service, chapter_service, plot_arc_store = _build_services()
+    work = work_service.create_work("仓储优先轨道作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(
+        chapter.id.value,
+        title="第一章",
+        content="顾迟在灯塔中看见一张旧地图，海雾里传来熟悉的钟声。",
+        expected_version=1,
+    )
+
+    initialization = init_service.start_initialization(work.id, created_by="user_action")
+    master_arc = plot_arc_store.get_master_arc(work.id)
+    volume_arc = plot_arc_store.get_active_volume_arc(work.id, chapter_no=1)
+
+    plot_arc_store.save_master_arc(
+        master_arc.model_copy(
+            update={
+                "arc_title": "持久化主线标题",
+                "ultimate_goal": "找到海雾源头",
+                "current_stage": "灯塔调查",
+            }
+        )
+    )
+    plot_arc_store.save_volume_arc(
+        volume_arc.model_copy(
+            update={
+                "status": "ready",
+                "quality_level": "minimal",
+                "stage_goal": "锁定守夜人留下的真相",
+                "core_conflict": "顾迟与守夜人旧誓约的冲突",
+            }
+        )
+    )
+
+    readiness = cp_service.evaluate_readiness(work.id, chapter_id=chapter.id.value)
+
+    assert initialization.status.value == "completed"
+    assert readiness["plot_arc_summary"]["master_arc"]["arc_title"] == "持久化主线标题"
+    assert readiness["plot_arc_summary"]["master_arc"]["ultimate_goal"] == "找到海雾源头"
+    assert readiness["plot_arc_summary"]["volume_arc"]["stage_goal"] == "锁定守夜人留下的真相"
+    assert readiness["plot_arc_statuses"]["volume_arc"]["status"] == "ready"
+
+
+def test_context_pack_compresses_required_plot_arcs_and_marks_arc_trimmed() -> None:
+    cp_service, _init_service, _work_service, _chapter_service, _plot_arc_store = _build_services()
+    items = [
+        ContextItem(
+            item_id="immediate",
+            source_type="plot_arc_immediate",
+            priority=cp_service.PRIORITY_PLOT_ARC_IMMEDIATE,
+            content_text="即时窗口完整上下文",
+            token_estimate=220,
+            required=True,
+        ),
+        ContextItem(
+            item_id="sequence",
+            source_type="plot_arc_sequence",
+            priority=cp_service.PRIORITY_PLOT_ARC_SEQUENCE,
+            content_text="序列轨道完整内容",
+            token_estimate=180,
+            required=True,
+        ),
+        ContextItem(
+            item_id="volume",
+            source_type="plot_arc_volume",
+            priority=cp_service.PRIORITY_PLOT_ARC_VOLUME,
+            content_text="卷轨道完整内容",
+            token_estimate=160,
+            required=True,
+        ),
+        ContextItem(
+            item_id="master",
+            source_type="plot_arc_master",
+            priority=cp_service.PRIORITY_PLOT_ARC_MASTER,
+            content_text="主线轨道完整内容",
+            token_estimate=140,
+            required=True,
+        ),
+    ]
+
+    fitted_items, trimmed_items, warnings, overflow = cp_service._fit_required_items_with_budget(  # noqa: SLF001
+        items,
+        max_context_tokens=520,
+    )
+
+    assert overflow == 0
+    assert "arc_trimmed" in warnings
+    assert next(item for item in fitted_items if item.source_type == "plot_arc_immediate").included is True
+    assert next(item for item in fitted_items if item.source_type == "plot_arc_master").included is True
+    assert [item.source_type for item in trimmed_items] == [
+        "plot_arc_sequence",
+        "plot_arc_volume",
+    ]
+
+
 def test_context_pack_readiness_does_not_persist_snapshot() -> None:
-    cp_service, init_service, work_service, chapter_service = _build_services()
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
     work = work_service.create_work("只读就绪性作品", "作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter_service.update_chapter(chapter.id.value, title="第一章", content="陆川在档案馆里发现旧地图。", expected_version=1)
@@ -154,7 +343,7 @@ def test_context_pack_readiness_does_not_persist_snapshot() -> None:
 
 
 def test_context_pack_evaluate_readiness_returns_status() -> None:
-    cp_service, init_service, work_service, chapter_service = _build_services()
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
     work = work_service.create_work("就绪作品", "作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter_service.update_chapter(chapter.id.value, title="第一章", content="顾宁站在塔顶俯瞰整个城市。", expected_version=1)
@@ -169,7 +358,7 @@ def test_context_pack_evaluate_readiness_returns_status() -> None:
 
 
 def test_context_pack_query_text_build_failure_degrades_and_skips_rag(monkeypatch) -> None:
-    cp_service, init_service, work_service, chapter_service = _build_services()
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
     cp_service._vector_recall_service = type("_NoopRecall", (), {"recall": lambda self, query: []})()  # type: ignore[attr-defined]
     work = work_service.create_work("查询失败作品", "作者")
     chapter = chapter_service.list_chapters(work.id)[0]
@@ -204,7 +393,7 @@ def test_context_pack_forwards_allow_stale_vector_to_vector_recall_service() -> 
             calls.append({"allow_stale": getattr(query, "allow_stale", None), "query_text": getattr(query, "query_text", "")})
             return []
 
-    cp_service, init_service, work_service, chapter_service = _build_services()
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
     cp_service._vector_recall_service = _SpyVectorRecallService()  # type: ignore[attr-defined]
 
     work = work_service.create_work("陈旧召回作品", "作者")

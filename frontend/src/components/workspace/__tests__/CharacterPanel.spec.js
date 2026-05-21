@@ -10,6 +10,7 @@ const mockListCharacters = vi.fn()
 const mockCreateCharacter = vi.fn()
 const mockUpdateCharacter = vi.fn()
 const mockDeleteCharacter = vi.fn()
+const mockGetContextPackReadiness = vi.fn()
 
 vi.mock('@/api', () => ({
   v1WritingAssetsApi: {
@@ -30,6 +31,9 @@ vi.mock('@/api', () => ({
     createCharacter: (...args) => mockCreateCharacter(...args),
     updateCharacter: (...args) => mockUpdateCharacter(...args),
     deleteCharacter: (...args) => mockDeleteCharacter(...args)
+  },
+  aiApi: {
+    getContextPackReadiness: (...args) => mockGetContextPackReadiness(...args)
   }
 }))
 
@@ -41,6 +45,24 @@ describe('CharacterPanel', () => {
     mockCreateCharacter.mockReset()
     mockUpdateCharacter.mockReset()
     mockDeleteCharacter.mockReset()
+    mockGetContextPackReadiness.mockReset()
+    mockGetContextPackReadiness.mockResolvedValue({
+      data: {
+        status: 'ready',
+        plot_arc_statuses: {
+          volume_arc: { status: 'ready', quality_level: 'minimal', warning_codes: [] },
+          immediate_window: { status: 'ready', quality_level: 'complete', warning_codes: [] }
+        },
+        plot_arc_summary: {
+          volume_arc: {
+            key_characters: ['顾迟', '苏棠']
+          },
+          immediate_window: {
+            character_current_states: ['顾迟: 警觉', '苏棠: 受伤']
+          }
+        }
+      }
+    })
   })
 
   it('loads characters and supports keyword search', async () => {
@@ -65,6 +87,21 @@ describe('CharacterPanel', () => {
 
     expect(mockListCharacters).toHaveBeenCalledWith('work-1', '苏')
     expect(wrapper.find('.character-item').attributes('data-item-id')).toBe('c-2')
+  })
+
+  it('shows character-related plot arc hints for the active chapter context', async () => {
+    mockListCharacters.mockResolvedValue([])
+
+    const wrapper = mount(CharacterPanel, {
+      props: { workId: 'work-1', activeChapterId: 'chapter-3' }
+    })
+    await flushPromises()
+
+    expect(mockGetContextPackReadiness).toHaveBeenCalledWith('work-1', 'chapter-3')
+    expect(wrapper.text()).toContain('人物轨道提示')
+    expect(wrapper.text()).toContain('顾迟')
+    expect(wrapper.text()).toContain('苏棠')
+    expect(wrapper.text()).toContain('顾迟: 警觉')
   })
 
   it('creates a character and converts aliases input into array payload', async () => {

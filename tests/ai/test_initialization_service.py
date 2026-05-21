@@ -50,6 +50,30 @@ def test_start_initialization_creates_job_and_snapshots_for_confirmed_chapters()
     assert job.status.value == "completed"
 
 
+def test_initialization_builds_story_memory_with_scene_details() -> None:
+    service, work_service, chapter_service = _build_service()
+    work = work_service.create_work("场景初始化作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(
+        chapter.id.value,
+        title="第一章",
+        content="夜里，顾迟在灯塔顶层翻看旧航海图。沈砚守在楼梯口。海雾里忽然传来钟声，顾迟意识到父亲留下的标记就在地图夹层。",
+        expected_version=1,
+    )
+
+    initialization = service.start_initialization(work.id, created_by="user_action")
+    latest_memory = service.get_latest_story_memory(work.id)
+
+    assert initialization.status == "completed"
+    assert latest_memory is not None
+    assert latest_memory.scene_details
+    first_scene = latest_memory.scene_details[0]
+    assert first_scene.chapter_id == chapter.id.value
+    assert first_scene.location
+    assert "顾迟" in first_scene.characters_present
+    assert first_scene.reveal_points
+
+
 def test_finalize_initialization_marks_partial_success_for_empty_chapter() -> None:
     service, work_service, chapter_service = _build_service()
     work = work_service.create_work("部分成功作品", "作者")

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 
-import { v1WritingAssetsApi } from '@/api'
+import { aiApi, v1WritingAssetsApi } from '@/api'
 import { localCache } from '@/utils/localCache'
 
 const OUTLINE_WORK_ID = 'work'
@@ -55,6 +55,10 @@ export const useWritingAssetStore = defineStore('workbenchWritingAsset', {
       foreshadow: [],
       character: []
     },
+    contextPackReadiness: {},
+    plotArcStatuses: {},
+    plotArcSummary: {},
+    plotArcChapterId: '',
     assetDrafts: {},
     assetSaveStatus: {},
     assetConflictPayload: null,
@@ -91,6 +95,10 @@ export const useWritingAssetStore = defineStore('workbenchWritingAsset', {
         foreshadow: [],
         character: []
       }
+      this.contextPackReadiness = {}
+      this.plotArcStatuses = {}
+      this.plotArcSummary = {}
+      this.plotArcChapterId = ''
       this.assetDrafts = {}
       this.assetSaveStatus = {}
       this.assetConflictPayload = null
@@ -319,6 +327,18 @@ export const useWritingAssetStore = defineStore('workbenchWritingAsset', {
         this.loadCharacters(this.workId)
       ])
       return { workOutline, timeline, foreshadows, characters }
+    },
+
+    async loadPlotArcContext(workId = this.workId, chapterId = '') {
+      this.setWorkContext(workId)
+      const nextChapterId = String(chapterId || '')
+      const payload = await aiApi.getContextPackReadiness(this.workId, nextChapterId)
+      const readiness = payload?.data ?? payload ?? {}
+      this.contextPackReadiness = readiness
+      this.plotArcStatuses = readiness.plot_arc_statuses || {}
+      this.plotArcSummary = readiness.plot_arc_summary || {}
+      this.plotArcChapterId = nextChapterId
+      return readiness
     },
 
     async saveWorkOutline(payload = {}) {

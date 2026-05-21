@@ -16,6 +16,7 @@ def warmup_singletons_for_startup() -> None:
 from functools import lru_cache
 
 from application.services.ai.ai_job_service import AIJobService
+from application.services.ai.agent_workflow import AgentOrchestrator
 from application.services.ai.agent_runtime_service import AgentRuntimeService
 from application.services.ai.ai_review_service import AIReviewApplicationService
 from application.services.ai.ai_settings_service import AISettingsService
@@ -37,9 +38,11 @@ from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobS
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
 from infrastructure.database.repositories.ai.file_agent_runtime_store import FileAgentRuntimeStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
+from infrastructure.database.repositories.ai.file_chapter_plan_store import FileChapterPlanStore
 from infrastructure.database.repositories.ai.file_context_pack_store import FileContextPackStore
 from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
 from infrastructure.database.repositories.ai.file_llm_call_log_store import FileLLMCallLogStore
+from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlotArcStore
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 from application.services.v1.chapter_service import ChapterService
@@ -78,8 +81,18 @@ def get_context_pack_repository() -> FileContextPackStore:
 
 
 @lru_cache(maxsize=1)
+def get_plot_arc_repository() -> FilePlotArcStore:
+    return FilePlotArcStore()
+
+
+@lru_cache(maxsize=1)
 def get_candidate_draft_repository() -> FileCandidateDraftStore:
     return FileCandidateDraftStore()
+
+
+@lru_cache(maxsize=1)
+def get_chapter_plan_repository() -> FileChapterPlanStore:
+    return FileChapterPlanStore()
 
 
 @lru_cache(maxsize=1)
@@ -176,6 +189,15 @@ def get_agent_runtime_service() -> AgentRuntimeService:
 
 
 @lru_cache(maxsize=1)
+def get_agent_orchestrator() -> AgentOrchestrator:
+    return AgentOrchestrator(
+        runtime_service=get_agent_runtime_service(),
+        plot_arc_repository=get_plot_arc_repository(),
+        chapter_plan_repository=get_chapter_plan_repository(),
+    )
+
+
+@lru_cache(maxsize=1)
 def get_initialization_service() -> InitializationApplicationService:
     store = get_ai_job_store()
     return InitializationApplicationService(
@@ -187,6 +209,7 @@ def get_initialization_service() -> InitializationApplicationService:
         initialization_repository=get_initialization_repository(),
         story_memory_repository=get_story_memory_repository(),
         story_state_repository=get_story_state_repository(),
+        plot_arc_repository=get_plot_arc_repository(),
     )
 
 
@@ -198,6 +221,7 @@ def get_context_pack_service() -> ContextPackService:
         story_memory_repository=get_story_memory_repository(),
         story_state_repository=get_story_state_repository(),
         context_pack_repository=get_context_pack_repository(),
+        plot_arc_repository=get_plot_arc_repository(),
     )
 
 
@@ -216,6 +240,7 @@ def get_core_tool_facade() -> CoreToolFacade:
     return CoreToolFacade(
         context_pack_service=get_context_pack_service(),
         candidate_draft_repository=get_candidate_draft_repository(),
+        chapter_plan_repository=get_chapter_plan_repository(),
         writer=FakeWriter(),
         job_service=get_ai_job_service(),
     )

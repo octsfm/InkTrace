@@ -6,6 +6,8 @@ from pydantic import ValidationError
 from application.services.ai.agent_runtime_service import AgentRuntimeService
 from application.services.ai.tool_facade import CoreToolFacade, ToolDefinition
 from domain.entities.ai.models import (
+    AgentInput,
+    AgentOutput,
     AgentObservation,
     AgentObservationType,
     PPAOPhase,
@@ -98,6 +100,42 @@ def test_agent_runtime_service_create_and_start_session(tmp_path) -> None:
     assert session.job_id
     assert started.status == AgentSessionStatus.RUNNING
     assert started.started_at
+
+
+def test_agent_runtime_service_create_step_rejects_unsupported_agent_type(tmp_path) -> None:
+    runtime = _build_runtime(tmp_path)
+    session = runtime.create_session(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        agent_workflow_type=AgentWorkflowType.CONTINUATION,
+        user_instruction="继续写这一章",
+        request_id="req_unsupported_agent",
+        trace_id="trace_unsupported_agent",
+        caller_type="user_action",
+    )
+
+    with pytest.raises(ValueError, match="unsupported_agent_type"):
+        runtime.create_step(session.session_id, agent_type="ghostwriter", step_type="generate_candidate", action="run_writer")
+
+
+def test_agent_runtime_service_create_step_attaches_agent_profile_metadata(tmp_path) -> None:
+    runtime = _build_runtime(tmp_path)
+    session = runtime.create_session(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        agent_workflow_type=AgentWorkflowType.CONTINUATION,
+        user_instruction="继续写这一章",
+        request_id="req_profile_step",
+        trace_id="trace_profile_step",
+        caller_type="user_action",
+    )
+
+    step = runtime.create_step(session.session_id, agent_type="reviewer", step_type="review_candidate", action="review")
+
+    assert step.metadata["model_role"] == "reviewer"
+    assert step.metadata["trace_level"] == "standard"
+    assert step.metadata["output_schema_key"] == "review_report"
+    assert step.metadata["formal_write_forbidden"] is True
 
 
 def test_agent_runtime_service_create_session_defaults_request_trace_and_allow_degraded(tmp_path) -> None:
@@ -882,7 +920,7 @@ def test_agent_runtime_service_allows_completed_when_all_steps_succeeded(tmp_pat
     assert completed.result_ref == "candidate_draft:cd_7e"
 
 
-def test_agent_runtime_service_rejects_completed_when_any_step_skipped(tmp_path) -> None:
+def test_agent_runtime_service_allows_completed_when_steps_are_in_terminal_non_failed_states(tmp_path) -> None:
     runtime = _build_runtime(tmp_path)
     session = runtime.create_session(
         work_id="work-1",
@@ -911,11 +949,14 @@ def test_agent_runtime_service_rejects_completed_when_any_step_skipped(tmp_path)
         )
     )
 
-    with pytest.raises(ValueError, match="session_not_completable"):
-        runtime.complete_session(
-            session.session_id,
-            result_ref="candidate_draft:cd_7f",
-        )
+    completed = runtime.complete_session(
+        session.session_id,
+        result_ref="candidate_draft:cd_7f",
+    )
+
+    assert completed.status == AgentSessionStatus.COMPLETED
+    assert completed.result is not None
+    assert completed.result.primary_output_ref == "candidate_draft:cd_7f"
 
 
 def test_agent_runtime_service_allows_partial_success_when_some_steps_skipped(tmp_path) -> None:
@@ -1640,6 +1681,83 @@ def test_agent_runtime_service_builds_agent_run_context_with_safe_refs(tmp_path)
     assert run_context.resource_scope_refs == ["work:work-1", "chapter:chapter-1"]
     assert run_context.prior_observation_refs == []
     assert run_context.execution_guard_flags == {}
+
+
+def test_agent_runtime_service_builds_structured_agent_input_contract(tmp_path) -> None:
+    runtime = _build_runtime(tmp_path)
+    session = runtime.create_session(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        agent_workflow_type=AgentWorkflowType.CONTINUATION,
+        user_instruction="继续写这一章",
+        request_id="req_agent_input",
+        trace_id="trace_agent_input",
+        caller_type="user_action",
+    )
+    step = runtime.create_step(session.session_id, agent_type="writer", step_type="generate_candidate", action="run_writer")
+    runtime.update_session_metadata(
+        session.session_id,
+        metadata_updates={
+            "selected_direction_id": "dir_1",
+            "selected_chapter_plan_id": "plan_1",
+            "current_candidate_draft_id": "draft_1",
+            "review_id": "review_1",
+        },
+    )
+
+    agent_input = runtime.build_agent_input(
+        session.session_id,
+        step_id=step.step_id,
+        stage="drafting",
+        agent_type="writer",
+        context_refs=["context_pack:cp_1", "writing_task:wt_1"],
+    )
+
+    assert isinstance(agent_input, AgentInput)
+    assert agent_input.agent_type == "writer"
+    assert agent_input.workflow_type == AgentWorkflowType.CONTINUATION
+    assert agent_input.stage == "drafting"
+    assert agent_input.context_refs == ["context_pack:cp_1", "writing_task:wt_1"]
+    assert agent_input.selected_direction_id == "dir_1"
+    assert agent_input.selected_chapter_plan_id == "plan_1"
+    assert agent_input.current_candidate_draft_id == "draft_1"
+    assert agent_input.review_id == "review_1"
+    assert agent_input.metadata["allow_degraded"] is True
+
+
+def test_agent_runtime_service_builds_structured_agent_output_contract(tmp_path) -> None:
+    runtime = _build_runtime(tmp_path)
+    session = runtime.create_session(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        agent_workflow_type=AgentWorkflowType.CONTINUATION,
+        user_instruction="继续写这一章",
+        request_id="req_agent_output",
+        trace_id="trace_agent_output",
+        caller_type="user_action",
+    )
+    step = runtime.create_step(session.session_id, agent_type="writer", step_type="generate_candidate", action="run_writer")
+
+    agent_output = runtime.build_agent_output(
+        session.session_id,
+        step_id=step.step_id,
+        agent_type="writer",
+        status="succeeded",
+        result_refs=["candidate_draft:cd_1"],
+        warning_codes=["context_degraded"],
+        decision_hint="candidate_ready",
+        suggested_next_stage="candidate_ready",
+    )
+
+    assert isinstance(agent_output, AgentOutput)
+    assert agent_output.agent_type == "writer"
+    assert agent_output.result_refs[0].ref_type == "candidate_draft"
+    assert agent_output.result_refs[0].ref_id == "candidate_draft:cd_1"
+    assert agent_output.result_refs[0].source_agent_type == "writer"
+    assert agent_output.result_refs[0].source_step_id == step.step_id
+    assert agent_output.result_refs[0].ref_scope == "chapter"
+    assert agent_output.metadata["output_schema_key"] == "candidate_draft"
+    assert agent_output.metadata["formal_write_forbidden"] is True
 
 
 def test_agent_runtime_service_builds_run_context_with_retried_step_request_id(tmp_path) -> None:
@@ -2887,6 +3005,78 @@ def test_agent_runtime_service_execute_tool_action_rejects_user_action_only_tool
     assert refreshed_step.error_code == "tool_permission_denied"
 
 
+def test_agent_runtime_service_execute_tool_action_rejects_writer_only_tool_for_reviewer(tmp_path) -> None:
+    runtime = _build_runtime(tmp_path)
+    runtime._tool_facade.register_tool(
+        ToolDefinition(
+            tool_name="run_writer_step",
+            allowed_callers={"agent"},
+            side_effect_level="safe_write_candidate",
+            enabled=True,
+        ),
+        lambda payload: {"result_ref": "candidate_draft:cd_22c"},
+    )
+    session = runtime.create_session(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        agent_workflow_type=AgentWorkflowType.REVISION,
+        user_instruction="审阅这个候选稿",
+        request_id="req_22c",
+        trace_id="trace_22c",
+        caller_type="user_action",
+    )
+    runtime.start_session(session.session_id)
+    step = runtime.create_step(session.session_id, agent_type="reviewer", step_type="review_candidate", action="call_tool")
+    runtime.run_next_step(session.session_id)
+    runtime.record_observation(
+        step.step_id,
+        AgentObservation(
+            observation_id="obs_22c_to_planning",
+            session_id=session.session_id,
+            step_id=step.step_id,
+            observation_type=AgentObservationType.STATE_CHANGE,
+            source_type="system",
+            status="success",
+            safe_message="进入 planning",
+            decision="continue",
+            trace_id=session.trace_id,
+            request_id="req_22c_plan",
+        ),
+    )
+    runtime.record_observation(
+        step.step_id,
+        AgentObservation(
+            observation_id="obs_22c_to_action",
+            session_id=session.session_id,
+            step_id=step.step_id,
+            observation_type=AgentObservationType.STATE_CHANGE,
+            source_type="system",
+            status="success",
+            safe_message="进入 action",
+            decision="continue",
+            trace_id=session.trace_id,
+            request_id="req_22c_action",
+        ),
+    )
+
+    observation = runtime.execute_tool_action(
+        session.session_id,
+        step_id=step.step_id,
+        agent_type="reviewer",
+        tool_name="run_writer_step",
+        payload={"candidate_draft_id": "cd_1"},
+        side_effect_level="safe_write_candidate",
+        resource_scope_refs=["work:work-1"],
+    )
+
+    refreshed_step = runtime.get_step(step.step_id)
+    assert observation.status == "failed"
+    assert observation.decision == "fail_step"
+    assert observation.error_code == "tool_permission_denied"
+    assert refreshed_step.status == AgentStepStatus.FAILED
+    assert refreshed_step.error_code == "tool_permission_denied"
+
+
 def test_agent_runtime_service_validation_result_continue_completes_step(tmp_path) -> None:
     runtime = _build_runtime(tmp_path)
     session = runtime.create_session(
@@ -3418,6 +3608,53 @@ def test_agent_runtime_service_complete_session_requires_all_steps_terminal(tmp_
 
     with pytest.raises(ValueError, match="session_has_incomplete_steps"):
         runtime.complete_session(session.session_id, result_ref="candidate_draft:cd_35")
+
+
+def test_agent_runtime_service_complete_session_allows_historical_failed_step_after_later_success(tmp_path) -> None:
+    runtime = _build_runtime(tmp_path)
+    session = runtime.create_session(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        agent_workflow_type=AgentWorkflowType.REVISION,
+        user_instruction="重试后完成审阅",
+        request_id="req_35a",
+        trace_id="trace_35a",
+        caller_type="user_action",
+    )
+    runtime.start_session(session.session_id)
+    failed_step = runtime.create_step(
+        session.session_id,
+        agent_type="reviewer",
+        step_type="review_candidate",
+        action="review",
+    )
+    runtime._step_repository.save_step(
+        runtime.get_step(failed_step.step_id).model_copy(
+            update={
+                "status": AgentStepStatus.FAILED,
+                "finished_at": "2026-05-15T00:00:00Z",
+                "error_code": "review_failed",
+                "error_message": "review failed",
+            }
+        )
+    )
+    retried_step = runtime.create_step(
+        session.session_id,
+        agent_type="reviewer",
+        step_type="review_candidate",
+        action="review",
+    )
+    runtime._step_repository.save_step(
+        runtime.get_step(retried_step.step_id).model_copy(
+            update={"status": AgentStepStatus.SUCCEEDED, "finished_at": "2026-05-15T00:01:00Z"}
+        )
+    )
+
+    completed = runtime.complete_session(session.session_id, result_ref="review_report:review_retry_1")
+
+    assert completed.status == AgentSessionStatus.COMPLETED
+    assert completed.result is not None
+    assert completed.result.primary_output_ref == "review_report:review_retry_1"
 
 
 def test_agent_runtime_service_paused_session_records_late_observation_without_advancing(tmp_path) -> None:

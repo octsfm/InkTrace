@@ -35,6 +35,7 @@ class StoryMemoryService:
             characters=self._unique([name for item in successful for name in item.characters]),
             locations=self._unique([name for item in successful for name in item.locations]),
             plot_threads=self._unique([name for item in successful for name in item.unresolved_threads or item.plot_points]),
+            scene_details=[scene for item in successful for scene in item.scene_details][:20],
             created_at=self._now(),
         )
         return self._repository.save_snapshot(snapshot)

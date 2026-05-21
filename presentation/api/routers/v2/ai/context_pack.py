@@ -30,6 +30,7 @@ def _serialize_context_pack(snapshot) -> dict[str, object]:
             {
                 "item_id": item.item_id,
                 "source_type": item.source_type,
+                "summary": item.summary,
                 "priority": item.priority,
                 "token_estimate": item.token_estimate,
                 "required": item.required,
@@ -37,6 +38,7 @@ def _serialize_context_pack(snapshot) -> dict[str, object]:
                 "trim_reason": item.trim_reason,
                 "stale_status": item.stale_status,
                 "warning": item.warning,
+                "metadata": item.metadata,
             }
             for item in snapshot.context_items
         ],
@@ -45,6 +47,8 @@ def _serialize_context_pack(snapshot) -> dict[str, object]:
         "trimmed_items_count": len(snapshot.trimmed_items),
         "stale": snapshot.stale,
         "stale_reason": snapshot.stale_reason,
+        "plot_arc_statuses": snapshot.plot_arc_statuses,
+        "plot_arc_summary": snapshot.plot_arc_summary,
         "created_at": snapshot.created_at,
     }
 

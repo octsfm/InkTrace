@@ -37,7 +37,8 @@ const items = [
   { key: 'outline', label: '大纲', icon: '纲' },
   { key: 'timeline', label: '时间线', icon: '线' },
   { key: 'foreshadow', label: '伏笔', icon: '伏' },
-  { key: 'character', label: '人物', icon: '人' }
+  { key: 'character', label: '人物', icon: '人' },
+  { key: 'ai', label: 'AI', icon: 'AI' }
 ]
 
 const visibleItems = computed(() => items.filter((item) => {

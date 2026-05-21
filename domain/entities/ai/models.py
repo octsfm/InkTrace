@@ -420,6 +420,102 @@ class ResultRef(AIBaseModel):
     status: str = ""
 
 
+class AgentType(StrEnum):
+    MEMORY = "memory"
+    PLANNER = "planner"
+    WRITER = "writer"
+    REVIEWER = "reviewer"
+    REWRITER = "rewriter"
+
+
+class AgentCapability(StrEnum):
+    STORY_CONTEXT_READ = "story_context_read"
+    MEMORY_GAP_DETECTION = "memory_gap_detection"
+    MEMORY_UPDATE_SUGGESTION = "memory_update_suggestion"
+    DIRECTION_PROPOSAL = "direction_proposal"
+    CHAPTER_PLANNING = "chapter_planning"
+    WRITING_TASK_PREPARATION = "writing_task_preparation"
+    CANDIDATE_GENERATION = "candidate_generation"
+    CANDIDATE_VALIDATION = "candidate_validation"
+    CONSISTENCY_REVIEW = "consistency_review"
+    STYLE_REVIEW = "style_review"
+    PLOT_REVIEW = "plot_review"
+    ISSUE_REPORTING = "issue_reporting"
+    CANDIDATE_REVISION = "candidate_revision"
+    REVISION_VALIDATION = "revision_validation"
+
+
+class AgentToolPermissionMode(StrEnum):
+    ALLOW = "allow"
+    DENY = "deny"
+    CONDITIONAL = "conditional"
+
+
+class AgentResultRef(ResultRef):
+    ref_scope: Literal["work", "chapter", "session"] = "session"
+    checksum: str = ""
+    summary: str = ""
+    created_at: str = ""
+
+
+class AgentExecutionProfile(AIBaseModel):
+    agent_type: AgentType
+    capabilities: list[str] = Field(default_factory=list)
+    model_role: str
+    default_timeout: int = 300
+    max_retry: int = 1
+    allow_degraded: bool = True
+    allowed_tool_names: list[str] = Field(default_factory=list)
+    denied_tool_names: list[str] = Field(default_factory=list)
+    max_output_chars: int = 8000
+    output_schema_key: str = "plain_text"
+    trace_level: Literal["minimal", "standard", "verbose"] = "standard"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentToolPermission(AIBaseModel):
+    tool_name: str
+    agent_type: AgentType
+    permission: AgentToolPermissionMode
+    side_effect_level: str
+    requires_user_action: bool = False
+    allow_degraded: bool = False
+    retryable: bool = False
+    notes: str = ""
+
+
+class AgentInput(AIBaseModel):
+    session_id: str
+    workflow_type: AgentWorkflowType
+    stage: str
+    agent_type: AgentType
+    work_id: str
+    chapter_id: str | None = None
+    user_instruction: str = ""
+    context_refs: list[str] = Field(default_factory=list)
+    selected_direction_id: str = ""
+    selected_chapter_plan_id: str = ""
+    current_candidate_draft_id: str = ""
+    current_candidate_version_id: str = ""
+    review_id: str = ""
+    allow_degraded: bool = True
+    warning_codes: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentOutput(AIBaseModel):
+    agent_type: AgentType
+    step_id: str
+    status: str
+    result_refs: list[AgentResultRef] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    decision_hint: str = ""
+    suggested_next_stage: str = ""
+    requires_user_action: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class StepSummaryItem(AIBaseModel):
     step_id: str
     agent_type: str
@@ -461,6 +557,208 @@ class AgentResult(AIBaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkflowType(StrEnum):
+    CONTINUATION_WORKFLOW = "continuation_workflow"
+    REVISION_WORKFLOW = "revision_workflow"
+    PLANNING_WORKFLOW = "planning_workflow"
+    MEMORY_UPDATE_WORKFLOW = "memory_update_workflow"
+    REVIEW_WORKFLOW = "review_workflow"
+    FULL_WORKFLOW = "full_workflow"
+
+
+class WorkflowP1Status(StrEnum):
+    REQUIRED = "required"
+    OPTIONAL = "optional"
+    RESERVED = "reserved"
+
+
+class WorkflowStageName(StrEnum):
+    SESSION_INIT = "session_init"
+    MEMORY_CONTEXT_PREPARE = "memory_context_prepare"
+    PLANNING_PREPARE = "planning_prepare"
+    DIRECTION_SELECTION_WAITING = "direction_selection_waiting"
+    CHAPTER_PLAN_CONFIRM_WAITING = "chapter_plan_confirm_waiting"
+    WRITING_PREPARE = "writing_prepare"
+    DRAFTING = "drafting"
+    REVIEWING = "reviewing"
+    REWRITING = "rewriting"
+    CANDIDATE_READY = "candidate_ready"
+    HUMAN_REVIEW_WAITING = "human_review_waiting"
+    MEMORY_SUGGESTION = "memory_suggestion"
+    MEMORY_REVIEW_WAITING = "memory_review_waiting"
+    COMPLETED = "completed"
+    PARTIAL_SUCCESS = "partial_success"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class WorkflowTransitionTrigger(StrEnum):
+    AUTO = "auto"
+    USER_ACTION = "user_action"
+    OBSERVATION_DECISION = "observation_decision"
+    POLICY_RULE = "policy_rule"
+
+
+class WorkflowDecisionSource(StrEnum):
+    AGENT_ORCHESTRATOR = "agent_orchestrator"
+    USER_ACTION = "user_action"
+    RUNTIME_OBSERVATION = "runtime_observation"
+    TOOL_RESULT = "tool_result"
+    POLICY = "policy"
+
+
+class WorkflowDecision(StrEnum):
+    CONTINUE = "continue"
+    WAIT_FOR_USER = "wait_for_user"
+    RETRY_STEP = "retry_step"
+    RETRY_STAGE = "retry_stage"
+    SKIP_OPTIONAL_STAGE = "skip_optional_stage"
+    ENTER_REWRITER = "enter_rewriter"
+    RETURN_TO_REVIEWER = "return_to_reviewer"
+    MARK_PARTIAL_SUCCESS = "mark_partial_success"
+    FAIL_WORKFLOW = "fail_workflow"
+    COMPLETE_WORKFLOW = "complete_workflow"
+    CANCEL_WORKFLOW = "cancel_workflow"
+
+
+class WorkflowFailureBehavior(StrEnum):
+    FAIL_WORKFLOW = "fail_workflow"
+    PARTIAL_SUCCESS_POSSIBLE = "partial_success_possible"
+    ENTER_WAITING_USER = "enter_waiting_user"
+
+
+class ConflictBlockingStrategy(StrEnum):
+    BLOCK_WORKFLOW = "block_workflow"
+    WARN_BUT_CONTINUE = "warn_but_continue"
+
+
+class StageCondition(AIBaseModel):
+    condition_type: str
+    expression: str = ""
+    required: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class StageRecord(AIBaseModel):
+    stage_name: WorkflowStageName
+    status: str
+    decision: str = ""
+    decision_reason: str = ""
+    result_refs: list[ResultRef] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    entered_at: str = ""
+    exited_at: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowPolicy(AIBaseModel):
+    max_revision_rounds: int = 1
+    max_retry_per_stage: int = 1
+    allow_degraded: bool = True
+    require_direction_confirmation: bool = True
+    require_chapter_plan_confirmation: bool = True
+    require_review_before_candidate_ready: bool = True
+    allow_partial_success: bool = True
+    allow_skip_reviewer: bool = False
+    allow_skip_rewriter: bool = True
+    allow_memory_suggestion_after_apply: bool = True
+    conflict_blocking_strategy: ConflictBlockingStrategy = ConflictBlockingStrategy.BLOCK_WORKFLOW
+    timeout_policy: dict[str, Any] = Field(default_factory=dict)
+    formal_write_allowed: bool = False
+    auto_apply_allowed: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("max_revision_rounds", "max_retry_per_stage")
+    @classmethod
+    def _validate_non_negative(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("workflow_policy_negative_value")
+        return value
+
+    @model_validator(mode="after")
+    def _enforce_hard_safety_flags(self) -> "WorkflowPolicy":
+        object.__setattr__(self, "formal_write_allowed", False)
+        object.__setattr__(self, "auto_apply_allowed", False)
+        return self
+
+
+class WorkflowStage(AIBaseModel):
+    stage_name: WorkflowStageName
+    stage_order: int
+    responsible_agent_type: str = ""
+    entry_conditions: list[StageCondition] = Field(default_factory=list)
+    exit_conditions: list[StageCondition] = Field(default_factory=list)
+    expected_result_refs: list[str] = Field(default_factory=list)
+    allow_degraded: bool = False
+    allow_waiting_user: bool = False
+    allow_retry: bool = True
+    allow_skip: bool = False
+    is_optional: bool = False
+    is_terminal: bool = False
+    failure_behavior: WorkflowFailureBehavior = WorkflowFailureBehavior.FAIL_WORKFLOW
+    max_retry_per_stage: int = 1
+
+
+class WorkflowTransition(AIBaseModel):
+    from_stage: WorkflowStageName
+    to_stage: WorkflowStageName
+    trigger: WorkflowTransitionTrigger
+    condition: str = ""
+    decision_source: WorkflowDecisionSource = WorkflowDecisionSource.AGENT_ORCHESTRATOR
+    reason_code: str = ""
+    created_at: str = ""
+
+
+class WorkflowCheckpoint(AIBaseModel):
+    checkpoint_id: str
+    session_id: str
+    workflow_type: WorkflowType
+    current_stage: WorkflowStageName
+    current_agent_type: str = ""
+    current_step_id: str = ""
+    revision_round: int = 0
+    result_refs: list[ResultRef] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    waiting_for_user_reason: str = ""
+    selected_direction_id: str = ""
+    selected_chapter_plan_id: str = ""
+    current_candidate_draft_id: str = ""
+    current_candidate_version_id: str = ""
+    created_at: str = ""
+
+
+class AgentWorkflowDefinition(AIBaseModel):
+    workflow_type: WorkflowType
+    stages: list[WorkflowStage] = Field(default_factory=list)
+    transitions: list[WorkflowTransition] = Field(default_factory=list)
+    default_policy: WorkflowPolicy = Field(default_factory=WorkflowPolicy)
+    p1_status: WorkflowP1Status = WorkflowP1Status.REQUIRED
+    enabled: bool = True
+    version: str = "v1"
+
+
+class AgentWorkflowRun(AIBaseModel):
+    run_id: str
+    session_id: str
+    workflow_type: WorkflowType
+    current_stage: WorkflowStageName
+    stage_history: list[StageRecord] = Field(default_factory=list)
+    policy: WorkflowPolicy = Field(default_factory=WorkflowPolicy)
+    checkpoints: list[WorkflowCheckpoint] = Field(default_factory=list)
+    revision_round: int = 0
+    status: AgentSessionStatus = AgentSessionStatus.PENDING
+    result: AgentResult | None = None
+    result_refs: list[ResultRef] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    created_at: str = ""
+    finished_at: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class InitializationStatus(StrEnum):
     NOT_STARTED = "not_started"
     OUTLINE_ANALYZING = "outline_analyzing"
@@ -498,6 +796,20 @@ class OutlineAnalysisResult(AIBaseModel):
     outline_empty: bool = True
 
 
+class ChapterSceneDetail(AIBaseModel):
+    chapter_id: str
+    chapter_title: str = ""
+    chapter_version: int = 1
+    scene_order: int = 1
+    location: str
+    time_of_day: str = ""
+    atmosphere: str = ""
+    characters_present: list[str] = Field(default_factory=list)
+    emotional_tone: str = ""
+    pov_hint: str = ""
+    reveal_points: list[str] = Field(default_factory=list)
+
+
 class ChapterAnalysisResult(AIBaseModel):
     chapter_id: str
     chapter_title: str = ""
@@ -508,6 +820,7 @@ class ChapterAnalysisResult(AIBaseModel):
     locations: list[str] = Field(default_factory=list)
     plot_points: list[str] = Field(default_factory=list)
     unresolved_threads: list[str] = Field(default_factory=list)
+    scene_details: list[ChapterSceneDetail] = Field(default_factory=list)
     error_code: str = ""
     error_message: str = ""
     is_empty: bool = False
@@ -526,6 +839,7 @@ class StoryMemorySnapshot(AIBaseModel):
     characters: list[str] = Field(default_factory=list)
     locations: list[str] = Field(default_factory=list)
     plot_threads: list[str] = Field(default_factory=list)
+    scene_details: list[ChapterSceneDetail] = Field(default_factory=list)
     stale_status: str = "fresh"
     stale_reason: str = ""
     created_at: str = ""
@@ -651,12 +965,188 @@ class ContextPackStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class ArcStatus(StrEnum):
+    PENDING = "pending"
+    READY = "ready"
+    DEGRADED = "degraded"
+    STALE = "stale"
+    FAILED = "failed"
+    EMPTY = "empty"
+
+
+class ArcQualityLevel(StrEnum):
+    PLACEHOLDER = "placeholder"
+    MINIMAL = "minimal"
+    COMPLETE = "complete"
+
+
+class SequenceEvent(AIBaseModel):
+    event_id: str
+    event_order: int
+    event_name: str
+    description: str = ""
+    event_type: str = "development"
+    estimated_chapter: int = 0
+    involved_characters: list[str] = Field(default_factory=list)
+    foreshadow_triggers: list[str] = Field(default_factory=list)
+    arc_impact: str = ""
+
+
+class MasterArc(AIBaseModel):
+    master_arc_id: str
+    work_id: str
+    arc_title: str
+    version: int = 1
+    arc_logline: str = ""
+    status: ArcStatus
+    quality_level: ArcQualityLevel = ArcQualityLevel.MINIMAL
+    ultimate_goal: str = ""
+    protagonist_motivation: str = ""
+    current_stage: str = ""
+    stage_position: str = ""
+    core_theme: str = ""
+    final_conflict: str = ""
+    main_antagonist: str = ""
+    hard_constraints: list[str] = Field(default_factory=list)
+    forbidden_outcomes: list[str] = Field(default_factory=list)
+    key_milestones: list[str] = Field(default_factory=list)
+    endgame_foreshadows: list[str] = Field(default_factory=list)
+    source_initialization_id: str = ""
+    source_outline_ref: str = ""
+    source_refs: list[str] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    stale_status: str = "fresh"
+    stale_reason: str = ""
+    built_from_text_inference: bool = False
+    built_by: str = ""
+    last_updated_by: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+
+
+class VolumeArc(AIBaseModel):
+    volume_arc_id: str
+    work_id: str
+    master_arc_id: str = ""
+    version: int = 1
+    volume_no: int = 1
+    status: ArcStatus
+    quality_level: ArcQualityLevel = ArcQualityLevel.PLACEHOLDER
+    stage_goal: str = ""
+    core_conflict: str = ""
+    climax_description: str = ""
+    resolution_condition: str = ""
+    stage_open_loops: list[str] = Field(default_factory=list)
+    key_characters: list[str] = Field(default_factory=list)
+    foreshadow_planted: list[str] = Field(default_factory=list)
+    foreshadow_resolved: list[str] = Field(default_factory=list)
+    forbidden_items: list[str] = Field(default_factory=list)
+    chapter_range: dict[str, int] = Field(default_factory=dict)
+    source_initialization_id: str = ""
+    source_outline_ref: str = ""
+    source_refs: list[str] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    stale_status: str = "fresh"
+    stale_reason: str = ""
+    built_by: str = ""
+    last_updated_by: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+
+
+class SequenceArc(AIBaseModel):
+    sequence_arc_id: str
+    work_id: str
+    volume_arc_id: str = ""
+    master_arc_id: str = ""
+    version: int = 1
+    seq_no: int = 1
+    status: ArcStatus
+    quality_level: ArcQualityLevel = ArcQualityLevel.PLACEHOLDER
+    sequence_goal: str = ""
+    key_events: list[SequenceEvent] = Field(default_factory=list)
+    turning_points: list[str] = Field(default_factory=list)
+    required_beats: list[str] = Field(default_factory=list)
+    forbidden_items: list[str] = Field(default_factory=list)
+    chapter_range: dict[str, int] = Field(default_factory=dict)
+    source_initialization_id: str = ""
+    source_outline_ref: str = ""
+    source_refs: list[str] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    stale_status: str = "fresh"
+    stale_reason: str = ""
+    built_by: str = ""
+    last_updated_by: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+
+
+class ChapterContextItem(AIBaseModel):
+    chapter_id: str
+    chapter_no: int = 0
+    title: str = ""
+    summary: str = ""
+    key_event: str = ""
+
+
+class CurrentChapterContext(AIBaseModel):
+    chapter_id: str
+    chapter_no: int = 0
+    title: str = ""
+    content_summary: str = ""
+    writing_position: str = ""
+    unresolved_in_chapter: list[str] = Field(default_factory=list)
+
+
+class CharacterMoment(AIBaseModel):
+    character_name: str
+    current_status: str
+    emotional_state: str = ""
+    location: str = ""
+    last_action: str = ""
+
+
+class SceneMoment(AIBaseModel):
+    location: str
+    time_of_day: str = ""
+    atmosphere: str = ""
+    characters_present: list[str] = Field(default_factory=list)
+    emotional_tone: str = ""
+    pov_hint: str = ""
+    reveal_points: list[str] = Field(default_factory=list)
+
+
+class ImmediateWindow(AIBaseModel):
+    window_id: str
+    work_id: str
+    context_pack_id: str
+    status: ArcStatus
+    quality_level: ArcQualityLevel = ArcQualityLevel.MINIMAL
+    recent_chapters_summary: list[ChapterContextItem] = Field(default_factory=list)
+    recent_3_chapters_detail: list[ChapterContextItem] = Field(default_factory=list)
+    current_chapter_context: CurrentChapterContext | None = None
+    previous_chapter_hook: str = ""
+    character_current_states: list[CharacterMoment] = Field(default_factory=list)
+    active_plot_threads: list[str] = Field(default_factory=list)
+    scene_details: list[SceneMoment] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    stale_status: str = "fresh"
+    assembled_at: str = ""
+
+
 class ContextItem(AIBaseModel):
     item_id: str
     source_type: str
     source_id: str = ""
     priority: int = 10
     content_text: str = ""
+    summary: str = ""
     token_estimate: int = 0
     required: bool = False
     included: bool = True
@@ -664,6 +1154,7 @@ class ContextItem(AIBaseModel):
     filter_reason: str = ""
     stale_status: str = "fresh"
     warning: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ContextPackSnapshot(AIBaseModel):
@@ -685,6 +1176,8 @@ class ContextPackSnapshot(AIBaseModel):
     stale: bool = False
     stale_reason: str = ""
     source_chapter_versions: dict[str, int] = Field(default_factory=dict)
+    plot_arc_statuses: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    plot_arc_summary: dict[str, dict[str, Any]] = Field(default_factory=dict)
     summary: str = ""
     created_at: str = ""
 
@@ -720,6 +1213,79 @@ class CandidateDraftStatus(StrEnum):
 class CandidateDraftValidationStatus(StrEnum):
     PASSED = "passed"
     FAILED = "failed"
+
+
+class DirectionPlanStatus(StrEnum):
+    PENDING = "pending"
+    GENERATED = "generated"
+    WAITING_FOR_SELECTION = "waiting_for_selection"
+    WAITING_FOR_CONFIRMATION = "waiting_for_confirmation"
+    SELECTED = "selected"
+    CONFIRMED = "confirmed"
+    EDITED = "edited"
+    STALE = "stale"
+    SUPERSEDED = "superseded"
+    FAILED = "failed"
+
+
+class ArcRef(AIBaseModel):
+    arc_type: str
+    arc_id: str
+    arc_summary: str
+    arc_status_at_generation: str
+
+
+class ChapterBeat(AIBaseModel):
+    beat_order: int
+    beat_name: str
+    beat_description: str
+    beat_type: str
+    emotional_tone: str = ""
+    involved_characters: list[str] = Field(default_factory=list)
+
+
+class ChapterPlanItem(AIBaseModel):
+    item_id: str
+    chapter_plan_id: str
+    plan_order: int
+    chapter_goal: str
+    key_events: list[ChapterBeat] = Field(default_factory=list)
+    conflict_progression: str
+    forbidden_items: list[str] = Field(default_factory=list)
+    required_beats: list[str] = Field(default_factory=list)
+    arc_alignment: list[ArcRef] = Field(default_factory=list)
+    is_user_edited: bool = False
+    created_at: str = ""
+
+
+class ChapterPlan(AIBaseModel):
+    chapter_plan_id: str
+    work_id: str
+    chapter_id: str
+    direction_proposal_id: str
+    selected_option_id: str
+    selection_id: str
+    agent_session_id: str
+    source_context_pack_id: str
+    source_arc_refs: list[ArcRef] = Field(default_factory=list)
+    source_memory_refs: list[str] = Field(default_factory=list)
+    status: DirectionPlanStatus
+    version: int = 1
+    plan_items: list[ChapterPlanItem] = Field(default_factory=list)
+    plan_summary: str = ""
+    constraints: list[str] = Field(default_factory=list)
+    total_estimated_chapters: int = 0
+    total_estimated_words: int = 0
+    created_by: str = "planner_agent"
+    confirmed_by: str = ""
+    edited_by: str = ""
+    stale_status: str = "fresh"
+    stale_reason: str = ""
+    warning_codes: list[str] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
 
 
 class WritingTask(AIBaseModel):

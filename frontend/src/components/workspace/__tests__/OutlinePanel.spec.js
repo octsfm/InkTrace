@@ -10,6 +10,7 @@ const mockGetWorkOutline = vi.fn()
 const mockGetChapterOutline = vi.fn()
 const mockSaveWorkOutline = vi.fn()
 const mockSaveChapterOutline = vi.fn()
+const mockGetContextPackReadiness = vi.fn()
 
 vi.mock('@/api', () => ({
   v1WritingAssetsApi: {
@@ -20,6 +21,9 @@ vi.mock('@/api', () => ({
     listTimeline: vi.fn().mockResolvedValue([]),
     listForeshadows: vi.fn().mockResolvedValue([]),
     listCharacters: vi.fn().mockResolvedValue([])
+  },
+  aiApi: {
+    getContextPackReadiness: (...args) => mockGetContextPackReadiness(...args)
   }
 }))
 
@@ -31,6 +35,24 @@ describe('OutlinePanel', () => {
     mockGetChapterOutline.mockReset()
     mockSaveWorkOutline.mockReset()
     mockSaveChapterOutline.mockReset()
+    mockGetContextPackReadiness.mockReset()
+    mockGetContextPackReadiness.mockResolvedValue({
+      data: {
+        status: 'degraded',
+        plot_arc_statuses: {
+          master_arc: { status: 'ready', quality_level: 'minimal', warning_codes: [] },
+          volume_arc: { status: 'pending', quality_level: 'placeholder', warning_codes: ['arc_placeholder_only'] },
+          sequence_arc: { status: 'ready', quality_level: 'minimal', warning_codes: [] },
+          immediate_window: { status: 'ready', quality_level: 'complete', warning_codes: [] }
+        },
+        plot_arc_summary: {
+          master_arc: { arc_title: '灯塔迷局', current_stage: '追查旧地图', ultimate_goal: '揭开海雾秘密' },
+          volume_arc: { stage_goal: '确认灯塔背后的势力' },
+          sequence_arc: { sequence_goal: '完成第一轮追索', key_events: ['发现旧地图'] },
+          immediate_window: { recent_chapters_summary: ['顾迟进入灯塔'] }
+        }
+      }
+    })
   })
 
   it('shows import entry only in work outline mode and opens the modal without saving', async () => {
@@ -65,6 +87,31 @@ describe('OutlinePanel', () => {
     await wrapper.get('[data-testid="outline-mode-chapter"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-testid="outline-import-trigger"]').exists()).toBe(false)
+  })
+
+  it('shows plot arc summary in outline mode for the active chapter context', async () => {
+    mockGetWorkOutline.mockResolvedValue({
+      id: 'outline-1',
+      work_id: 'work-1',
+      content_text: '远端大纲',
+      content_tree_json: [],
+      version: 1
+    })
+
+    const wrapper = mount(OutlinePanel, {
+      props: {
+        workId: 'work-1',
+        activeChapterId: 'chapter-1'
+      }
+    })
+    await flushPromises()
+
+    expect(mockGetContextPackReadiness).toHaveBeenCalledWith('work-1', 'chapter-1')
+    expect(wrapper.text()).toContain('剧情轨道')
+    expect(wrapper.text()).toContain('灯塔迷局')
+    expect(wrapper.text()).toContain('确认灯塔背后的势力')
+    expect(wrapper.text()).toContain('完成第一轮追索')
+    expect(wrapper.text()).toContain('发现旧地图')
   })
 
   it('imports outline content into work draft with replace mode and does not call save api', async () => {

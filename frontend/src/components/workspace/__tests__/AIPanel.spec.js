@@ -56,7 +56,26 @@ describe('AIPanel', () => {
       }
     })
     getLatestInitialization.mockResolvedValue({ data: { status: 'completed', analyzed_chapter_count: 1, empty_chapter_count: 0, failed_chapter_count: 0 } })
-    getContextPackReadiness.mockResolvedValue({ data: { status: 'ready', blocked_reason: '', degraded_reason: '', warnings: [] } })
+    getContextPackReadiness.mockResolvedValue({
+      data: {
+        status: 'degraded',
+        blocked_reason: '',
+        degraded_reason: 'volume_arc_missing',
+        warnings: ['volume_arc_missing'],
+        plot_arc_statuses: {
+          master_arc: { status: 'ready', quality_level: 'minimal', warning_codes: [] },
+          volume_arc: { status: 'pending', quality_level: 'placeholder', warning_codes: ['arc_placeholder_only'] },
+          sequence_arc: { status: 'ready', quality_level: 'minimal', warning_codes: [] },
+          immediate_window: { status: 'ready', quality_level: 'complete', warning_codes: [] }
+        },
+        plot_arc_summary: {
+          master_arc: { arc_title: '灯塔迷局', current_stage: '追查旧地图', ultimate_goal: '揭开海雾秘密' },
+          volume_arc: { stage_goal: '确认灯塔背后的势力', stage_open_loops: ['地图来源'] },
+          sequence_arc: { sequence_goal: '完成第一轮追索', key_events: ['发现旧地图'] },
+          immediate_window: { active_plot_threads: ['灯塔谜团'], recent_chapters_summary: ['顾迟进入灯塔'] }
+        }
+      }
+    })
     listCandidateDrafts.mockResolvedValue({ data: { items: [{ candidate_draft_id: 'cd_1', content_preview: '预览', validation_status: 'passed', source_context_pack_id: 'cp_1' }] } })
     getAIReview.mockResolvedValue({ data: { review_id: 'rv_1', summary: '审阅完成', issues: [], suggestions: [], risk_level: 'low' } })
   })
@@ -134,5 +153,21 @@ describe('AIPanel', () => {
 
     await wrapper.get('[data-test="candidate-review-cd_1"]').trigger('click')
     expect(reviewCandidateDraft).toHaveBeenCalledWith('cd_1', { user_instruction: '' })
+  })
+
+  it('renders plot arc readiness summary inside the ai workspace', async () => {
+    const wrapper = mount(AIPanel, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3 }
+    })
+
+    await vi.runAllTimersAsync()
+
+    expect(wrapper.text()).toContain('剧情轨道')
+    expect(wrapper.text()).toContain('灯塔迷局')
+    expect(wrapper.text()).toContain('确认灯塔背后的势力')
+    expect(wrapper.text()).toContain('完成第一轮追索')
+    expect(wrapper.text()).toContain('顾迟进入灯塔')
+    expect(wrapper.text()).toContain('master_arc')
+    expect(wrapper.text()).toContain('volume_arc')
   })
 })

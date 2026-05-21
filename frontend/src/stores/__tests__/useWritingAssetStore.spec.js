@@ -16,6 +16,7 @@ const mockUpdateForeshadow = vi.fn()
 const mockCreateCharacter = vi.fn()
 const mockUpdateCharacter = vi.fn()
 const mockDeleteCharacter = vi.fn()
+const mockGetContextPackReadiness = vi.fn()
 
 vi.mock('@/api', () => ({
   v1WritingAssetsApi: {
@@ -30,6 +31,9 @@ vi.mock('@/api', () => ({
     createCharacter: (...args) => mockCreateCharacter(...args),
     updateCharacter: (...args) => mockUpdateCharacter(...args),
     deleteCharacter: (...args) => mockDeleteCharacter(...args)
+  },
+  aiApi: {
+    getContextPackReadiness: (...args) => mockGetContextPackReadiness(...args)
   }
 }))
 
@@ -47,6 +51,7 @@ describe('useWritingAssetStore', () => {
     mockCreateCharacter.mockReset()
     mockUpdateCharacter.mockReset()
     mockDeleteCharacter.mockReset()
+    mockGetContextPackReadiness.mockReset()
     localCache.clear()
   })
 
@@ -72,6 +77,37 @@ describe('useWritingAssetStore', () => {
     expect(store.assets.timeline).toEqual([{ id: 'event-1', order_index: 1 }])
     expect(store.assets.foreshadow).toEqual([{ id: 'foreshadow-1', status: 'open' }])
     expect(store.assets.character).toEqual([{ id: 'character-1', name: '林舟', aliases: [] }])
+  })
+
+  it('loads plot arc readiness summary for the active chapter without touching structured asset drafts', async () => {
+    mockGetContextPackReadiness.mockResolvedValue({
+      data: {
+        status: 'degraded',
+        warnings: ['volume_arc_missing', 'sequence_arc_missing'],
+        plot_arc_statuses: {
+          master_arc: { status: 'ready', quality_level: 'minimal', warning_codes: [] },
+          volume_arc: { status: 'pending', quality_level: 'placeholder', warning_codes: ['arc_placeholder_only'] },
+          sequence_arc: { status: 'pending', quality_level: 'placeholder', warning_codes: ['arc_placeholder_only'] },
+          immediate_window: { status: 'ready', quality_level: 'complete', warning_codes: [] }
+        },
+        plot_arc_summary: {
+          master_arc: { arc_title: '灯塔迷局', ultimate_goal: '揭开海雾秘密', current_stage: '追查旧地图', core_theme: '真相与代价' },
+          volume_arc: { stage_goal: '确认灯塔背后的势力', stage_open_loops: ['地图来源'], key_characters: ['顾迟'] },
+          sequence_arc: { sequence_goal: '完成第一轮追索', key_events: ['发现旧地图'] },
+          immediate_window: { active_plot_threads: ['灯塔谜团'], recent_chapters_summary: ['顾迟进入灯塔'] }
+        }
+      }
+    })
+
+    const store = useWritingAssetStore()
+    const payload = await store.loadPlotArcContext('work-1', 'chapter-1')
+
+    expect(mockGetContextPackReadiness).toHaveBeenCalledWith('work-1', 'chapter-1')
+    expect(payload.status).toBe('degraded')
+    expect(store.contextPackReadiness.status).toBe('degraded')
+    expect(store.plotArcSummary.master_arc.arc_title).toBe('灯塔迷局')
+    expect(store.plotArcStatuses.volume_arc.status).toBe('pending')
+    expect(store.assetDrafts).toEqual({})
   })
 
   it('writes in-memory asset drafts and marks dirty state', () => {

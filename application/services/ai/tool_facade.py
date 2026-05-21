@@ -6,12 +6,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Callable
 
+from application.services.ai.agent_profile_registry import build_default_agent_profile_registry
 from application.services.ai.output_validation_service import OutputValidationService
 from application.services.ai.writer_service import WriterService
 from domain.entities.ai.models import (
     CandidateDraft,
     CandidateDraftStatus,
     CandidateDraftValidationStatus,
+    ChapterPlan,
     ContextPackBuildRequest,
 )
 
@@ -111,15 +113,19 @@ class CoreToolFacade:
         *,
         context_pack_service,
         candidate_draft_repository,
+        chapter_plan_repository=None,
         writer,
         job_service=None,
+        agent_profile_registry=None,
     ) -> None:
         self._context_pack_service = context_pack_service
         self._candidate_draft_repository = candidate_draft_repository
+        self._chapter_plan_repository = chapter_plan_repository
         self._writer_service = WriterService(writer)
         self._job_service = job_service
         self._output_validation_service = OutputValidationService()
         self._permission_policy = ToolPermissionPolicy()
+        self._agent_profile_registry = agent_profile_registry or build_default_agent_profile_registry()
         self._registry = ToolRegistry()
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
         self.audit_logs: list[dict[str, Any]] = []
@@ -203,6 +209,11 @@ class CoreToolFacade:
             )
             self._record_audit(tool_name, context, envelope)
             return envelope
+        if context.caller_type == "agent":
+            envelope = self._validate_agent_tool_permission(tool_name=tool_name, context=context)
+            if envelope is not None:
+                self._record_audit(tool_name, context, envelope)
+                return envelope
 
         try:
             result = self._handlers[tool_name](payload)
@@ -230,6 +241,54 @@ class CoreToolFacade:
         )
         self._record_audit(tool_name, context, envelope)
         return envelope
+
+    def _validate_agent_tool_permission(
+        self,
+        *,
+        tool_name: str,
+        context: ToolExecutionContext,
+    ) -> ToolResultEnvelope | None:
+        try:
+            profile = self._agent_profile_registry.require_profile(context.agent_type)
+            permission = self._agent_profile_registry.get_permission(context.agent_type, tool_name)
+        except ValueError:
+            return self._error_envelope(
+                tool_name=tool_name,
+                context=context,
+                error_code="tool_permission_denied",
+                safe_message="tool_permission_denied",
+                retryable=False,
+                user_visible=True,
+                source_service="agent_profile_registry",
+            )
+        if tool_name in profile.denied_tool_names or permission.requires_user_action:
+            return self._error_envelope(
+                tool_name=tool_name,
+                context=context,
+                error_code="tool_permission_denied",
+                safe_message="tool_permission_denied",
+                retryable=False,
+                user_visible=True,
+                source_service="agent_profile_registry",
+            )
+        if tool_name in profile.allowed_tool_names:
+            return None
+        if permission.permission.value == "deny" and tool_name in {
+            "accept_candidate_draft",
+            "reject_candidate_draft",
+            "apply_candidate_to_draft",
+            "formal_chapter_write",
+        }:
+            return self._error_envelope(
+                tool_name=tool_name,
+                context=context,
+                error_code="tool_permission_denied",
+                safe_message="tool_permission_denied",
+                retryable=False,
+                user_visible=True,
+                source_service="agent_profile_registry",
+            )
+        return None
 
     def _is_retryable_error(self, error_code: str) -> bool:
         normalized = str(error_code or "").strip().lower()
@@ -319,6 +378,70 @@ class CoreToolFacade:
         draft = self._candidate_draft_repository.get(str(payload["candidate_draft_id"]))
         return {"candidate_draft": draft}
 
+    def _get_story_memory_snapshot(self, payload: dict[str, Any]) -> dict[str, Any]:
+        snapshot_id = str(payload.get("snapshot_id", "")) or f"memory_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"memory_context:{snapshot_id}"}
+
+    def _get_story_state_baseline(self, payload: dict[str, Any]) -> dict[str, Any]:
+        state_id = str(payload.get("state_id", "")) or f"state_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"story_state:{state_id}"}
+
+    def _create_memory_update_suggestion(self, payload: dict[str, Any]) -> dict[str, Any]:
+        suggestion_id = str(payload.get("suggestion_id", "")) or f"memsug_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"memory_update_suggestion:{suggestion_id}"}
+
+    def _create_direction_proposal(self, payload: dict[str, Any]) -> dict[str, Any]:
+        proposal_id = str(payload.get("proposal_id", "")) or f"dir_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"direction:{proposal_id}"}
+
+    def _create_chapter_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        plan_id = str(payload.get("chapter_plan_id", "") or payload.get("plan_id", "")) or f"plan_{uuid.uuid4().hex[:8]}"
+        if self._chapter_plan_repository is not None:
+            plan_payload = dict(payload)
+            plan_payload["chapter_plan_id"] = plan_id
+            normalized_items: list[dict[str, Any]] = []
+            for item in list(plan_payload.get("plan_items", [])):
+                current = dict(item)
+                current.setdefault("chapter_plan_id", plan_id)
+                normalized_items.append(current)
+            if normalized_items:
+                plan_payload["plan_items"] = normalized_items
+            plan = ChapterPlan.model_validate(plan_payload)
+            self._chapter_plan_repository.save(plan)
+        return {"result_ref": f"chapter_plan:{plan_id}"}
+
+    def _create_writing_task(self, payload: dict[str, Any]) -> dict[str, Any]:
+        task_id = str(payload.get("writing_task_id", "")) or f"wt_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"writing_task:{task_id}"}
+
+    def _create_review_report(self, payload: dict[str, Any]) -> dict[str, Any]:
+        review_id = str(payload.get("review_id", "")) or f"review_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"review_report:{review_id}"}
+
+    def _create_review_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
+        issue_id = str(payload.get("issue_id", "")) or f"issue_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"review_issue:{issue_id}"}
+
+    def _create_ai_suggestion(self, payload: dict[str, Any]) -> dict[str, Any]:
+        suggestion_id = str(payload.get("suggestion_id", "")) or f"ais_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"ai_suggestion:{suggestion_id}"}
+
+    def _create_candidate_version(self, payload: dict[str, Any]) -> dict[str, Any]:
+        version_id = str(payload.get("candidate_version_id", "")) or f"ver_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"candidate_version:{version_id}"}
+
+    def _request_conflict_check(self, payload: dict[str, Any]) -> dict[str, Any]:
+        target_ref = str(payload.get("target_ref", "")) or f"work:{payload.get('work_id', '')}"
+        return {"result_ref": f"conflict_status:{target_ref}", "status": "clear"}
+
+    def _create_agent_observation(self, payload: dict[str, Any]) -> dict[str, Any]:
+        observation_id = str(payload.get("observation_id", "")) or f"obs_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"agent_observation:{observation_id}"}
+
+    def _create_agent_trace_event(self, payload: dict[str, Any]) -> dict[str, Any]:
+        trace_event_id = str(payload.get("trace_event_id", "")) or f"trace_evt_{uuid.uuid4().hex[:8]}"
+        return {"result_ref": f"agent_trace_event:{trace_event_id}"}
+
     def _update_job_step_progress(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self._job_service is None:
             raise ValueError("job_service_not_available")
@@ -383,8 +506,26 @@ class CoreToolFacade:
     def _register_builtin_tools(self) -> None:
         self.register_tool(
             ToolDefinition(
+                tool_name="get_story_memory_snapshot",
+                allowed_callers={"agent"},
+                side_effect_level="read_only",
+                source_service="story_memory_service",
+            ),
+            self._get_story_memory_snapshot,
+        )
+        self.register_tool(
+            ToolDefinition(
+                tool_name="get_story_state_baseline",
+                allowed_callers={"agent"},
+                side_effect_level="read_only",
+                source_service="story_state_service",
+            ),
+            self._get_story_state_baseline,
+        )
+        self.register_tool(
+            ToolDefinition(
                 tool_name="build_context_pack",
-                allowed_callers={"workflow", "ai", "quick_trial", "user_action"},
+                allowed_callers={"workflow", "ai", "quick_trial", "user_action", "agent"},
                 side_effect_level="plan_write",
                 source_service="context_pack_service",
             ),
@@ -392,8 +533,44 @@ class CoreToolFacade:
         )
         self.register_tool(
             ToolDefinition(
+                tool_name="create_memory_update_suggestion",
+                allowed_callers={"agent"},
+                side_effect_level="safe_write_suggestion",
+                source_service="story_memory_service",
+            ),
+            self._create_memory_update_suggestion,
+        )
+        self.register_tool(
+            ToolDefinition(
+                tool_name="create_direction_proposal",
+                allowed_callers={"agent"},
+                side_effect_level="plan_write",
+                source_service="planner_service",
+            ),
+            self._create_direction_proposal,
+        )
+        self.register_tool(
+            ToolDefinition(
+                tool_name="create_chapter_plan",
+                allowed_callers={"agent"},
+                side_effect_level="plan_write",
+                source_service="planner_service",
+            ),
+            self._create_chapter_plan,
+        )
+        self.register_tool(
+            ToolDefinition(
+                tool_name="create_writing_task",
+                allowed_callers={"agent"},
+                side_effect_level="plan_write",
+                source_service="planner_service",
+            ),
+            self._create_writing_task,
+        )
+        self.register_tool(
+            ToolDefinition(
                 tool_name="run_writer_step",
-                allowed_callers={"workflow", "ai"},
+                allowed_callers={"workflow", "ai", "agent"},
                 side_effect_level="safe_write_candidate",
                 source_service="writer_service",
             ),
@@ -402,7 +579,7 @@ class CoreToolFacade:
         self.register_tool(
             ToolDefinition(
                 tool_name="validate_writer_output",
-                allowed_callers={"workflow", "ai"},
+                allowed_callers={"workflow", "ai", "agent"},
                 side_effect_level="read_only",
                 source_service="output_validation_service",
             ),
@@ -410,8 +587,71 @@ class CoreToolFacade:
         )
         self.register_tool(
             ToolDefinition(
+                tool_name="create_review_report",
+                allowed_callers={"agent"},
+                side_effect_level="safe_write_review",
+                source_service="review_service",
+            ),
+            self._create_review_report,
+        )
+        self.register_tool(
+            ToolDefinition(
+                tool_name="create_review_issue",
+                allowed_callers={"agent"},
+                side_effect_level="safe_write_review",
+                source_service="review_service",
+            ),
+            self._create_review_issue,
+        )
+        self.register_tool(
+            ToolDefinition(
+                tool_name="create_ai_suggestion",
+                allowed_callers={"agent"},
+                side_effect_level="safe_write_suggestion",
+                source_service="review_service",
+            ),
+            self._create_ai_suggestion,
+        )
+        self.register_tool(
+            ToolDefinition(
+                tool_name="create_candidate_version",
+                allowed_callers={"agent"},
+                side_effect_level="safe_write_candidate",
+                source_service="candidate_draft_repository",
+            ),
+            self._create_candidate_version,
+        )
+        self.register_tool(
+            ToolDefinition(
+                tool_name="request_conflict_check",
+                allowed_callers={"agent"},
+                side_effect_level="read_only",
+                source_service="conflict_guard",
+            ),
+            self._request_conflict_check,
+        )
+        self.register_tool(
+            ToolDefinition(
+                tool_name="create_agent_observation",
+                allowed_callers={"agent"},
+                side_effect_level="trace_only",
+                source_service="agent_runtime",
+            ),
+            self._create_agent_observation,
+        )
+        self.register_tool(
+            ToolDefinition(
+                tool_name="create_agent_trace_event",
+                allowed_callers={"agent"},
+                side_effect_level="trace_only",
+                source_service="agent_runtime",
+            ),
+            self._create_agent_trace_event,
+        )
+        self.register_tool(
+            ToolDefinition(
                 tool_name="save_candidate_draft",
-                allowed_callers={"workflow", "ai"},
+                allowed_callers={"workflow", "ai", "agent"},
                 side_effect_level="safe_write_candidate",
                 source_service="candidate_draft_repository",
             ),
@@ -420,7 +660,7 @@ class CoreToolFacade:
         self.register_tool(
             ToolDefinition(
                 tool_name="get_candidate_draft",
-                allowed_callers={"workflow", "ai", "user_action"},
+                allowed_callers={"workflow", "ai", "user_action", "agent"},
                 side_effect_level="read_only",
                 source_service="candidate_draft_repository",
             ),

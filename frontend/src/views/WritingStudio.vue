@@ -139,12 +139,6 @@
                 @scroll-change="handleScrollChange"
               />
             </div>
-            <AIPanel
-              v-show="!isFocusMode"
-              :work-id="workId"
-              :chapter-id="chapterDataStore.activeChapterId"
-              :chapter-version="Number(chapterDataStore.activeChapter?.version || 0)"
-            />
           </div>
         </div>
       </main>
@@ -187,6 +181,7 @@
               v-else-if="activeTab === 'timeline'"
               ref="timelinePanelRef"
               :work-id="workId"
+              :active-chapter-id="chapterDataStore.activeChapterId"
               :chapters="chapterDataStore.chapters"
               @focus-area="handleAssetFocusArea"
             />
@@ -194,6 +189,7 @@
               v-else-if="activeTab === 'foreshadow'"
               ref="foreshadowPanelRef"
               :work-id="workId"
+              :active-chapter-id="chapterDataStore.activeChapterId"
               :chapters="chapterDataStore.chapters"
               @focus-area="handleAssetFocusArea"
             />
@@ -201,7 +197,15 @@
               v-else-if="activeTab === 'character'"
               ref="characterPanelRef"
               :work-id="workId"
+              :active-chapter-id="chapterDataStore.activeChapterId"
               @focus-area="handleAssetFocusArea"
+            />
+            <AIPanel
+              v-else-if="activeTab === 'ai'"
+              ref="aiPanelRef"
+              :work-id="workId"
+              :chapter-id="chapterDataStore.activeChapterId"
+              :chapter-version="Number(chapterDataStore.activeChapter?.version || 0)"
             />
           </template>
         </AssetDrawer>
@@ -255,6 +259,7 @@ const outlinePanelRef = ref(null)
 const timelinePanelRef = ref(null)
 const foreshadowPanelRef = ref(null)
 const characterPanelRef = ref(null)
+const aiPanelRef = ref(null)
 const workTitle = ref('作品')
 const workAuthor = ref('')
 const workTitleEditing = ref(false)
