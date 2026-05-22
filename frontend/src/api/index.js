@@ -233,10 +233,29 @@ export const aiApi = {
     { params: { chapter_id: chapterId } }
   ),
 
+  // P1-S5 planning
+  generateDirectionProposal: (payload) => api.post('/v2/ai/directions', payload),
+  listDirectionProposals: (params = {}) => api.get('/v2/ai/directions', { params }),
+  getDirectionProposal: (proposalId) => api.get(`/v2/ai/directions/${encodeURIComponent(proposalId)}`),
+  selectDirection: (proposalId, payload) => api.post(`/v2/ai/directions/${encodeURIComponent(proposalId)}/select`, payload),
+  generateChapterPlan: (payload) => api.post('/v2/ai/chapter-plans', payload),
+  listChapterPlans: (params = {}) => api.get('/v2/ai/chapter-plans', { params }),
+  getChapterPlan: (planId) => api.get(`/v2/ai/chapter-plans/${encodeURIComponent(planId)}`),
+  confirmChapterPlan: (planId, payload) => api.post(`/v2/ai/chapter-plans/${encodeURIComponent(planId)}/confirm`, payload),
+  rejectChapterPlan: (planId, payload) => api.post(`/v2/ai/chapter-plans/${encodeURIComponent(planId)}/reject`, payload),
+  listWritingTasks: (params = {}) => api.get('/v2/ai/writing-tasks', { params }),
+  getWritingTask: (writingTaskId) => api.get(`/v2/ai/writing-tasks/${encodeURIComponent(writingTaskId)}`),
+
   // Continuation / candidates
   startContinuation: (payload) => api.post('/v2/ai/continuations', payload),
   listCandidateDrafts: (params = {}) => api.get('/v2/ai/candidate-drafts', { params }),
   getCandidateDraft: (candidateDraftId) => api.get(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}`),
+  listCandidateDraftVersions: (candidateDraftId) => api.get(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/versions`),
+  getCandidateDraftVersion: (candidateDraftId, candidateVersionId) => api.get(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/versions/${encodeURIComponent(candidateVersionId)}`),
+  getCandidateDraftVersionDiff: (candidateDraftId, params = {}) => api.get(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/versions/diff`, { params }),
+  selectCandidateDraftVersion: (candidateDraftId, candidateVersionId, payload) => api.post(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/versions/${encodeURIComponent(candidateVersionId)}/select`, payload),
+  rejectCandidateDraftVersion: (candidateDraftId, candidateVersionId, payload) => api.post(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/versions/${encodeURIComponent(candidateVersionId)}/reject`, payload),
+  rewriteCandidateDraft: (candidateDraftId, payload) => api.post(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/rewrites`, payload),
   acceptCandidateDraft: (candidateDraftId, payload) => api.post(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/accept`, payload),
   rejectCandidateDraft: (candidateDraftId, payload) => api.post(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/reject`, payload),
   applyCandidateDraft: (candidateDraftId, payload) => api.post(`/v2/ai/candidate-drafts/${encodeURIComponent(candidateDraftId)}/apply`, payload),
@@ -247,7 +266,19 @@ export const aiApi = {
   // AIReview
   reviewCandidateDraft: (candidateDraftId, payload) => api.post(`/v2/ai/reviews/candidate-drafts/${encodeURIComponent(candidateDraftId)}`, payload),
   getAIReview: (reviewId) => api.get(`/v2/ai/reviews/${encodeURIComponent(reviewId)}`),
-  listAIReviews: (params = {}) => api.get('/v2/ai/reviews', { params })
+  listAIReviews: (params = {}) => api.get('/v2/ai/reviews', { params }),
+
+  // AISuggestion
+  listAISuggestions: (params = {}) => api.get('/v2/ai/suggestions', { params }),
+  getAISuggestion: (suggestionId) => api.get(`/v2/ai/suggestions/${encodeURIComponent(suggestionId)}`),
+  acceptAISuggestion: (suggestionId, payload) => api.post(`/v2/ai/suggestions/${encodeURIComponent(suggestionId)}/accept`, payload),
+  dismissAISuggestion: (suggestionId, payload) => api.post(`/v2/ai/suggestions/${encodeURIComponent(suggestionId)}/dismiss`, payload),
+  convertAISuggestion: (suggestionId, payload) => api.post(`/v2/ai/suggestions/${encodeURIComponent(suggestionId)}/convert`, payload),
+
+  // ConflictGuard
+  listConflicts: (params = {}) => api.get('/v2/ai/conflicts', { params }),
+  getConflict: (recordId) => api.get(`/v2/ai/conflicts/${encodeURIComponent(recordId)}`),
+  decideConflict: (recordId, payload) => api.post(`/v2/ai/conflicts/${encodeURIComponent(recordId)}/decide`, payload)
 }
 
 export const vectorApi = {

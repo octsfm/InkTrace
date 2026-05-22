@@ -7,6 +7,7 @@ from application.services.ai.ai_job_service import AIJobService
 from application.services.ai.tool_facade import CoreToolFacade
 from domain.entities.ai.models import (
     ArcQualityLevel,
+    ArcRef,
     ArcStatus,
     AgentObservation,
     AgentObservationType,
@@ -16,15 +17,23 @@ from domain.entities.ai.models import (
     ChapterBeat,
     ChapterPlan,
     ChapterPlanItem,
+    DirectionPlanStatus,
+    DirectionProposal,
+    DirectionOption,
+    DirectionScore,
     MasterArc,
+    PlanConfirmation,
     VolumeArc,
     WorkflowDecision,
     WorkflowStageName,
     WorkflowType,
+    WritingTask,
+    WritingTaskStatus,
 )
 from infrastructure.database.repositories.ai.file_agent_runtime_store import FileAgentRuntimeStore
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_chapter_plan_store import FileChapterPlanStore
+from infrastructure.database.repositories.ai.file_direction_plan_store import FileDirectionPlanStore
 from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlotArcStore
 
 
@@ -125,6 +134,135 @@ def test_workflow_definition_registry_registers_required_p1_s2_definitions() -> 
     ]
     assert continuation.default_policy.formal_write_allowed is False
     assert continuation.default_policy.auto_apply_allowed is False
+
+
+def test_p1s5_models_expose_required_status_and_refs() -> None:
+    option = DirectionOption(
+        option_id="do_1_a",
+        direction_proposal_id="dp_1",
+        label="A",
+        plot_summary="主角选择继续追查灯塔钟声。",
+        narrative_premise="沿着父亲遗留线索追查真相。",
+        main_conflicts=[],
+        foreshadow_usage=[],
+        risk_points=[],
+        estimated_chapters=3,
+        chapter_preview=["追查钟声来源", "发现旧誓约", "遭遇守夜人反扑"],
+        base_arc_refs=[
+            ArcRef(
+                arc_type="master",
+                arc_id="ma_1",
+                arc_summary="寻找海雾真相",
+                arc_status_at_generation="ready",
+            )
+        ],
+        score=DirectionScore(
+            total_score=86,
+            consistency_score=88,
+            conflict_density_score=84,
+            satisfaction_rhythm_score=82,
+            foreshadow_progress_score=87,
+            risk_controllability_score=83,
+        ),
+    )
+
+    proposal = DirectionProposal(
+        direction_proposal_id="dp_1",
+        work_id="work_1",
+        chapter_id="chapter_1",
+        agent_session_id="session_1",
+        source_context_pack_id="cp_1",
+        source_arc_refs=option.base_arc_refs,
+        source_memory_refs=["memory_1"],
+        status=DirectionPlanStatus.WAITING_FOR_SELECTION,
+        version=1,
+        options=[option],
+        generation_metadata={"prompt_key": "direction_proposal_generation"},
+        created_by="planner_agent",
+        created_at="2026-05-20T00:00:00Z",
+        updated_at="2026-05-20T00:00:00Z",
+    )
+
+    beat = ChapterBeat(
+        beat_order=1,
+        beat_name="发现旧标记",
+        beat_description="主角在灯塔夹层发现旧标记",
+        beat_type="setup",
+    )
+    plan = ChapterPlan(
+        chapter_plan_id="cp_1",
+        work_id="work_1",
+        chapter_id="chapter_1",
+        direction_proposal_id="dp_1",
+        selected_option_id="do_1_a",
+        selection_id="ds_1",
+        agent_session_id="session_1",
+        source_context_pack_id="cp_1",
+        source_arc_refs=option.base_arc_refs,
+        source_memory_refs=["memory_1"],
+        status=DirectionPlanStatus.WAITING_FOR_CONFIRMATION,
+        version=1,
+        plan_items=[
+            ChapterPlanItem(
+                item_id="item_1",
+                chapter_plan_id="cp_1",
+                plan_order=1,
+                chapter_goal="进入灯塔内部调查。",
+                key_events=[beat],
+                conflict_progression="主角第一次与守夜人立场正面冲突。",
+                forbidden_items=["直接揭晓终局"],
+                required_beats=["发现旧标记"],
+                arc_alignment=option.base_arc_refs,
+            )
+        ],
+        total_estimated_chapters=3,
+        generation_metadata={"prompt_key": "chapter_plan_generation"},
+        created_by="planner_agent",
+        stale_status="fresh",
+        created_at="2026-05-20T00:00:00Z",
+        updated_at="2026-05-20T00:00:00Z",
+    )
+    confirmation = PlanConfirmation(
+        confirmation_id="pc_1",
+        chapter_plan_id="cp_1",
+        direction_proposal_id="dp_1",
+        work_id="work_1",
+        chapter_id="chapter_1",
+        agent_session_id="session_1",
+        confirmation_type="direct_confirm",
+        user_id="user_action",
+        confirmed_by="user_action",
+        created_at="2026-05-20T00:00:00Z",
+    )
+    task = WritingTask(
+        writing_task_id="wt_1",
+        work_id="work_1",
+        chapter_id="chapter_2",
+        direction_proposal_id="dp_1",
+        selected_option_id="do_1_a",
+        chapter_plan_id="cp_1",
+        plan_item_id="item_1",
+        agent_session_id="session_1",
+        status=WritingTaskStatus.READY,
+        version=1,
+        writing_goal="写出主角进入灯塔后的第一次真相碰撞。",
+        must_include=["钟声", "旧标记"],
+        must_not_include=["直接揭晓终局"],
+        arc_constraints=option.base_arc_refs,
+        foreshadow_requirements=[],
+        direction_summary="方向 A：追查钟声来源",
+        plan_summary="第 2 章：进入灯塔内部调查",
+        stale_status="fresh",
+        generated_by="planner_agent",
+        created_at="2026-05-20T00:00:00Z",
+        updated_at="2026-05-20T00:00:00Z",
+    )
+
+    assert proposal.status == DirectionPlanStatus.WAITING_FOR_SELECTION
+    assert plan.status == DirectionPlanStatus.WAITING_FOR_CONFIRMATION
+    assert confirmation.confirmed_by == "user_action"
+    assert task.status == WritingTaskStatus.READY
+    assert beat.beat_type == "setup"
 
 
 def test_agent_orchestrator_start_workflow_forces_hard_safety_policy_flags_false(tmp_path) -> None:
@@ -3076,6 +3214,547 @@ def test_agent_orchestrator_confirmed_chapter_plan_persists_sequence_arc(tmp_pat
     assert sequence_arc.key_events[0].event_name == "潜入档案室"
     assert sequence_arc.key_events[0].description == "顾迟避开守夜人进入档案室。"
     assert "不要提前揭示父亲真相" in sequence_arc.forbidden_items
+
+
+def test_agent_orchestrator_user_gates_persist_selection_confirmation_and_ready_writing_task(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    runtime = _build_runtime(tmp_path)
+    chapter_plan_store = FileChapterPlanStore(tmp_path / "chapter_plans.json")
+    direction_plan_store = FileDirectionPlanStore(tmp_path / "direction_plan.json")
+    chapter_plan_store.save(
+        ChapterPlan(
+            chapter_plan_id="plan_1",
+            work_id="work-1",
+            chapter_id="chapter-1",
+            direction_proposal_id="dir_1",
+            selected_option_id="opt_a",
+            selection_id="sel_1",
+            agent_session_id="agent_session_seed",
+            source_context_pack_id="cp_1",
+            source_arc_refs=[],
+            source_memory_refs=[],
+            status="waiting_for_confirmation",
+            version=1,
+            plan_summary="接下来两章推进灯塔调查并逼近海雾真相。",
+            total_estimated_chapters=2,
+            created_by="planner_agent",
+            stale_status="fresh",
+            created_at="2026-05-20T00:00:00+00:00",
+            updated_at="2026-05-20T00:00:00+00:00",
+            plan_items=[
+                ChapterPlanItem(
+                    item_id="plan_item_1",
+                    chapter_plan_id="plan_1",
+                    plan_order=1,
+                    chapter_goal="潜入灯塔档案室取得旧航海图。",
+                    key_events=[
+                        ChapterBeat(
+                            beat_order=1,
+                            beat_name="潜入档案室",
+                            beat_description="顾迟避开守夜人进入档案室。",
+                            beat_type="development",
+                        )
+                    ],
+                    conflict_progression="顾迟必须在守夜人赶到前拿到线索。",
+                    forbidden_items=["不要提前揭示父亲真相"],
+                    required_beats=["取得航海图"],
+                    arc_alignment=[],
+                    estimated_word_count=2200,
+                    estimated_word_count_max=3200,
+                    tone_hint="紧张压迫",
+                    pov_hint="顾迟",
+                    is_user_edited=False,
+                    created_at="2026-05-20T00:00:00+00:00",
+                )
+            ],
+        )
+    )
+    orchestrator = AgentOrchestrator(
+        runtime_service=runtime,
+        chapter_plan_repository=chapter_plan_store,
+        direction_plan_repository=direction_plan_store,
+    )
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
+        user_instruction="继续写这一章",
+        caller_type="user_action",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="memory_context:mem_1",
+        safe_message="memory ready",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="direction:dir_1",
+        safe_message="planning ready",
+    )
+
+    run = orchestrator.submit_user_decision(
+        run.session_id,
+        user_decision="confirm_direction",
+        safe_message="direction confirmed",
+        request_id="req_direction_selection",
+        metadata={"selected_direction_id": "dir_1"},
+    )
+    selection = direction_plan_store.get_direction_selection(f"ds_{run.session_id}_dir_1")
+
+    assert run.current_stage == WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING
+    assert selection.selected_option_id == "dir_1"
+    assert selection.confirmed_by == "user_action"
+
+    run = orchestrator.submit_user_decision(
+        run.session_id,
+        user_decision="confirm_chapter_plan",
+        safe_message="chapter plan confirmed",
+        request_id="req_plan_confirmation",
+        metadata={"selected_chapter_plan_id": "plan_1"},
+    )
+    confirmation = direction_plan_store.get_plan_confirmation(f"pc_{run.session_id}_plan_1")
+    task = direction_plan_store.get_active_writing_task("work-1", chapter_id="chapter-1")
+    snapshot = direction_plan_store.get_direction_plan_snapshot(f"dps_{run.session_id}_plan_1")
+
+    assert run.current_stage == WorkflowStageName.WRITING_PREPARE
+    assert confirmation.chapter_plan_id == "plan_1"
+    assert confirmation.confirmed_by == "user_action"
+    assert task is not None
+    assert task.status == WritingTaskStatus.READY
+    assert task.chapter_plan_id == "plan_1"
+    assert task.plan_item_id == "plan_item_1"
+    assert task.must_not_include == ["不要提前揭示父亲真相"]
+    assert task.required_beats == ["取得航海图"]
+    assert snapshot.direction_proposal_id == "dir_1"
+    assert snapshot.chapter_plan_id == "plan_1"
+    assert snapshot.confirmation_id == confirmation.confirmation_id
+    assert snapshot.writing_task_id == task.writing_task_id
+    assert snapshot.snapshot_status == "ready"
+    assert snapshot.plan_summary == "接下来两章推进灯塔调查并逼近海雾真相。"
+
+
+def test_agent_orchestrator_edited_direction_selection_marks_plan_and_task_stale(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    runtime = _build_runtime(tmp_path)
+    chapter_plan_store = FileChapterPlanStore(tmp_path / "chapter_plans.json")
+    direction_plan_store = FileDirectionPlanStore(tmp_path / "direction_plan.json")
+    direction_plan_store.save_direction_proposal(
+        DirectionProposal(
+            direction_proposal_id="dir_1",
+            work_id="work-1",
+            chapter_id="chapter-1",
+            agent_session_id="agent_session_seed",
+            source_context_pack_id="cp_1",
+            source_arc_refs=[],
+            source_memory_refs=["memory_1"],
+            status=DirectionPlanStatus.WAITING_FOR_SELECTION,
+            version=1,
+            options=[
+                DirectionOption(
+                    option_id="opt_a",
+                    direction_proposal_id="dir_1",
+                    label="A",
+                    plot_summary="沿着钟声追查灯塔真相。",
+                    narrative_premise="沿着父亲留下的线索逼近真相。",
+                    main_conflicts=[],
+                    foreshadow_usage=[],
+                    risk_points=[],
+                    estimated_chapters=3,
+                    chapter_preview=["追查钟声来源"],
+                    base_arc_refs=[],
+                    score=DirectionScore(
+                        total_score=86,
+                        consistency_score=88,
+                        conflict_density_score=84,
+                        satisfaction_rhythm_score=82,
+                        foreshadow_progress_score=87,
+                        risk_controllability_score=83,
+                    ),
+                )
+            ],
+            created_by="planner_agent",
+            created_at="2026-05-20T00:00:00+00:00",
+            updated_at="2026-05-20T00:00:00+00:00",
+        )
+    )
+    chapter_plan_store.save(
+        ChapterPlan(
+            chapter_plan_id="plan_1",
+            work_id="work-1",
+            chapter_id="chapter-1",
+            direction_proposal_id="dir_1",
+            selected_option_id="opt_a",
+            selection_id="sel_1",
+            agent_session_id="agent_session_seed",
+            source_context_pack_id="cp_1",
+            source_arc_refs=[],
+            source_memory_refs=[],
+            status="confirmed",
+            version=1,
+            plan_summary="旧计划摘要",
+            total_estimated_chapters=1,
+            confirmed_by="user_action",
+            created_by="planner_agent",
+            stale_status="fresh",
+            created_at="2026-05-20T00:00:00+00:00",
+            updated_at="2026-05-20T00:00:00+00:00",
+            plan_items=[
+                ChapterPlanItem(
+                    item_id="plan_item_1",
+                    chapter_plan_id="plan_1",
+                    plan_order=1,
+                    chapter_goal="旧章节目标",
+                    key_events=[],
+                    conflict_progression="旧冲突推进",
+                    required_beats=["旧关键节拍"],
+                    forbidden_items=["不要提前揭示父亲真相"],
+                    arc_alignment=[],
+                    created_at="2026-05-20T00:00:00+00:00",
+                )
+            ],
+        )
+    )
+    direction_plan_store.save_writing_task(
+        WritingTask(
+            writing_task_id="wt_old",
+            work_id="work-1",
+            chapter_id="chapter-1",
+            direction_proposal_id="dir_1",
+            selected_option_id="opt_a",
+            chapter_plan_id="plan_1",
+            plan_item_id="plan_item_1",
+            agent_session_id="agent_session_old",
+            status=WritingTaskStatus.READY,
+            version=1,
+            writing_goal="旧写作任务",
+            must_include=["旧关键节拍"],
+            must_not_include=["不要提前揭示父亲真相"],
+            direction_summary="selected_direction:dir_1",
+            plan_summary="旧计划摘要",
+            stale_status="fresh",
+            generated_by="planner_agent",
+            created_at="2026-05-20T00:10:00+00:00",
+            updated_at="2026-05-20T00:10:00+00:00",
+        )
+    )
+    orchestrator = AgentOrchestrator(
+        runtime_service=runtime,
+        chapter_plan_repository=chapter_plan_store,
+        direction_plan_repository=direction_plan_store,
+    )
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
+        user_instruction="继续写这一章",
+        caller_type="user_action",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="memory_context:mem_1",
+        safe_message="memory ready",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="direction:dir_1",
+        safe_message="planning ready",
+    )
+
+    run = orchestrator.submit_user_decision(
+        run.session_id,
+        user_decision="confirm_direction",
+        safe_message="direction edited and confirmed",
+        request_id="req_direction_edited_selection",
+        metadata={
+            "selected_direction_id": "dir_1",
+            "selected_option_id": "opt_a",
+            "edited_fields": ["plot_summary"],
+            "edited_values": {"plot_summary": "编辑后改为优先追查钟声来源与旧航海图。"},
+        },
+    )
+
+    selection = direction_plan_store.get_direction_selection(f"ds_{run.session_id}_dir_1")
+    proposal = direction_plan_store.get_direction_proposal("dir_1")
+    plan = chapter_plan_store.get("plan_1")
+    task = direction_plan_store.get_writing_task("wt_old")
+
+    assert run.current_stage == WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING
+    assert selection.selection_type == "edited_select"
+    assert selection.edited_fields == ["plot_summary"]
+    assert selection.edited_values["plot_summary"] == "编辑后改为优先追查钟声来源与旧航海图。"
+    assert proposal.status == DirectionPlanStatus.EDITED
+    assert proposal.selected_by == "user_action"
+    assert proposal.edited_by == "user_action"
+    assert proposal.selected_option_id == "opt_a"
+    assert plan.status == DirectionPlanStatus.STALE
+    assert plan.stale_status == "stale"
+    assert plan.stale_reason == "direction_edited"
+    assert task.status == WritingTaskStatus.STALE
+    assert task.stale_status == "stale"
+    assert task.stale_reason == "direction_edited"
+
+
+def test_agent_orchestrator_edited_plan_confirmation_marks_old_task_stale_and_rebuilds_task(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    runtime = _build_runtime(tmp_path)
+    chapter_plan_store = FileChapterPlanStore(tmp_path / "chapter_plans.json")
+    direction_plan_store = FileDirectionPlanStore(tmp_path / "direction_plan.json")
+    chapter_plan_store.save(
+        ChapterPlan(
+            chapter_plan_id="plan_1",
+            work_id="work-1",
+            chapter_id="chapter-1",
+            direction_proposal_id="dir_1",
+            selected_option_id="opt_a",
+            selection_id="sel_1",
+            agent_session_id="agent_session_seed",
+            source_context_pack_id="cp_1",
+            source_arc_refs=[],
+            source_memory_refs=[],
+            status="waiting_for_confirmation",
+            version=1,
+            plan_summary="接下来两章推进灯塔调查并逼近海雾真相。",
+            total_estimated_chapters=2,
+            created_by="planner_agent",
+            stale_status="fresh",
+            created_at="2026-05-20T00:00:00+00:00",
+            updated_at="2026-05-20T00:00:00+00:00",
+            plan_items=[
+                ChapterPlanItem(
+                    item_id="plan_item_1",
+                    chapter_plan_id="plan_1",
+                    plan_order=1,
+                    chapter_goal="潜入灯塔档案室取得旧航海图。",
+                    key_events=[
+                        ChapterBeat(
+                            beat_order=1,
+                            beat_name="潜入档案室",
+                            beat_description="顾迟避开守夜人进入档案室。",
+                            beat_type="development",
+                        )
+                    ],
+                    conflict_progression="顾迟必须在守夜人赶到前拿到线索。",
+                    forbidden_items=["不要提前揭示父亲真相"],
+                    required_beats=["取得航海图"],
+                    arc_alignment=[],
+                    estimated_word_count=2200,
+                    estimated_word_count_max=3200,
+                    tone_hint="紧张压迫",
+                    pov_hint="顾迟",
+                    is_user_edited=False,
+                    created_at="2026-05-20T00:00:00+00:00",
+                )
+            ],
+        )
+    )
+    direction_plan_store.save_writing_task(
+        WritingTask(
+            writing_task_id="wt_old",
+            work_id="work-1",
+            chapter_id="chapter-1",
+            direction_proposal_id="dir_1",
+            selected_option_id="opt_a",
+            chapter_plan_id="plan_1",
+            plan_item_id="plan_item_1",
+            agent_session_id="agent_session_old",
+            status=WritingTaskStatus.READY,
+            version=1,
+            writing_goal="旧计划写作目标",
+            must_include=["取得航海图"],
+            must_not_include=["不要提前揭示父亲真相"],
+            direction_summary="selected_direction:dir_1",
+            plan_summary="旧计划摘要",
+            stale_status="fresh",
+            generated_by="planner_agent",
+            created_at="2026-05-20T00:00:00+00:00",
+            updated_at="2026-05-20T00:00:00+00:00",
+        )
+    )
+    orchestrator = AgentOrchestrator(
+        runtime_service=runtime,
+        chapter_plan_repository=chapter_plan_store,
+        direction_plan_repository=direction_plan_store,
+    )
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
+        user_instruction="继续写这一章",
+        caller_type="user_action",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="memory_context:mem_1",
+        safe_message="memory ready",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="direction:dir_1",
+        safe_message="planning ready",
+    )
+    run = orchestrator.submit_user_decision(
+        run.session_id,
+        user_decision="confirm_direction",
+        safe_message="direction confirmed",
+        request_id="req_direction_selection",
+        metadata={"selected_direction_id": "dir_1"},
+    )
+
+    run = orchestrator.submit_user_decision(
+        run.session_id,
+        user_decision="confirm_chapter_plan",
+        safe_message="chapter plan edited and confirmed",
+        request_id="req_plan_edited_confirmation",
+        metadata={
+            "selected_chapter_plan_id": "plan_1",
+            "edited_items": ["plan_item_1"],
+            "edited_fields": {
+                "plan_item_1": {
+                    "chapter_goal": "编辑后先夺回航海图，再锁定钟声来源。",
+                    "required_beats": ["夺回航海图", "锁定钟声来源"],
+                }
+            },
+            "user_edit_notes": "收紧节奏并强化近期目标",
+        },
+    )
+
+    plan = chapter_plan_store.get("plan_1")
+    confirmation = direction_plan_store.get_plan_confirmation(f"pc_{run.session_id}_plan_1")
+    old_task = direction_plan_store.get_writing_task("wt_old")
+    new_task = direction_plan_store.get_active_writing_task("work-1", chapter_id="chapter-1")
+
+    assert run.current_stage == WorkflowStageName.WRITING_PREPARE
+    assert plan.status == DirectionPlanStatus.EDITED
+    assert plan.edited_by == "user_action"
+    assert plan.plan_items[0].chapter_goal == "编辑后先夺回航海图，再锁定钟声来源。"
+    assert confirmation.confirmation_type == "edited_confirm"
+    assert confirmation.edited_items == ["plan_item_1"]
+    assert confirmation.user_edit_notes == "收紧节奏并强化近期目标"
+    assert old_task.status == WritingTaskStatus.STALE
+    assert old_task.stale_status == "stale"
+    assert old_task.stale_reason == "chapter_plan_edited"
+    assert new_task is not None
+    assert new_task.writing_task_id != "wt_old"
+    assert new_task.status == WritingTaskStatus.READY
+    assert new_task.writing_goal == "编辑后先夺回航海图，再锁定钟声来源。"
+    assert new_task.required_beats == ["夺回航海图", "锁定钟声来源"]
+
+
+def test_agent_orchestrator_reject_plan_confirmation_persists_record_without_writing_task(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    runtime = _build_runtime(tmp_path)
+    chapter_plan_store = FileChapterPlanStore(tmp_path / "chapter_plans.json")
+    direction_plan_store = FileDirectionPlanStore(tmp_path / "direction_plan.json")
+    chapter_plan_store.save(
+        ChapterPlan(
+            chapter_plan_id="plan_1",
+            work_id="work-1",
+            chapter_id="chapter-1",
+            direction_proposal_id="dir_1",
+            selected_option_id="opt_a",
+            selection_id="sel_1",
+            agent_session_id="agent_session_seed",
+            source_context_pack_id="cp_1",
+            source_arc_refs=[],
+            source_memory_refs=[],
+            status="waiting_for_confirmation",
+            version=1,
+            plan_summary="接下来两章推进灯塔调查并逼近海雾真相。",
+            total_estimated_chapters=2,
+            created_by="planner_agent",
+            stale_status="fresh",
+            created_at="2026-05-20T00:00:00+00:00",
+            updated_at="2026-05-20T00:00:00+00:00",
+            plan_items=[
+                ChapterPlanItem(
+                    item_id="plan_item_1",
+                    chapter_plan_id="plan_1",
+                    plan_order=1,
+                    chapter_goal="潜入灯塔档案室取得旧航海图。",
+                    key_events=[
+                        ChapterBeat(
+                            beat_order=1,
+                            beat_name="潜入档案室",
+                            beat_description="顾迟避开守夜人进入档案室。",
+                            beat_type="development",
+                        )
+                    ],
+                    conflict_progression="顾迟必须在守夜人赶到前拿到线索。",
+                    forbidden_items=["不要提前揭示父亲真相"],
+                    required_beats=["取得航海图"],
+                    arc_alignment=[],
+                    estimated_word_count=2200,
+                    estimated_word_count_max=3200,
+                    tone_hint="紧张压迫",
+                    pov_hint="顾迟",
+                    is_user_edited=False,
+                    created_at="2026-05-20T00:00:00+00:00",
+                )
+            ],
+        )
+    )
+    orchestrator = AgentOrchestrator(
+        runtime_service=runtime,
+        chapter_plan_repository=chapter_plan_store,
+        direction_plan_repository=direction_plan_store,
+    )
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
+        user_instruction="继续写这一章",
+        caller_type="user_action",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="memory_context:mem_1",
+        safe_message="memory ready",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="direction:dir_1",
+        safe_message="planning ready",
+    )
+    run = orchestrator.submit_user_decision(
+        run.session_id,
+        user_decision="confirm_direction",
+        safe_message="direction confirmed",
+        request_id="req_direction_selection",
+        metadata={"selected_direction_id": "dir_1"},
+    )
+
+    run = orchestrator.submit_user_decision(
+        run.session_id,
+        user_decision="reject",
+        safe_message="chapter plan rejected",
+        request_id="req_plan_reject",
+        metadata={"selected_chapter_plan_id": "plan_1", "user_edit_notes": "当前计划推进过快，先退回修改"},
+    )
+
+    plan = chapter_plan_store.get("plan_1")
+    confirmation = direction_plan_store.get_plan_confirmation(f"pc_{run.session_id}_plan_1")
+    task = direction_plan_store.get_active_writing_task("work-1", chapter_id="chapter-1")
+
+    assert run.current_stage == WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING
+    assert plan.status == DirectionPlanStatus.WAITING_FOR_CONFIRMATION
+    assert plan.confirmed_by == ""
+    assert confirmation.confirmation_type == "reject"
+    assert confirmation.chapter_plan_id == "plan_1"
+    assert confirmation.confirmed_by == "user_action"
+    assert confirmation.user_edit_notes == "当前计划推进过快，先退回修改"
+    assert task is None
 
 
 def test_agent_orchestrator_direction_confirmation_records_reason_code_metadata(tmp_path) -> None:

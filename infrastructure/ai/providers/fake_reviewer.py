@@ -16,9 +16,9 @@ class FakeReviewer(ReviewerPort):
                 {
                     "issue_id": "issue_1",
                     "severity": "medium",
-                    "category": "logic",
-                    "message": "部分转场略快，建议补足动作连接。",
-                    "suggestion": "在场景切换前增加一小句过渡。",
+                    "category": "continuity",
+                    "message": "关键转场略快，时间线衔接存在跳跃。",
+                    "suggestion": "补足前后场景之间的因果衔接。",
                     "source_ref": preview,
                 }
             ],

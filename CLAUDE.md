@@ -144,7 +144,81 @@ frontend/src/
 - **Local-First 保存**: 前端本地草稿 + 服务端持久化，冲突弹窗处理版本分歧
 - **Story Model**: 人物图谱、世界观规则、PlotArc、风格画像等构成小说的可持续结构模型
 
+### 代码实现要求：DDD + Clean Architecture + TDD
+
+所有代码实现必须严格遵循以下三条方法论，不可偏废。
+
+#### 1. DDD（领域驱动设计）
+
+**核心原则：领域层是系统的心脏，不依赖任何外部框架或基础设施。**
+
+| 要求 | 说明 |
+|---|---|
+| **实体与值对象分离** | 实体有唯一标识（ID）和生命周期；值对象无 ID，通过属性值判等。实体放在 `domain/entities/`，值对象放在 `domain/value_objects/` |
+| **仓储接口定义在领域层** | Repository 抽象（ABC）定义在 `domain/repositories/`，由 `infrastructure/` 实现。Application 层只依赖接口，不依赖具体存储 |
+| **领域服务不含基础设施代码** | 领域服务（`domain/services/`）只包含纯业务规则，不调用数据库、HTTP、文件系统 |
+| **聚合根控制访问** | 对聚合内部实体的修改必须通过聚合根。不跨聚合直接引用，通过 ID 引用 |
+| **Ubiquitous Language** | 代码命名（类名、方法名、变量名）必须使用业务术语，与设计文档和需求文档保持一致。禁止技术术语渗透到领域层 |
+| **禁止贫血模型** | 实体和值对象应包含业务行为方法，不只是 getter/setter 数据容器 |
+
+**模块依赖方向（严格遵守）：**
+```
+presentation → application → domain ← infrastructure
+```
+- `domain` 不依赖任何其他层
+- `application` 只依赖 `domain`
+- `infrastructure` 实现 `domain` 中定义的仓储接口
+- `presentation` 调用 `application` 中的服务
+- **任何层不得反向依赖**
+
+#### 2. Clean Architecture（清洁架构）
+
+**核心原则：依赖规则指向内层。内层不知道外层的存在。**
+
+| 要求 | 说明 |
+|---|---|
+| **四层物理隔离** | 代码必须放在对应的四层目录中：`presentation/` → `application/` → `domain/` → `infrastructure/`。不允许跨层放置 |
+| **依赖注入（DI）** | Application Service 通过构造函数接收 Repository 接口（`domain/repositories/` 中定义的 ABC），从不直接 import 具体实现类。DI 组装在 `presentation/api/dependencies.py` 完成 |
+| **用例驱动设计** | 每个 Application Service 的方法对应一个业务用例。方法命名体现用例意图：`create_*`、`start_*`、`complete_*`、`cancel_*` |
+| **接口适配** | Presentation 层负责将 HTTP 请求转换为 Application 层的入参（DTO → 领域对象），将 Application 层返回值转换为 HTTP 响应（领域对象 → DTO） |
+| **不做 ORM 绑定** | 领域实体不继承数据库基类，不包含数据库映射装饰器。持久化映射在 Infrastructure 层处理 |
+| **跨层通信走接口** | Application 层调用 Infrastructure 层必须通过 `domain/repositories/` 中定义的接口。不允许 Application 层直接 import `infrastructure/` 下的任何类 |
+
+**具体规则：**
+- `application/services/` 中任何文件**不得** `import` 自 `infrastructure/`
+- `application/services/` 中任何文件**不得** `import` 自 `presentation/`
+- `domain/` 中任何文件**不得** `import` 自 `application/`、`infrastructure/`、`presentation/`
+- Agent/Service 不得直接调用 Provider SDK、ModelRouter、Database Adapter——必须通过 ToolFacade 或 Repository 接口
+
+#### 3. TDD（测试驱动开发）
+
+**核心原则：先写测试，再写实现。测试是需求的可执行表达。**
+
+| 要求 | 说明 |
+|---|---|
+| **Red-Green-Refactor 循环** | ① 先写一个失败的测试（Red）→ ② 写最少代码使测试通过（Green）→ ③ 重构代码消除重复、改善结构（Refactor）。严禁跳过第①步 |
+| **测试金字塔** | 大量单元测试（domain/application 层）+ 适度集成测试（API 层）+ 少量 E2E 测试（全链路）。不依赖真实 AI Provider 进行单元测试——使用 Stub/Fake/Mock |
+| **每个用例至少一个正向测试** | 每个 Application Service 的 public 方法至少有 1 个正向（happy path）测试用例 |
+| **每个门控至少一个反向测试** | 每个 user_action 门控、安全边界（formal_write forbidden、agent 不能 auto-apply 等）至少 1 个反向（sad path）测试用例 |
+| **测试隔离性** | 测试不依赖数据库——文件存储（JSON file store, tmp_path）实现即可。测试之间不共享状态 |
+| **测试命名规范** | `test_{模块}_{场景描述}_{预期结果}`。如 `test_agent_orchestrator_cancel_from_direction_waiting_enters_cancelled` |
+| **验收前全量通过** | 每个阶段完成后，对应 `tests/` 目录下全部测试必须 100% 通过，且不能有 `skipped` 或 `xfail` 标记的故意跳过项（除非设计文档明确标注为延后功能） |
+| **禁止"先写实现后补测试"** | 测试必须在实现代码之前或同步编写，不得在实现完成后补充"覆盖性测试" |
+
+#### 4. 验收检查清单（每次实现完成后自查）
+
+在提交代码前，逐条确认：
+
+- [ ] 所有新模型是否放在 `domain/entities/` 下，且不 import 任何基础设施代码？
+- [ ] 所有新仓储接口是否放在 `domain/repositories/` 下（ABC），实现在 `infrastructure/` 下？
+- [ ] Application Service 是否通过构造函数注入依赖（DI），不直接 new 具体实现？
+- [ ] Presentation API 是否不直接调用 Repository/ToolFacade/Provider？
+- [ ] 每个 Application Service 的 public 方法是否有正向测试？
+- [ ] 每个安全门控（user_action 专属、formal_write forbidden 等）是否有反向测试？
+- [ ] 测试是否全部通过？（`pytest tests/` 无失败）
+- [ ] 是否有任何 `import` 违反了分层依赖方向？
+
 ### 测试分布
 
-- **后端测试**: `tests/test_v1_*.py`（pytest），`conftest.py` 提供隔离数据库 fixture
+- **后端测试**: `tests/` 按模块组织（pytest），`conftest.py` 提供隔离数据库 fixture。AI 模块测试在 `tests/ai/` 下，V1 接口测试在 `tests/test_v1_*.py`
 - **前端测试**: 散布在 `src/**/__tests__/*.spec.js`（vitest + jsdom + @vue/test-utils）

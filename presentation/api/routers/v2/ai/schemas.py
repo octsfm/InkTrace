@@ -76,22 +76,86 @@ class QuickTrialRunRequest(V2AIOperationRequest):
 class AcceptCandidateDraftRequest(V2AIOperationRequest):
     user_action: bool = False
     user_id: str = ""
+    candidate_version_id: str = ""
 
 
 class RejectCandidateDraftRequest(V2AIOperationRequest):
     user_action: bool = False
     user_id: str = ""
+    candidate_version_id: str = ""
     reason: str = ""
 
 
 class ApplyCandidateDraftRequest(V2AIOperationRequest):
     user_action: bool = False
     user_id: str = ""
+    candidate_version_id: str = ""
     expected_chapter_version: int | None = None
     apply_mode: str = "append_to_chapter_end"
     selection_range: list[int] | None = None
     cursor_position: int | None = None
 
 
+class SelectCandidateDraftVersionRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+
+
+class RewriteCandidateDraftRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    source_version_id: str
+    trigger_type: str
+    review_report_id: str = ""
+    user_instruction: str = ""
+
+
+class SuggestionDecisionRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    decision_note: str = ""
+
+
+class ConflictDecisionRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    decision: str
+    decision_note: str = ""
+
+
 class ReviewCandidateDraftRequest(V2AIOperationRequest):
     user_instruction: str = ""
+
+
+class GenerateDirectionProposalRequest(V2AIOperationRequest):
+    work_id: str
+    chapter_id: str
+    user_instruction: str = ""
+
+
+class SelectDirectionRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    selected_option_id: str
+    edited_fields: list[str] = Field(default_factory=list)
+    edited_values: dict[str, object] = Field(default_factory=dict)
+
+
+class GenerateChapterPlanRequest(V2AIOperationRequest):
+    work_id: str
+    chapter_id: str
+    direction_proposal_id: str
+
+
+class ConfirmChapterPlanRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    edited_items: list[str] = Field(default_factory=list)
+    edited_fields: dict[str, object] = Field(default_factory=dict)
+    user_edit_notes: str = ""
+
+
+class RejectChapterPlanRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    user_edit_notes: str = ""

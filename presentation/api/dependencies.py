@@ -19,6 +19,9 @@ from application.services.ai.ai_job_service import AIJobService
 from application.services.ai.agent_workflow import AgentOrchestrator
 from application.services.ai.agent_runtime_service import AgentRuntimeService
 from application.services.ai.ai_review_service import AIReviewApplicationService
+from application.services.ai.ai_suggestion_service import AISuggestionService
+from application.services.ai.conflict_guard_service import ConflictGuardService
+from application.services.ai.candidate_rewrite_service import CandidateRewriteService
 from application.services.ai.ai_settings_service import AISettingsService
 from application.services.ai.candidate_review_service import CandidateReviewService
 from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
@@ -34,12 +37,15 @@ from infrastructure.ai.providers.openai_compatible_provider import OpenAICompati
 from infrastructure.ai.providers.fake_reviewer import FakeReviewer
 from infrastructure.ai.providers.fake_writer import FakeWriter
 from infrastructure.database.repositories.ai.file_ai_review_store import FileAIReviewStore
+from infrastructure.database.repositories.ai.file_ai_suggestion_store import FileAISuggestionStore
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
 from infrastructure.database.repositories.ai.file_agent_runtime_store import FileAgentRuntimeStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
 from infrastructure.database.repositories.ai.file_chapter_plan_store import FileChapterPlanStore
 from infrastructure.database.repositories.ai.file_context_pack_store import FileContextPackStore
+from infrastructure.database.repositories.ai.file_conflict_guard_store import FileConflictGuardStore
+from infrastructure.database.repositories.ai.file_direction_plan_store import FileDirectionPlanStore
 from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
 from infrastructure.database.repositories.ai.file_llm_call_log_store import FileLLMCallLogStore
 from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlotArcStore
@@ -96,8 +102,23 @@ def get_chapter_plan_repository() -> FileChapterPlanStore:
 
 
 @lru_cache(maxsize=1)
+def get_direction_plan_repository() -> FileDirectionPlanStore:
+    return FileDirectionPlanStore()
+
+
+@lru_cache(maxsize=1)
 def get_ai_review_repository() -> FileAIReviewStore:
     return FileAIReviewStore()
+
+
+@lru_cache(maxsize=1)
+def get_ai_suggestion_repository() -> FileAISuggestionStore:
+    return FileAISuggestionStore()
+
+
+@lru_cache(maxsize=1)
+def get_conflict_guard_repository() -> FileConflictGuardStore:
+    return FileConflictGuardStore()
 
 
 @lru_cache(maxsize=1)
@@ -194,6 +215,7 @@ def get_agent_orchestrator() -> AgentOrchestrator:
         runtime_service=get_agent_runtime_service(),
         plot_arc_repository=get_plot_arc_repository(),
         chapter_plan_repository=get_chapter_plan_repository(),
+        direction_plan_repository=get_direction_plan_repository(),
     )
 
 
@@ -240,7 +262,9 @@ def get_core_tool_facade() -> CoreToolFacade:
     return CoreToolFacade(
         context_pack_service=get_context_pack_service(),
         candidate_draft_repository=get_candidate_draft_repository(),
+        ai_suggestion_repository=get_ai_suggestion_repository(),
         chapter_plan_repository=get_chapter_plan_repository(),
+        direction_plan_repository=get_direction_plan_repository(),
         writer=FakeWriter(),
         job_service=get_ai_job_service(),
     )
@@ -254,6 +278,7 @@ def get_continuation_workflow() -> MinimalContinuationWorkflow:
         chapter_service=get_chapter_service(),
         tool_facade=get_core_tool_facade(),
         candidate_draft_repository=get_candidate_draft_repository(),
+        conflict_guard_service=get_conflict_guard_service(),
         job_repository=store,
         step_repository=store,
         attempt_repository=store,
@@ -266,6 +291,7 @@ def get_candidate_review_service() -> CandidateReviewService:
         candidate_draft_repository=get_candidate_draft_repository(),
         chapter_service=get_chapter_service(),
         initialization_service=get_initialization_service(),
+        conflict_guard_service=get_conflict_guard_service(),
     )
 
 
@@ -280,4 +306,35 @@ def get_ai_review_service() -> AIReviewApplicationService:
         initialization_repository=get_initialization_repository(),
         story_memory_repository=get_story_memory_repository(),
         story_state_repository=get_story_state_repository(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_candidate_rewrite_service() -> CandidateRewriteService:
+    return CandidateRewriteService(
+        candidate_draft_repository=get_candidate_draft_repository(),
+        ai_review_repository=get_ai_review_repository(),
+        conflict_guard_service=get_conflict_guard_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_ai_suggestion_service() -> AISuggestionService:
+    return AISuggestionService(
+        ai_suggestion_repository=get_ai_suggestion_repository(),
+        ai_review_repository=get_ai_review_repository(),
+        candidate_draft_repository=get_candidate_draft_repository(),
+        candidate_rewrite_service=get_candidate_rewrite_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_conflict_guard_service() -> ConflictGuardService:
+    return ConflictGuardService(
+        conflict_guard_repository=get_conflict_guard_repository(),
+        candidate_draft_repository=get_candidate_draft_repository(),
+        chapter_service=get_chapter_service(),
+        ai_suggestion_repository=get_ai_suggestion_repository(),
+        direction_plan_repository=get_direction_plan_repository(),
+        ai_review_repository=get_ai_review_repository(),
     )

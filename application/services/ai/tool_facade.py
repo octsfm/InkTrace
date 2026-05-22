@@ -10,11 +10,26 @@ from application.services.ai.agent_profile_registry import build_default_agent_p
 from application.services.ai.output_validation_service import OutputValidationService
 from application.services.ai.writer_service import WriterService
 from domain.entities.ai.models import (
+    AISuggestion,
+    AISuggestionAction,
+    AISuggestionActionType,
+    AISuggestionPriority,
+    AISuggestionSeverity,
+    AISuggestionSource,
+    AISuggestionStatus,
+    AISuggestionTarget,
+    AISuggestionType,
     CandidateDraft,
     CandidateDraftStatus,
+    CandidateDraftVersion,
+    CandidateDraftVersionStatus,
     CandidateDraftValidationStatus,
     ChapterPlan,
+    DirectionPlanStatus,
     ContextPackBuildRequest,
+    DirectionProposal,
+    WritingTask,
+    WritingTaskStatus,
 )
 
 
@@ -113,14 +128,18 @@ class CoreToolFacade:
         *,
         context_pack_service,
         candidate_draft_repository,
+        ai_suggestion_repository=None,
         chapter_plan_repository=None,
+        direction_plan_repository=None,
         writer,
         job_service=None,
         agent_profile_registry=None,
     ) -> None:
         self._context_pack_service = context_pack_service
         self._candidate_draft_repository = candidate_draft_repository
+        self._ai_suggestion_repository = ai_suggestion_repository
         self._chapter_plan_repository = chapter_plan_repository
+        self._direction_plan_repository = direction_plan_repository
         self._writer_service = WriterService(writer)
         self._job_service = job_service
         self._output_validation_service = OutputValidationService()
@@ -351,13 +370,20 @@ class CoreToolFacade:
 
     def _save_candidate_draft(self, payload: dict[str, Any]) -> dict[str, Any]:
         content = str(payload.get("content", "")).strip()
+        candidate_version_id = str(payload.get("candidate_version_id", "")).strip() or f"{payload['candidate_draft_id']}_v1"
+        created_at = self._now()
         draft = CandidateDraft(
             candidate_draft_id=str(payload["candidate_draft_id"]),
             work_id=str(payload["work_id"]),
             chapter_id=str(payload["chapter_id"]),
+            agent_session_id=str(payload.get("agent_session_id", "")),
+            writing_task_id=str(payload.get("writing_task_id", "")),
+            direction_plan_snapshot_id=str(payload.get("direction_plan_snapshot_id", "")),
             source_context_pack_id=str(payload["source_context_pack_id"]),
             source_job_id=str(payload["source_job_id"]),
             status=CandidateDraftStatus.PENDING_REVIEW,
+            selected_version_id=candidate_version_id,
+            latest_version_no=1,
             content=content,
             content_preview=content[:120],
             word_count=max(1, len(re.findall(r"\S+", content))),
@@ -367,11 +393,35 @@ class CoreToolFacade:
             provider_name=str(payload.get("provider_name", "")),
             model_name=str(payload.get("model_name", "")),
             created_by=str(payload.get("created_by", "workflow")),
-            created_at=self._now(),
-            updated_at=self._now(),
+            created_at=created_at,
+            updated_at=created_at,
+            request_id=str(payload.get("request_id", "")),
+            trace_id=str(payload.get("trace_id", "")),
             metadata=dict(payload.get("metadata", {})),
         )
         saved = self._candidate_draft_repository.save(draft)
+        self._candidate_draft_repository.save_version(
+            CandidateDraftVersion(
+                candidate_version_id=candidate_version_id,
+                candidate_draft_id=saved.candidate_draft_id,
+                work_id=saved.work_id,
+                chapter_id=saved.chapter_id,
+                agent_session_id=saved.agent_session_id,
+                version_no=1,
+                status=CandidateDraftVersionStatus.GENERATED,
+                content=content,
+                content_summary=content[:120],
+                word_count=saved.word_count,
+                writing_task_id=saved.writing_task_id,
+                direction_plan_snapshot_id=saved.direction_plan_snapshot_id,
+                source_context_pack_id=saved.source_context_pack_id,
+                created_by=str(payload.get("created_by", "workflow")),
+                created_at=created_at,
+                updated_at=created_at,
+                request_id=saved.request_id,
+                trace_id=saved.trace_id,
+            )
+        )
         return {"candidate_draft": saved}
 
     def _get_candidate_draft(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -391,12 +441,36 @@ class CoreToolFacade:
         return {"result_ref": f"memory_update_suggestion:{suggestion_id}"}
 
     def _create_direction_proposal(self, payload: dict[str, Any]) -> dict[str, Any]:
-        proposal_id = str(payload.get("proposal_id", "")) or f"dir_{uuid.uuid4().hex[:8]}"
+        proposal_id = str(payload.get("direction_proposal_id", "") or payload.get("proposal_id", "")) or f"dir_{uuid.uuid4().hex[:8]}"
+        if self._direction_plan_repository is not None:
+            self._supersede_existing_direction_proposals(
+                work_id=str(payload.get("work_id", "")),
+                chapter_id=str(payload.get("chapter_id", "")),
+                exclude_proposal_id=proposal_id,
+                stale_reason="direction_regenerated",
+            )
+            proposal_payload = dict(payload)
+            proposal_payload["direction_proposal_id"] = proposal_id
+            normalized_options: list[dict[str, Any]] = []
+            for item in list(proposal_payload.get("options", [])):
+                current = dict(item)
+                current.setdefault("direction_proposal_id", proposal_id)
+                normalized_options.append(current)
+            if normalized_options:
+                proposal_payload["options"] = normalized_options
+            proposal = DirectionProposal.model_validate(proposal_payload)
+            self._direction_plan_repository.save_direction_proposal(proposal)
         return {"result_ref": f"direction:{proposal_id}"}
 
     def _create_chapter_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
         plan_id = str(payload.get("chapter_plan_id", "") or payload.get("plan_id", "")) or f"plan_{uuid.uuid4().hex[:8]}"
         if self._chapter_plan_repository is not None:
+            self._supersede_existing_chapter_plans(
+                work_id=str(payload.get("work_id", "")),
+                chapter_id=str(payload.get("chapter_id", "")),
+                exclude_plan_id=plan_id,
+                stale_reason="chapter_plan_regenerated",
+            )
             plan_payload = dict(payload)
             plan_payload["chapter_plan_id"] = plan_id
             normalized_items: list[dict[str, Any]] = []
@@ -412,7 +486,143 @@ class CoreToolFacade:
 
     def _create_writing_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         task_id = str(payload.get("writing_task_id", "")) or f"wt_{uuid.uuid4().hex[:8]}"
+        if self._direction_plan_repository is not None:
+            task_payload = dict(payload)
+            task_payload["writing_task_id"] = task_id
+            task = WritingTask.model_validate(task_payload)
+            self._direction_plan_repository.save_writing_task(task)
         return {"result_ref": f"writing_task:{task_id}"}
+
+    def _supersede_existing_direction_proposals(
+        self,
+        *,
+        work_id: str,
+        chapter_id: str,
+        exclude_proposal_id: str,
+        stale_reason: str,
+    ) -> None:
+        if self._direction_plan_repository is None or not work_id:
+            return
+        superseded_direction_ids: list[str] = []
+        now = self._now()
+        for proposal in self._direction_plan_repository.list_direction_proposals(work_id, chapter_id=chapter_id):
+            if proposal.direction_proposal_id == exclude_proposal_id:
+                continue
+            if proposal.status == DirectionPlanStatus.SUPERSEDED and proposal.stale_reason == stale_reason:
+                superseded_direction_ids.append(proposal.direction_proposal_id)
+                continue
+            updated = proposal.model_copy(
+                update={
+                    "status": DirectionPlanStatus.SUPERSEDED,
+                    "stale_status": "stale",
+                    "stale_reason": stale_reason,
+                    "updated_at": now,
+                }
+            )
+            self._direction_plan_repository.save_direction_proposal(updated)
+            superseded_direction_ids.append(proposal.direction_proposal_id)
+        if superseded_direction_ids:
+            self._supersede_related_chapter_plans(
+                work_id=work_id,
+                chapter_id=chapter_id,
+                direction_ids=superseded_direction_ids,
+                stale_reason=stale_reason,
+            )
+            self._stale_related_writing_tasks(
+                work_id=work_id,
+                chapter_id=chapter_id,
+                direction_ids=superseded_direction_ids,
+                stale_reason=stale_reason,
+            )
+
+    def _supersede_existing_chapter_plans(
+        self,
+        *,
+        work_id: str,
+        chapter_id: str,
+        exclude_plan_id: str,
+        stale_reason: str,
+    ) -> None:
+        if self._chapter_plan_repository is None or not work_id:
+            return
+        superseded_plan_ids: list[str] = []
+        now = self._now()
+        for plan in self._chapter_plan_repository.list_by_work(work_id, chapter_id=chapter_id):
+            if plan.chapter_plan_id == exclude_plan_id:
+                continue
+            if plan.status == DirectionPlanStatus.SUPERSEDED and plan.stale_reason == stale_reason:
+                superseded_plan_ids.append(plan.chapter_plan_id)
+                continue
+            updated = plan.model_copy(
+                update={
+                    "status": DirectionPlanStatus.SUPERSEDED,
+                    "stale_status": "stale",
+                    "stale_reason": stale_reason,
+                    "updated_at": now,
+                }
+            )
+            self._chapter_plan_repository.save(updated)
+            superseded_plan_ids.append(plan.chapter_plan_id)
+        if superseded_plan_ids:
+            self._stale_related_writing_tasks(
+                work_id=work_id,
+                chapter_id=chapter_id,
+                chapter_plan_ids=superseded_plan_ids,
+                stale_reason=stale_reason,
+            )
+
+    def _supersede_related_chapter_plans(
+        self,
+        *,
+        work_id: str,
+        chapter_id: str,
+        direction_ids: list[str],
+        stale_reason: str,
+    ) -> None:
+        if self._chapter_plan_repository is None or not direction_ids:
+            return
+        now = self._now()
+        for plan in self._chapter_plan_repository.list_by_work(work_id, chapter_id=chapter_id):
+            if plan.direction_proposal_id not in direction_ids:
+                continue
+            updated = plan.model_copy(
+                update={
+                    "status": DirectionPlanStatus.SUPERSEDED,
+                    "stale_status": "stale",
+                    "stale_reason": stale_reason,
+                    "updated_at": now,
+                }
+            )
+            self._chapter_plan_repository.save(updated)
+
+    def _stale_related_writing_tasks(
+        self,
+        *,
+        work_id: str,
+        chapter_id: str,
+        stale_reason: str,
+        direction_ids: list[str] | None = None,
+        chapter_plan_ids: list[str] | None = None,
+    ) -> None:
+        if self._direction_plan_repository is None:
+            return
+        direction_ids = direction_ids or []
+        chapter_plan_ids = chapter_plan_ids or []
+        if not direction_ids and not chapter_plan_ids:
+            return
+        now = self._now()
+        for task in self._direction_plan_repository.list_writing_tasks(work_id, chapter_id=chapter_id):
+            if task.direction_proposal_id not in direction_ids and task.chapter_plan_id not in chapter_plan_ids:
+                continue
+            updated = task.model_copy(
+                update={
+                    "status": WritingTaskStatus.STALE,
+                    "stale_status": "stale",
+                    "stale_reason": stale_reason,
+                    "updated_at": now,
+                }
+            )
+            self._direction_plan_repository.save_writing_task(updated)
 
     def _create_review_report(self, payload: dict[str, Any]) -> dict[str, Any]:
         review_id = str(payload.get("review_id", "")) or f"review_{uuid.uuid4().hex[:8]}"
@@ -424,10 +634,116 @@ class CoreToolFacade:
 
     def _create_ai_suggestion(self, payload: dict[str, Any]) -> dict[str, Any]:
         suggestion_id = str(payload.get("suggestion_id", "")) or f"ais_{uuid.uuid4().hex[:8]}"
+        if self._ai_suggestion_repository is not None:
+            now = self._now()
+            suggestion_type = AISuggestionType(str(payload.get("suggestion_type", AISuggestionType.REWRITE_SUGGESTION.value)))
+            suggestion_payload = {
+                "suggestion_id": suggestion_id,
+                "work_id": str(payload.get("work_id", "")),
+                "chapter_id": str(payload.get("chapter_id", "")),
+                "agent_session_id": str(payload.get("agent_session_id", "")),
+                "source": payload.get("source")
+                or {
+                    "source_type": str(payload.get("source_type", "review_issue")),
+                    "source_ref_id": str(
+                        payload.get("source_ref_id", "")
+                        or payload.get("review_issue_id", "")
+                        or payload.get("review_id", "")
+                    ),
+                    "source_agent_type": str(payload.get("source_agent_type", "")),
+                    "source_agent_session_id": str(payload.get("source_agent_session_id", "")),
+                    "source_version_id": str(payload.get("source_version_id", "")),
+                },
+                "target": payload.get("target")
+                or {
+                    "target_type": str(payload.get("target_type", "candidate_draft_version")),
+                    "target_ref_id": str(payload.get("target_ref_id", "")),
+                    "target_scope": str(payload.get("target_scope", "chapter")),
+                    "target_snapshot_ref": str(payload.get("target_snapshot_ref", "")),
+                },
+                "suggestion_type": suggestion_type,
+                "severity": AISuggestionSeverity(str(payload.get("severity", AISuggestionSeverity.MEDIUM.value))),
+                "priority": AISuggestionPriority(str(payload.get("priority", AISuggestionPriority.MEDIUM.value))),
+                "title": str(payload.get("title", "") or "AI 建议"),
+                "summary": str(payload.get("summary", "")),
+                "rationale": str(payload.get("rationale", "")),
+                "proposed_action": str(payload.get("proposed_action", "")),
+                "status": AISuggestionStatus(str(payload.get("status", AISuggestionStatus.GENERATED.value))),
+                "decision": str(payload.get("decision", "")),
+                "decided_by": str(payload.get("decided_by", "")),
+                "warning_codes": list(payload.get("warning_codes", []) or []),
+                "created_by": str(payload.get("created_by", "reviewer_agent")),
+                "created_at": str(payload.get("created_at", "")) or now,
+                "updated_at": str(payload.get("updated_at", "")) or now,
+                "request_id": str(payload.get("request_id", "")),
+                "trace_id": str(payload.get("trace_id", "")),
+                "expires_at": str(payload.get("expires_at", "")),
+                "action": payload.get("action")
+                or {
+                    "action_type": self._default_ai_suggestion_action_type(suggestion_type).value,
+                    "requires_user_action": True,
+                    "action_status": "pending",
+                },
+                "batch_id": str(payload.get("batch_id", "")),
+                "metadata": dict(payload.get("metadata", {})),
+            }
+            suggestion = AISuggestion.model_validate(suggestion_payload)
+            self._ai_suggestion_repository.save(suggestion)
         return {"result_ref": f"ai_suggestion:{suggestion_id}"}
+
+    @staticmethod
+    def _default_ai_suggestion_action_type(suggestion_type: AISuggestionType) -> AISuggestionActionType:
+        if suggestion_type == AISuggestionType.RISK_WARNING:
+            return AISuggestionActionType.DISMISS_ONLY
+        if suggestion_type == AISuggestionType.MEMORY_UPDATE_SUGGESTION_REF:
+            return AISuggestionActionType.CREATE_MEMORY_UPDATE_REF
+        if suggestion_type == AISuggestionType.CONFLICT_RESOLUTION_SUGGESTION:
+            return AISuggestionActionType.OPEN_CONFLICT_RESOLUTION
+        if suggestion_type == AISuggestionType.DIRECTION_PLAN_SUGGESTION:
+            return AISuggestionActionType.ADJUST_DIRECTION_OR_PLAN
+        return AISuggestionActionType.CONVERT_TO_REWRITE_INSTRUCTION
 
     def _create_candidate_version(self, payload: dict[str, Any]) -> dict[str, Any]:
         version_id = str(payload.get("candidate_version_id", "")) or f"ver_{uuid.uuid4().hex[:8]}"
+        if self._candidate_draft_repository is not None and str(payload.get("candidate_draft_id", "")).strip():
+            version = CandidateDraftVersion(
+                candidate_version_id=version_id,
+                candidate_draft_id=str(payload["candidate_draft_id"]),
+                work_id=str(payload.get("work_id", "")),
+                chapter_id=str(payload.get("chapter_id", "")),
+                agent_session_id=str(payload.get("agent_session_id", "")),
+                source_candidate_draft_id=str(payload.get("source_candidate_draft_id", "")),
+                source_version_id=str(payload.get("source_version_id", "")),
+                parent_version_id=str(payload.get("parent_version_id", "")),
+                version_no=int(payload.get("version_no", 1) or 1),
+                status=CandidateDraftVersionStatus(str(payload.get("status", "generated"))),
+                content_ref=str(payload.get("content_ref", "")),
+                text_ref=str(payload.get("text_ref", "")),
+                content=str(payload.get("content", "")),
+                content_summary=str(payload.get("content_summary", "") or str(payload.get("content", ""))[:120]),
+                word_count=int(payload.get("word_count", 0) or 0),
+                writing_task_id=str(payload.get("writing_task_id", "")),
+                direction_plan_snapshot_id=str(payload.get("direction_plan_snapshot_id", "")),
+                source_context_pack_id=str(payload.get("source_context_pack_id", "")),
+                review_report_id=str(payload.get("review_report_id", "")),
+                warning_codes=list(payload.get("warning_codes", []) or []),
+                stale_status=str(payload.get("stale_status", "fresh") or "fresh"),
+                created_by=str(payload.get("created_by", "rewriter_agent")),
+                created_at=str(payload.get("created_at", "")) or self._now(),
+                updated_at=str(payload.get("updated_at", "")) or self._now(),
+                request_id=str(payload.get("request_id", "")),
+                trace_id=str(payload.get("trace_id", "")),
+            )
+            self._candidate_draft_repository.save_version(version)
+            draft = self._candidate_draft_repository.get(version.candidate_draft_id)
+            updated_draft = draft.model_copy(
+                update={
+                    "latest_version_no": max(int(draft.latest_version_no or 0), version.version_no),
+                    "revision_round": max(int(draft.revision_round or 0), max(0, version.version_no - 1)),
+                    "updated_at": self._now(),
+                }
+            )
+            self._candidate_draft_repository.save(updated_draft)
         return {"result_ref": f"candidate_version:{version_id}"}
 
     def _request_conflict_check(self, payload: dict[str, Any]) -> dict[str, Any]:

@@ -48,6 +48,10 @@ def test_ai_review_api_review_get_list(monkeypatch, tmp_path) -> None:
     list_payload = list_resp.json()
     assert list_payload["data"]["items"][0]["review_id"] == review_id
 
+    conflicts = client.get("/api/v2/ai/conflicts", params={"candidate_draft_id": candidate_id})
+    assert conflicts.status_code == 200
+    assert any(item["conflict_type"] == "timeline_conflict" for item in conflicts.json()["data"]["items"])
+
 
 def _seed_initialized_work(client: TestClient) -> tuple[str, str]:
     # Create work/chapter with v1 services is too coupled to container here; reuse existing initialization API

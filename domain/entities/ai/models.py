@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 
 class AIBaseModel(BaseModel):
@@ -1202,16 +1202,55 @@ class EmptyVectorRecallResult(AIBaseModel):
 
 
 class CandidateDraftStatus(StrEnum):
+    GENERATED = "generated"
     PENDING_REVIEW = "pending_review"
+    UNDER_REVIEW = "under_review"
+    REVISION_REQUESTED = "revision_requested"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
     APPLIED = "applied"
     STALE = "stale"
     SUPERSEDED = "superseded"
+    FAILED = "failed"
 
 
 class CandidateDraftValidationStatus(StrEnum):
     PASSED = "passed"
+    FAILED = "failed"
+
+
+class CandidateDraftVersionStatus(StrEnum):
+    GENERATED = "generated"
+    REVIEWING = "reviewing"
+    REVIEW_COMPLETED = "review_completed"
+    REVISION_REQUESTED = "revision_requested"
+    SELECTED = "selected"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    APPLIED = "applied"
+    SUPERSEDED = "superseded"
+    STALE = "stale"
+    FAILED = "failed"
+
+
+class RewriteTriggerType(StrEnum):
+    REVIEW_BASED = "review_based"
+    USER_INSTRUCTION = "user_instruction"
+    REJECT_REGENERATE = "reject_regenerate"
+
+
+class RewriteRequestStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class RevisionRoundStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
     FAILED = "failed"
 
 
@@ -1228,11 +1267,125 @@ class DirectionPlanStatus(StrEnum):
     FAILED = "failed"
 
 
+class WritingTaskStatus(StrEnum):
+    PENDING = "pending"
+    READY = "ready"
+    STALE = "stale"
+    CONSUMED = "consumed"
+    FAILED = "failed"
+
+
 class ArcRef(AIBaseModel):
     arc_type: str
     arc_id: str
     arc_summary: str
     arc_status_at_generation: str
+
+
+class DirectionScore(AIBaseModel):
+    total_score: int
+    consistency_score: int
+    conflict_density_score: int
+    satisfaction_rhythm_score: int
+    foreshadow_progress_score: int
+    risk_controllability_score: int
+    score_rationale: str = ""
+
+
+class ConflictItem(AIBaseModel):
+    conflict_name: str
+    conflict_description: str
+    conflict_type: str
+    intensity: str = ""
+
+
+class ForeshadowUsageItem(AIBaseModel):
+    foreshadow_id: str = ""
+    foreshadow_description: str
+    usage_plan: str
+    is_new: bool = False
+
+
+class RiskItem(AIBaseModel):
+    risk_description: str
+    risk_severity: str
+    mitigation: str = ""
+
+
+class ForeshadowArrangementItem(AIBaseModel):
+    foreshadow_id: str = ""
+    foreshadow_description: str
+    arrangement: str
+    arrangement_detail: str = ""
+
+
+class DirectionOption(AIBaseModel):
+    option_id: str
+    direction_proposal_id: str
+    label: str
+    title: str = ""
+    plot_summary: str
+    narrative_premise: str
+    narrative_benefits: list[str] = Field(default_factory=list)
+    main_conflicts: list[ConflictItem] = Field(default_factory=list)
+    foreshadow_usage: list[ForeshadowUsageItem] = Field(default_factory=list)
+    risk_points: list[RiskItem] = Field(default_factory=list)
+    estimated_chapters: int
+    chapter_preview: list[str] = Field(default_factory=list)
+    base_arc_refs: list[ArcRef] = Field(default_factory=list)
+    base_memory_refs: list[str] = Field(default_factory=list)
+    score: DirectionScore
+    confidence: float = 0.0
+    tone_direction: str = ""
+    key_characters_involved: list[str] = Field(default_factory=list)
+    edited_summary: str = ""
+    is_user_edited: bool = False
+    editable: bool = True
+    created_at: str = ""
+
+
+class DirectionProposal(AIBaseModel):
+    direction_proposal_id: str
+    work_id: str
+    chapter_id: str
+    chapter_order: int = 0
+    agent_session_id: str
+    source_context_pack_id: str
+    source_arc_refs: list[ArcRef] = Field(default_factory=list)
+    source_memory_refs: list[str] = Field(default_factory=list)
+    status: DirectionPlanStatus
+    version: int = 1
+    options: list[DirectionOption] = Field(default_factory=list)
+    generation_metadata: dict[str, Any] = Field(default_factory=dict)
+    created_by: str = "planner_agent"
+    selected_by: str = ""
+    selected_option_id: str = ""
+    edited_by: str = ""
+    stale_status: str = "fresh"
+    stale_reason: str = ""
+    warning_codes: list[str] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+
+
+class DirectionSelection(AIBaseModel):
+    selection_id: str
+    direction_proposal_id: str
+    selected_option_id: str
+    work_id: str
+    chapter_id: str
+    agent_session_id: str
+    selection_type: str
+    edited_fields: list[str] = Field(default_factory=list)
+    edited_values: dict[str, Any] = Field(default_factory=dict)
+    user_id: str
+    confirmed_by: str = "user_action"
+    warning_codes: list[str] = Field(default_factory=list)
+    created_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
 
 
 class ChapterBeat(AIBaseModel):
@@ -1251,9 +1404,16 @@ class ChapterPlanItem(AIBaseModel):
     chapter_goal: str
     key_events: list[ChapterBeat] = Field(default_factory=list)
     conflict_progression: str
+    foreshadow_arrangement: list[ForeshadowArrangementItem] = Field(default_factory=list)
     forbidden_items: list[str] = Field(default_factory=list)
     required_beats: list[str] = Field(default_factory=list)
+    estimated_word_count: int = 0
+    estimated_word_count_max: int = 0
+    tone_hint: str = ""
+    pov_hint: str = ""
     arc_alignment: list[ArcRef] = Field(default_factory=list)
+    source_sequence_event_refs: list[str] = Field(default_factory=list)
+    writing_task_id: str = ""
     is_user_edited: bool = False
     created_at: str = ""
 
@@ -1276,6 +1436,7 @@ class ChapterPlan(AIBaseModel):
     constraints: list[str] = Field(default_factory=list)
     total_estimated_chapters: int = 0
     total_estimated_words: int = 0
+    generation_metadata: dict[str, Any] = Field(default_factory=dict)
     created_by: str = "planner_agent"
     confirmed_by: str = ""
     edited_by: str = ""
@@ -1288,25 +1449,134 @@ class ChapterPlan(AIBaseModel):
     trace_id: str = ""
 
 
+class PlanConfirmation(AIBaseModel):
+    confirmation_id: str
+    chapter_plan_id: str
+    direction_proposal_id: str
+    work_id: str
+    chapter_id: str
+    agent_session_id: str
+    confirmation_type: str
+    edited_items: list[str] = Field(default_factory=list)
+    edited_fields: dict[str, Any] = Field(default_factory=dict)
+    user_edit_notes: str = ""
+    user_id: str
+    confirmed_by: str = "user_action"
+    warning_codes: list[str] = Field(default_factory=list)
+    created_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+
+
+class DirectionPlanRef(AIBaseModel):
+    ref_type: str
+    ref_id: str
+    ref_scope: str
+    ref_summary: str
+    checksum: str = ""
+    created_at: str = ""
+
+
+class DirectionPlanSnapshot(AIBaseModel):
+    snapshot_id: str
+    work_id: str
+    chapter_id: str
+    agent_session_id: str
+    direction_proposal_id: str
+    direction_proposal_version: int = 1
+    selected_option_id: str
+    selection_id: str
+    chapter_plan_id: str
+    chapter_plan_version: int = 1
+    confirmation_id: str
+    writing_task_id: str = ""
+    snapshot_status: str = "ready"
+    direction_summary: str
+    plan_summary: str
+    arc_refs_at_snapshot: list[ArcRef] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    created_at: str = ""
+
+
 class WritingTask(AIBaseModel):
     writing_task_id: str
     work_id: str
-    target_chapter_id: str
+    chapter_id: str = ""
+    target_chapter_id: str = ""
+    chapter_order: int = 0
+    direction_proposal_id: str = ""
+    selected_option_id: str = ""
+    chapter_plan_id: str = ""
+    plan_item_id: str = ""
+    agent_session_id: str = ""
+    source_context_pack_id: str = ""
+    source_arc_refs: list[str] = Field(default_factory=list)
+    source_memory_refs: list[str] = Field(default_factory=list)
+    status: WritingTaskStatus = WritingTaskStatus.PENDING
+    version: int = 1
+    writing_goal: str = ""
+    must_include: list[str] = Field(default_factory=list)
+    must_not_include: list[str] = Field(default_factory=list)
+    task_constraints: list[str] = Field(default_factory=list)
+    tone_guidance: str = ""
+    target_word_count: int = 0
+    target_word_count_max: int = 0
+    expected_output_shape: str = ""
+    arc_constraints: list[ArcRef] = Field(default_factory=list)
+    foreshadow_requirements: list[ForeshadowArrangementItem] = Field(default_factory=list)
+    required_beats: list[str] = Field(default_factory=list)
+    direction_summary: str = ""
+    plan_summary: str = ""
+    stale_status: str = "fresh"
+    stale_reason: str = ""
+    warning_codes: list[str] = Field(default_factory=list)
+    generated_by: str = "planner_agent"
+    consumed_by: str = ""
     continuation_mode: str = "continue_chapter"
     user_instruction: str = ""
     model_role: str = ModelRole.WRITER.value
     created_by: str = "user_action"
     created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_task_chapter_ids(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        chapter_id = str(data.get("chapter_id", "") or "")
+        target_chapter_id = str(data.get("target_chapter_id", "") or "")
+        if not chapter_id and target_chapter_id:
+            data["chapter_id"] = target_chapter_id
+        if not target_chapter_id and chapter_id:
+            data["target_chapter_id"] = chapter_id
+        if not data.get("generated_by") and data.get("created_by"):
+            data["generated_by"] = str(data["created_by"])
+        return data
 
 
 class CandidateDraft(AIBaseModel):
     candidate_draft_id: str
     work_id: str
     chapter_id: str
+    agent_session_id: str = ""
+    writing_task_id: str = ""
+    direction_plan_snapshot_id: str = ""
     source_context_pack_id: str
     source_job_id: str
     status: CandidateDraftStatus
+    selected_version_id: str = ""
+    accepted_version_id: str = ""
+    applied_version_id: str = ""
+    latest_version_no: int = 0
+    revision_round: int = 0
+    max_revision_rounds: int = 1
+    warning_codes: list[str] = Field(default_factory=list)
+    stale_status: str = "fresh"
     content: str = ""
     content_preview: str = ""
     word_count: int = 0
@@ -1319,6 +1589,8 @@ class CandidateDraft(AIBaseModel):
     created_by: str = "user_action"
     created_at: str = ""
     updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("status", mode="before")
@@ -1329,6 +1601,84 @@ class CandidateDraft(AIBaseModel):
         if value in {"apply_failed", "validation_failed", "save_failed"}:
             return CandidateDraftStatus.STALE
         return value
+
+
+class CandidateDraftVersion(AIBaseModel):
+    candidate_version_id: str
+    candidate_draft_id: str
+    work_id: str
+    chapter_id: str
+    agent_session_id: str = ""
+    source_candidate_draft_id: str = ""
+    source_version_id: str = ""
+    parent_version_id: str = ""
+    version_no: int
+    status: CandidateDraftVersionStatus
+    content_ref: str = ""
+    text_ref: str = ""
+    content: str = ""
+    content_summary: str = ""
+    word_count: int = 0
+    writing_task_id: str = ""
+    direction_plan_snapshot_id: str = ""
+    source_context_pack_id: str = ""
+    review_report_id: str = ""
+    warning_codes: list[str] = Field(default_factory=list)
+    stale_status: str = "fresh"
+    created_by: str = "user_action"
+    created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+
+
+class RewriteRequest(AIBaseModel):
+    rewrite_request_id: str
+    candidate_draft_id: str
+    source_version_id: str
+    work_id: str
+    chapter_id: str
+    agent_session_id: str = ""
+    trigger_type: RewriteTriggerType
+    review_report_id: str = ""
+    status: RewriteRequestStatus = RewriteRequestStatus.PENDING
+    created_by: str = "user_action"
+    created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RewriteInstruction(AIBaseModel):
+    rewrite_instruction_id: str
+    rewrite_request_id: str
+    instruction_source: str
+    instruction_ref: str = ""
+    instruction_summary: str = ""
+    constraint_refs: list[str] = Field(default_factory=list)
+    created_at: str = ""
+
+
+class RevisionRound(AIBaseModel):
+    revision_round_id: str
+    candidate_draft_id: str
+    round_no: int
+    source_version_id: str
+    target_version_id: str = ""
+    rewrite_request_id: str
+    status: RevisionRoundStatus = RevisionRoundStatus.PENDING
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class CandidateDraftVersionDiff(AIBaseModel):
+    diff_id: str
+    candidate_draft_id: str
+    from_version_id: str
+    to_version_id: str
+    diff_preview: list[str] = Field(default_factory=list)
+    summary: str = ""
 
 
 class ContinuationResult(AIBaseModel):
@@ -1433,6 +1783,255 @@ class AIReviewResult(AIBaseModel):
     model_name: str = ""
     created_at: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AISuggestionType(StrEnum):
+    REWRITE_SUGGESTION = "rewrite_suggestion"
+    STYLE_SUGGESTION = "style_suggestion"
+    PLOT_SUGGESTION = "plot_suggestion"
+    CHARACTER_SUGGESTION = "character_suggestion"
+    FORESHADOW_SUGGESTION = "foreshadow_suggestion"
+    MEMORY_UPDATE_SUGGESTION_REF = "memory_update_suggestion_ref"
+    CONFLICT_RESOLUTION_SUGGESTION = "conflict_resolution_suggestion"
+    DIRECTION_PLAN_SUGGESTION = "direction_plan_suggestion"
+    CONTINUITY_SUGGESTION = "continuity_suggestion"
+    RISK_WARNING = "risk_warning"
+
+
+class AISuggestionSeverity(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class AISuggestionPriority(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class AISuggestionStatus(StrEnum):
+    PENDING = "pending"
+    GENERATED = "generated"
+    SHOWN = "shown"
+    ACCEPTED = "accepted"
+    DISMISSED = "dismissed"
+    CONVERTED = "converted"
+    SUPERSEDED = "superseded"
+    STALE = "stale"
+    FAILED = "failed"
+
+
+class AISuggestionDecisionType(StrEnum):
+    NONE = ""
+    ACCEPTED = "accepted"
+    DISMISSED = "dismissed"
+    CONVERTED = "converted"
+
+
+class AISuggestionActionType(StrEnum):
+    CONVERT_TO_REWRITE_INSTRUCTION = "convert_to_rewrite_instruction"
+    OPEN_CONFLICT_RESOLUTION = "open_conflict_resolution"
+    CREATE_MEMORY_UPDATE_REF = "create_memory_update_ref"
+    ADJUST_DIRECTION_OR_PLAN = "adjust_direction_or_plan"
+    MANUAL_EDIT_HINT = "manual_edit_hint"
+    DISMISS_ONLY = "dismiss_only"
+
+
+class AISuggestionSource(AIBaseModel):
+    source_type: str
+    source_ref_id: str
+    source_agent_type: str = ""
+    source_agent_session_id: str = ""
+    source_version_id: str = ""
+
+
+class AISuggestionTarget(AIBaseModel):
+    target_type: str
+    target_ref_id: str
+    target_scope: str = "chapter"
+    target_snapshot_ref: str = ""
+
+
+class AISuggestionAction(AIBaseModel):
+    action_type: AISuggestionActionType
+    action_payload_ref: str = ""
+    requires_user_action: bool = True
+    action_status: str = "pending"
+
+
+class AISuggestionDecision(AIBaseModel):
+    suggestion_id: str
+    decision: AISuggestionDecisionType = AISuggestionDecisionType.NONE
+    decided_by: str = ""
+    decision_note: str = ""
+    decided_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+
+
+class AISuggestionBatch(AIBaseModel):
+    batch_id: str
+    work_id: str
+    chapter_id: str
+    agent_session_id: str = ""
+    source_report_id: str = ""
+    suggestion_ids: list[str] = Field(default_factory=list)
+    generated_count: int = 0
+    stale_count: int = 0
+    created_at: str = ""
+
+
+class AISuggestionRef(AIBaseModel):
+    ref_type: str
+    ref_id: str
+    ref_scope: str = ""
+    summary: str = ""
+    checksum: str = ""
+    created_at: str = ""
+
+
+class AISuggestion(AIBaseModel):
+    suggestion_id: str
+    work_id: str
+    chapter_id: str
+    agent_session_id: str = ""
+    source: AISuggestionSource
+    target: AISuggestionTarget
+    suggestion_type: AISuggestionType
+    severity: AISuggestionSeverity = AISuggestionSeverity.MEDIUM
+    priority: AISuggestionPriority = AISuggestionPriority.MEDIUM
+    title: str
+    summary: str = ""
+    rationale: str = ""
+    proposed_action: str = ""
+    status: AISuggestionStatus = AISuggestionStatus.GENERATED
+    decision: AISuggestionDecisionType = AISuggestionDecisionType.NONE
+    decided_by: str = ""
+    warning_codes: list[str] = Field(default_factory=list)
+    created_by: str = "reviewer_agent"
+    created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    expires_at: str = ""
+    action: AISuggestionAction = Field(
+        default_factory=lambda: AISuggestionAction(action_type=AISuggestionActionType.DISMISS_ONLY)
+    )
+    decision_log: AISuggestionDecision | None = None
+    batch_id: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @computed_field
+    @property
+    def is_expired(self) -> bool:
+        if not self.expires_at:
+            return False
+        try:
+            return datetime.fromisoformat(self.expires_at) <= datetime.now(UTC)
+        except ValueError:
+            return False
+
+
+class ConflictType(StrEnum):
+    CHARACTER_CONFLICT = "character_conflict"
+    SETTING_CONFLICT = "setting_conflict"
+    TIMELINE_CONFLICT = "timeline_conflict"
+    ARC_CONFLICT = "arc_conflict"
+    DIRECTION_PLAN_CONFLICT = "direction_plan_conflict"
+    MEMORY_CONFLICT = "memory_conflict"
+    FORESHADOW_CONFLICT = "foreshadow_conflict"
+    CANDIDATE_VERSION_CONFLICT = "candidate_version_conflict"
+    USER_DRAFT_CONFLICT = "user_draft_conflict"
+    APPLY_VERSION_CONFLICT = "apply_version_conflict"
+    UNKNOWN_CONFLICT = "unknown_conflict"
+
+
+class ConflictSeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    BLOCKING = "blocking"
+
+
+class ConflictRecordStatus(StrEnum):
+    PENDING = "pending"
+    DETECTED = "detected"
+    SHOWN = "shown"
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED = "resolved"
+    OVERRIDDEN = "overridden"
+    DISMISSED = "dismissed"
+    STALE = "stale"
+    SUPERSEDED = "superseded"
+    FAILED = "failed"
+
+
+class ConflictDecisionType(StrEnum):
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
+    OVERRIDDEN = "overridden"
+
+
+class ConflictDetectionStatus(StrEnum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ConflictGuardRecord(AIBaseModel):
+    record_id: str
+    work_id: str
+    chapter_id: str
+    candidate_draft_id: str
+    candidate_version_id: str
+    agent_session_id: str = ""
+    source_type: str
+    source_ref_id: str
+    target_type: str
+    target_ref_id: str
+    conflict_type: ConflictType
+    severity: ConflictSeverity
+    status: ConflictRecordStatus = ConflictRecordStatus.DETECTED
+    title: str
+    summary: str = ""
+    evidence_refs: list[str] = Field(default_factory=list)
+    suggested_action_refs: list[str] = Field(default_factory=list)
+    resolution_status: str = "unresolved"
+    resolved_by: str = ""
+    resolved_at: str = ""
+    warning_codes: list[str] = Field(default_factory=list)
+    created_by: str = "conflict_guard"
+    created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+
+
+class ConflictDetectionResult(AIBaseModel):
+    result_id: str
+    work_id: str
+    chapter_id: str
+    candidate_version_id: str
+    total_conflicts: int = 0
+    blocking_count: int = 0
+    warning_count: int = 0
+    info_count: int = 0
+    record_refs: list[str] = Field(default_factory=list)
+    detection_status: ConflictDetectionStatus = ConflictDetectionStatus.COMPLETED
+    detection_started_at: str = ""
+    detection_finished_at: str = ""
+
+
+class ConflictGuardDecision(AIBaseModel):
+    decision_id: str
+    record_id: str
+    decision: ConflictDecisionType
+    decided_by: str = ""
+    decided_at: str = ""
+    decision_note: str = ""
+    request_id: str = ""
+    trace_id: str = ""
 
 
 def build_default_model_role_mappings() -> dict[str, ModelSelection]:

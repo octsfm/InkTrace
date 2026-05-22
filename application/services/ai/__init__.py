@@ -4,8 +4,11 @@ from application.services.ai.agent_workflow import AgentOrchestrator, AgentWorkf
 from application.services.ai.agent_runtime_service import AgentRuntimeService
 from application.services.ai.ai_settings_service import AISettingsService
 from application.services.ai.ai_review_service import AIReviewApplicationService
+from application.services.ai.ai_suggestion_service import AISuggestionService
+from application.services.ai.candidate_rewrite_service import CandidateRewriteService
 from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
 from application.services.ai.context_pack_service import ContextPackService
+from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.ai.initialization_service import InitializationApplicationService
 from application.services.ai.llm_call_logger import LLMCallLogger
 from application.services.ai.model_router import ModelRouter
@@ -26,8 +29,11 @@ __all__ = [
     "AgentRuntimeService",
     "AISettingsService",
     "AIReviewApplicationService",
+    "AISuggestionService",
+    "CandidateRewriteService",
     "MinimalContinuationWorkflow",
     "ContextPackService",
+    "ConflictGuardService",
     "InitializationApplicationService",
     "LLMCallLogger",
     "ModelRouter",

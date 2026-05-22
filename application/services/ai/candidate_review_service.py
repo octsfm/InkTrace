@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Sequence
 
 from application.services.v1.chapter_service import ChapterService
-from domain.entities.ai.models import CandidateDraft, CandidateDraftStatus
+from domain.entities.ai.models import CandidateDraft, CandidateDraftStatus, CandidateDraftVersion, CandidateDraftVersionStatus
 from domain.repositories.ai.candidate_draft_repository import CandidateDraftRepository
 
 
@@ -16,10 +16,12 @@ class CandidateReviewService:
         candidate_draft_repository: CandidateDraftRepository,
         chapter_service: ChapterService,
         initialization_service=None,
+        conflict_guard_service=None,
     ) -> None:
         self._candidate_draft_repository = candidate_draft_repository
         self._chapter_service = chapter_service
         self._initialization_service = initialization_service
+        self._conflict_guard_service = conflict_guard_service
 
     def get_candidate_draft(self, candidate_draft_id: str) -> CandidateDraft:
         return self._candidate_draft_repository.get(candidate_draft_id)
@@ -27,24 +29,75 @@ class CandidateReviewService:
     def list_candidate_drafts(self, work_id: str, chapter_id: str | None = None) -> list[CandidateDraft]:
         return self._candidate_draft_repository.list_by_work(work_id, chapter_id=chapter_id or "")
 
-    def accept_candidate(self, candidate_draft_id: str, *, user_id: str = "", user_action: bool = False) -> CandidateDraft:
+    def select_candidate_version(
+        self,
+        candidate_draft_id: str,
+        *,
+        candidate_version_id: str,
+        user_id: str = "",
+        user_action: bool = False,
+    ) -> CandidateDraft:
+        self._require_user_action(user_action)
+        draft = self.get_candidate_draft(candidate_draft_id)
+        version = self._require_version(candidate_draft_id, candidate_version_id)
+        self._save_version_status(version, CandidateDraftVersionStatus.SELECTED)
+        return self._save_with_status(
+            draft,
+            draft.status,
+            {
+                "selected_version_id": candidate_version_id,
+                "content": version.content,
+                "content_preview": (version.content_summary or version.content[:120]),
+                "word_count": version.word_count,
+                "char_count": len(version.content),
+                "metadata": {
+                    **dict(draft.metadata),
+                    "selected_by": user_id,
+                    "selected_at": self._now(),
+                },
+            },
+        )
+
+    def accept_candidate(
+        self,
+        candidate_draft_id: str,
+        *,
+        candidate_version_id: str = "",
+        user_id: str = "",
+        user_action: bool = False,
+    ) -> CandidateDraft:
         self._require_user_action(user_action)
         draft = self.get_candidate_draft(candidate_draft_id)
         if draft.status == CandidateDraftStatus.APPLIED:
             raise ValueError("candidate_already_applied")
         if draft.status == CandidateDraftStatus.REJECTED:
             raise ValueError("candidate_already_rejected")
-        if draft.status not in {CandidateDraftStatus.PENDING_REVIEW, CandidateDraftStatus.ACCEPTED}:
+        if draft.status not in {
+            CandidateDraftStatus.GENERATED,
+            CandidateDraftStatus.PENDING_REVIEW,
+            CandidateDraftStatus.UNDER_REVIEW,
+            CandidateDraftStatus.REVISION_REQUESTED,
+            CandidateDraftStatus.ACCEPTED,
+        }:
             raise ValueError("candidate_status_invalid")
+        version = self._resolve_target_version(draft, candidate_version_id=candidate_version_id)
+        if version is not None:
+            self._save_version_status(version, CandidateDraftVersionStatus.ACCEPTED)
         if draft.status == CandidateDraftStatus.ACCEPTED:
             return draft
         return self._save_with_status(
             draft,
             CandidateDraftStatus.ACCEPTED,
             {
+                "selected_version_id": version.candidate_version_id if version is not None else draft.selected_version_id,
+                "accepted_version_id": version.candidate_version_id if version is not None else draft.accepted_version_id,
                 "review_decision": "accept",
                 "reviewed_by": user_id,
                 "reviewed_at": self._now(),
+                "content": version.content if version is not None else draft.content,
+                "content_preview": (version.content_summary or version.content[:120]) if version is not None else draft.content_preview,
+                "word_count": version.word_count if version is not None else draft.word_count,
+                "char_count": len(version.content) if version is not None else draft.char_count,
             },
         )
 
@@ -52,6 +105,7 @@ class CandidateReviewService:
         self,
         candidate_draft_id: str,
         *,
+        candidate_version_id: str = "",
         user_id: str = "",
         reason: str = "",
         user_action: bool = False,
@@ -62,8 +116,28 @@ class CandidateReviewService:
             raise ValueError("candidate_already_applied")
         if draft.status == CandidateDraftStatus.REJECTED:
             return draft
-        if draft.status not in {CandidateDraftStatus.PENDING_REVIEW, CandidateDraftStatus.ACCEPTED}:
+        if draft.status not in {
+            CandidateDraftStatus.GENERATED,
+            CandidateDraftStatus.PENDING_REVIEW,
+            CandidateDraftStatus.UNDER_REVIEW,
+            CandidateDraftStatus.REVISION_REQUESTED,
+            CandidateDraftStatus.ACCEPTED,
+        }:
             raise ValueError("candidate_status_invalid")
+        if candidate_version_id:
+            version = self._require_version(candidate_draft_id, candidate_version_id)
+            self._save_version_status(version, CandidateDraftVersionStatus.REJECTED)
+            return self._save_with_status(
+                draft,
+                CandidateDraftStatus.REVISION_REQUESTED,
+                {
+                    "selected_version_id": candidate_version_id,
+                    "review_decision": "reject",
+                    "reviewed_by": user_id,
+                    "reviewed_at": self._now(),
+                    "reject_reason": str(reason or ""),
+                },
+            )
         return self._save_with_status(
             draft,
             CandidateDraftStatus.REJECTED,
@@ -79,6 +153,7 @@ class CandidateReviewService:
         self,
         candidate_draft_id: str,
         *,
+        candidate_version_id: str = "",
         user_id: str = "",
         expected_chapter_version: int | None,
         user_action: bool = False,
@@ -111,18 +186,33 @@ class CandidateReviewService:
             raise ValueError("candidate_already_applied")
         if draft.status not in {CandidateDraftStatus.PENDING_REVIEW, CandidateDraftStatus.ACCEPTED}:
             raise ValueError("candidate_status_invalid")
-        if not str(draft.content or "").strip():
+        version = self._resolve_target_version(draft, candidate_version_id=candidate_version_id)
+        target_content = version.content if version is not None else draft.content
+        target_version_id = version.candidate_version_id if version is not None else ""
+        if draft.accepted_version_id and target_version_id and draft.accepted_version_id != target_version_id:
+            raise ValueError("candidate_version_not_accepted")
+        if not str(target_content or "").strip():
             raise ValueError("candidate_content_empty")
 
         chapter = self._get_chapter(draft.work_id, draft.chapter_id)
         if chapter.work_id.value != draft.work_id or chapter.id.value != draft.chapter_id:
             raise ValueError("candidate_chapter_mismatch")
+        if self._conflict_guard_service is not None:
+            precheck = self._conflict_guard_service.precheck_apply_conflicts(
+                candidate_draft_id=draft.candidate_draft_id,
+                candidate_version_id=target_version_id,
+                expected_chapter_version=int(expected_chapter_version),
+                request_id=draft.request_id,
+                trace_id=draft.trace_id,
+            )
+            if precheck.blocking_count > 0:
+                raise ValueError("blocking_conflict_unresolved")
         if chapter.version != int(expected_chapter_version):
-            raise ValueError("chapter_version_conflict")
+            raise ValueError("blocking_conflict_unresolved")
 
         next_content = self._build_applied_content(
             original_content=chapter.content,
-            candidate_content=draft.content,
+            candidate_content=target_content,
             apply_mode=apply_mode,
             selection_range=selection_range,
             cursor_position=cursor_position,
@@ -140,10 +230,15 @@ class CandidateReviewService:
             raise
 
         applied_at = self._now()
+        if version is not None:
+            self._save_version_status(version, CandidateDraftVersionStatus.APPLIED)
         updated_draft = self._save_with_status(
             draft,
             CandidateDraftStatus.APPLIED,
             {
+                "selected_version_id": target_version_id or draft.selected_version_id,
+                "accepted_version_id": draft.accepted_version_id or target_version_id,
+                "applied_version_id": target_version_id or draft.applied_version_id,
                 "review_decision": draft.metadata.get("review_decision", "apply"),
                 "applied_by": user_id,
                 "applied_at": applied_at,
@@ -152,6 +247,10 @@ class CandidateReviewService:
                 "apply_result_ref": f"chapter:{draft.chapter_id}:version:{updated_chapter.version}",
                 "applied_chapter_version": updated_chapter.version,
                 "apply_idempotency_key_hash": new_idempotency_hash,
+                "content": target_content,
+                "content_preview": (version.content_summary or version.content[:120]) if version is not None else draft.content_preview,
+                "word_count": version.word_count if version is not None else draft.word_count,
+                "char_count": len(target_content),
             },
         )
         self._mark_stale(draft.work_id)
@@ -171,9 +270,31 @@ class CandidateReviewService:
         metadata_updates: dict[str, object],
     ) -> CandidateDraft:
         metadata = dict(draft.metadata)
-        metadata.update(metadata_updates)
-        updated = draft.model_copy(update={"status": status, "updated_at": self._now(), "metadata": metadata})
+        metadata.update(dict(metadata_updates.pop("metadata", {})))
+        update_fields = {"status": status, "updated_at": self._now(), "metadata": metadata}
+        update_fields.update(metadata_updates)
+        updated = draft.model_copy(update=update_fields)
         return self._candidate_draft_repository.save(updated)
+
+    def _resolve_target_version(self, draft: CandidateDraft, *, candidate_version_id: str = "") -> CandidateDraftVersion | None:
+        if candidate_version_id:
+            return self._require_version(draft.candidate_draft_id, candidate_version_id)
+        if draft.selected_version_id:
+            return self._require_version(draft.candidate_draft_id, draft.selected_version_id)
+        versions = self._candidate_draft_repository.list_versions(draft.candidate_draft_id)
+        if versions:
+            return versions[-1]
+        return None
+
+    def _require_version(self, candidate_draft_id: str, candidate_version_id: str) -> CandidateDraftVersion:
+        version = self._candidate_draft_repository.get_version(candidate_version_id)
+        if version.candidate_draft_id != candidate_draft_id:
+            raise ValueError("candidate_version_not_found")
+        return version
+
+    def _save_version_status(self, version: CandidateDraftVersion, status: CandidateDraftVersionStatus) -> CandidateDraftVersion:
+        updated = version.model_copy(update={"status": status, "updated_at": self._now()})
+        return self._candidate_draft_repository.save_version(updated)
 
     def _get_chapter(self, work_id: str, chapter_id: str):
         chapters = self._chapter_service.list_chapters(work_id)

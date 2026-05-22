@@ -16,10 +16,17 @@ from domain.entities.ai.models import (
     AgentWorkflowRun,
     AgentWorkflowType,
     ChapterPlan,
+    DirectionPlanStatus,
+    DirectionPlanSnapshot,
+    DirectionProposal,
+    DirectionSelection,
+    PlanConfirmation,
     ResultRef,
     SequenceArc,
     SequenceEvent,
     StageRecord,
+    WritingTask,
+    WritingTaskStatus,
     WorkflowCheckpoint,
     WorkflowDecision,
     WorkflowDecisionSource,
@@ -32,6 +39,7 @@ from domain.entities.ai.models import (
     WorkflowTransitionTrigger,
     WorkflowType,
 )
+from domain.repositories.ai.direction_plan_repository import DirectionPlanRepository
 from domain.repositories.ai.chapter_plan_repository import ChapterPlanRepository
 from domain.repositories.ai.plot_arc_repository import PlotArcRepository
 
@@ -78,6 +86,7 @@ def _reason_code_for_user_decision(stage_name: WorkflowStageName, user_decision:
         (WorkflowStageName.HUMAN_REVIEW_WAITING, "reject"): "user_rejected_candidate",
         (WorkflowStageName.MEMORY_REVIEW_WAITING, "confirm_memory_update"): "user_confirmed_memory_update",
         (WorkflowStageName.MEMORY_REVIEW_WAITING, "reject"): "user_rejected_memory_update",
+        (WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING, "reject"): "user_rejected_chapter_plan",
     }
     if (stage_name, user_decision) in stage_specific:
         return stage_specific[(stage_name, user_decision)]
@@ -435,11 +444,13 @@ class AgentOrchestrator:
         runtime_service: AgentRuntimeService,
         plot_arc_repository: PlotArcRepository | None = None,
         chapter_plan_repository: ChapterPlanRepository | None = None,
+        direction_plan_repository: DirectionPlanRepository | None = None,
         registry: type[AgentWorkflowDefinitionRegistry] = AgentWorkflowDefinitionRegistry,
     ) -> None:
         self._runtime_service = runtime_service
         self._plot_arc_repository = plot_arc_repository
         self._chapter_plan_repository = chapter_plan_repository
+        self._direction_plan_repository = direction_plan_repository
         self._registry = registry
 
     def start_workflow(
@@ -632,6 +643,10 @@ class AgentOrchestrator:
             run.metadata["selected_direction_id"] = str(metadata["selected_direction_id"])
         if "selected_chapter_plan_id" in metadata:
             run.metadata["selected_chapter_plan_id"] = str(metadata["selected_chapter_plan_id"])
+        if run.current_stage == WorkflowStageName.DIRECTION_SELECTION_WAITING and user_decision == "confirm_direction":
+            self._persist_direction_selection(run, metadata=metadata)
+        if run.current_stage == WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING and user_decision in {"confirm_chapter_plan", "reject"}:
+            self._persist_plan_confirmation_and_writing_task(run, user_decision=user_decision, metadata=metadata)
         if run.current_stage == WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING and user_decision == "confirm_chapter_plan":
             self._persist_sequence_arc_for_confirmed_plan(run)
         next_stage = self._resolve_waiting_stage(run, user_decision)
@@ -1178,6 +1193,8 @@ class AgentOrchestrator:
                 return WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING
             return WorkflowStageName.COMPLETED if run.workflow_type == WorkflowType.PLANNING_WORKFLOW else WorkflowStageName.WRITING_PREPARE
         if run.current_stage == WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING:
+            if user_decision == "reject":
+                return WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING
             if user_decision != "confirm_chapter_plan":
                 return WorkflowStageName.CANCELLED if run.workflow_type != WorkflowType.PLANNING_WORKFLOW else WorkflowStageName.COMPLETED
             return WorkflowStageName.COMPLETED if run.workflow_type == WorkflowType.PLANNING_WORKFLOW else WorkflowStageName.WRITING_PREPARE
@@ -1285,6 +1302,317 @@ class AgentOrchestrator:
             return self._chapter_plan_repository.get(plan_id)
         except Exception:  # noqa: BLE001
             return None
+
+    def _persist_direction_selection(self, run: AgentWorkflowRun, *, metadata: dict[str, object]) -> None:
+        if self._direction_plan_repository is None:
+            return
+        session = self._runtime_service.get_session(run.session_id)
+        selected_direction_id = str(metadata.get("selected_direction_id", "")).strip()
+        if not selected_direction_id:
+            return
+        selected_option_id = str(metadata.get("selected_option_id", "")).strip() or selected_direction_id
+        edited_fields = [str(item) for item in list(metadata.get("edited_fields", []) or []) if str(item).strip()]
+        edited_values = metadata.get("edited_values", {}) if isinstance(metadata.get("edited_values", {}), dict) else {}
+        selection_type = "edited_select" if edited_fields or edited_values else "direct_select"
+        selection = DirectionSelection(
+            selection_id=f"ds_{run.session_id}_{selected_direction_id}",
+            direction_proposal_id=selected_direction_id,
+            selected_option_id=selected_option_id,
+            work_id=session.work_id,
+            chapter_id=session.chapter_id or "",
+            agent_session_id=run.session_id,
+            selection_type=selection_type,
+            edited_fields=edited_fields,
+            edited_values=edited_values,
+            user_id="user_action",
+            confirmed_by="user_action",
+            created_at=_now(),
+            request_id=run.request_id,
+            trace_id=run.trace_id,
+        )
+        self._direction_plan_repository.save_direction_selection(selection)
+        self._apply_direction_selection_to_proposal(
+            selected_direction_id=selected_direction_id,
+            selected_option_id=selected_option_id,
+            selection_type=selection_type,
+        )
+        if selection_type == "edited_select":
+            self._mark_related_chapter_plans_stale(
+                work_id=session.work_id,
+                chapter_id=session.chapter_id or "",
+                direction_proposal_id=selected_direction_id,
+                stale_reason="direction_edited",
+            )
+            self._mark_existing_writing_tasks_stale(
+                work_id=session.work_id,
+                chapter_id=session.chapter_id or "",
+                stale_reason="direction_edited",
+                direction_proposal_id=selected_direction_id,
+            )
+
+    def _persist_plan_confirmation_and_writing_task(
+        self,
+        run: AgentWorkflowRun,
+        *,
+        user_decision: str,
+        metadata: dict[str, object],
+    ) -> None:
+        if self._direction_plan_repository is None:
+            return
+        session = self._runtime_service.get_session(run.session_id)
+        plan_id = str(metadata.get("selected_chapter_plan_id", "")).strip()
+        if not plan_id:
+            return
+        edited_items = [str(item) for item in list(metadata.get("edited_items", []) or []) if str(item).strip()]
+        edited_fields = metadata.get("edited_fields", {}) if isinstance(metadata.get("edited_fields", {}), dict) else {}
+        confirmation_type = "reject" if user_decision == "reject" else ("edited_confirm" if edited_items or edited_fields else "direct_confirm")
+        if confirmation_type != "reject":
+            self._apply_plan_confirmation_to_chapter_plan(
+                plan_id,
+                confirmation_type=confirmation_type,
+                edited_items=edited_items,
+                edited_fields=edited_fields,
+            )
+        confirmation = PlanConfirmation(
+            confirmation_id=f"pc_{run.session_id}_{plan_id}",
+            chapter_plan_id=plan_id,
+            direction_proposal_id=str(run.metadata.get("selected_direction_id", "")).strip(),
+            work_id=session.work_id,
+            chapter_id=session.chapter_id or "",
+            agent_session_id=run.session_id,
+            confirmation_type=confirmation_type,
+            edited_items=edited_items,
+            edited_fields=edited_fields,
+            user_edit_notes=str(metadata.get("user_edit_notes", "") or ""),
+            user_id="user_action",
+            confirmed_by="user_action",
+            created_at=_now(),
+            request_id=run.request_id,
+            trace_id=run.trace_id,
+        )
+        self._direction_plan_repository.save_plan_confirmation(confirmation)
+        if confirmation_type == "reject":
+            return
+        if confirmation_type == "edited_confirm":
+            self._mark_existing_writing_tasks_stale(
+                work_id=session.work_id,
+                chapter_id=session.chapter_id or "",
+                stale_reason="chapter_plan_edited",
+            )
+        task = self._build_writing_task_for_confirmed_plan(run, plan_id=plan_id, chapter_id=session.chapter_id or "")
+        if task is not None:
+            self._direction_plan_repository.save_writing_task(task)
+        snapshot = self._build_direction_plan_snapshot(
+            run,
+            plan_id=plan_id,
+            confirmation=confirmation,
+            writing_task=task,
+            chapter_id=session.chapter_id or "",
+        )
+        if snapshot is not None:
+            self._direction_plan_repository.save_direction_plan_snapshot(snapshot)
+
+    def _build_writing_task_for_confirmed_plan(
+        self,
+        run: AgentWorkflowRun,
+        *,
+        plan_id: str,
+        chapter_id: str,
+    ) -> WritingTask | None:
+        plan = self._load_confirmed_chapter_plan(plan_id)
+        if plan is None:
+            return None
+        current_item = plan.plan_items[0] if plan.plan_items else None
+        must_include: list[str] = []
+        if current_item is not None:
+            must_include.extend(current_item.required_beats)
+            must_include.extend(beat.beat_name for beat in current_item.key_events if beat.beat_name)
+        must_include = list(dict.fromkeys(item for item in must_include if item))
+        must_not_include = list(current_item.forbidden_items) if current_item is not None else []
+        direction_summary = str(run.metadata.get("selected_direction_id", "")).strip()
+        if direction_summary:
+            direction_summary = f"selected_direction:{direction_summary}"
+        plan_summary = plan.plan_summary or (current_item.chapter_goal if current_item is not None else "")
+        return WritingTask(
+            writing_task_id=f"wt_{run.session_id}_{plan_id}",
+            work_id=plan.work_id,
+            chapter_id=chapter_id,
+            target_chapter_id=chapter_id,
+            direction_proposal_id=plan.direction_proposal_id,
+            selected_option_id=plan.selected_option_id,
+            chapter_plan_id=plan.chapter_plan_id,
+            plan_item_id=current_item.item_id if current_item is not None else "",
+            agent_session_id=run.session_id,
+            status=WritingTaskStatus.READY,
+            version=1,
+            writing_goal=(current_item.chapter_goal if current_item is not None else plan.plan_summary) or "基于已确认章节计划生成写作任务。",
+            must_include=must_include,
+            must_not_include=must_not_include,
+            tone_guidance=current_item.tone_hint if current_item is not None else "",
+            target_word_count=current_item.estimated_word_count if current_item is not None else 0,
+            target_word_count_max=current_item.estimated_word_count_max if current_item is not None else 0,
+            arc_constraints=list(current_item.arc_alignment) if current_item is not None else [],
+            foreshadow_requirements=list(current_item.foreshadow_arrangement) if current_item is not None else [],
+            required_beats=list(current_item.required_beats) if current_item is not None else [],
+            direction_summary=direction_summary,
+            plan_summary=plan_summary,
+            stale_status="fresh",
+            generated_by="planner_agent",
+            created_by="planner_agent",
+            created_at=_now(),
+            updated_at=_now(),
+            request_id=run.request_id,
+            trace_id=run.trace_id,
+        )
+
+    def _build_direction_plan_snapshot(
+        self,
+        run: AgentWorkflowRun,
+        *,
+        plan_id: str,
+        confirmation: PlanConfirmation,
+        writing_task: WritingTask | None,
+        chapter_id: str,
+    ) -> DirectionPlanSnapshot | None:
+        plan = self._load_confirmed_chapter_plan(plan_id)
+        if plan is None:
+            return None
+        current_item = plan.plan_items[0] if plan.plan_items else None
+        arc_refs = list(plan.source_arc_refs)
+        if current_item is not None:
+            for ref in current_item.arc_alignment:
+                if not any(item.arc_type == ref.arc_type and item.arc_id == ref.arc_id for item in arc_refs):
+                    arc_refs.append(ref)
+        direction_summary = str(run.metadata.get("selected_direction_id", "")).strip()
+        if direction_summary:
+            direction_summary = f"selected_direction:{direction_summary}"
+        else:
+            direction_summary = f"direction_proposal:{plan.direction_proposal_id}"
+        plan_summary = plan.plan_summary or (current_item.chapter_goal if current_item is not None else "")
+        return DirectionPlanSnapshot(
+            snapshot_id=f"dps_{run.session_id}_{plan_id}",
+            work_id=plan.work_id,
+            chapter_id=chapter_id,
+            agent_session_id=run.session_id,
+            direction_proposal_id=plan.direction_proposal_id,
+            direction_proposal_version=1,
+            selected_option_id=plan.selected_option_id,
+            selection_id=plan.selection_id,
+            chapter_plan_id=plan.chapter_plan_id,
+            chapter_plan_version=plan.version,
+            confirmation_id=confirmation.confirmation_id,
+            writing_task_id=writing_task.writing_task_id if writing_task is not None else "",
+            snapshot_status="ready" if writing_task is not None else "degraded",
+            direction_summary=direction_summary[:200],
+            plan_summary=plan_summary[:200],
+            arc_refs_at_snapshot=arc_refs,
+            warning_codes=[],
+            created_at=_now(),
+        )
+
+    def _apply_plan_confirmation_to_chapter_plan(
+        self,
+        plan_id: str,
+        *,
+        confirmation_type: str,
+        edited_items: list[str],
+        edited_fields: dict[str, object],
+    ) -> ChapterPlan | None:
+        plan = self._load_confirmed_chapter_plan(plan_id)
+        if plan is None or self._chapter_plan_repository is None:
+            return plan
+        updated_items: list[ChapterPlanItem] = []
+        for item in plan.plan_items:
+            patch = edited_fields.get(item.item_id, {}) if isinstance(edited_fields, dict) else {}
+            if isinstance(patch, dict) and patch:
+                updated_item = item.model_copy(update={**patch, "is_user_edited": True})
+            else:
+                updated_item = item
+            updated_items.append(updated_item)
+        updated_plan = plan.model_copy(
+            update={
+                "status": DirectionPlanStatus.EDITED if confirmation_type == "edited_confirm" else DirectionPlanStatus.CONFIRMED,
+                "plan_items": updated_items,
+                "edited_by": "user_action" if confirmation_type == "edited_confirm" else plan.edited_by,
+                "confirmed_by": "user_action",
+                "updated_at": _now(),
+            }
+        )
+        self._chapter_plan_repository.save(updated_plan)
+        return updated_plan
+
+    def _apply_direction_selection_to_proposal(
+        self,
+        *,
+        selected_direction_id: str,
+        selected_option_id: str,
+        selection_type: str,
+    ) -> DirectionProposal | None:
+        if self._direction_plan_repository is None:
+            return None
+        try:
+            proposal = self._direction_plan_repository.get_direction_proposal(selected_direction_id)
+        except Exception:  # noqa: BLE001
+            return None
+        update_fields: dict[str, object] = {
+            "status": DirectionPlanStatus.EDITED if selection_type == "edited_select" else DirectionPlanStatus.SELECTED,
+            "selected_by": "user_action",
+            "selected_option_id": selected_option_id,
+            "updated_at": _now(),
+        }
+        if selection_type == "edited_select":
+            update_fields["edited_by"] = "user_action"
+        updated_proposal = proposal.model_copy(update=update_fields)
+        self._direction_plan_repository.save_direction_proposal(updated_proposal)
+        return updated_proposal
+
+    def _mark_related_chapter_plans_stale(
+        self,
+        *,
+        work_id: str,
+        chapter_id: str,
+        direction_proposal_id: str,
+        stale_reason: str,
+    ) -> None:
+        if self._chapter_plan_repository is None:
+            return
+        for plan in self._chapter_plan_repository.list_by_work(work_id, chapter_id=chapter_id):
+            if plan.direction_proposal_id != direction_proposal_id:
+                continue
+            stale_plan = plan.model_copy(
+                update={
+                    "status": DirectionPlanStatus.STALE,
+                    "stale_status": "stale",
+                    "stale_reason": stale_reason,
+                    "updated_at": _now(),
+                }
+            )
+            self._chapter_plan_repository.save(stale_plan)
+
+    def _mark_existing_writing_tasks_stale(
+        self,
+        *,
+        work_id: str,
+        chapter_id: str,
+        stale_reason: str,
+        direction_proposal_id: str = "",
+    ) -> None:
+        if self._direction_plan_repository is None:
+            return
+        for task in self._direction_plan_repository.list_writing_tasks(work_id, chapter_id=chapter_id):
+            if direction_proposal_id and task.direction_proposal_id != direction_proposal_id:
+                continue
+            if task.status == WritingTaskStatus.STALE:
+                continue
+            stale_task = task.model_copy(
+                update={
+                    "status": WritingTaskStatus.STALE,
+                    "stale_status": "stale",
+                    "stale_reason": stale_reason,
+                    "updated_at": _now(),
+                }
+            )
+            self._direction_plan_repository.save_writing_task(stale_task)
 
     def _sequence_goal_from_plan(self, plan: ChapterPlan | None, *, existing: SequenceArc | None) -> str:
         if plan is not None:

@@ -28,6 +28,7 @@ class MinimalContinuationWorkflow:
         chapter_service: ChapterService,
         tool_facade,
         candidate_draft_repository: CandidateDraftRepository,
+        conflict_guard_service=None,
         job_repository: AIJobRepository,
         step_repository: AIJobStepRepository,
         attempt_repository: AIJobAttemptRepository,
@@ -36,6 +37,7 @@ class MinimalContinuationWorkflow:
         self._chapter_service = chapter_service
         self._tool_facade = tool_facade
         self._candidate_draft_repository = candidate_draft_repository
+        self._conflict_guard_service = conflict_guard_service
         self._job_service = AIJobService(
             job_repository=job_repository,
             step_repository=step_repository,
@@ -334,6 +336,13 @@ class MinimalContinuationWorkflow:
                 error_message="candidate_save_failed",
             )
         draft = save_result.payload["candidate_draft"]
+        if self._conflict_guard_service is not None and getattr(draft, "selected_version_id", ""):
+            self._conflict_guard_service.detect_candidate_version_async(
+                candidate_draft_id=draft.candidate_draft_id,
+                candidate_version_id=draft.selected_version_id,
+                request_id=job.job_id,
+                trace_id=workflow_id,
+            )
 
         self._call_job_tool(
             "mark_job_step_completed",

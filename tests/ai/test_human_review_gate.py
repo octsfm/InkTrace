@@ -189,7 +189,7 @@ def test_apply_version_conflict_does_not_write_chapter_or_mark_applied(tmp_path:
             idempotency_key="apply-conflict-1",
         )
     except ValueError as exc:
-        assert str(exc) == "chapter_version_conflict"
+        assert str(exc) == "blocking_conflict_unresolved"
     else:
         raise AssertionError("version conflict should fail")
 
@@ -321,7 +321,7 @@ def test_candidate_review_apis_accept_reject_apply_and_require_version() -> None
         json={"user_action": True, "expected_chapter_version": chapter_version + 99, "idempotency_key": "apply-conflict-api"},
     )
     assert conflict.status_code == 409
-    assert conflict.json()["error"]["error_code"] == "chapter_version_conflict"
+    assert conflict.json()["error"]["error_code"] == "blocking_conflict_unresolved"
 
     apply_response = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/apply",
@@ -329,6 +329,24 @@ def test_candidate_review_apis_accept_reject_apply_and_require_version() -> None
     )
     assert apply_response.status_code == 200
     assert apply_response.json()["data"]["status"] == "applied"
+
+
+def test_conflict_guard_api_lists_precheck_records_after_apply_block(tmp_path: Path) -> None:
+    client = TestClient(app)
+    candidate_draft_id, chapter_version = _api_seed_candidate()
+
+    conflict = client.post(
+        f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/apply",
+        json={"user_action": True, "expected_chapter_version": chapter_version + 99, "idempotency_key": "apply-conflict-api-list"},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["error_code"] == "blocking_conflict_unresolved"
+
+    detail = client.get("/api/v2/ai/conflicts", params={"candidate_draft_id": candidate_draft_id})
+    assert detail.status_code == 200
+    items = detail.json()["data"]["items"]
+    assert len(items) >= 1
+    assert any(item["conflict_type"] == "apply_version_conflict" and item["severity"] == "blocking" for item in items)
 
 
 def test_apply_candidate_api_requires_idempotency_key() -> None:

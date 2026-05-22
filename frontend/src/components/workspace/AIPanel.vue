@@ -87,7 +87,110 @@
     </div>
 
     <div class="ai-section">
+      <h4>方向推演</h4>
+      <div class="ai-actions">
+        <button data-test="ai-generate-directions" type="button" @click="handleGenerateDirections">生成方向</button>
+      </div>
+      <ul v-if="directionProposals.length" class="ai-list">
+        <li v-for="proposal in directionProposals" :key="proposal.direction_proposal_id" class="planning-item">
+          <div class="candidate-summary">
+            <strong>{{ proposal.direction_proposal_id }}</strong>
+            <span>{{ proposal.status }}</span>
+          </div>
+          <ul class="ai-list">
+            <li v-for="option in proposal.options || []" :key="option.option_id" class="planning-option">
+              <div class="candidate-summary">
+                <strong>{{ option.label }}</strong>
+                <span>{{ option.plot_summary }}</span>
+              </div>
+              <div class="ai-actions">
+                <button
+                  :data-test="`select-direction-${proposal.direction_proposal_id}-${option.option_id}`"
+                  type="button"
+                  @click="handleSelectDirection(proposal.direction_proposal_id, option.option_id)"
+                >
+                  选择方向
+                </button>
+              </div>
+            </li>
+          </ul>
+          <div class="ai-actions">
+            <button
+              :data-test="`generate-plan-${proposal.direction_proposal_id}`"
+              type="button"
+              @click="handleGeneratePlan(proposal.direction_proposal_id)"
+            >
+              生成计划
+            </button>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="ai-section">
+      <h4>章节计划</h4>
+      <ul v-if="chapterPlans.length" class="ai-list">
+        <li v-for="plan in chapterPlans" :key="plan.chapter_plan_id" class="planning-item">
+          <div class="candidate-summary">
+            <strong>{{ plan.chapter_plan_id }}</strong>
+            <span>{{ plan.status }}</span>
+            <span>{{ plan.plan_summary }}</span>
+          </div>
+          <ul class="ai-list">
+            <li v-for="item in plan.plan_items || []" :key="item.item_id">
+              {{ item.chapter_goal }}
+            </li>
+          </ul>
+          <div class="ai-actions">
+            <button
+              :data-test="`confirm-plan-${plan.chapter_plan_id}`"
+              type="button"
+              @click="handleConfirmPlan(plan.chapter_plan_id)"
+            >
+              确认计划
+            </button>
+            <button
+              :data-test="`reject-plan-${plan.chapter_plan_id}`"
+              type="button"
+              @click="handleRejectPlan(plan.chapter_plan_id)"
+            >
+              拒绝计划
+            </button>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="ai-section">
+      <h4>写作任务</h4>
+      <ul v-if="writingTasks.length" class="ai-list">
+        <li v-for="task in writingTasks" :key="task.writing_task_id">
+          <div class="candidate-summary">
+            <strong>{{ task.writing_task_id }}</strong>
+            <span>{{ task.status }}</span>
+            <span>{{ task.writing_goal }}</span>
+            <span>{{ task.plan_summary }}</span>
+          </div>
+        </li>
+      </ul>
+      <p v-if="planningActionError" class="ai-error">{{ planningActionError }}</p>
+    </div>
+
+    <div class="ai-section">
       <h4>续写与候选稿</h4>
+      <div
+        v-if="conflictSummary.blockingCount || conflictSummary.warningCount"
+        class="conflict-banner"
+        data-test="conflict-banner"
+        :class="{
+          'conflict-banner-warning': !conflictSummary.blockingCount && conflictSummary.warningCount,
+          'conflict-banner-blocking': conflictSummary.blockingCount > 0
+        }"
+      >
+        <strong>{{ conflictSummary.blockingCount ? '资产冲突需处理' : '资产风险需确认' }}</strong>
+        <span v-if="conflictSummary.blockingCount">存在 blocking {{ conflictSummary.blockingCount }}，apply 前必须处理。</span>
+        <span v-else>存在 warning {{ conflictSummary.warningCount }}，继续 apply 代表已知风险。</span>
+      </div>
       <div class="ai-actions">
         <button data-test="ai-start-continuation" type="button" @click="handleStartContinuation">生成候选稿</button>
       </div>
@@ -102,6 +205,12 @@
             <span>{{ item.content_preview }}</span>
             <span>{{ item.validation_status }}</span>
             <span>{{ item.source_context_pack_id }}</span>
+            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.warning">warning {{ conflictCountsByDraft[item.candidate_draft_id].warning }}</span>
+            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.blocking">blocking {{ conflictCountsByDraft[item.candidate_draft_id].blocking }}</span>
+            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.info">info {{ conflictCountsByDraft[item.candidate_draft_id].info }}</span>
+            <span v-if="item.selected_version_id">已选择版本 {{ item.selected_version_id }}</span>
+            <span v-if="item.accepted_version_id">已接受版本 {{ item.accepted_version_id }}</span>
+            <span v-if="item.applied_version_id">已应用版本 {{ item.applied_version_id }}</span>
           </div>
           <div class="ai-actions">
             <button :data-test="`candidate-detail-${item.candidate_draft_id}`" type="button" @click="loadCandidateDetail(item.candidate_draft_id)">
@@ -121,12 +230,165 @@
             </button>
           </div>
           <pre v-if="candidateDetails[item.candidate_draft_id]" class="candidate-detail">{{ candidateDetails[item.candidate_draft_id].content }}</pre>
+          <div v-if="candidateDetails[item.candidate_draft_id]" class="ai-meta">
+            <span>已选择版本 {{ selectedVersionByDraft[item.candidate_draft_id] || candidateDetails[item.candidate_draft_id].selected_version_id || '-' }}</span>
+            <span>已接受版本 {{ candidateDetails[item.candidate_draft_id].accepted_version_id || '-' }}</span>
+            <span>已应用版本 {{ candidateDetails[item.candidate_draft_id].applied_version_id || '-' }}</span>
+          </div>
+          <ul v-if="candidateVersions[item.candidate_draft_id]?.length" class="ai-list">
+            <li
+              v-for="(version, index) in candidateVersions[item.candidate_draft_id]"
+              :key="version.candidate_version_id"
+              class="planning-item"
+            >
+              <div class="candidate-summary">
+                <strong>{{ version.candidate_version_id }}</strong>
+                <span>v{{ version.version_no }}</span>
+                <span>{{ version.status }}</span>
+                <span>{{ version.content_summary }}</span>
+              </div>
+              <div class="ai-actions">
+                <button
+                  :data-test="`candidate-version-detail-${item.candidate_draft_id}-${version.candidate_version_id}`"
+                  type="button"
+                  @click="handleCandidateVersionDetail(item.candidate_draft_id, version.candidate_version_id)"
+                >
+                  查看版本
+                </button>
+                <button
+                  :data-test="`candidate-version-select-${item.candidate_draft_id}-${version.candidate_version_id}`"
+                  type="button"
+                  @click="handleSelectCandidateVersion(item.candidate_draft_id, version.candidate_version_id)"
+                >
+                  选择版本
+                </button>
+                <button
+                  v-if="index > 0"
+                  :data-test="`candidate-version-diff-${item.candidate_draft_id}-${candidateVersions[item.candidate_draft_id][index - 1].candidate_version_id}-${version.candidate_version_id}`"
+                  type="button"
+                  @click="handleCandidateVersionDiff(item.candidate_draft_id, candidateVersions[item.candidate_draft_id][index - 1].candidate_version_id, version.candidate_version_id)"
+                >
+                  查看 diff
+                </button>
+                <button
+                  :data-test="`candidate-version-rewrite-review-${item.candidate_draft_id}-${version.candidate_version_id}`"
+                  type="button"
+                  @click="handleRewriteCandidate(item.candidate_draft_id, version.candidate_version_id, 'review_based')"
+                >
+                  按审阅意见修订
+                </button>
+                <button
+                  :data-test="`candidate-version-rewrite-user-${item.candidate_draft_id}-${version.candidate_version_id}`"
+                  type="button"
+                  @click="handleRewriteCandidate(item.candidate_draft_id, version.candidate_version_id, 'user_instruction')"
+                >
+                  输入要求后重写
+                </button>
+                <button
+                  :data-test="`candidate-version-reject-${item.candidate_draft_id}-${version.candidate_version_id}`"
+                  type="button"
+                  @click="handleRejectCandidateVersion(item.candidate_draft_id, version.candidate_version_id)"
+                >
+                  拒绝此版本
+                </button>
+              </div>
+              <pre v-if="candidateVersionDetails[version.candidate_version_id]" class="candidate-detail">{{ candidateVersionDetails[version.candidate_version_id].content }}</pre>
+            </li>
+          </ul>
           <div v-if="candidateReviewByDraft[item.candidate_draft_id]" class="ai-note">
             {{ candidateReviewByDraft[item.candidate_draft_id].summary }}
           </div>
+          <div v-if="candidateVersionDiffs[item.candidate_draft_id]" class="ai-note">
+            {{ candidateVersionDiffs[item.candidate_draft_id].summary }}
+          </div>
+          <ul v-if="conflictsByDraft[item.candidate_draft_id]?.length" class="ai-list">
+            <li v-for="conflict in conflictsByDraft[item.candidate_draft_id]" :key="conflict.record_id" class="planning-item">
+              <div class="candidate-summary">
+                <strong>{{ conflict.title }}</strong>
+                <span>{{ conflict.conflict_type }}</span>
+                <span>{{ conflict.severity }}</span>
+                <span>{{ conflict.summary }}</span>
+              </div>
+              <div class="ai-actions">
+                <button :data-test="`conflict-detail-${conflict.record_id}`" type="button" @click="handleConflictDetail(conflict.record_id)">
+                  查看冲突
+                </button>
+                <button
+                  v-if="conflict.candidate_version_id"
+                  :data-test="`conflict-rewrite-${conflict.record_id}`"
+                  type="button"
+                  @click="handleConflictRewrite(conflict)"
+                >
+                  启动修订
+                </button>
+                <button
+                  v-if="conflict.candidate_version_id"
+                  :data-test="`conflict-reject-${conflict.record_id}`"
+                  type="button"
+                  @click="handleConflictReject(conflict)"
+                >
+                  拒绝版本
+                </button>
+                <button
+                  :data-test="`conflict-ack-${conflict.record_id}`"
+                  type="button"
+                  @click="handleConflictDecision(conflict.record_id, 'acknowledged', 'keep_as_is')"
+                >
+                  已知风险
+                </button>
+                <button
+                  v-if="conflict.severity !== 'blocking'"
+                  :data-test="`conflict-dismiss-${conflict.record_id}`"
+                  type="button"
+                  @click="handleConflictDecision(conflict.record_id, 'dismissed', 'defer')"
+                >
+                  defer
+                </button>
+              </div>
+              <div v-if="conflictDetails[conflict.record_id]" class="ai-note">
+                {{ conflictDetails[conflict.record_id].summary }}
+              </div>
+            </li>
+          </ul>
         </li>
       </ul>
       <p v-if="candidateActionError" class="ai-error">{{ candidateActionError }}</p>
+    </div>
+
+    <div class="ai-section">
+      <h4>AI 建议</h4>
+      <ul v-if="aiSuggestions.length" class="ai-list">
+        <li v-for="item in aiSuggestions" :key="item.suggestion_id" class="planning-item">
+          <div class="candidate-summary">
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.suggestion_type }}</span>
+            <span>{{ item.severity }}</span>
+            <span>{{ item.summary }}</span>
+          </div>
+          <div class="ai-actions">
+            <button :data-test="`suggestion-detail-${item.suggestion_id}`" type="button" @click="handleSuggestionDetail(item.suggestion_id)">
+              查看建议
+            </button>
+            <button :data-test="`suggestion-accept-${item.suggestion_id}`" type="button" @click="handleAcceptSuggestion(item.suggestion_id)">
+              accept
+            </button>
+            <button :data-test="`suggestion-dismiss-${item.suggestion_id}`" type="button" @click="handleDismissSuggestion(item.suggestion_id)">
+              dismiss
+            </button>
+            <button
+              v-if="item.suggestion_type !== 'risk_warning'"
+              :data-test="`suggestion-convert-${item.suggestion_id}`"
+              type="button"
+              @click="handleConvertSuggestion(item.suggestion_id)"
+            >
+              convert
+            </button>
+          </div>
+          <div v-if="aiSuggestionDetails[item.suggestion_id]" class="ai-note">
+            {{ aiSuggestionDetails[item.suggestion_id].summary }}
+          </div>
+        </li>
+      </ul>
     </div>
 
     <div class="ai-section">
@@ -176,8 +438,20 @@ const contextPackItems = ref([])
 const continuationResult = ref({})
 const candidateDrafts = ref([])
 const candidateDetails = ref({})
+const candidateVersions = ref({})
+const candidateVersionDetails = ref({})
+const candidateVersionDiffs = ref({})
+const selectedVersionByDraft = ref({})
 const candidateReviewByDraft = ref({})
+const aiSuggestions = ref([])
+const aiSuggestionDetails = ref({})
+const conflicts = ref([])
+const conflictDetails = ref({})
 const candidateActionError = ref('')
+const directionProposals = ref([])
+const chapterPlans = ref([])
+const writingTasks = ref([])
+const planningActionError = ref('')
 const quickTrialResult = ref({})
 const polling = useAIJobPolling({ intervalMs: 1000 })
 
@@ -221,8 +495,38 @@ const initializationSummary = computed(() => ({
   empty: Number(initializationInfo.value?.empty_chapter_count || initializationInfo.value?.data?.empty_chapter_count || 0),
   failed: Number(initializationInfo.value?.failed_chapter_count || initializationInfo.value?.data?.failed_chapter_count || 0)
 }))
+const conflictCountsByDraft = computed(() => {
+  const grouped = {}
+  for (const item of conflicts.value) {
+    const draftId = item.candidate_draft_id || ''
+    if (!draftId) continue
+    if (!grouped[draftId]) grouped[draftId] = { blocking: 0, warning: 0, info: 0 }
+    if (item.severity === 'blocking') grouped[draftId].blocking += 1
+    else if (item.severity === 'warning') grouped[draftId].warning += 1
+    else grouped[draftId].info += 1
+  }
+  return grouped
+})
+const conflictsByDraft = computed(() => {
+  const grouped = {}
+  for (const item of conflicts.value) {
+    const draftId = item.candidate_draft_id || ''
+    if (!draftId) continue
+    if (!grouped[draftId]) grouped[draftId] = []
+    grouped[draftId].push(item)
+  }
+  return grouped
+})
+const conflictSummary = computed(() => conflicts.value.reduce((acc, item) => {
+  if (item.severity === 'blocking') acc.blockingCount += 1
+  else if (item.severity === 'warning') acc.warningCount += 1
+  else acc.infoCount += 1
+  return acc
+}, { blockingCount: 0, warningCount: 0, infoCount: 0 }))
 
 const unwrapData = (payload) => payload?.data ?? payload ?? {}
+
+const buildIdempotencyKey = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
 const loadSettings = async () => {
   settings.value = unwrapData(await aiApi.getAISettings())
@@ -255,12 +559,54 @@ const loadCandidateDrafts = async () => {
   candidateDrafts.value = payload.items || []
 }
 
+const loadPlanningData = async () => {
+  if (!props.workId) return
+  const [proposalsPayload, plansPayload, tasksPayload] = await Promise.all([
+    aiApi.listDirectionProposals({
+      work_id: props.workId,
+      chapter_id: props.chapterId
+    }),
+    aiApi.listChapterPlans({
+      work_id: props.workId,
+      chapter_id: props.chapterId
+    }),
+    aiApi.listWritingTasks({
+      work_id: props.workId,
+      chapter_id: props.chapterId
+    })
+  ])
+  directionProposals.value = unwrapData(proposalsPayload).items || []
+  chapterPlans.value = unwrapData(plansPayload).items || []
+  writingTasks.value = unwrapData(tasksPayload).items || []
+}
+
+const loadAISuggestions = async () => {
+  if (!props.workId) return
+  const payload = unwrapData(await aiApi.listAISuggestions({
+    work_id: props.workId,
+    chapter_id: props.chapterId
+  }))
+  aiSuggestions.value = payload.items || []
+}
+
+const loadConflicts = async () => {
+  if (!props.workId) return
+  const payload = unwrapData(await aiApi.listConflicts({
+    work_id: props.workId,
+    chapter_id: props.chapterId
+  }))
+  conflicts.value = payload.items || []
+}
+
 const refreshPanel = async () => {
   await Promise.all([
     loadSettings(),
     loadInitialization(),
     loadContextReadiness(),
-    loadCandidateDrafts()
+    loadCandidateDrafts(),
+    loadPlanningData(),
+    loadAISuggestions(),
+    loadConflicts()
   ])
 }
 
@@ -310,19 +656,118 @@ const handleStartContinuation = async () => {
   await loadCandidateDrafts()
 }
 
+const handleGenerateDirections = async () => {
+  planningActionError.value = ''
+  try {
+    await aiApi.generateDirectionProposal({
+      work_id: props.workId,
+      chapter_id: props.chapterId,
+      user_instruction: '继续推进当前章节主线',
+      caller_type: 'user_action',
+      idempotency_key: buildIdempotencyKey('direction_generate')
+    })
+    await loadPlanningData()
+  } catch (error) {
+    planningActionError.value = String(error?.userMessage || error?.message || 'direction generate failed')
+  }
+}
+
+const handleSelectDirection = async (proposalId, optionId) => {
+  planningActionError.value = ''
+  try {
+    await aiApi.selectDirection(proposalId, {
+      selected_option_id: optionId,
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      idempotency_key: buildIdempotencyKey('direction_select')
+    })
+    await loadPlanningData()
+  } catch (error) {
+    planningActionError.value = String(error?.userMessage || error?.message || 'direction select failed')
+  }
+}
+
+const handleGeneratePlan = async (proposalId) => {
+  planningActionError.value = ''
+  try {
+    await aiApi.generateChapterPlan({
+      work_id: props.workId,
+      chapter_id: props.chapterId,
+      direction_proposal_id: proposalId,
+      caller_type: 'user_action',
+      idempotency_key: buildIdempotencyKey('chapter_plan_generate')
+    })
+    await loadPlanningData()
+  } catch (error) {
+    planningActionError.value = String(error?.userMessage || error?.message || 'chapter plan generate failed')
+  }
+}
+
+const handleConfirmPlan = async (planId) => {
+  planningActionError.value = ''
+  try {
+    await aiApi.confirmChapterPlan(planId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      idempotency_key: buildIdempotencyKey('chapter_plan_confirm')
+    })
+    await loadPlanningData()
+  } catch (error) {
+    planningActionError.value = String(error?.userMessage || error?.message || 'chapter plan confirm failed')
+  }
+}
+
+const handleRejectPlan = async (planId) => {
+  planningActionError.value = ''
+  try {
+    await aiApi.rejectChapterPlan(planId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      user_edit_notes: '当前计划推进过快',
+      idempotency_key: buildIdempotencyKey('chapter_plan_reject')
+    })
+    await loadPlanningData()
+  } catch (error) {
+    planningActionError.value = String(error?.userMessage || error?.message || 'chapter plan reject failed')
+  }
+}
+
 const loadCandidateDetail = async (candidateDraftId) => {
-  const payload = unwrapData(await aiApi.getCandidateDraft(candidateDraftId))
+  const [payload, versionsPayload] = await Promise.all([
+    aiApi.getCandidateDraft(candidateDraftId),
+    aiApi.listCandidateDraftVersions(candidateDraftId)
+  ])
+  const detail = unwrapData(payload)
   candidateDetails.value = {
     ...candidateDetails.value,
-    [candidateDraftId]: payload
+    [candidateDraftId]: detail
+  }
+  candidateVersions.value = {
+    ...candidateVersions.value,
+    [candidateDraftId]: unwrapData(versionsPayload).items || []
+  }
+  selectedVersionByDraft.value = {
+    ...selectedVersionByDraft.value,
+    [candidateDraftId]: detail.selected_version_id || (unwrapData(versionsPayload).items?.[0]?.candidate_version_id || '')
   }
 }
 
 const handleAcceptCandidate = async (candidateDraftId) => {
   candidateActionError.value = ''
   try {
-    await aiApi.acceptCandidateDraft(candidateDraftId, { user_action: true, user_id: 'ui-user' })
+    await aiApi.acceptCandidateDraft(candidateDraftId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      candidate_version_id: selectedVersionByDraft.value[candidateDraftId] || candidateDetails.value[candidateDraftId]?.selected_version_id || '',
+      idempotency_key: buildIdempotencyKey('candidate_accept')
+    })
     await loadCandidateDrafts()
+    await loadCandidateDetail(candidateDraftId)
+    await loadAISuggestions()
   } catch (error) {
     candidateActionError.value = String(error?.userMessage || error?.message || 'accept failed')
   }
@@ -331,8 +776,17 @@ const handleAcceptCandidate = async (candidateDraftId) => {
 const handleRejectCandidate = async (candidateDraftId) => {
   candidateActionError.value = ''
   try {
-    await aiApi.rejectCandidateDraft(candidateDraftId, { user_action: true, user_id: 'ui-user', reason: 'manual reject' })
+    await aiApi.rejectCandidateDraft(candidateDraftId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      candidate_version_id: selectedVersionByDraft.value[candidateDraftId] || candidateDetails.value[candidateDraftId]?.selected_version_id || '',
+      reason: 'manual reject',
+      idempotency_key: buildIdempotencyKey('candidate_reject')
+    })
     await loadCandidateDrafts()
+    await loadCandidateDetail(candidateDraftId)
+    await loadAISuggestions()
   } catch (error) {
     candidateActionError.value = String(error?.userMessage || error?.message || 'reject failed')
   }
@@ -341,13 +795,32 @@ const handleRejectCandidate = async (candidateDraftId) => {
 const handleApplyCandidate = async (candidateDraftId) => {
   candidateActionError.value = ''
   try {
+    const draftConflicts = conflictsByDraft.value[candidateDraftId] || []
+    const hasBlocking = draftConflicts.some((item) => item.severity === 'blocking')
+    const warningItems = draftConflicts.filter((item) => item.severity === 'warning')
+    if (hasBlocking) {
+      candidateActionError.value = 'blocking_conflict_unresolved'
+      return
+    }
+    if (warningItems.length) {
+      const confirmed = window.confirm(
+        `存在 ${warningItems.length} 条 warning。继续 apply 代表已知风险，是否继续？`
+      )
+      if (!confirmed) return
+    }
     await aiApi.applyCandidateDraft(candidateDraftId, {
+      caller_type: 'user_action',
       user_action: true,
       user_id: 'ui-user',
-      expected_chapter_version: props.chapterVersion
+      candidate_version_id: selectedVersionByDraft.value[candidateDraftId] || candidateDetails.value[candidateDraftId]?.selected_version_id || '',
+      expected_chapter_version: props.chapterVersion,
+      idempotency_key: buildIdempotencyKey('candidate_apply')
     })
     ElMessage.success('apply 成功')
     await loadCandidateDrafts()
+    await loadCandidateDetail(candidateDraftId)
+    await loadAISuggestions()
+    await loadConflicts()
   } catch (error) {
     candidateActionError.value = String(error?.userMessage || error?.message || 'apply failed')
   }
@@ -374,6 +847,185 @@ const handleReviewCandidate = async (candidateDraftId) => {
     ...candidateReviewByDraft.value,
     [candidateDraftId]: reviewDetail
   }
+  await loadAISuggestions()
+}
+
+const handleCandidateVersionDetail = async (candidateDraftId, candidateVersionId) => {
+  const payload = unwrapData(await aiApi.getCandidateDraftVersion(candidateDraftId, candidateVersionId))
+  candidateVersionDetails.value = {
+    ...candidateVersionDetails.value,
+    [candidateVersionId]: payload
+  }
+}
+
+const handleSelectCandidateVersion = async (candidateDraftId, candidateVersionId) => {
+  candidateActionError.value = ''
+  try {
+    const payload = unwrapData(await aiApi.selectCandidateDraftVersion(candidateDraftId, candidateVersionId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      idempotency_key: buildIdempotencyKey('candidate_select')
+    }))
+    selectedVersionByDraft.value = {
+      ...selectedVersionByDraft.value,
+      [candidateDraftId]: candidateVersionId
+    }
+    candidateDetails.value = {
+      ...candidateDetails.value,
+      [candidateDraftId]: payload
+    }
+    await loadCandidateDrafts()
+    await loadConflicts()
+  } catch (error) {
+    candidateActionError.value = String(error?.userMessage || error?.message || 'select version failed')
+  }
+}
+
+const handleCandidateVersionDiff = async (candidateDraftId, fromVersionId, toVersionId) => {
+  const payload = unwrapData(await aiApi.getCandidateDraftVersionDiff(candidateDraftId, {
+    from_version_id: fromVersionId,
+    to_version_id: toVersionId
+  }))
+  candidateVersionDiffs.value = {
+    ...candidateVersionDiffs.value,
+    [candidateDraftId]: payload
+  }
+}
+
+const handleRewriteCandidate = async (candidateDraftId, candidateVersionId, triggerType) => {
+  candidateActionError.value = ''
+  try {
+    await aiApi.rewriteCandidateDraft(candidateDraftId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      source_version_id: candidateVersionId,
+      trigger_type: triggerType,
+      review_report_id: candidateReviewByDraft.value[candidateDraftId]?.review_id || '',
+      user_instruction: triggerType === 'user_instruction' ? '请强化父亲留下的地图线索。' : '',
+      idempotency_key: buildIdempotencyKey('candidate_rewrite')
+    })
+    await loadCandidateDrafts()
+    await loadCandidateDetail(candidateDraftId)
+    await loadAISuggestions()
+    await loadConflicts()
+  } catch (error) {
+    candidateActionError.value = String(error?.userMessage || error?.message || 'rewrite failed')
+  }
+}
+
+const handleRejectCandidateVersion = async (candidateDraftId, candidateVersionId) => {
+  candidateActionError.value = ''
+  try {
+    await aiApi.rejectCandidateDraftVersion(candidateDraftId, candidateVersionId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      reason: 'manual reject current version',
+      idempotency_key: buildIdempotencyKey('candidate_version_reject')
+    })
+    await loadCandidateDrafts()
+    await loadCandidateDetail(candidateDraftId)
+    await loadAISuggestions()
+    await loadConflicts()
+  } catch (error) {
+    candidateActionError.value = String(error?.userMessage || error?.message || 'reject version failed')
+  }
+}
+
+const handleSuggestionDetail = async (suggestionId) => {
+  const payload = unwrapData(await aiApi.getAISuggestion(suggestionId))
+  aiSuggestionDetails.value = {
+    ...aiSuggestionDetails.value,
+    [suggestionId]: payload
+  }
+}
+
+const handleConflictDetail = async (recordId) => {
+  const payload = unwrapData(await aiApi.getConflict(recordId))
+  conflictDetails.value = {
+    ...conflictDetails.value,
+    [recordId]: payload
+  }
+}
+
+const handleConflictDecision = async (recordId, decision, decisionNote = '') => {
+  await aiApi.decideConflict(recordId, {
+    caller_type: 'user_action',
+    user_action: true,
+    user_id: 'ui-user',
+    decision,
+    decision_note: decisionNote || (decision === 'dismissed' ? 'manual defer' : 'manual acknowledge'),
+    idempotency_key: buildIdempotencyKey('conflict_decide')
+  })
+  await loadConflicts()
+}
+
+const handleConflictRewrite = async (conflict) => {
+  await handleRewriteCandidate(
+    conflict.candidate_draft_id,
+    conflict.candidate_version_id || selectedVersionByDraft.value[conflict.candidate_draft_id] || '',
+    'review_based'
+  )
+  await handleConflictDecision(conflict.record_id, 'acknowledged', 'revise_candidate')
+}
+
+const handleConflictReject = async (conflict) => {
+  const candidateVersionId = conflict.candidate_version_id || selectedVersionByDraft.value[conflict.candidate_draft_id] || ''
+  if (candidateVersionId) {
+    await aiApi.rejectCandidateDraftVersion(conflict.candidate_draft_id, candidateVersionId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      reason: 'conflict reject current version',
+      idempotency_key: buildIdempotencyKey('conflict_candidate_version_reject')
+    })
+    await loadCandidateDrafts()
+    await loadCandidateDetail(conflict.candidate_draft_id)
+    await loadAISuggestions()
+    await loadConflicts()
+  }
+  await handleConflictDecision(conflict.record_id, 'resolved', 'reject_candidate')
+}
+
+const handleAcceptSuggestion = async (suggestionId) => {
+  await aiApi.acceptAISuggestion(suggestionId, {
+    caller_type: 'user_action',
+    user_action: true,
+    user_id: 'ui-user',
+    idempotency_key: buildIdempotencyKey('suggestion_accept')
+  })
+  await loadAISuggestions()
+}
+
+const handleDismissSuggestion = async (suggestionId) => {
+  await aiApi.dismissAISuggestion(suggestionId, {
+    caller_type: 'user_action',
+    user_action: true,
+    user_id: 'ui-user',
+    decision_note: 'manual dismiss',
+    idempotency_key: buildIdempotencyKey('suggestion_dismiss')
+  })
+  await loadAISuggestions()
+}
+
+const handleConvertSuggestion = async (suggestionId) => {
+  const payload = unwrapData(await aiApi.convertAISuggestion(suggestionId, {
+    caller_type: 'user_action',
+    user_action: true,
+    user_id: 'ui-user',
+    idempotency_key: buildIdempotencyKey('suggestion_convert')
+  }))
+  const actionRef = String(payload?.action?.action_payload_ref || '')
+  if (actionRef.startsWith('conflict_guard:')) {
+    const recordId = actionRef.split(':').slice(1).join(':')
+    if (recordId) {
+      await handleConflictDetail(recordId)
+      await loadConflicts()
+    }
+  }
+  await loadAISuggestions()
 }
 
 watch(() => props.workId, async () => {
@@ -381,7 +1033,7 @@ watch(() => props.workId, async () => {
 }, { immediate: true })
 
 watch(() => props.chapterId, async () => {
-  await Promise.all([loadContextReadiness(), loadCandidateDrafts()])
+  await Promise.all([loadContextReadiness(), loadCandidateDrafts(), loadPlanningData(), loadAISuggestions(), loadConflicts()])
 }, { immediate: true })
 
 onMounted(async () => {
@@ -424,6 +1076,27 @@ onMounted(async () => {
   border-top: 1px solid #f3f4f6;
 }
 
+.conflict-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.conflict-banner-warning {
+  border: 1px solid #f59e0b;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.conflict-banner-blocking {
+  border: 1px solid #ef4444;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
 .ai-actions,
 .ai-meta {
   display: flex;
@@ -461,6 +1134,12 @@ onMounted(async () => {
 }
 
 .candidate-item {
+  display: grid;
+  gap: 8px;
+}
+
+.planning-item,
+.planning-option {
   display: grid;
   gap: 8px;
 }
