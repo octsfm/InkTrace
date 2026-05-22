@@ -863,6 +863,257 @@ class StoryStateSnapshot(AIBaseModel):
     created_at: str = ""
 
 
+class MemoryTargetType(StrEnum):
+    STORY_MEMORY = "story_memory"
+    STORY_STATE = "story_state"
+    BOTH = "both"
+
+
+class MemoryUpdateType(StrEnum):
+    CHARACTER_UPDATE = "character_update"
+    SETTING_UPDATE = "setting_update"
+    TIMELINE_EVENT_ADD = "timeline_event_add"
+    TIMELINE_EVENT_UPDATE = "timeline_event_update"
+    FORESHADOW_ADD = "foreshadow_add"
+    FORESHADOW_UPDATE = "foreshadow_update"
+    FORESHADOW_RESOLVE = "foreshadow_resolve"
+    PLOT_THREAD_UPDATE = "plot_thread_update"
+    STORY_STATE_UPDATE = "story_state_update"
+    ARC_NOTE_UPDATE = "arc_note_update"
+    CONTINUITY_NOTE_ADD = "continuity_note_add"
+    UNKNOWN_MEMORY_UPDATE = "unknown_memory_update"
+
+
+class MemorySuggestionSeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class MemorySuggestionStatus(StrEnum):
+    PENDING = "pending"
+    GENERATED = "generated"
+    SHOWN = "shown"
+    ACCEPTED = "accepted"
+    EDITED = "edited"
+    REJECTED = "rejected"
+    CONVERTED = "converted"
+    STALE = "stale"
+    SUPERSEDED = "superseded"
+    FAILED = "failed"
+
+
+class MemorySuggestionDecisionType(StrEnum):
+    NONE = ""
+    APPROVED = "approved"
+    EDITED_APPROVED = "edited_approved"
+    REJECTED = "rejected"
+    DEFERRED = "deferred"
+
+
+class MemoryCandidateChangeType(StrEnum):
+    ADD = "add"
+    UPDATE = "update"
+    DELETE = "delete"
+    NOTE_ONLY = "note_only"
+
+
+class MemoryCandidateStatus(StrEnum):
+    PENDING = "pending"
+    SELECTED = "selected"
+    REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+
+
+class MemoryGateState(StrEnum):
+    OPEN = "open"
+    WAITING_FOR_USER = "waiting_for_user"
+    PARTIALLY_APPROVED = "partially_approved"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    APPLIED = "applied"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class MemoryRevisionRecordType(StrEnum):
+    NORMAL = "normal"
+    ROLLBACK = "rollback"
+
+
+class MemoryRevisionStatus(StrEnum):
+    PENDING = "pending"
+    WAITING_FOR_REVIEW = "waiting_for_review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    APPLIED = "applied"
+    STALE = "stale"
+    SUPERSEDED = "superseded"
+    FAILED = "failed"
+
+
+class MemoryReviewDecisionType(StrEnum):
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    DEFERRED = "deferred"
+
+
+class MemoryApplyStatus(StrEnum):
+    SUCCESS = "success"
+    PARTIAL_SUCCESS = "partial_success"
+    FAILED = "failed"
+
+
+class MemoryRevisionSource(AIBaseModel):
+    source_id: str = ""
+    source_type: str
+    entity_type: str = ""
+    entity_ref_id: str = ""
+    source_ref_id: str = ""
+    source_session_id: str = ""
+    source_version_id: str = ""
+    excerpt: str = ""
+    relevance: str = ""
+
+
+class MemoryUpdateCandidate(AIBaseModel):
+    candidate_id: str
+    suggestion_id: str
+    candidate_no: int
+    field_path: str
+    field_label: str
+    current_value: str
+    proposed_value: str
+    change_type: MemoryCandidateChangeType = MemoryCandidateChangeType.UPDATE
+    rationale: str
+    confidence: float = 0.0
+    status: MemoryCandidateStatus = MemoryCandidateStatus.PENDING
+    suggestion_ids: list[str] = Field(default_factory=list)
+    selected_suggestion_id: str = ""
+    created_at: str = ""
+
+
+class MemoryUpdateSuggestion(AIBaseModel):
+    id: str
+    work_id: str
+    chapter_id: str = ""
+    candidate_draft_id: str = ""
+    candidate_version_id: str = ""
+    review_report_id: str = ""
+    ai_suggestion_id: str = ""
+    conflict_guard_record_id: str = ""
+    agent_session_id: str
+    source_type: str
+    source_ref_id: str = ""
+    target_memory_type: MemoryTargetType
+    target_memory_ref_id: str = ""
+    revision_type: MemoryUpdateType
+    proposed_value_summary: str
+    current_value_summary: str
+    evidence_refs: list[MemoryRevisionSource] = Field(default_factory=list)
+    candidates: list[MemoryUpdateCandidate] = Field(default_factory=list)
+    confidence: float = 0.0
+    severity: MemorySuggestionSeverity = MemorySuggestionSeverity.WARNING
+    status: MemorySuggestionStatus = MemorySuggestionStatus.GENERATED
+    decision: MemorySuggestionDecisionType = MemorySuggestionDecisionType.NONE
+    decided_by: str = ""
+    decided_at: str = ""
+    warning_codes: list[str] = Field(default_factory=list)
+    created_by: str = "memory_agent"
+    created_at: str = ""
+    updated_at: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+
+
+class MemoryReviewGate(AIBaseModel):
+    gate_id: str
+    work_id: str
+    chapter_id: str = ""
+    suggestion_ids: list[str] = Field(default_factory=list)
+    state: MemoryGateState = MemoryGateState.OPEN
+    warning_codes: list[str] = Field(default_factory=list)
+    open_at: str = ""
+    closed_at: str = ""
+    operator_id: str = ""
+
+
+class StoryMemoryRevisionItem(AIBaseModel):
+    id: str
+    revision_id: str
+    target_memory_type: str
+    target_memory_ref_id: str
+    revision_type: MemoryUpdateType
+    before_value_summary: str = ""
+    after_value_summary: str
+    evidence_refs: list[MemoryRevisionSource] = Field(default_factory=list)
+    status: MemoryRevisionStatus = MemoryRevisionStatus.PENDING
+
+
+class StoryMemoryRevision(AIBaseModel):
+    id: str
+    work_id: str
+    chapter_id: str = ""
+    source_suggestion_id: str
+    revision_items: list[StoryMemoryRevisionItem] = Field(default_factory=list)
+    revision_type: MemoryRevisionRecordType = MemoryRevisionRecordType.NORMAL
+    status: MemoryRevisionStatus = MemoryRevisionStatus.PENDING
+    approved_by: str = ""
+    approved_at: str = ""
+    applied_by: str = ""
+    applied_at: str = ""
+    apply_result_ref: str = ""
+    before_summary: str
+    after_summary: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class StoryStateRevision(AIBaseModel):
+    id: str
+    work_id: str
+    chapter_id: str = ""
+    source_suggestion_id: str
+    state_items: list[dict[str, str]] = Field(default_factory=list)
+    target_state_ref: str = ""
+    version_guard: str = ""
+    revision_type: MemoryRevisionRecordType = MemoryRevisionRecordType.NORMAL
+    status: MemoryRevisionStatus = MemoryRevisionStatus.PENDING
+    approved_by: str = ""
+    approved_at: str = ""
+    applied_by: str = ""
+    applied_at: str = ""
+    apply_result_ref: str = ""
+    before_summary: str
+    after_summary: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class MemoryRevisionDecision(AIBaseModel):
+    id: str
+    revision_id: str
+    decision: MemoryReviewDecisionType
+    decided_by: str
+    decided_at: str
+    decision_note: str = ""
+
+
+class MemoryRevisionApplyResult(AIBaseModel):
+    id: str
+    revision_id: str
+    apply_status: MemoryApplyStatus
+    applied_memory_refs: list[str] = Field(default_factory=list)
+    failed_item_refs: list[str] = Field(default_factory=list)
+    error_codes: list[str] = Field(default_factory=list)
+    before_after_snapshot_ref: str = ""
+    applied_at: str = ""
+
+
 class InitializationRecord(AIBaseModel):
     initialization_id: str
     work_id: str

@@ -159,3 +159,24 @@ class RejectChapterPlanRequest(V2AIOperationRequest):
     user_action: bool = False
     user_id: str = ""
     user_edit_notes: str = ""
+
+
+class MemorySuggestionDecisionRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    decision_note: str = ""
+
+
+class MemorySuggestionEditApproveRequest(MemorySuggestionDecisionRequest):
+    proposed_value_summary: str
+
+
+class ApplyMemoryGateRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+
+
+class RollbackMemoryRevisionRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    decision_note: str = ""

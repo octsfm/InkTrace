@@ -58,6 +58,7 @@ def review_candidate_draft(candidate_draft_id: str, payload: ReviewCandidateDraf
             trace_id=review.review_id,
         )
         batch = dependencies.get_ai_suggestion_service().generate_from_review(review.review_id)
+        memory_gate = dependencies.get_memory_review_gate_service().generate_from_review(review.review_id)
     except ValueError as exc:
         error_code = str(exc)
         status_code = 404 if error_code in {"candidate_draft_not_found", "chapter_not_found", "work_not_found"} else 403 if error_code == "caller_type_not_allowed" else 409 if error_code == "review_idempotency_conflict" else 400
@@ -70,6 +71,7 @@ def review_candidate_draft(candidate_draft_id: str, payload: ReviewCandidateDraf
             "summary": review.summary,
             "warnings": review.warnings,
             "generated_suggestion_count": batch.generated_count,
+            "memory_gate_id": memory_gate.gate_id,
             "caller_type": payload.caller_type,
             "idempotency_key": payload.idempotency_key,
         },

@@ -22,6 +22,7 @@ from application.services.ai.ai_review_service import AIReviewApplicationService
 from application.services.ai.ai_suggestion_service import AISuggestionService
 from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.ai.candidate_rewrite_service import CandidateRewriteService
+from application.services.ai.memory_review_gate_service import MemoryReviewGateService
 from application.services.ai.ai_settings_service import AISettingsService
 from application.services.ai.candidate_review_service import CandidateReviewService
 from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
@@ -48,6 +49,7 @@ from infrastructure.database.repositories.ai.file_conflict_guard_store import Fi
 from infrastructure.database.repositories.ai.file_direction_plan_store import FileDirectionPlanStore
 from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
 from infrastructure.database.repositories.ai.file_llm_call_log_store import FileLLMCallLogStore
+from infrastructure.database.repositories.ai.file_memory_review_store import FileMemoryReviewStore
 from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlotArcStore
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
@@ -124,6 +126,11 @@ def get_conflict_guard_repository() -> FileConflictGuardStore:
 @lru_cache(maxsize=1)
 def get_llm_call_log_repository() -> FileLLMCallLogStore:
     return FileLLMCallLogStore()
+
+
+@lru_cache(maxsize=1)
+def get_memory_review_repository() -> FileMemoryReviewStore:
+    return FileMemoryReviewStore()
 
 
 @lru_cache(maxsize=1)
@@ -337,4 +344,16 @@ def get_conflict_guard_service() -> ConflictGuardService:
         ai_suggestion_repository=get_ai_suggestion_repository(),
         direction_plan_repository=get_direction_plan_repository(),
         ai_review_repository=get_ai_review_repository(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_memory_review_gate_service() -> MemoryReviewGateService:
+    return MemoryReviewGateService(
+        memory_review_repository=get_memory_review_repository(),
+        story_memory_repository=get_story_memory_repository(),
+        story_state_repository=get_story_state_repository(),
+        ai_review_repository=get_ai_review_repository(),
+        candidate_draft_repository=get_candidate_draft_repository(),
+        conflict_guard_service=get_conflict_guard_service(),
     )

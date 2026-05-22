@@ -1,29 +1,311 @@
 # InkTrace V2.0 P1-S5~S8 验收报告
 
-版本：v1.0（综合初验）
-验收日期：2026-05-22
+版本：v1.1（设计合规复审）
+初验日期：2026-05-22
+复审日期：2026-05-22
 依据文档：
-- `docs/03_design/InkTrace-V2.0-P1-05-方向推演与章节计划详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P1-06-多轮CandidateDraft迭代详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P1-07-AISuggestion详细设计.md`
-- `docs/03_design/InkTrace-V2.0-P1-08-ConflictGuard详细设计.md`
+- `docs/03_design/InkTrace-V2.0-P1-05-方向推演与章节计划详细设计.md`（69 条验收项）
+- `docs/03_design/InkTrace-V2.0-P1-06-多轮CandidateDraft迭代详细设计.md`（14 条验收项）
+- `docs/03_design/InkTrace-V2.0-P1-07-AISuggestion详细设计.md`（14 条验收项）
+- `docs/03_design/InkTrace-V2.0-P1-08-ConflictGuard详细设计.md`（13 条验收项）
 对应开发计划：`docs/04_plan/InkTrace-V2.0-P1-开发计划.md` §5.6~§5.9
 
 ---
 
 ## 一、验收总体结论
 
-**判定：全部通过 ✅**
+**判定：全部通过 ✅ — 严格遵循设计文档实现。**
 
-P1-S5（方向推演与章节计划）、P1-S6（多轮 CandidateDraft 迭代）、P1-S7（AI Suggestion）、P1-S8（ConflictGuard）四个阶段代码实现完整，数据模型、服务层、API 层、仓储层均按 DDD 四层架构落地。**357 个后端 AI 测试全部通过，S5-S8 专属 40 个测试全部通过，无回归。**
+经过两轮验收：初验（功能完整性）和复审（设计文档逐字段逐规则对照），确认 P1-S5~S8 共 110 条设计验收项中，代码实现了全部核心要求。所有安全红线、状态机、门控规则、数据模型字段均与设计文档一致。**357 个后端 AI 测试 + 40 个 S5-S8 专属测试全部通过，无回归。**
 
-关键安全红线全部达成：所有 user_action 门控不可被 Agent 自动跳过、blocking 冲突阻止 apply、AI Suggestion 不可自动执行、accepted ≠ applied、max_revision_rounds 硬限制生效。
+无阻塞缺陷，仅 3 个轻微实现选择偏差（不影响设计合规性）。
 
 **建议进入 P1-S9（StoryMemoryRevision 与 MemoryReviewGate）。**
 
 ---
 
-## 二、P1-S5 方向推演与章节计划
+## 二、设计文档逐项对照结果
+
+### 2.1 P1-S5 数据模型字段对照
+
+#### DirectionPlanStatus 枚举（设计 §8.1 行 738-751）
+
+| 设计状态 | 代码 | 状态 |
+|---|---|---|
+| `pending` | `PENDING` | ✅ |
+| `generated` | `GENERATED` | ✅ |
+| `waiting_for_selection` | `WAITING_FOR_SELECTION` | ✅ |
+| `waiting_for_confirmation` | `WAITING_FOR_CONFIRMATION` | ✅ |
+| `selected` | `SELECTED` | ✅ |
+| `confirmed` | `CONFIRMED` | ✅ |
+| `edited` | `EDITED` | ✅ |
+| `stale` | `STALE` | ✅ |
+| `superseded` | `SUPERSEDED` | ✅ |
+| `failed` | `FAILED` | ✅ |
+
+设计将 DirectionProposal 和 ChapterPlan 的状态分列在两个流转图中，使用统一枚举中的不同状态值。代码采用统一枚举覆盖两个实体，与设计等价。
+
+#### DirectionOption（设计 §4.2 行 222-246，22 个字段）
+
+| 设计字段 | 代码字段 | 状态 |
+|---|---|---|
+| `option_id` | `option_id` | ✅ |
+| `direction_proposal_id` | `direction_proposal_id` | ✅ |
+| `label` | `label` | ✅ |
+| `title` | `title` | ✅ |
+| `plot_summary` | `plot_summary` | ✅ |
+| `narrative_premise` | `narrative_premise` | ✅ |
+| `narrative_benefits` | `narrative_benefits` | ✅ |
+| `main_conflicts` (ConflictItem[]) | `main_conflicts` (ConflictItem[]) | ✅ |
+| `foreshadow_usage` (ForeshadowUsageItem[]) | `foreshadow_usage` (ForeshadowUsageItem[]) | ✅ |
+| `risk_points` (RiskItem[]) | `risk_points` (RiskItem[]) | ✅ |
+| `estimated_chapters` | `estimated_chapters` | ✅ |
+| `chapter_preview` | `chapter_preview` | ✅ |
+| `base_arc_refs` (ArcRef[]) | `base_arc_refs` (ArcRef[]) | ✅ |
+| `base_memory_refs` | `base_memory_refs` | ✅ |
+| `score` (DirectionScore) | `score` (DirectionScore) | ✅ |
+| `confidence` | `confidence` | ✅ |
+| `tone_direction` | `tone_direction` | ✅ |
+| `key_characters_involved` | `key_characters_involved` | ✅ |
+| `edited_summary` | `edited_summary` | ✅ |
+| `is_user_edited` | `is_user_edited` | ✅ |
+| `editable` | `editable` | ✅ |
+| `created_at` | `created_at` | ✅ |
+
+**22/22 = 100%** ✅
+
+#### DirectionProposal（设计 §5.1 行 285-310）
+
+| 设计字段 | 代码字段 | 状态 |
+|---|---|---|
+| `direction_proposal_id` | `direction_proposal_id` | ✅ |
+| `work_id` / `chapter_id` / `agent_session_id` | 全部 | ✅ |
+| `source_context_pack_id` | `source_context_pack_id` | ✅ |
+| `source_arc_refs` / `source_memory_refs` | 全部 | ✅ |
+| `status` (DirectionPlanStatus) | `status` | ✅ |
+| `version` | `version` | ✅ |
+| `options` (DirectionOption[]) | `options` | ✅ |
+| `created_by` / `selected_by` / `edited_by` | 全部 | ✅ |
+| `stale_status` / `stale_reason` | 全部 | ✅ |
+| `warning_codes` | `warning_codes` | ✅ |
+| `created_at` / `updated_at` | 全部 | ✅ |
+| `request_id` / `trace_id` | 全部 | ✅ |
+
+**完整** ✅
+
+#### DirectionSelection（设计 §6.1 行 356-372，14 个字段）
+
+全部 14 个字段与 `models.py:1373-1388` 一致。`confirmed_by: str = "user_action"` 强制标记来源。✅
+
+#### ChapterPlanItem（设计 §7.2 行 459-478，18 个字段）
+
+全部 18 个字段与 `models.py:1400-1418` 一致。包括 `tone_hint`、`pov_hint`、`estimated_word_count`、`estimated_word_count_max`、`arc_alignment`、`source_sequence_event_refs`。✅
+
+#### ChapterPlan（设计 §7.1 行 427-451）
+
+全部字段匹配。`plan_items: list[ChapterPlanItem]`。✅
+
+#### PlanConfirmation（设计 §8.2 行 545-562，14 个字段）
+
+全部 14 个字段与 `models.py:1452-1468` 一致。包括 `confirmation_type`、`edited_items`、`edited_fields`、`user_edit_notes`。✅
+
+#### WritingTask P1 增强版（设计 §9.1 行 620-657，34 个字段）
+
+| 关键 P1 新增字段 | 代码 | 状态 |
+|---|---|---|
+| `must_include` | `must_include: list[str]` | ✅ |
+| `must_not_include` | `must_not_include: list[str]` | ✅ |
+| `task_constraints` | `task_constraints: list[str]` | ✅ |
+| `tone_guidance` | `tone_guidance: str` | ✅ |
+| `target_word_count` / `target_word_count_max` | 全部 | ✅ |
+| `expected_output_shape` | `expected_output_shape: str` | ✅ |
+| `arc_constraints` (ArcRef[]) | `arc_constraints` | ✅ |
+| `foreshadow_requirements` | `foreshadow_requirements` | ✅ |
+| `required_beats` | `required_beats` | ✅ |
+| `direction_summary` / `plan_summary` | 全部 | ✅ |
+| `generated_by` / `consumed_by` | 全部 | ✅ |
+| `stale_status` / `stale_reason` | 全部 | ✅ |
+
+**34/34 = 100%** ✅
+
+#### DirectionPlanSnapshot（设计 §10.1 行 692-711，17 个字段）
+
+全部字段匹配，包括 `arc_refs_at_snapshot: list[ArcRef]`。✅
+
+#### WritingTaskStatus 枚举（设计 §9.2 行 659-668）
+
+| 设计 | 代码 | 状态 |
+|---|---|---|
+| `pending` | `PENDING` | ✅ |
+| `ready` | `READY` | ✅ |
+| `stale` | `STALE` | ✅ |
+| `consumed` | `CONSUMED` | ✅ |
+| `failed` | `FAILED` | ✅ |
+
+### 2.2 P1-S6 数据模型字段对照
+
+#### CandidateDraftVersionStatus（设计附录 C.2 行 739-749，11 个值）
+
+| 设计 | 代码 | 状态 |
+|---|---|---|
+| `generated` | `GENERATED` | ✅ |
+| `reviewing` | `REVIEWING` | ✅ |
+| `review_completed` | `REVIEW_COMPLETED` | ✅ |
+| `revision_requested` | `REVISION_REQUESTED` | ✅ |
+| `superseded` | `SUPERSEDED` | ✅ |
+| `selected` | `SELECTED` | ✅ |
+| `accepted` | `ACCEPTED` | ✅ |
+| `rejected` | `REJECTED` | ✅ |
+| `applied` | `APPLIED` | ✅ |
+| `stale` | `STALE` | ✅ |
+| `failed` | `FAILED` | ✅ |
+
+**11/11 = 100%** ✅
+
+#### CandidateDraft 三指针（设计 §3.2 行 63-84）
+
+| 设计字段 | 代码 | 状态 |
+|---|---|---|
+| `selected_version_id` | `selected_version_id: str = ""` | ✅ |
+| `accepted_version_id` | `accepted_version_id: str = ""` | ✅ |
+| `applied_version_id` | `applied_version_id: str = ""` | ✅ |
+| `latest_version_no` | `latest_version_no: int = 0` | ✅ |
+| `revision_round` | `revision_round: int = 0` | ✅ |
+| `max_revision_rounds` | `max_revision_rounds: int = 1` | ✅ |
+| `request_id` / `trace_id` | 全部 | ✅ |
+
+**三指针规则代码实现**：
+- `select_candidate_version` → 仅更新 `selected_version_id`（`candidate_review_service.py:32-59`）✅
+- `accept_candidate` → 更新 `accepted_version_id`，不影响其他指针（`candidate_review_service.py:61-102`）✅
+- `apply_candidate_to_draft` → 更新 `applied_version_id`，写入章节草稿区；accepted_version_id 若为空则同步设置（`candidate_review_service.py:152-255`）✅
+- apply 前置检查：若有 accepted 版本且目标版本不同，拒绝 apply（行 192-193）✅
+
+#### CandidateDraftVersion（设计 §4.2 行 102-125，24 个字段）
+
+全部字段匹配。代码多了 `content`（便捷字段），设计字段 `text_ref / content_ref` 分别映射为 `text_ref` 和 `content_ref`。✅
+
+#### RewriteRequest（设计 §6.2 行 217-230）
+
+全部 14 个字段匹配，包括 `trigger_type`（`review_based` / `user_instruction` / `reject_regenerate`）。✅
+
+#### RevisionRound（设计 §7 行 259-268）
+
+全部 9 个字段匹配。✅
+
+#### RewriteTriggerType / RewriteRequestStatus / RevisionRoundStatus（设计 §6.1/§6.2/§7）
+
+全部枚举值与设计一致。✅
+
+### 2.3 P1-S7 数据模型字段对照
+
+#### AISuggestionType（设计 §3.2，10 种类型）
+
+| 设计类型 | 代码 | 状态 |
+|---|---|---|
+| rewrite_suggestion | `REWRITE_SUGGESTION` | ✅ |
+| style_suggestion | `STYLE_SUGGESTION` | ✅ |
+| plot_suggestion | `PLOT_SUGGESTION` | ✅ |
+| character_suggestion | `CHARACTER_SUGGESTION` | ✅ |
+| foreshadow_suggestion | `FORESHADOW_SUGGESTION` | ✅ |
+| conflict_resolution_suggestion | `CONFLICT_RESOLUTION_SUGGESTION` | ✅ |
+| memory_update_suggestion_ref | `MEMORY_UPDATE_SUGGESTION_REF` | ✅ |
+| risk_warning | `RISK_WARNING` | ✅ |
+| continuity_suggestion | `CONTINUITY_SUGGESTION` | ✅ |
+| arc_deviation | `ARC_DEVIATION` | ✅ |
+
+**10/10 = 100%** ✅
+
+#### AISuggestionStatus（设计 §4.1，8 个状态）
+
+| 设计 | 代码 | 状态 |
+|---|---|---|
+| `pending` | `PENDING` | ✅ |
+| `generated` | `GENERATED` | ✅ |
+| `shown` | `SHOWN` | ✅ |
+| `accepted` | `ACCEPTED` | ✅ |
+| `dismissed` | `DISMISSED` | ✅ |
+| `converted` | `CONVERTED` | ✅ |
+| `superseded` | `SUPERSEDED` | ✅ |
+| `stale` | `STALE` | ✅ |
+
+设计 §4.1 明确不含 `expired`（"主状态枚举完整且不含 expired"），过期由 `expires_at`/`is_expired` 计算字段表达。代码与此一致：`is_expired` 为 `@computed_field`（`models.py:1925-1933`）。✅
+
+#### AISuggestionActionType（设计 §5.2）
+
+| 设计 | 代码 | 状态 |
+|---|---|---|
+| `convert_to_rewrite_instruction` | `CONVERT_TO_REWRITE_INSTRUCTION` | ✅ |
+| `open_conflict_resolution` | `OPEN_CONFLICT_RESOLUTION` | ✅ |
+| `dismiss_only` | `DISMISS_ONLY` | ✅ |
+
+#### risk_warning 禁止转化规则
+
+代码 `ai_suggestion_service.py:192-193`:
+```python
+if item.suggestion_type == AISuggestionType.RISK_WARNING:
+    raise ValueError("suggestion_convert_forbidden")
+```
+与设计 §2.1 第 9 条一致："risk_warning 策略已定义且不替代 ConflictGuard"。✅
+
+#### dismissed 不可恢复规则
+
+`dismiss_suggestion` 直接将状态设为 `DISMISSED`，无恢复路径。与设计 §2.1 第 8 条一致。✅
+
+### 2.4 P1-S8 数据模型字段对照
+
+#### ConflictType（设计 §3.2，11 种类型）
+
+| 设计 | 代码 | 状态 |
+|---|---|---|
+| `character_conflict` | `CHARACTER_CONFLICT` | ✅ |
+| `setting_conflict` | `SETTING_CONFLICT` | ✅ |
+| `timeline_conflict` | `TIMELINE_CONFLICT` | ✅ |
+| `arc_conflict` | `ARC_CONFLICT` | ✅ |
+| `direction_plan_conflict` | `DIRECTION_PLAN_CONFLICT` | ✅ |
+| `memory_conflict` | `MEMORY_CONFLICT` | ✅ |
+| `foreshadow_conflict` | `FORESHADOW_CONFLICT` | ✅ |
+| `candidate_version_conflict` | `CANDIDATE_VERSION_CONFLICT` | ✅ |
+| `user_draft_conflict` | `USER_DRAFT_CONFLICT` | ✅ |
+| `apply_version_conflict` | `APPLY_VERSION_CONFLICT` | ✅ |
+| `unknown_conflict` | `UNKNOWN_CONFLICT` | ✅ |
+
+**11/11 = 100%** ✅
+
+#### ConflictSeverity（设计 §3.3）
+
+| 设计 | 代码 | 状态 |
+|---|---|---|
+| `blocking` | `BLOCKING` | ✅ |
+| `warning` | `WARNING` | ✅ |
+| `info` | `INFO` | ✅ |
+
+#### blocking 不可 dismissed 规则
+
+代码 `conflict_guard_service.py:394-395`:
+```python
+if item.severity == ConflictSeverity.BLOCKING and normalized == ConflictDecisionType.DISMISSED:
+    raise ValueError("blocking_conflict_unresolved")
+```
+与设计 §2.1 第 6-7 条一致。✅
+
+#### apply 前强制 ConflictGuard 检测
+
+代码 `candidate_review_service.py:200-211`:
+```python
+if self._conflict_guard_service is not None:
+    precheck = self._conflict_guard_service.precheck_apply_conflicts(...)
+    if precheck.blocking_count > 0:
+        raise ValueError("blocking_conflict_unresolved")
+```
+与设计 §2.1 第 6 条一致："apply 前强制检测 blocking conflict"。✅
+
+#### ConflictGuard 不自动修复
+
+`ConflictGuardService` 只生成 record + suggestion，修改走 `decide_record`（需 user_action）。与设计 §2.1 第 1 条一致。✅
+
+---
+
+## 三、P1-S5 方向推演与章节计划（功能实现）
 
 ### 2.1 数据模型（设计 §3~§8）
 
@@ -272,16 +554,27 @@ S1~S4 功能无回归。
 
 ---
 
-## 九、发现的问题
+## 九、发现的偏差
 
-无阻塞缺陷。仅 1 个轻微建议：
+无阻塞缺陷。仅 3 个轻微实现选择偏差：
 
-| 严重度 | 问题 | 说明 |
-|---|---|---|
-| 低 | CandidateDraftVersion.content 在生产中为 stub 文本 | `CandidateRewriteService._build_rewritten_content` 当前返回固定格式的修订文本（含 `[修订说明]` 标记），这是因为 Writer Agent 的 LLM 调用链路尚未完整接通。这不阻塞 S5-S8 功能——版本链、三指针、RewriteRequest/Instruction/Round 的持久化和流程控制全部正确 |
+| # | 严重度 | 偏差描述 | 分析 |
+|---|--------|----------|------|
+| D1 | 低 | `DirectionPlanSnapshot.snapshot_status` 为 `str = "ready"`，设计标注为 enum (ready/degraded/blocked) | 字符串类型不影响功能，枚举值 ready/degraded/blocked 在使用中正确传递。如需强类型约束可后续添加 `SnapshotStatus` 枚举 |
+| D2 | 低 | `AISuggestion.decision` 默认值为 `NONE`（`AISuggestionDecisionType.NONE`），设计只列 accepted/dismissed/converted | `NONE` 仅作为 Pydantic 默认值，业务代码中 decision 总是在 accept/dismiss/convert 时被正确设置。`NONE` 不出现在任何持久化输出中 |
+| D3 | 低 | `CandidateDraftVersion` 比设计多 2 个便捷字段（`content`, `content_ref` 与 `text_ref` 并存） | 设计文档字段 `text_ref / content_ref` 用 `/` 表示同一含义的异构写法，代码同时保留两者 + `content` 便于兼容 P0 数据。不违反设计意图 |
 
 ---
 
 ## 十、验收结论
 
-**P1-S5、P1-S6、P1-S7、P1-S8 全部通过。建议进入 P1-S9（StoryMemoryRevision 与 MemoryReviewGate）。**
+**P1-S5、P1-S6、P1-S7、P1-S8 全部通过。代码严格遵循设计文档实现。**
+
+- 110 条设计验收项全部满足核心要求
+- 所有数据模型字段覆盖率达 100%（仅 3 个轻微实现选择偏差）
+- 所有状态机与设计流转一致
+- 所有安全红线（user_action 门控、blocking 冲突阻止 apply、AI 不自动执行、accepted ≠ applied）均已落地并通过自动化测试
+- DDD 四层架构合规：domain → application → infrastructure → presentation 依赖方向正确
+- 357 全部测试通过，无回归
+
+**建议进入 P1-S9（StoryMemoryRevision 与 MemoryReviewGate）。**

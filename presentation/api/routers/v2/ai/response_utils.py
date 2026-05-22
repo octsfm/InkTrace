@@ -13,10 +13,18 @@ def trace_id_from_request(request: Request) -> str:
 
 SAFE_MESSAGE_MAP = {
     "caller_type_not_allowed": "当前请求来源不被允许。",
+    "caller_type_forbidden": "当前请求来源不被允许。",
     "work_not_found": "未找到对应作品。",
     "chapter_not_found": "未找到对应章节。",
     "candidate_draft_not_found": "未找到候选稿。",
     "context_pack_not_found": "未找到上下文包。",
+    "memory_gate_not_found": "未找到记忆审批门。",
+    "memory_suggestion_not_found": "未找到记忆更新建议。",
+    "memory_revision_not_found": "未找到记忆修订记录。",
+    "memory_revision_apply_blocked": "当前记忆修订无法应用，请先完成审批或处理冲突。",
+    "memory_rollback_not_allowed": "当前修订不允许回滚。",
+    "idempotency_key_required": "缺少幂等键，请刷新后重试。",
+    "idempotency_key_conflict": "当前操作已提交，请勿重复执行。",
     "internal_error": "服务暂时不可用，请稍后重试。",
 }
 

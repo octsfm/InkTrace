@@ -392,6 +392,98 @@
     </div>
 
     <div class="ai-section">
+      <h4>记忆更新审批</h4>
+      <ul v-if="memoryGates.length" class="ai-list">
+        <li v-for="gate in memoryGates" :key="gate.gate_id" class="planning-item">
+          <div class="candidate-summary">
+            <strong>{{ gate.gate_id }}</strong>
+            <span>{{ gate.state }}</span>
+            <span>suggestions {{ (gate.suggestions || []).length }}</span>
+          </div>
+          <ul class="ai-list">
+            <li v-for="suggestion in gate.suggestions || []" :key="suggestion.id" class="planning-item">
+              <div class="candidate-summary">
+                <strong>{{ suggestion.target_memory_type }}</strong>
+                <span>{{ suggestion.revision_type }}</span>
+                <span>{{ suggestion.status }}</span>
+                <span>{{ suggestion.current_value_summary }}</span>
+                <span>{{ suggestion.proposed_value_summary }}</span>
+              </div>
+              <div class="ai-actions">
+                <button
+                  :data-test="`memory-approve-${gate.gate_id}-${suggestion.id}`"
+                  type="button"
+                  @click="handleApproveMemorySuggestion(gate.gate_id, suggestion.id)"
+                >
+                  approve
+                </button>
+                <button
+                  :data-test="`memory-edit-approve-${gate.gate_id}-${suggestion.id}`"
+                  type="button"
+                  @click="handleEditApproveMemorySuggestion(gate.gate_id, suggestion)"
+                >
+                  edit+approve
+                </button>
+                <button
+                  :data-test="`memory-reject-${gate.gate_id}-${suggestion.id}`"
+                  type="button"
+                  @click="handleRejectMemorySuggestion(gate.gate_id, suggestion.id)"
+                >
+                  reject
+                </button>
+                <button
+                  :data-test="`memory-defer-${gate.gate_id}-${suggestion.id}`"
+                  type="button"
+                  @click="handleDeferMemorySuggestion(gate.gate_id, suggestion.id)"
+                >
+                  defer
+                </button>
+              </div>
+            </li>
+          </ul>
+          <div class="ai-actions">
+            <button
+              :data-test="`memory-apply-${gate.gate_id}`"
+              type="button"
+              @click="handleApplyMemoryGate(gate.gate_id)"
+            >
+              apply gate
+            </button>
+          </div>
+          <ul v-if="gate.revision_ids?.length" class="ai-list">
+            <li v-for="revisionId in gate.revision_ids" :key="revisionId">
+              <div class="candidate-summary">
+                <strong>{{ revisionId }}</strong>
+                <span>{{ memoryRevisionDetails[revisionId]?.status || 'revision' }}</span>
+              </div>
+              <div class="ai-actions">
+                <button
+                  :data-test="`memory-revision-detail-${revisionId}`"
+                  type="button"
+                  @click="handleMemoryRevisionDetail(revisionId)"
+                >
+                  查看 revision
+                </button>
+                <button
+                  v-if="memoryRevisionDetails[revisionId]?.status === 'applied'"
+                  :data-test="`memory-revision-rollback-${revisionId}`"
+                  type="button"
+                  @click="handleRollbackMemoryRevision(revisionId)"
+                >
+                  rollback
+                </button>
+              </div>
+              <div v-if="memoryRevisionDetails[revisionId]" class="ai-note">
+                {{ memoryRevisionDetails[revisionId].before_summary }} -> {{ memoryRevisionDetails[revisionId].after_summary }}
+              </div>
+            </li>
+          </ul>
+        </li>
+      </ul>
+      <p v-if="memoryActionError" class="ai-error">{{ memoryActionError }}</p>
+    </div>
+
+    <div class="ai-section">
       <h4>Quick Trial</h4>
       <div class="field-grid">
         <input v-model="quickTrialForm.input_text" type="text" placeholder="临时 prompt" />
@@ -445,6 +537,9 @@ const selectedVersionByDraft = ref({})
 const candidateReviewByDraft = ref({})
 const aiSuggestions = ref([])
 const aiSuggestionDetails = ref({})
+const memoryGates = ref([])
+const memoryRevisionDetails = ref({})
+const memoryActionError = ref('')
 const conflicts = ref([])
 const conflictDetails = ref({})
 const candidateActionError = ref('')
@@ -589,6 +684,15 @@ const loadAISuggestions = async () => {
   aiSuggestions.value = payload.items || []
 }
 
+const loadMemoryGates = async () => {
+  if (!props.workId) return
+  const payload = unwrapData(await aiApi.listMemoryGates({
+    work_id: props.workId,
+    chapter_id: props.chapterId
+  }))
+  memoryGates.value = payload.items || []
+}
+
 const loadConflicts = async () => {
   if (!props.workId) return
   const payload = unwrapData(await aiApi.listConflicts({
@@ -606,6 +710,7 @@ const refreshPanel = async () => {
     loadCandidateDrafts(),
     loadPlanningData(),
     loadAISuggestions(),
+    loadMemoryGates(),
     loadConflicts()
   ])
 }
@@ -848,6 +953,7 @@ const handleReviewCandidate = async (candidateDraftId) => {
     [candidateDraftId]: reviewDetail
   }
   await loadAISuggestions()
+  await loadMemoryGates()
 }
 
 const handleCandidateVersionDetail = async (candidateDraftId, candidateVersionId) => {
@@ -1028,12 +1134,126 @@ const handleConvertSuggestion = async (suggestionId) => {
   await loadAISuggestions()
 }
 
+const handleApproveMemorySuggestion = async (gateId, suggestionId) => {
+  memoryActionError.value = ''
+  try {
+    await aiApi.approveMemorySuggestion(gateId, suggestionId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      idempotency_key: buildIdempotencyKey('memory_approve')
+    })
+    await loadMemoryGates()
+  } catch (error) {
+    memoryActionError.value = String(error?.userMessage || error?.message || 'memory approve failed')
+  }
+}
+
+const handleEditApproveMemorySuggestion = async (gateId, suggestion) => {
+  memoryActionError.value = ''
+  try {
+    const editedValue = window.prompt('请输入修改后的摘要', suggestion.proposed_value_summary || '')
+    if (editedValue === null) return
+    await aiApi.editApproveMemorySuggestion(gateId, suggestion.id, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      decision_note: 'manual edit approve',
+      proposed_value_summary: editedValue,
+      idempotency_key: buildIdempotencyKey('memory_edit_approve')
+    })
+    await loadMemoryGates()
+  } catch (error) {
+    memoryActionError.value = String(error?.userMessage || error?.message || 'memory edit approve failed')
+  }
+}
+
+const handleRejectMemorySuggestion = async (gateId, suggestionId) => {
+  memoryActionError.value = ''
+  try {
+    await aiApi.rejectMemorySuggestion(gateId, suggestionId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      decision_note: 'manual reject',
+      idempotency_key: buildIdempotencyKey('memory_reject')
+    })
+    await loadMemoryGates()
+  } catch (error) {
+    memoryActionError.value = String(error?.userMessage || error?.message || 'memory reject failed')
+  }
+}
+
+const handleDeferMemorySuggestion = async (gateId, suggestionId) => {
+  memoryActionError.value = ''
+  try {
+    await aiApi.deferMemorySuggestion(gateId, suggestionId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      decision_note: 'manual defer',
+      idempotency_key: buildIdempotencyKey('memory_defer')
+    })
+    await loadMemoryGates()
+  } catch (error) {
+    memoryActionError.value = String(error?.userMessage || error?.message || 'memory defer failed')
+  }
+}
+
+const handleApplyMemoryGate = async (gateId) => {
+  memoryActionError.value = ''
+  try {
+    const payload = unwrapData(await aiApi.applyMemoryGate(gateId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      idempotency_key: buildIdempotencyKey('memory_apply')
+    }))
+    for (const revisionId of payload.revision_ids || []) {
+      await handleMemoryRevisionDetail(revisionId)
+    }
+    await loadMemoryGates()
+    ElMessage.success('记忆修订 apply 成功')
+  } catch (error) {
+    memoryActionError.value = String(error?.userMessage || error?.message || 'memory apply failed')
+  }
+}
+
+const handleMemoryRevisionDetail = async (revisionId) => {
+  const payload = unwrapData(await aiApi.getMemoryRevision(revisionId))
+  memoryRevisionDetails.value = {
+    ...memoryRevisionDetails.value,
+    [revisionId]: payload
+  }
+}
+
+const handleRollbackMemoryRevision = async (revisionId) => {
+  memoryActionError.value = ''
+  try {
+    const payload = unwrapData(await aiApi.rollbackMemoryRevision(revisionId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      decision_note: 'manual rollback',
+      idempotency_key: buildIdempotencyKey('memory_rollback')
+    }))
+    memoryRevisionDetails.value = {
+      ...memoryRevisionDetails.value,
+      [payload.revision_id]: payload
+    }
+    await loadMemoryGates()
+    ElMessage.success('rollback 成功')
+  } catch (error) {
+    memoryActionError.value = String(error?.userMessage || error?.message || 'memory rollback failed')
+  }
+}
+
 watch(() => props.workId, async () => {
   await refreshPanel()
 }, { immediate: true })
 
 watch(() => props.chapterId, async () => {
-  await Promise.all([loadContextReadiness(), loadCandidateDrafts(), loadPlanningData(), loadAISuggestions(), loadConflicts()])
+  await Promise.all([loadContextReadiness(), loadCandidateDrafts(), loadPlanningData(), loadAISuggestions(), loadMemoryGates(), loadConflicts()])
 }, { immediate: true })
 
 onMounted(async () => {

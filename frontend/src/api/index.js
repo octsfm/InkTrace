@@ -278,7 +278,34 @@ export const aiApi = {
   // ConflictGuard
   listConflicts: (params = {}) => api.get('/v2/ai/conflicts', { params }),
   getConflict: (recordId) => api.get(`/v2/ai/conflicts/${encodeURIComponent(recordId)}`),
-  decideConflict: (recordId, payload) => api.post(`/v2/ai/conflicts/${encodeURIComponent(recordId)}/decide`, payload)
+  decideConflict: (recordId, payload) => api.post(`/v2/ai/conflicts/${encodeURIComponent(recordId)}/decide`, payload),
+
+  // MemoryReviewGate / MemoryRevision
+  listMemoryGates: (params = {}) => api.get('/v2/ai/memory-gates', { params }),
+  getMemoryGate: (gateId) => api.get(`/v2/ai/memory-gates/${encodeURIComponent(gateId)}`),
+  approveMemorySuggestion: (gateId, suggestionId, payload) => api.post(
+    `/v2/ai/memory-gates/${encodeURIComponent(gateId)}/suggestions/${encodeURIComponent(suggestionId)}/approve`,
+    payload
+  ),
+  editApproveMemorySuggestion: (gateId, suggestionId, payload) => api.post(
+    `/v2/ai/memory-gates/${encodeURIComponent(gateId)}/suggestions/${encodeURIComponent(suggestionId)}/edit-approve`,
+    payload
+  ),
+  rejectMemorySuggestion: (gateId, suggestionId, payload) => api.post(
+    `/v2/ai/memory-gates/${encodeURIComponent(gateId)}/suggestions/${encodeURIComponent(suggestionId)}/reject`,
+    payload
+  ),
+  deferMemorySuggestion: (gateId, suggestionId, payload) => api.post(
+    `/v2/ai/memory-gates/${encodeURIComponent(gateId)}/suggestions/${encodeURIComponent(suggestionId)}/defer`,
+    payload
+  ),
+  applyMemoryGate: (gateId, payload) => api.post(`/v2/ai/memory-gates/${encodeURIComponent(gateId)}/apply`, payload),
+  listMemoryRevisions: (params = {}) => api.get('/v2/ai/memory-revisions', { params }),
+  getMemoryRevision: (revisionId) => api.get(`/v2/ai/memory-revisions/${encodeURIComponent(revisionId)}`),
+  rollbackMemoryRevision: (revisionId, payload) => api.post(
+    `/v2/ai/memory-revisions/${encodeURIComponent(revisionId)}/rollback`,
+    payload
+  )
 }
 
 export const vectorApi = {
