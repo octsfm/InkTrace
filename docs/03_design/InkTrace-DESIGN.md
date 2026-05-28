@@ -385,6 +385,11 @@ DESIGN.md 是给 AI coding agent / 前端实现使用的设计系统文件，负
 - [ ] 是否只展示用户可理解摘要
 - [ ] 是否隐藏完整 Prompt/JSON/日志
 - [ ] 是否有 degraded/blocked 明确提示
+- [ ] AI Settings 是否具备“加载/编辑/保存/测试”完整闭环（非只读展示）
+- [ ] AI Settings 默认入口是否为作者模式：仅展示“分析模型 Key（Kimi）+ 写作模型 Key（DeepSeek）”
+- [ ] 技术参数（Provider 开关、base_url、timeout、细粒度 role 分工）是否默认折叠，不阻塞主路径
+- [ ] 当 key 未配置或关键分工（analysis/writer）无效时，续写/审阅等按钮是否禁用并显示中文阻断原因
+- [ ] API Key 是否仅显示 `key_configured/api_key_masked`，无任何明文或可逆片段
 
 ### 6.7 ReviewTab
 - CandidateDraft（候选稿）、AIReview、ConflictGuard、MemoryReviewGate 入口。
@@ -560,6 +565,29 @@ DESIGN.md 是给 AI coding agent / 前端实现使用的设计系统文件，负
 4. 键盘可操作，焦点可见。  
 5. 长文本阅读需舒适行高与段距。
 
+### 9.1 作者语言优先（冻结）
+
+1. 默认界面文案必须使用作者任务语义，不以内部工程术语作为主标题。  
+2. 内部术语仅允许出现在开发者模式、帮助说明或折叠详情。  
+3. 状态提示必须先给用户动作建议，再给技术原因摘要。  
+
+术语映射基线：
+
+| 内部术语 | 默认文案 |
+|---|---|
+| ContextPack | 写作上下文 |
+| AgentSession | AI 写作任务 |
+| blocked | 当前无法继续 |
+| degraded | 信息不完整，可继续尝试 |
+| stale | 可能已过期 |
+| superseded | 已有新版本 |
+
+实现检查点：
+
+- [ ] 默认卡片标题是否使用作者语言而非内部术语
+- [ ] 错误/警告是否优先展示下一步操作
+- [ ] 关闭开发者模式后是否隐藏系统术语详情
+
 ---
 
 ## 十、禁止风格
@@ -596,6 +624,24 @@ DESIGN.md 是给 AI coding agent / 前端实现使用的设计系统文件，负
 额外强约束：  
 **前端开发者和 AI coding agent 在开始任何页面实现前，必须同时阅读 P1-UI、DESIGN.md、P1-11 三份文档，不得只读其中一份。**
 
+人用优先约束（冻结）：
+1. 面向作者/编辑的首屏必须使用任务语言，不以平台参数结构组织。  
+2. Provider、role mapping、base_url、timeout、trace 等术语不得作为主路径文案。  
+3. 主路径只承载“当前任务必须动作”；高级参数一律折叠后置。  
+
+### 11.1 用户文案映射（冻结）
+
+| 系统术语 | 用户可见文案 |
+|---|---|
+| Provider | 模型服务 |
+| model_role / role mapping | 模型分工 |
+| analysis role | 分析模型 |
+| writer role | 写作模型 |
+| test provider | 测试连接 |
+| ContextPack | 写作上下文 |
+| Trace | 执行记录（开发者） |
+| Quick Trial | 试写片段（不入正文） |
+
 ---
 
 ## 十二、验收标准
@@ -611,6 +657,8 @@ DESIGN.md 是给 AI coding agent / 前端实现使用的设计系统文件，负
 - [ ] API Key 未在 UI 中任何位置显示
 - [ ] 未显示完整 Prompt / 完整 ContextPack / 完整 JSON / Tool 调用日志 / LLM 原始日志
 - [ ] 未引入 P2 UI 能力（自动连续续写队列、Style DNA、Citation Link、@ 引用、成本看板、分析看板）
+- [ ] 新用户（作者视角）可在 60 秒内完成“分析模型 + 写作模型”配置并完成一次连接测试
+- [ ] 主路径全程不要求用户理解 Provider/role/base_url/timeout 等平台术语
 
 ### 🟡 重要（发布前处理）
 - [ ] 颜色、字体、间距、圆角、阴影、边框 Token 使用一致

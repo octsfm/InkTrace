@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from application.services.ai.agent_trace_service import AgentTraceService
 from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
@@ -27,12 +28,18 @@ from domain.entities.ai.models import (
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from infrastructure.database.repositories.ai.file_ai_review_store import FileAIReviewStore
 from infrastructure.database.repositories.ai.file_ai_suggestion_store import FileAISuggestionStore
+from infrastructure.database.repositories.ai.file_agent_trace_store import FileAgentTraceStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
 from infrastructure.database.repositories.ai.file_conflict_guard_store import FileConflictGuardStore
 from infrastructure.database.repositories.ai.file_direction_plan_store import FileDirectionPlanStore
 from infrastructure.database.repositories.ai.file_memory_review_store import FileMemoryReviewStore
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
+
+
+class _CriticalAuditTraceStub:
+    def record_audit_event(self, **kwargs):
+        raise ValueError("critical_audit_write_failed")
 
 
 def _build_service(tmp_path: Path):
@@ -50,6 +57,8 @@ def _build_service(tmp_path: Path):
     conflict_store = FileConflictGuardStore(tmp_path / "conflicts.json")
     ai_suggestion_store = FileAISuggestionStore(tmp_path / "ai_suggestions.json")
     direction_store = FileDirectionPlanStore(tmp_path / "direction_plan.json")
+    trace_store = FileAgentTraceStore(tmp_path / "memory_trace.json")
+    trace_service = AgentTraceService(repository=trace_store)
     conflict_guard_service = ConflictGuardService(
         conflict_guard_repository=conflict_store,
         candidate_draft_repository=candidate_store,
@@ -57,6 +66,7 @@ def _build_service(tmp_path: Path):
         ai_suggestion_repository=ai_suggestion_store,
         direction_plan_repository=direction_store,
         ai_review_repository=review_store,
+        trace_service=trace_service,
     )
     service = MemoryReviewGateService(
         memory_review_repository=review_gate_store,
@@ -65,6 +75,7 @@ def _build_service(tmp_path: Path):
         ai_review_repository=review_store,
         candidate_draft_repository=candidate_store,
         conflict_guard_service=conflict_guard_service,
+        trace_service=trace_service,
     )
     return {
         "work_service": work_service,
@@ -75,7 +86,24 @@ def _build_service(tmp_path: Path):
         "state_store": state_store,
         "review_gate_store": review_gate_store,
         "service": service,
+        "trace_service": trace_service,
     }
+
+
+def _build_service_with_trace_stub(tmp_path: Path):
+    bundle = _build_service(tmp_path)
+    from application.services.ai.memory_review_gate_service import MemoryReviewGateService
+
+    bundle["service"] = MemoryReviewGateService(
+        memory_review_repository=bundle["review_gate_store"],
+        story_memory_repository=bundle["memory_store"],
+        story_state_repository=bundle["state_store"],
+        ai_review_repository=bundle["review_store"],
+        candidate_draft_repository=bundle["candidate_store"],
+        conflict_guard_service=None,
+        trace_service=_CriticalAuditTraceStub(),
+    )
+    return bundle
 
 
 def _seed_review_context(tmp_path: Path):
@@ -205,6 +233,7 @@ def _seed_review_context(tmp_path: Path):
 def test_memory_review_gate_generates_review_suggestions_and_supports_approve_apply_rollback(tmp_path: Path) -> None:
     bundle, work_id, chapter_id = _seed_review_context(tmp_path)
     service = bundle["service"]
+    trace_service = bundle["trace_service"]
 
     gate = service.generate_from_review("rv_memory_gate")
     assert gate.state == MemoryGateState.OPEN
@@ -249,6 +278,8 @@ def test_memory_review_gate_generates_review_suggestions_and_supports_approve_ap
     edited_memory_suggestion = service.get_suggestion(memory_suggestion.id)
     assert edited_memory_suggestion.decision == MemorySuggestionDecisionType.EDITED_APPROVED
     assert edited_memory_suggestion.status == MemorySuggestionStatus.EDITED
+    event_types = [item.event_type for item in trace_service.list_events("trace_memory_approve_2")]
+    assert "memory_revision_created" in event_types
 
     apply_result = service.apply_gate(
         gate.gate_id,
@@ -403,7 +434,7 @@ def test_memory_review_gate_rollback_is_blocked_when_target_memory_version_has_c
             update={
                 "snapshot_id": "memory_external_change",
                 "global_summary": "外部流程已修改正式记忆。",
-                "created_at": "2026-05-22T23:59:59+00:00",
+                "created_at": "2026-12-31T23:59:59+00:00",
             }
         )
     )
@@ -421,3 +452,37 @@ def test_memory_review_gate_rollback_is_blocked_when_target_memory_version_has_c
         assert str(exc) == "memory_revision_apply_blocked"
     else:
         raise AssertionError("rollback should be blocked when target memory version changed")
+
+
+def test_memory_review_gate_fail_safe_blocks_high_risk_actions_when_critical_audit_fails(tmp_path: Path) -> None:
+    bundle, work_id, chapter_id = _seed_review_context(tmp_path)
+    from application.services.ai.memory_review_gate_service import MemoryReviewGateService
+
+    service = MemoryReviewGateService(
+        memory_review_repository=bundle["review_gate_store"],
+        story_memory_repository=bundle["memory_store"],
+        story_state_repository=bundle["state_store"],
+        ai_review_repository=bundle["review_store"],
+        candidate_draft_repository=bundle["candidate_store"],
+        conflict_guard_service=None,
+        trace_service=_CriticalAuditTraceStub(),
+    )
+    gate = service.generate_from_review("rv_memory_gate")
+    suggestions = service.list_gate_suggestions(gate.gate_id)
+
+    try:
+        service.approve_suggestion(
+            gate.gate_id,
+            suggestions[0].id,
+            idempotency_key="s9-audit-approve-fail-1",
+            user_id="ui-user",
+            user_action=True,
+            request_id="req_memory_audit_fail_approve",
+            trace_id="trace_memory_audit_fail_approve",
+        )
+    except ValueError as exc:
+        assert str(exc) == "critical_audit_write_failed"
+    else:
+        raise AssertionError("critical audit failure should block approve_memory")
+
+    assert service.get_suggestion(suggestions[0].id).decision == MemorySuggestionDecisionType.NONE

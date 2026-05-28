@@ -18,11 +18,14 @@ from functools import lru_cache
 from application.services.ai.ai_job_service import AIJobService
 from application.services.ai.agent_workflow import AgentOrchestrator
 from application.services.ai.agent_runtime_service import AgentRuntimeService
+from application.services.ai.agent_trace_service import AgentTraceService
 from application.services.ai.ai_review_service import AIReviewApplicationService
 from application.services.ai.ai_suggestion_service import AISuggestionService
 from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.ai.candidate_rewrite_service import CandidateRewriteService
 from application.services.ai.memory_review_gate_service import MemoryReviewGateService
+from application.services.ai.planning_api_service import PlanningAPIService
+from application.services.ai.plot_arc_service import PlotArcQueryService
 from application.services.ai.ai_settings_service import AISettingsService
 from application.services.ai.candidate_review_service import CandidateReviewService
 from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
@@ -42,6 +45,7 @@ from infrastructure.database.repositories.ai.file_ai_suggestion_store import Fil
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
 from infrastructure.database.repositories.ai.file_agent_runtime_store import FileAgentRuntimeStore
+from infrastructure.database.repositories.ai.file_agent_trace_store import FileAgentTraceStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
 from infrastructure.database.repositories.ai.file_chapter_plan_store import FileChapterPlanStore
 from infrastructure.database.repositories.ai.file_context_pack_store import FileContextPackStore
@@ -205,6 +209,16 @@ def get_agent_runtime_store() -> FileAgentRuntimeStore:
 
 
 @lru_cache(maxsize=1)
+def get_agent_trace_repository() -> FileAgentTraceStore:
+    return FileAgentTraceStore()
+
+
+@lru_cache(maxsize=1)
+def get_agent_trace_service() -> AgentTraceService:
+    return AgentTraceService(repository=get_agent_trace_repository())
+
+
+@lru_cache(maxsize=1)
 def get_agent_runtime_service() -> AgentRuntimeService:
     store = get_agent_runtime_store()
     return AgentRuntimeService(
@@ -213,6 +227,7 @@ def get_agent_runtime_service() -> AgentRuntimeService:
         observation_repository=store,
         ai_job_service=get_ai_job_service(),
         tool_facade=get_core_tool_facade(),
+        trace_service=get_agent_trace_service(),
     )
 
 
@@ -223,6 +238,7 @@ def get_agent_orchestrator() -> AgentOrchestrator:
         plot_arc_repository=get_plot_arc_repository(),
         chapter_plan_repository=get_chapter_plan_repository(),
         direction_plan_repository=get_direction_plan_repository(),
+        trace_service=get_agent_trace_service(),
     )
 
 
@@ -261,6 +277,7 @@ def get_quick_trial_service() -> QuickTrialApplicationService:
         model_router=get_model_router(),
         provider_registry=get_provider_registry(),
         llm_call_log_repository=get_llm_call_log_repository(),
+        trace_service=get_agent_trace_service(),
     )
 
 
@@ -274,6 +291,7 @@ def get_core_tool_facade() -> CoreToolFacade:
         direction_plan_repository=get_direction_plan_repository(),
         writer=FakeWriter(),
         job_service=get_ai_job_service(),
+        trace_service=get_agent_trace_service(),
     )
 
 
@@ -285,6 +303,7 @@ def get_continuation_workflow() -> MinimalContinuationWorkflow:
         chapter_service=get_chapter_service(),
         tool_facade=get_core_tool_facade(),
         candidate_draft_repository=get_candidate_draft_repository(),
+        direction_plan_repository=get_direction_plan_repository(),
         conflict_guard_service=get_conflict_guard_service(),
         job_repository=store,
         step_repository=store,
@@ -299,6 +318,7 @@ def get_candidate_review_service() -> CandidateReviewService:
         chapter_service=get_chapter_service(),
         initialization_service=get_initialization_service(),
         conflict_guard_service=get_conflict_guard_service(),
+        trace_service=get_agent_trace_service(),
     )
 
 
@@ -332,6 +352,7 @@ def get_ai_suggestion_service() -> AISuggestionService:
         ai_review_repository=get_ai_review_repository(),
         candidate_draft_repository=get_candidate_draft_repository(),
         candidate_rewrite_service=get_candidate_rewrite_service(),
+        trace_service=get_agent_trace_service(),
     )
 
 
@@ -344,6 +365,7 @@ def get_conflict_guard_service() -> ConflictGuardService:
         ai_suggestion_repository=get_ai_suggestion_repository(),
         direction_plan_repository=get_direction_plan_repository(),
         ai_review_repository=get_ai_review_repository(),
+        trace_service=get_agent_trace_service(),
     )
 
 
@@ -356,4 +378,26 @@ def get_memory_review_gate_service() -> MemoryReviewGateService:
         ai_review_repository=get_ai_review_repository(),
         candidate_draft_repository=get_candidate_draft_repository(),
         conflict_guard_service=get_conflict_guard_service(),
+        trace_service=get_agent_trace_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_planning_api_service() -> PlanningAPIService:
+    return PlanningAPIService(
+        work_service=get_work_service(),
+        chapter_service=get_chapter_service(),
+        context_pack_service=get_context_pack_service(),
+        tool_facade=get_core_tool_facade(),
+        orchestrator=get_agent_orchestrator(),
+        direction_plan_repository=get_direction_plan_repository(),
+        chapter_plan_repository=get_chapter_plan_repository(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_plot_arc_query_service() -> PlotArcQueryService:
+    return PlotArcQueryService(
+        plot_arc_repository=get_plot_arc_repository(),
+        chapter_service=get_chapter_service(),
     )

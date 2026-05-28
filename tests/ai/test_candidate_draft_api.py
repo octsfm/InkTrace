@@ -99,7 +99,7 @@ def test_continuation_api_rejects_non_user_action_caller_type() -> None:
     )
 
     assert response.status_code == 403
-    assert response.json()["error"]["error_code"] == "caller_type_not_allowed"
+    assert response.json()["error"]["error_code"] == "caller_type_forbidden"
 
 
 def test_candidate_draft_api_exposes_versions_and_supports_select_accept_apply_specific_version() -> None:
@@ -172,18 +172,19 @@ def test_candidate_draft_api_exposes_versions_and_supports_select_accept_apply_s
             "caller_type": "user_action",
             "user_action": True,
             "user_id": "ui-user",
+            "idempotency_key": "candidate-version-select-1",
         },
     )
     assert select_response.status_code == 200
     assert select_response.json()["data"]["selected_version_id"] == "ver_api_2"
 
     accept_response = client.post(
-        f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/accept",
+        f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/versions/ver_api_2/accept",
         json={
             "caller_type": "user_action",
             "user_action": True,
             "user_id": "ui-user",
-            "candidate_version_id": "ver_api_2",
+            "idempotency_key": "candidate-version-accept-1",
         },
     )
     assert accept_response.status_code == 200
@@ -345,3 +346,62 @@ def test_continuation_start_triggers_async_conflict_detection_record() -> None:
     assert conflicts_response.status_code == 200
     items = conflicts_response.json()["data"]["items"]
     assert any(item["conflict_type"] == "candidate_version_conflict" for item in items)
+
+
+def test_candidate_draft_gate_api_requires_user_action_and_idempotency_key_for_all_gate_actions() -> None:
+    work_id, chapter_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    start_response = client.post(
+        "/api/v2/ai/continuations",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "继续写作",
+        },
+    )
+    assert start_response.status_code == 200
+    candidate_draft_id = start_response.json()["data"]["candidate_draft_id"]
+    version_id = dependencies.get_candidate_draft_repository().list_versions(candidate_draft_id)[0].candidate_version_id
+
+    missing_select_key = client.post(
+        f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/versions/{version_id}/select",
+        json={"caller_type": "user_action", "user_action": True, "user_id": "ui-user", "idempotency_key": ""},
+    )
+    assert missing_select_key.status_code == 400
+    assert missing_select_key.json()["error"]["error_code"] == "idempotency_key_required"
+
+    wrong_accept_caller = client.post(
+        f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/versions/{version_id}/accept",
+        json={"caller_type": "workflow_compat", "user_action": True, "user_id": "ui-user", "idempotency_key": "cd-acc-bad"},
+    )
+    assert wrong_accept_caller.status_code == 403
+    assert wrong_accept_caller.json()["error"]["error_code"] == "caller_type_forbidden"
+
+    missing_reject_user_action = client.post(
+        f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/versions/{version_id}/reject",
+        json={
+            "caller_type": "user_action",
+            "user_action": False,
+            "user_id": "ui-user",
+            "reason": "reject",
+            "idempotency_key": "cd-reject-bad",
+        },
+    )
+    assert missing_reject_user_action.status_code == 403
+    assert missing_reject_user_action.json()["error"]["error_code"] == "action_not_allowed"
+
+    missing_rewrite_key = client.post(
+        f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/rewrites",
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "ui-user",
+            "source_version_id": version_id,
+            "trigger_type": "user_instruction",
+            "user_instruction": "rewrite",
+            "idempotency_key": "",
+        },
+    )
+    assert missing_rewrite_key.status_code == 400
+    assert missing_rewrite_key.json()["error"]["error_code"] == "idempotency_key_required"

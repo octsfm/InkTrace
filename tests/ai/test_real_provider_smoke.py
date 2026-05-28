@@ -74,11 +74,22 @@ def test_real_provider_smoke_via_api(monkeypatch, tmp_path) -> None:
                     "model_name": model_name,
                 }
             },
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "real-provider-settings-save",
         },
     )
     assert save_response.status_code == 200
 
-    test_response = client.post(f"/api/v2/ai/settings/providers/{provider_name}/test", json={"model_name": model_name})
+    test_response = client.post(
+        f"/api/v2/ai/settings/providers/{provider_name}/test",
+        json={
+            "model_name": model_name,
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "real-provider-test",
+        },
+    )
     assert test_response.status_code == 200
     assert test_response.json()["data"]["test_status"] == "ok"
 

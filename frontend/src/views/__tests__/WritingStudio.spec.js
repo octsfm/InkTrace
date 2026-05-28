@@ -122,23 +122,23 @@ const ChapterTitleInputStub = defineComponent({
   }
 })
 
-const AssetRailStub = defineComponent({
-  name: 'AssetRailStub',
-  setup() {
-    return () => h('div', { class: 'asset-rail-stub' })
-  }
-})
-
-const AssetDrawerStub = defineComponent({
-  name: 'AssetDrawerStub',
+const RightWorkspacePanelStub = defineComponent({
+  name: 'RightWorkspacePanelStub',
   props: {
-    activeTab: {
+    modelValue: {
       type: String,
       default: ''
     }
   },
   setup(props, { slots }) {
-    return () => h('div', { class: 'asset-drawer-body' }, slots.default?.({ activeTab: props.activeTab }) || [])
+    return () => h('div', { class: 'right-workspace-panel__body' }, slots.default?.({ activeTab: props.modelValue }) || [])
+  }
+})
+
+const ReviewTabStub = defineComponent({
+  name: 'ReviewTabStub',
+  setup() {
+    return () => h('div', { class: 'review-tab-stub' })
   }
 })
 
@@ -236,12 +236,12 @@ describe('WritingStudio layout contract', () => {
     expect(source).toContain('class="studio-shell"')
     expect(source).toContain('class="sidebar-column"')
     expect(source).toContain('class="editor-column"')
-    expect(source).toContain('class="asset-rail-column"')
+    expect(source).toContain('class="right-workspace-column"')
     expect(source).toContain('<ChapterSidebar')
     expect(source).toContain('<ChapterTitleInput')
     expect(source).toContain('<PureTextEditor')
-    expect(source).toContain('<AssetRail')
-    expect(source).toContain('<AssetDrawer')
+    expect(source).toContain('<RightWorkspacePanel')
+    expect(source).toContain('<ReviewTab')
   })
 
   it('initializes work and session through workspace store while loading chapters from v1 API', () => {
@@ -255,40 +255,38 @@ describe('WritingStudio layout contract', () => {
     expect(source).toContain('await focusEditor()')
   })
 
-  it('keeps AssetDrawer as a single active drawer controlled by activeAssetTab', () => {
-    expect(source).toContain('const activeAssetTab = ref')
-    expect(source).toContain('v-if="activeAssetTab"')
-    expect(source).toContain(':active-tab="activeAssetTab"')
-    expect(source).toContain('v-show="!isFocusMode && !activeAssetTab" class="asset-rail-column"')
-    expect(source).toContain(':mobile="isMobileAssetDrawer"')
-    expect(source).toContain('toggleAssetDrawer')
-    expect(source).toContain('closeAssetDrawer')
+  it('keeps the right workspace panel as a single tab host controlled by activeWorkspaceTab', () => {
+    expect(source).toContain('const activeWorkspaceTab = ref')
+    expect(source).toContain(':model-value="activeWorkspaceTab"')
+    expect(source).toContain('@update:model-value="handleWorkspaceTabChange"')
+    expect(source).toContain('class="right-workspace-column"')
+    expect(source).toContain('handleWorkspaceTabChange')
   })
 
-  it('uses mobile overlay wiring for asset drawer without creating a separate page', () => {
+  it('uses mobile overlay wiring for the right workspace without creating a separate page', () => {
     expect(source).toContain('const MOBILE_ASSET_BREAKPOINT = 760')
-    expect(source).toContain('const isMobileAssetDrawer = ref(false)')
-    expect(source).toContain('const syncAssetDrawerViewport = () =>')
-    expect(source).toContain("window.addEventListener('resize', syncAssetDrawerViewport)")
-    expect(source).toContain("window.removeEventListener('resize', syncAssetDrawerViewport)")
-    expect(source).toContain(":class=\"{ 'mobile-overlay-host': isMobileAssetDrawer }\"")
-    expect(source).toContain('.asset-drawer-column.mobile-overlay-host')
+    expect(source).toContain('const isMobileWorkspacePanel = ref(false)')
+    expect(source).toContain('const syncWorkspaceViewport = () =>')
+    expect(source).toContain("window.addEventListener('resize', syncWorkspaceViewport)")
+    expect(source).toContain("window.removeEventListener('resize', syncWorkspaceViewport)")
+    expect(source).toContain(":mobile=\"isMobileWorkspacePanel\"")
     expect(source).not.toContain("router.push('/assets'")
   })
 
-  it('mounts outline timeline and foreshadow asset panels inside the drawer', () => {
+  it('mounts outline timeline and foreshadow asset panels inside the right workspace panel', () => {
     expect(source).toContain('<OutlinePanel')
     expect(source).toContain('<TimelinePanel')
     expect(source).toContain('<ForeshadowPanel')
     expect(source).toContain('<CharacterPanel')
     expect(source).toContain('<AIPanel')
-    expect(source).toContain("v-else-if=\"activeTab === 'ai'\"")
+    expect(source).toContain("v-else-if=\"activeTab === 'review'\"")
     expect(source).not.toContain('outline_file')
     expect(source).not.toContain('导入大纲')
   })
 
-  it('moves ai panel into the right workspace drawer instead of keeping it below the editor', () => {
+  it('moves ai panel into the right workspace tabs instead of keeping it below the editor', () => {
     expect(source).toContain("activeTab === 'ai'")
+    expect(source).toContain("mode=\"ai\"")
     expect(source).toContain(':chapter-id="chapterDataStore.activeChapterId"')
     expect(source).not.toContain('<AIPanel\n              v-show="!isFocusMode"')
   })
@@ -313,23 +311,23 @@ describe('WritingStudio layout contract', () => {
     expect(source).toContain('window.addEventListener(\'keydown\', handleEditorSaveShortcut)')
     expect(source).toContain('key !== \'s\'')
     expect(source).toContain('activeElement?.closest?.(\'.editor-shell\')')
-    expect(source).toContain('activeElement?.closest?.(\'.asset-drawer-body\')')
+    expect(source).toContain('activeElement?.closest?.(\'.right-workspace-panel__body\')')
     expect(source).toContain('event.preventDefault()')
     expect(source).toContain('await flushCurrentDraftNow()')
   })
 
-  it('routes Ctrl/Cmd+S inside asset drawer only to the focused asset panel', () => {
+  it('routes Ctrl/Cmd+S inside the right workspace only to the focused asset panel', () => {
     expect(source).toContain('const saveFocusedAssetDraft = async')
-    expect(source).toContain("if (activeAssetTab.value === 'outline')")
+    expect(source).toContain("if (activeWorkspaceTab.value === 'outline')")
     expect(source).toContain('outlinePanelRef.value?.saveFocusedDraft?.(activeAssetFocusArea.value)')
-    expect(source).toContain("if (activeAssetTab.value === 'timeline')")
+    expect(source).toContain("if (activeWorkspaceTab.value === 'timeline')")
     expect(source).toContain("activeAssetFocusArea.value === 'timeline_reorder' ? 'reorder' : 'event'")
     expect(source).toContain('timelinePanelRef.value?.saveFocusedDraft?.(mode)')
-    expect(source).toContain("if (activeAssetTab.value === 'foreshadow')")
+    expect(source).toContain("if (activeWorkspaceTab.value === 'foreshadow')")
     expect(source).toContain('foreshadowPanelRef.value?.saveFocusedDraft?.()')
-    expect(source).toContain("if (activeAssetTab.value === 'character')")
+    expect(source).toContain("if (activeWorkspaceTab.value === 'character')")
     expect(source).toContain('characterPanelRef.value?.saveFocusedDraft?.()')
-    expect(source).not.toContain("activeElement?.closest?.('.asset-rail-column')")
+    expect(source).not.toContain("activeElement?.closest?.('.right-workspace-tab-rail')")
   })
 
   it('uses save state store as the local draft boundary', () => {
@@ -566,8 +564,8 @@ describe('WritingStudio focus mode', () => {
             restoreViewportSpy,
             focusEditorSpy
           }),
-          AssetRail: AssetRailStub,
-          AssetDrawer: AssetDrawerStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
           OutlinePanel: buildAssetPanelStub('outline-panel'),
           TimelinePanel: buildAssetPanelStub('timeline-panel'),
           ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
@@ -608,7 +606,7 @@ describe('WritingStudio focus mode', () => {
 
     expect(wrapper.find('.writing-studio').classes()).toContain('writing-studio--focus')
     expect(wrapper.find('.sidebar-column').attributes('style')).toContain('display: none;')
-    expect(wrapper.find('.asset-rail-column').attributes('style')).toContain('display: none;')
+    expect(wrapper.find('.right-workspace-column').attributes('style')).toContain('display: none;')
     expect(wrapper.find('.status-bar-stub').exists()).toBe(true)
     expect(wrapper.get('textarea').element).toBe(originalNode)
     expect(chapterDataStore.activeChapterContent).toBe('第一章正文内容')
@@ -641,8 +639,8 @@ describe('WritingStudio focus mode', () => {
         stubs: {
           ChapterSidebar: ChapterSidebarStub,
           ChapterTitleInput: ChapterTitleInputStub,
-          AssetRail: AssetRailStub,
-          AssetDrawer: AssetDrawerStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
           OutlinePanel: buildAssetPanelStub('outline-panel'),
           TimelinePanel: buildAssetPanelStub('timeline-panel'),
           ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
@@ -688,8 +686,8 @@ describe('WritingStudio focus mode', () => {
         stubs: {
           ChapterSidebar: ChapterSidebarStub,
           ChapterTitleInput: ChapterTitleInputStub,
-          AssetRail: AssetRailStub,
-          AssetDrawer: AssetDrawerStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
           OutlinePanel: buildAssetPanelStub('outline-panel'),
           TimelinePanel: buildAssetPanelStub('timeline-panel'),
           ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
@@ -727,8 +725,8 @@ describe('WritingStudio focus mode', () => {
         stubs: {
           ChapterSidebar: ChapterSidebarStub,
           ChapterTitleInput: ChapterTitleInputStub,
-          AssetRail: AssetRailStub,
-          AssetDrawer: AssetDrawerStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
           OutlinePanel: buildAssetPanelStub('outline-panel'),
           TimelinePanel: buildAssetPanelStub('timeline-panel'),
           ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
@@ -769,8 +767,8 @@ describe('WritingStudio focus mode', () => {
         stubs: {
           ChapterSidebar: ChapterSidebarStub,
           ChapterTitleInput: ChapterTitleInputStub,
-          AssetRail: AssetRailStub,
-          AssetDrawer: AssetDrawerStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
           OutlinePanel: buildAssetPanelStub('outline-panel'),
           TimelinePanel: buildAssetPanelStub('timeline-panel'),
           ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
@@ -819,8 +817,8 @@ describe('WritingStudio focus mode', () => {
         stubs: {
           ChapterSidebar: ChapterSidebarStub,
           ChapterTitleInput: ChapterTitleInputStub,
-          AssetRail: AssetRailStub,
-          AssetDrawer: AssetDrawerStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
           OutlinePanel: buildAssetPanelStub('outline-panel'),
           TimelinePanel: buildAssetPanelStub('timeline-panel'),
           ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
@@ -860,8 +858,8 @@ describe('WritingStudio focus mode', () => {
         stubs: {
           ChapterSidebar: ChapterSidebarStub,
           ChapterTitleInput: ChapterTitleInputStub,
-          AssetRail: AssetRailStub,
-          AssetDrawer: AssetDrawerStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
           OutlinePanel: buildAssetPanelStub('outline-panel'),
           TimelinePanel: buildAssetPanelStub('timeline-panel'),
           ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),

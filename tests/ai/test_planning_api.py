@@ -174,3 +174,60 @@ def test_planning_gate_api_requires_user_action_and_idempotency_key() -> None:
     )
     assert no_user_action.status_code == 403
     assert no_user_action.json()["error"]["error_code"] == "action_not_allowed"
+
+
+def test_planning_api_rejects_chapter_plan_and_returns_confirmation_payload() -> None:
+    work_id, chapter_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    proposal = client.post(
+        "/api/v2/ai/directions",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "继续推进灯塔谜团。",
+            "caller_type": "user_action",
+            "idempotency_key": "idem-direction-generate-reject-1",
+        },
+    ).json()["data"]
+    proposal_id = proposal["direction_proposal_id"]
+    option_id = proposal["options"][0]["option_id"]
+
+    selected = client.post(
+        f"/api/v2/ai/directions/{proposal_id}/select",
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "ui-user",
+            "selected_option_id": option_id,
+            "idempotency_key": "idem-direction-select-reject-1",
+        },
+    )
+    assert selected.status_code == 200
+
+    plan = client.post(
+        "/api/v2/ai/chapter-plans",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "direction_proposal_id": proposal_id,
+            "caller_type": "user_action",
+            "idempotency_key": "idem-plan-generate-reject-1",
+        },
+    ).json()["data"]
+    plan_id = plan["chapter_plan_id"]
+
+    rejected = client.post(
+        f"/api/v2/ai/chapter-plans/{plan_id}/reject",
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "ui-user",
+            "user_edit_notes": "这版节奏太快，退回重做",
+            "idempotency_key": "idem-plan-reject-1",
+        },
+    )
+    assert rejected.status_code == 200
+    payload = rejected.json()["data"]
+    assert payload["confirmation"]["confirmation_type"] == "reject"
+    assert payload["plan"]["chapter_plan_id"] == plan_id

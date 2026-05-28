@@ -32,11 +32,13 @@ class AISuggestionService:
         ai_review_repository: AIReviewRepository,
         candidate_draft_repository: CandidateDraftRepository,
         candidate_rewrite_service: CandidateRewriteService,
+        trace_service=None,
     ) -> None:
         self._ai_suggestion_repository = ai_suggestion_repository
         self._ai_review_repository = ai_review_repository
         self._candidate_draft_repository = candidate_draft_repository
         self._candidate_rewrite_service = candidate_rewrite_service
+        self._trace_service = trace_service
 
     def generate_from_review(self, review_id: str) -> AISuggestionBatch:
         review = self._ai_review_repository.get(review_id)
@@ -76,6 +78,7 @@ class AISuggestionService:
                 created_at=now,
                 updated_at=now,
                 request_id=review.review_id,
+                trace_id=draft.trace_id,
                 action=AISuggestionAction(
                     action_type=AISuggestionActionType.CONVERT_TO_REWRITE_INSTRUCTION,
                     requires_user_action=True,
@@ -118,6 +121,7 @@ class AISuggestionService:
                 created_at=now,
                 updated_at=now,
                 request_id=review.review_id,
+                trace_id=draft.trace_id,
                 action=AISuggestionAction(
                     action_type=AISuggestionActionType.DISMISS_ONLY,
                     requires_user_action=True,
@@ -273,7 +277,9 @@ class AISuggestionService:
                 ),
             }
         )
-        return self._ai_suggestion_repository.save(updated)
+        saved = self._ai_suggestion_repository.save(updated)
+        self._record_trace_decision(saved, decision=decision)
+        return saved
 
     def _candidate_draft_id_from_target(self, target_ref_id: str) -> str:
         version = self._candidate_draft_repository.get_version(target_ref_id)
@@ -283,6 +289,28 @@ class AISuggestionService:
     def _require_user_action(user_action: bool) -> None:
         if not user_action:
             raise ValueError("action_not_allowed")
+
+    def _record_trace_decision(self, item: AISuggestion, *, decision: AISuggestionDecisionType) -> None:
+        if self._trace_service is None or not str(item.trace_id or "").strip():
+            return
+        event_type = {
+            AISuggestionDecisionType.ACCEPTED: "suggestion_accepted",
+            AISuggestionDecisionType.DISMISSED: "suggestion_dismissed",
+        }.get(decision)
+        if not event_type:
+            return
+        self._trace_service.record_audit_event(
+            trace_id=item.trace_id,
+            session_id=item.agent_session_id,
+            step_id="",
+            event_type=event_type,
+            summary=item.suggestion_id,
+            payload_digest={
+                "suggestion_id": item.suggestion_id,
+                "suggestion_type": item.suggestion_type.value,
+                "target_ref_id": item.target.target_ref_id,
+            },
+        )
 
     @staticmethod
     def _now() -> str:

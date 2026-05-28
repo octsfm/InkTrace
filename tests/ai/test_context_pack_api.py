@@ -141,4 +141,4 @@ def test_context_pack_api_rejects_non_user_action_caller_type() -> None:
     )
 
     assert response.status_code == 403
-    assert response.json()["error"]["error_code"] == "caller_type_not_allowed"
+    assert response.json()["error"]["error_code"] == "caller_type_forbidden"

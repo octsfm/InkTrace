@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from application.services.ai.ai_suggestion_service import AISuggestionService
+from application.services.ai.agent_trace_service import AgentTraceService
 from application.services.ai.candidate_rewrite_service import CandidateRewriteService
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
@@ -30,6 +31,7 @@ from domain.entities.ai.models import (
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from infrastructure.database.repositories.ai.file_ai_review_store import FileAIReviewStore
 from infrastructure.database.repositories.ai.file_ai_suggestion_store import FileAISuggestionStore
+from infrastructure.database.repositories.ai.file_agent_trace_store import FileAgentTraceStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
 
 
@@ -41,6 +43,8 @@ def _build_services(tmp_path: Path):
     candidate_store = FileCandidateDraftStore(tmp_path / "candidate_suggestion.json")
     review_store = FileAIReviewStore(tmp_path / "review_suggestion.json")
     suggestion_store = FileAISuggestionStore(tmp_path / "ai_suggestions.json")
+    trace_store = FileAgentTraceStore(tmp_path / "trace_suggestion.json")
+    trace_service = AgentTraceService(repository=trace_store)
     rewrite_service = CandidateRewriteService(
         candidate_draft_repository=candidate_store,
         ai_review_repository=review_store,
@@ -50,12 +54,13 @@ def _build_services(tmp_path: Path):
         ai_review_repository=review_store,
         candidate_draft_repository=candidate_store,
         candidate_rewrite_service=rewrite_service,
+        trace_service=trace_service,
     )
-    return work_service, chapter_service, candidate_store, review_store, suggestion_store, suggestion_service
+    return work_service, chapter_service, candidate_store, review_store, suggestion_store, suggestion_service, trace_service
 
 
 def _seed_review_context(tmp_path: Path):
-    work_service, chapter_service, candidate_store, review_store, suggestion_store, suggestion_service = _build_services(tmp_path)
+    work_service, chapter_service, candidate_store, review_store, suggestion_store, suggestion_service, trace_service = _build_services(tmp_path)
     work = work_service.create_work("P1-S7 Suggestion", "作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     draft = candidate_store.save(
@@ -79,6 +84,7 @@ def _seed_review_context(tmp_path: Path):
             created_by="workflow",
             created_at="2026-05-21T00:00:00+00:00",
             updated_at="2026-05-21T00:00:00+00:00",
+            trace_id="trace_suggestion_service",
         )
     )
     candidate_store.save_version(
@@ -124,11 +130,11 @@ def _seed_review_context(tmp_path: Path):
             metadata={},
         )
     )
-    return work, chapter, draft, review, suggestion_store, suggestion_service
+    return work, chapter, draft, review, suggestion_store, suggestion_service, trace_service
 
 
 def test_ai_suggestion_service_generates_structured_suggestions_from_review_and_marks_shown(tmp_path: Path) -> None:
-    _, chapter, draft, review, suggestion_store, suggestion_service = _seed_review_context(tmp_path)
+    _, chapter, draft, review, suggestion_store, suggestion_service, _ = _seed_review_context(tmp_path)
 
     batch = suggestion_service.generate_from_review(review.review_id)
     items = suggestion_service.list_suggestions(work_id=draft.work_id, chapter_id=chapter.id.value)
@@ -143,7 +149,7 @@ def test_ai_suggestion_service_generates_structured_suggestions_from_review_and_
 
 
 def test_ai_suggestion_service_accept_dismiss_and_convert_follow_type_matrix(tmp_path: Path) -> None:
-    _, _, draft, review, _, suggestion_service = _seed_review_context(tmp_path)
+    _, _, draft, review, _, suggestion_service, trace_service = _seed_review_context(tmp_path)
     suggestion_service.generate_from_review(review.review_id)
     items = suggestion_service.list_suggestions(work_id=draft.work_id, chapter_id=draft.chapter_id)
     rewrite_item = next(item for item in items if item.suggestion_type == AISuggestionType.REWRITE_SUGGESTION)
@@ -174,6 +180,9 @@ def test_ai_suggestion_service_accept_dismiss_and_convert_follow_type_matrix(tmp
     assert converted.action.action_payload_ref.startswith("rewrite_request:")
     assert dismissed.decision == AISuggestionDecisionType.DISMISSED
     assert dismissed.status == AISuggestionStatus.DISMISSED
+    trace_events = [item.event_type for item in trace_service.list_events(rewrite_item.trace_id)]
+    assert "suggestion_accepted" in trace_events
+    assert "suggestion_dismissed" in trace_events
 
     try:
         suggestion_service.convert_suggestion(
@@ -189,7 +198,7 @@ def test_ai_suggestion_service_accept_dismiss_and_convert_follow_type_matrix(tmp
 
 
 def test_ai_suggestion_service_convert_conflict_resolution_suggestion_to_conflict_ref(tmp_path: Path) -> None:
-    _, _, draft, _, suggestion_store, suggestion_service = _seed_review_context(tmp_path)
+    _, _, draft, _, suggestion_store, suggestion_service, _ = _seed_review_context(tmp_path)
     conflict_suggestion = suggestion_store.save(
         AISuggestion(
             suggestion_id="ais_conflict_1",

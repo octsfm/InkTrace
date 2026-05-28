@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿# InkTrace V2.0-P1-03 五Agent职责与编排详细设计
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿# InkTrace V2.0-P1-03 五Agent职责与编排详细设计
 版本：v1.3 / P1 模块级详细设计候选冻结版  
 状态：候选冻结  
 所属阶段：InkTrace V2.0 P1  
@@ -37,6 +37,13 @@ P1-03 只冻结五 Agent 的职责、输入输出、方向性 Step 序列、Tool
 
 ### 1.3 不覆盖范围
 不定义 AgentRuntime 状态机、不定义 AgentWorkflow Stage/Transition/Decision、不定义四层剧情轨道、不定义 Direction Proposal 算法、不定义 ChapterPlan 完整结构、不定义 CandidateDraftVersion 版本链、不定义 AI Suggestion 类型系统、不定义 Conflict Guard 规则矩阵、不定义 StoryMemory Revision 数据结构、不定义 AgentTrace 完整字段、不定义 API/前端，不进入 P2 自动连续续写、token streaming、AI 自动 apply、AI 自动写正式正文。
+
+### 1.4 作者可见表达约束（冻结）
+
+1. 本文档中的 Agent 术语用于系统内部职责划分，不作为作者主界面默认文案。
+2. 作者默认只看到任务语义（如“AI 正在理解故事”“AI 正在写作草稿”），不直接看到 Tool 权限矩阵、side_effect_level、内部 Step 名称。
+3. 若前端展示 Agent 进度，必须经过翻译层，将 `running/waiting_for_user/failed` 映射为中文任务状态。
+4. Agent 详细执行路径仅在开发者模式可见，普通作者默认不可见。
 
 ---
 

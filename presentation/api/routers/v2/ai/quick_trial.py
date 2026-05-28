@@ -12,7 +12,7 @@ router = APIRouter(tags=["v2-ai-quick-trial"])
 
 def _reject_invalid_caller_type(request: Request, *, caller_type: str) -> object | None:
     if caller_type and caller_type != "user_action":
-        return error_response(request, error_code="caller_type_not_allowed", status_code=403)
+        return error_response(request, error_code="caller_type_forbidden", status_code=403)
     return None
 
 

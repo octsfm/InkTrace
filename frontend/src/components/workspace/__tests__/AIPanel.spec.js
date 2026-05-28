@@ -18,6 +18,11 @@ const applyCandidateDraft = vi.fn()
 const runQuickTrial = vi.fn()
 const reviewCandidateDraft = vi.fn()
 const getAIReview = vi.fn()
+const listAgentSessions = vi.fn()
+const getAgentSession = vi.fn()
+const pauseAgentSession = vi.fn()
+const resumeAgentSession = vi.fn()
+const cancelAgentSession = vi.fn()
 const generateDirectionProposal = vi.fn()
 const listDirectionProposals = vi.fn()
 const getDirectionProposal = vi.fn()
@@ -43,6 +48,21 @@ const convertAISuggestion = vi.fn()
 const listConflicts = vi.fn()
 const getConflict = vi.fn()
 const decideConflict = vi.fn()
+const listMemoryGates = vi.fn()
+const getMemoryRevision = vi.fn()
+const approveMemorySuggestion = vi.fn()
+const editApproveMemorySuggestion = vi.fn()
+const rejectMemorySuggestion = vi.fn()
+const deferMemorySuggestion = vi.fn()
+const applyMemoryGate = vi.fn()
+const rollbackMemoryRevision = vi.fn()
+const listAgentTraces = vi.fn()
+const getAgentTrace = vi.fn()
+const getAgentTraceSteps = vi.fn()
+const getAgentTraceDetailView = vi.fn()
+const listPlotArcs = vi.fn()
+const getPlotArc = vi.fn()
+const getPlotArcStatus = vi.fn()
 
 vi.mock('@/api', () => ({
   aiApi: {
@@ -63,6 +83,11 @@ vi.mock('@/api', () => ({
     runQuickTrial,
     reviewCandidateDraft,
     getAIReview,
+    listAgentSessions,
+    getAgentSession,
+    pauseAgentSession,
+    resumeAgentSession,
+    cancelAgentSession,
     generateDirectionProposal,
     listDirectionProposals,
     getDirectionProposal,
@@ -87,7 +112,22 @@ vi.mock('@/api', () => ({
     convertAISuggestion,
     listConflicts,
     getConflict,
-    decideConflict
+    decideConflict,
+    listMemoryGates,
+    getMemoryRevision,
+    approveMemorySuggestion,
+    editApproveMemorySuggestion,
+    rejectMemorySuggestion,
+    deferMemorySuggestion,
+    applyMemoryGate,
+    rollbackMemoryRevision,
+    listAgentTraces,
+    getAgentTrace,
+    getAgentTraceSteps,
+    getAgentTraceDetailView,
+    listPlotArcs,
+    getPlotArc,
+    getPlotArcStatus
   }
 }))
 
@@ -102,8 +142,21 @@ describe('AIPanel', () => {
 
     getAISettings.mockResolvedValue({
       data: {
-        provider_configs: [{ provider_name: 'fake', enabled: true, default_model: 'fake-chat' }],
-        model_role_mappings: { writer: { provider_name: 'fake', model_name: 'fake-chat' } }
+        provider_configs: [{
+          provider_name: 'fake',
+          enabled: true,
+          default_model: 'fake-chat',
+          key_configured: true,
+          api_key_masked: 'fak********90',
+          last_test_status: 'not_tested'
+        }],
+        model_role_mappings: {
+          analysis: { provider_name: 'fake', model_name: 'fake-analysis' },
+          planning: { provider_name: 'fake', model_name: 'fake-plan' },
+          writer: { provider_name: 'fake', model_name: 'fake-chat' },
+          reviewer: { provider_name: 'fake', model_name: 'fake-review' },
+          rewriter: { provider_name: 'fake', model_name: 'fake-rewrite' }
+        }
       }
     })
     getLatestInitialization.mockResolvedValue({ data: { status: 'completed', analyzed_chapter_count: 1, empty_chapter_count: 0, failed_chapter_count: 0 } })
@@ -139,6 +192,33 @@ describe('AIPanel', () => {
     getCandidateDraftVersion.mockResolvedValue({ data: { candidate_version_id: 'ver_2', content: 'v2 修订稿完整内容', content_summary: 'v2 摘要', status: 'generated' } })
     getCandidateDraftVersionDiff.mockResolvedValue({ data: { from_version_id: 'ver_1', to_version_id: 'ver_2', summary: '新增父亲留下的地图线索。', diff_preview: ['+ 父亲留下地图'] } })
     getAIReview.mockResolvedValue({ data: { review_id: 'rv_1', summary: '审阅完成', issues: [], suggestions: [], risk_level: 'low' } })
+    listAgentSessions.mockResolvedValue({
+      data: {
+        items: [{
+          session_id: 'session_1',
+          status: 'running',
+          workflow_type: 'continuation',
+          current_stage: 'candidate_generation',
+          current_agent_type: 'writer',
+          progress_percent: 48,
+          polling_hint: { next_interval_ms: 2500, stop: false }
+        }]
+      }
+    })
+    getAgentSession.mockResolvedValue({
+      data: {
+        session_id: 'session_1',
+        status: 'waiting_for_user',
+        workflow_type: 'continuation',
+        current_stage: 'human_review_gate',
+        current_agent_type: 'reviewer',
+        progress_percent: 72,
+        polling_hint: { next_interval_ms: 5000, stop: true }
+      }
+    })
+    pauseAgentSession.mockResolvedValue({ data: { session_id: 'session_1', status: 'paused' } })
+    resumeAgentSession.mockResolvedValue({ data: { session_id: 'session_1', status: 'running' } })
+    cancelAgentSession.mockResolvedValue({ data: { session_id: 'session_1', status: 'cancelled' } })
     listAISuggestions.mockResolvedValue({
       data: {
         items: [
@@ -278,6 +358,84 @@ describe('AIPanel', () => {
         }]
       }
     })
+    listMemoryGates.mockResolvedValue({ data: { items: [] } })
+    getMemoryRevision.mockResolvedValue({ data: { revision_id: 'memrev_1', status: 'applied', before_summary: 'A', after_summary: 'B' } })
+    approveMemorySuggestion.mockResolvedValue({ data: { state: 'approved' } })
+    editApproveMemorySuggestion.mockResolvedValue({ data: { state: 'approved' } })
+    rejectMemorySuggestion.mockResolvedValue({ data: { state: 'waiting_for_user' } })
+    deferMemorySuggestion.mockResolvedValue({ data: { state: 'waiting_for_user' } })
+    applyMemoryGate.mockResolvedValue({ data: { gate: { state: 'applied' }, revision_ids: [] } })
+    rollbackMemoryRevision.mockResolvedValue({ data: { revision_id: 'memrev_rb_1', status: 'applied' } })
+    listAgentTraces.mockResolvedValue({
+      data: {
+        items: [{
+          trace_id: 'trace_1',
+          session_id: 'agent_session_1',
+          status: 'running',
+          workflow_type: 'continuation',
+          total_steps: 2,
+          total_tokens: 30
+        }]
+      }
+    })
+    getAgentTrace.mockResolvedValue({
+      data: {
+        trace_id: 'trace_1',
+        status: 'running',
+        workflow_type: 'continuation',
+        result_summary: '',
+        warning_codes: []
+      }
+    })
+    getAgentTraceSteps.mockResolvedValue({
+      data: {
+        items: [{
+          step_id: 'agent_step_1',
+          agent_type: 'writer',
+          action: 'run_writer',
+          status: 'running'
+        }]
+      }
+    })
+    getAgentTraceDetailView.mockResolvedValue({
+      data: {
+        trace: { trace_id: 'trace_1', status: 'running' },
+        events: [{ event_id: 'evt_1', event_type: 'tool_call_denied', summary: 'apply_candidate_to_draft:failed' }],
+        steps: [{ step_id: 'agent_step_1', status: 'running' }],
+        tool_calls: [{ tool_trace_id: 'tool_1', tool_name: 'apply_candidate_to_draft', permission_result: 'deny', call_status: 'failed' }],
+        observations: [],
+        llm_calls: [],
+        user_decisions: [{ decision_trace_id: 'decision_1', decision_type: 'apply_memory', target_entity_type: 'memory_gate', target_entity_id: 'gate_1' }],
+        metrics: [{ metric_id: 'metric_1', metric_name: 'tool_call_denied_total', metric_value: 1 }],
+        alerts: [{ alert_id: 'alert_1', alert_type: 'audit_write_failed', status: 'open', summary: 'trace write failed' }]
+      }
+    })
+    listPlotArcs.mockResolvedValue({
+      data: {
+        items: [
+          { arc_id: 'arc_master_1', arc_level: 'master_arc', title: '灯塔迷局', status: 'ready', summary: '主线围绕灯塔真相展开。' },
+          { arc_id: 'arc_volume_1', arc_level: 'volume_arc', title: '卷一目标', status: 'pending', summary: '确认灯塔背后的势力。' }
+        ]
+      }
+    })
+    getPlotArc.mockResolvedValue({
+      data: {
+        arc_id: 'arc_master_1',
+        arc_level: 'master_arc',
+        title: '灯塔迷局',
+        status: 'ready',
+        summary: '主线围绕灯塔真相展开。',
+        key_points: ['旧地图', '钟声来源']
+      }
+    })
+    getPlotArcStatus.mockResolvedValue({
+      data: {
+        items: [
+          { arc_level: 'master_arc', status: 'ready' },
+          { arc_level: 'volume_arc', status: 'pending' }
+        ]
+      }
+    })
   })
 
   afterEach(() => {
@@ -297,6 +455,105 @@ describe('AIPanel', () => {
 
     await wrapper.get('[data-test="ai-test-provider"]').trigger('click')
     expect(testProvider).toHaveBeenCalled()
+  })
+
+  it('supports editing saving and testing ai settings through the ai tab form', async () => {
+    updateAISettings.mockResolvedValue({
+      data: {
+        provider_configs: [{
+          provider_name: 'fake',
+          enabled: true,
+          default_model: 'fake-writer-v2',
+          key_configured: true,
+          api_key_masked: 'fak********90',
+          last_test_status: 'ok'
+        }],
+        model_role_mappings: {
+          analysis: { provider_name: 'fake', model_name: 'fake-analysis-v2' },
+          planning: { provider_name: 'fake', model_name: 'fake-plan-v2' },
+          writer: { provider_name: 'fake', model_name: 'fake-writer-v2' },
+          reviewer: { provider_name: 'fake', model_name: 'fake-review-v2' },
+          rewriter: { provider_name: 'fake', model_name: 'fake-rewrite-v2' }
+        }
+      }
+    })
+    testProvider.mockResolvedValue({ data: { test_status: 'ok', message: '连接成功' } })
+
+    const wrapper = mount(AIPanel, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3, mode: 'ai' }
+    })
+    await vi.runAllTimersAsync()
+
+    const keyInput = wrapper.get('[data-test="ai-settings-provider-key-fake"]')
+    expect(keyInput.attributes('type')).toBe('password')
+    expect(keyInput.element.value).toBe('')
+    expect(wrapper.text()).toContain('fak********90')
+
+    await wrapper.get('[data-test="ai-settings-provider-model-fake"]').setValue('fake-writer-v2')
+    await keyInput.setValue('new-secret-key')
+    await wrapper.get('[data-test="ai-settings-role-analysis"]').setValue('fake-analysis-v2')
+    await wrapper.get('[data-test="ai-settings-role-writer"]').setValue('fake-writer-v2')
+    await wrapper.get('[data-test="ai-settings-save"]').trigger('click')
+
+    expect(updateAISettings).toHaveBeenCalledWith(expect.objectContaining({
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: expect.any(String),
+      provider_configs: [expect.objectContaining({
+        provider_name: 'fake',
+        api_key: 'new-secret-key',
+        default_model: 'fake-writer-v2'
+      })],
+      model_role_mappings: expect.objectContaining({
+        analysis: { provider_name: 'fake', model_name: 'fake-analysis-v2' },
+        writer: { provider_name: 'fake', model_name: 'fake-writer-v2' }
+      })
+    }))
+
+    await wrapper.get('[data-test="ai-test-provider"]').trigger('click')
+    expect(testProvider).toHaveBeenCalledWith('fake', expect.objectContaining({
+      model_name: 'fake-writer-v2',
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: expect.any(String)
+    }))
+    expect(wrapper.text()).toContain('连接成功')
+  })
+
+  it('blocks generation actions when key or critical role mappings are not ready', async () => {
+    getAISettings.mockResolvedValue({
+      data: {
+        provider_configs: [{
+          provider_name: 'fake',
+          enabled: true,
+          default_model: 'fake-chat',
+          key_configured: false,
+          api_key_masked: '',
+          last_test_status: 'failed'
+        }],
+        model_role_mappings: {
+          analysis: { provider_name: '', model_name: '' },
+          planning: { provider_name: 'fake', model_name: 'fake-plan' },
+          writer: { provider_name: '', model_name: '' },
+          reviewer: { provider_name: 'fake', model_name: 'fake-review' },
+          rewriter: { provider_name: 'fake', model_name: 'fake-rewrite' }
+        }
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3, mode: 'ai' }
+    })
+    await vi.runAllTimersAsync()
+
+    expect(wrapper.text()).toContain('AI 设置未完成')
+    expect(wrapper.text()).toContain('请先配置可用 Provider Key 与 analysis/writer 角色映射。')
+    expect(wrapper.get('[data-test="ai-generate-directions"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="ai-start-initialization"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="quick-trial-run"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.get('[data-test="ai-generate-directions"]').trigger('click')
+    expect(generateDirectionProposal).not.toHaveBeenCalled()
   })
 
   it('polls job status and stops after terminal state', async () => {
@@ -428,6 +685,26 @@ describe('AIPanel', () => {
       candidate_version_id: 'ver_2',
       expected_chapter_version: 5
     }))
+  })
+
+  it('shows trace summary and only loads detail trace in developer mode', async () => {
+    const wrapper = mount(AIPanel, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 5, developerMode: true }
+    })
+    await vi.runAllTimersAsync()
+
+    expect(wrapper.text()).toContain('Agent Trace')
+    expect(wrapper.text()).toContain('trace_1')
+
+    await wrapper.get('[data-test="trace-steps-trace_1"]').trigger('click')
+    expect(getAgentTraceSteps).toHaveBeenCalledWith('trace_1')
+
+    await wrapper.get('[data-test="trace-detail-trace_1"]').trigger('click')
+    expect(getAgentTraceDetailView).toHaveBeenCalledWith('trace_1', { detail: true, developer_mode: true })
+    expect(wrapper.text()).toContain('apply_candidate_to_draft')
+    expect(wrapper.text()).toContain('tool_call_denied_total')
+    expect(wrapper.text()).toContain('audit_write_failed')
+    expect(wrapper.text()).toContain('apply_memory')
   })
 
   it('renders ai suggestion cards and supports accept dismiss convert through s7 apis', async () => {
@@ -582,6 +859,43 @@ describe('AIPanel', () => {
     expect(wrapper.text()).toContain('master_arc')
     expect(wrapper.text()).toContain('volume_arc')
   })
+
+  it('separates generation and review flows by mode while keeping ai tab session and plot arc entries', async () => {
+    const aiWrapper = mount(AIPanel, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3, mode: 'ai' }
+    })
+    await vi.runAllTimersAsync()
+
+    expect(aiWrapper.text()).toContain('AI 设置')
+    expect(aiWrapper.text()).toContain('AgentSession')
+    expect(aiWrapper.text()).toContain('剧情轨道详情')
+    expect(aiWrapper.text()).not.toContain('AI 建议')
+    expect(aiWrapper.text()).not.toContain('记忆审批')
+
+    await aiWrapper.get('[data-test="agent-session-detail-session_1"]').trigger('click')
+    expect(getAgentSession).toHaveBeenCalledWith('session_1')
+
+    await aiWrapper.get('[data-test="agent-session-pause-session_1"]').trigger('click')
+    expect(pauseAgentSession).toHaveBeenCalledWith('session_1', expect.objectContaining({
+      caller_type: 'user_action',
+      user_action: true
+    }))
+
+    await aiWrapper.get('[data-test="plot-arc-detail-arc_master_1"]').trigger('click')
+    expect(getPlotArc).toHaveBeenCalledWith('arc_master_1')
+
+    const reviewWrapper = mount(AIPanel, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3, mode: 'review' }
+    })
+    await vi.runAllTimersAsync()
+
+    expect(reviewWrapper.text()).toContain('续写与候选稿')
+    expect(reviewWrapper.text()).toContain('AI 建议')
+    expect(reviewWrapper.text()).toContain('记忆审批')
+    expect(reviewWrapper.text()).not.toContain('AI 设置')
+    expect(reviewWrapper.text()).not.toContain('AgentSession')
+  })
+
 
   it('renders direction and plan workspace and supports planning actions through p1-s5 apis', async () => {
     generateDirectionProposal.mockResolvedValue({ data: { direction_proposal_id: 'dir_2', status: 'waiting_for_selection', options: [] } })

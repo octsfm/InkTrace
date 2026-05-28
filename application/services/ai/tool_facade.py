@@ -72,6 +72,7 @@ class ToolResultEnvelope:
     error: ToolError | None = None
     request_id: str = ""
     trace_id: str = ""
+    tool_audit_log_ref: str = ""
 
     @property
     def error_code(self) -> str:
@@ -134,6 +135,7 @@ class CoreToolFacade:
         writer,
         job_service=None,
         agent_profile_registry=None,
+        trace_service=None,
     ) -> None:
         self._context_pack_service = context_pack_service
         self._candidate_draft_repository = candidate_draft_repository
@@ -142,6 +144,7 @@ class CoreToolFacade:
         self._direction_plan_repository = direction_plan_repository
         self._writer_service = WriterService(writer)
         self._job_service = job_service
+        self._trace_service = trace_service
         self._output_validation_service = OutputValidationService()
         self._permission_policy = ToolPermissionPolicy()
         self._agent_profile_registry = agent_profile_registry or build_default_agent_profile_registry()
@@ -1066,19 +1069,42 @@ class CoreToolFacade:
         )
 
     def _record_audit(self, tool_name: str, context: ToolExecutionContext, envelope: ToolResultEnvelope) -> None:
-        self.audit_logs.append(
-            {
-                "tool_name": tool_name,
-                "caller_type": context.caller_type,
-                "side_effect_level": context.side_effect_level,
-                "request_id": context.request_id,
-                "trace_id": context.trace_id,
-                "ok": envelope.ok,
-                "error_code": envelope.error_code,
-                "warnings": list(envelope.warnings),
-                "logged_at": self._now(),
-            }
-        )
+        audit_log_ref = f"toolaudit_{uuid.uuid4().hex[:12]}"
+        audit_entry = {
+            "audit_log_ref": audit_log_ref,
+            "tool_name": tool_name,
+            "caller_type": context.caller_type,
+            "side_effect_level": context.side_effect_level,
+            "request_id": context.request_id,
+            "trace_id": context.trace_id,
+            "ok": envelope.ok,
+            "error_code": envelope.error_code,
+            "warnings": list(envelope.warnings),
+            "logged_at": self._now(),
+        }
+        self.audit_logs.append(audit_entry)
+        envelope.tool_audit_log_ref = audit_log_ref
+        if self._trace_service is not None and context.trace_id and context.agent_step_id:
+            permission_result = "deny" if envelope.error_code == "tool_permission_denied" else "allow"
+            call_status = "failed"
+            if permission_result == "deny":
+                call_status = "failed"
+            elif envelope.ok:
+                call_status = "succeeded"
+            self._trace_service.record_tool_call(
+                trace_id=context.trace_id,
+                step_id=context.agent_step_id,
+                tool_name=tool_name,
+                caller_type=context.caller_type,
+                side_effect_level=context.side_effect_level or "trace_only",
+                permission_result=permission_result,
+                call_status=call_status,
+                request_id=context.request_id,
+                safe_input_digest={"payload_keys": sorted(str(key) for key in envelope.payload.keys())} if envelope.payload else {},
+                safe_output_digest={"warnings": list(envelope.warnings), "error_code": envelope.error_code},
+                error_code=envelope.error_code,
+                tool_audit_log_ref=audit_log_ref,
+            )
 
     @staticmethod
     def _now() -> str:

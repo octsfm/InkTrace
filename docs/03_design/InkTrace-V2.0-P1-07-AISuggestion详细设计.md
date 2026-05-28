@@ -30,6 +30,16 @@
 4. 不引入 P2 自动执行建议、批量自动修复、复杂知识图谱。
 5. 不写代码、不生成开发计划、不处理 Git。
 
+### 1.1 作者可见建议表达约束（冻结）
+
+1. AISuggestion 对作者的默认展示名称为“AI 建议”，不得直接展示内部模型字段名。
+2. `accept / dismiss / convert` 必须给出中文动作解释：
+   - accept：认可建议（暂不执行）
+   - dismiss：忽略建议
+   - convert：转为后续动作（如修订指令）
+3. `risk_warning` 必须显示为风险提醒，不得伪装为可直接执行动作。
+4. 建议卡片必须先展示“为什么建议 + 你可以做什么”，再展示技术摘要。
+
 依据文档（对齐输入）：
 
 - `docs/01_requirements/InkTrace-V2.0-需求规格说明书.md`
@@ -341,6 +351,8 @@ Suggestion 类型：
 8. `conflict_resolution_suggestion` 引导查看 ConflictGuard。
 9. 普通用户不展示完整 Prompt / ContextPack / JSON / Tool 原始日志。
 10. 状态色遵守 InkTrace-DESIGN.md。
+11. 给人用优先：Suggestion 主文案必须以“建议你做什么、为什么、风险是什么”三段式展示，不展示内部 action_payload 结构。
+12. 用户动作文案必须中文化：accept=采纳建议，dismiss=暂不采纳，convert=转为可执行动作。
 
 ---
 

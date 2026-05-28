@@ -113,6 +113,10 @@ def test_memory_gate_api_lists_decides_applies_and_rolls_back() -> None:
     revision_ids = applied.json()["data"]["revision_ids"]
     assert revision_ids
 
+    revision_list = client.get("/api/v2/ai/memory-revisions", params={"work_id": work_id, "chapter_id": chapter_id})
+    assert revision_list.status_code == 200
+    assert any(item["revision_id"] in revision_ids for item in revision_list.json()["data"]["items"])
+
     revision_detail = client.get(f"/api/v2/ai/memory-revisions/{revision_ids[0]}")
     assert revision_detail.status_code == 200
     assert revision_detail.json()["data"]["revision_id"] == revision_ids[0]

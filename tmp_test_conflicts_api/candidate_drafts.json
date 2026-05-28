@@ -1,0 +1,73 @@
+{
+  "drafts": {
+    "cd_conflict": {
+      "candidate_draft_id": "cd_conflict",
+      "work_id": "692facca-63fe-4286-abf5-4af95e7c3ae6",
+      "chapter_id": "ce983145-24b8-4847-96de-8ddd4391b507",
+      "agent_session_id": "",
+      "writing_task_id": "wt_1",
+      "direction_plan_snapshot_id": "",
+      "source_context_pack_id": "cp_1",
+      "source_job_id": "job_1",
+      "status": "accepted",
+      "selected_version_id": "ver_1",
+      "accepted_version_id": "ver_1",
+      "applied_version_id": "",
+      "latest_version_no": 0,
+      "revision_round": 0,
+      "max_revision_rounds": 1,
+      "warning_codes": [],
+      "stale_status": "fresh",
+      "content": "Candidate continuation.",
+      "content_preview": "Candidate continuation.",
+      "word_count": 2,
+      "char_count": 23,
+      "validation_status": "passed",
+      "validation_errors": [],
+      "writer_model_role": "writer",
+      "provider_name": "fake",
+      "model_name": "fake-writer",
+      "created_by": "workflow",
+      "created_at": "2026-05-21T00:00:00+00:00",
+      "updated_at": "2026-05-21T00:00:00+00:00",
+      "request_id": "",
+      "trace_id": "",
+      "metadata": {}
+    }
+  },
+  "versions": {
+    "ver_1": {
+      "candidate_version_id": "ver_1",
+      "candidate_draft_id": "cd_conflict",
+      "work_id": "692facca-63fe-4286-abf5-4af95e7c3ae6",
+      "chapter_id": "ce983145-24b8-4847-96de-8ddd4391b507",
+      "agent_session_id": "",
+      "source_candidate_draft_id": "",
+      "source_version_id": "",
+      "parent_version_id": "",
+      "version_no": 1,
+      "status": "accepted",
+      "content_ref": "",
+      "text_ref": "",
+      "content": "Candidate continuation.",
+      "content_summary": "Candidate continuation.",
+      "word_count": 2,
+      "writing_task_id": "",
+      "direction_plan_snapshot_id": "",
+      "source_context_pack_id": "",
+      "review_report_id": "",
+      "warning_codes": [
+        "context_pack_degraded"
+      ],
+      "stale_status": "stale",
+      "created_by": "writer_agent",
+      "created_at": "2026-05-21T00:00:00+00:00",
+      "updated_at": "2026-05-21T00:00:00+00:00",
+      "request_id": "",
+      "trace_id": ""
+    }
+  },
+  "rewrite_requests": {},
+  "rewrite_instructions": {},
+  "revision_rounds": {}
+}

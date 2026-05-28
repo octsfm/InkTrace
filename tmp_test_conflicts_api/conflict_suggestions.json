@@ -1,0 +1,53 @@
+{
+  "suggestions": {
+    "ais_5617ef5331": {
+      "suggestion_id": "ais_5617ef5331",
+      "work_id": "d25d701e-64f4-44e1-946c-bba1d33f8ca9",
+      "chapter_id": "190d964a-0fc6-40b8-a956-a6c0e06b60c9",
+      "agent_session_id": "",
+      "source": {
+        "source_type": "conflict_guard_record",
+        "source_ref_id": "cgr_5402e887be",
+        "source_agent_type": "conflict_guard",
+        "source_agent_session_id": "",
+        "source_version_id": "ver_1"
+      },
+      "target": {
+        "target_type": "conflict_guard_record",
+        "target_ref_id": "cgr_5402e887be",
+        "target_scope": "record",
+        "target_snapshot_ref": "ver_1"
+      },
+      "suggestion_type": "conflict_resolution_suggestion",
+      "severity": "medium",
+      "priority": "high",
+      "title": "检测结果可能不完整",
+      "summary": "当前版本依赖的上下文存在降级或过期风险，继续 apply 代表已知风险。",
+      "rationale": "ConflictGuard 检测到冲突，需要用户进入冲突处理流程。",
+      "proposed_action": "打开冲突处理入口并记录用户决策",
+      "status": "generated",
+      "decision": "",
+      "decided_by": "",
+      "warning_codes": [],
+      "created_by": "conflict_guard",
+      "created_at": "2026-05-25T02:47:03.099221+00:00",
+      "updated_at": "2026-05-25T02:47:03.099227+00:00",
+      "request_id": "req_conflict_api",
+      "trace_id": "trace_conflict_api",
+      "expires_at": "",
+      "action": {
+        "action_type": "open_conflict_resolution",
+        "action_payload_ref": "",
+        "requires_user_action": true,
+        "action_status": "pending"
+      },
+      "decision_log": null,
+      "batch_id": "",
+      "metadata": {
+        "conflict_record_id": "cgr_5402e887be",
+        "candidate_draft_id": "cd_conflict"
+      }
+    }
+  },
+  "batches": {}
+}

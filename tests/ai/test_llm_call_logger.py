@@ -58,3 +58,32 @@ def test_llm_call_logger_records_failure_error_code(tmp_path) -> None:
 
     assert payload["status"] == "failed"
     assert payload["error_code"] == "provider_timeout"
+
+
+def test_llm_call_logger_ignores_missing_trace_when_persisting_observability_view(tmp_path) -> None:
+    store = FileLLMCallLogStore(tmp_path / "llm_calls.jsonl")
+
+    class _TraceService:
+        def record_llm_call(self, *args, **kwargs) -> None:
+            raise ValueError("trace_not_found")
+
+    logger = LLMCallLogger(repository=store, trace_service=_TraceService())
+
+    logger.record(
+        prompt_key="quick_trial",
+        prompt_version="p0",
+        model_role="quick_trial_writer",
+        provider_name="fake",
+        model_name="fake-chat",
+        request_id="req-3",
+        trace_id="trace-missing",
+        status=LLMCallStatus.SUCCEEDED,
+        started_at=datetime(2026, 5, 11, tzinfo=UTC),
+        finished_at=datetime(2026, 5, 11, tzinfo=UTC),
+        usage=LLMUsage(input_tokens=1, output_tokens=2, total_tokens=3),
+    )
+
+    payload = json.loads((tmp_path / "llm_calls.jsonl").read_text(encoding="utf-8").splitlines()[0])
+
+    assert payload["request_id"] == "req-3"
+    assert payload["trace_id"] == "trace-missing"

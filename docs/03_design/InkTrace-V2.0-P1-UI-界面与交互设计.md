@@ -1,4 +1,4 @@
-# InkTrace V2.0-P1-UI 界面与交互设计
+﻿# InkTrace V2.0-P1-UI 界面与交互设计
 
 版本：v1.1 / P1 UI 详细设计候选冻结版
 状态：候选冻结
@@ -47,6 +47,7 @@
 
 | 原则 | 说明 |
 |---|---|
+| 给人用优先 | 所有交互先服务作者/编辑任务完成，不以工程配置结构组织主界面 |
 | 编辑器优先 | 正文编辑器始终是最大区域，AI 不得覆盖或挤压 |
 | 右侧收纳 | AI / 审阅 / 资产统一进入右侧可折叠工作区 |
 | 门控独立 | 每种用户确认（Direction / Plan / HumanReview / Memory / Conflict）语义隔离 |
@@ -54,7 +55,7 @@
 | 状态可见 | ready / degraded / blocked / running / waiting 可一眼识别 |
 | 信息分层 | 一级（正文/导航）→ 二级（资产/AI状态/门控）→ 三级（Trace/日志，默认折叠） |
 | 不提前产品化 | P2 能力（自动连续续写、Style DNA、Citation Link）不进入 P1 UI |
-| 安全不透出 | API Key / 完整 Prompt / 完整 ContextPack / 完整 CandidateDraft 不出现在任何 UI 中 |
+| 安全不透出 | API Key / 完整 Prompt / 完整 写作上下文 / 完整 CandidateDraft 不出现在任何 UI 中 |
 
 ---
 
@@ -69,11 +70,11 @@
 | AI 面板像调试台 | 展示后端状态原文、技术术语过多 | 缺少用户可理解的信息转译层 |
 | 资产入口分散 | 大纲/线索/伏笔/人物通过右侧 AssetRail 小图标入口，内容在 Drawer 中展示，与 AI 割裂 | 缺少统一的右侧工作区 Tab 体系 |
 | 缺少门控交互 | accept/reject/apply 散落在 API 调用中，没有成体系的交互卡片 | P0 只做了最小 AI 面板 |
-| P1 信息量暴增 | AgentSession / Direction / ChapterPlan / CandidateDraftVersion / AIReview / Conflict / MemoryRevision 无处安放 | P1 新能力需要新的 UI 承载层 |
+| P1 信息量暴增 | AI 写作任务 / Direction / ChapterPlan / 候选稿版本 / AIReview / Conflict / MemoryRevision 无处安放 | P1 新能力需要新的 UI 承载层 |
 
 ### 2.2 关键不兼容
 
-如果直接将 P1 的 AgentSession、Direction Proposal、ChapterPlan、CandidateDraftVersion、Multi-round Review、ConflictGuard、MemoryReviewGate 塞入当前 P0 AI Panel，将导致：
+如果直接将 P1 的 AI 写作任务、Direction Proposal、ChapterPlan、候选稿版本、Multi-round Review、ConflictGuard、MemoryReviewGate 塞入当前 P0 AI Panel，将导致：
 
 - AI Panel 变成无法阅读的信息瀑布
 - 用户分不清"方向选择"和"候选稿确认"
@@ -104,6 +105,54 @@
 - P0 的 AssetRail（右侧资产入口图标）合并入右侧工作区的"大纲/线索/伏笔/人物"Tab。
 - P0 的 AssetDrawer 内容迁移到右侧工作区 Tab 内，不再以 Drawer 形式出现。
 
+### 3.3 作者模式与系统模式双层交互（冻结）
+
+为解决“工程术语污染作者心智”和“确认门过多导致写作中断”，P1 UI 冻结双层交互策略：
+
+1. **作者模式（默认）**：以写作任务为主语，不暴露 Runtime/Workflow 内部术语。
+2. **系统模式（开发者/高级）**：展示 Agent/Trace/状态细节，默认折叠，不进入主路径。
+3. **作者模式必须提供“一键续写（快速）”入口**，对应 `fast_continuation_workflow`。
+4. 一键续写只跳过前置方向/计划显式等待，不跳过 HumanReviewGate / MemoryReviewGate。
+5. 作者模式下所有状态必须使用中文任务语义，不直接显示 `blocked/degraded/stale/superseded` 原始枚举。
+
+作者模式主路径（冻结）：
+
+`选择章节 -> 一键续写 -> 候选稿预览 -> 接受/拒绝/应用 -> （可选）记忆更新确认`
+
+系统模式主路径（冻结）：
+
+`AI 任务详情 -> Agent 步骤 -> Trace 摘要 -> 诊断信息（脱敏）`
+
+两模式切换规则：
+
+1. 默认作者模式；
+2. 仅在用户主动开启“开发者模式/高级模式”后展示系统模式信息；
+3. 关闭高级模式后，系统术语不应残留在作者主界面。
+
+### 3.4 术语与状态翻译层（冻结）
+
+界面必须内建翻译层，至少覆盖以下映射：
+
+| 系统术语 | 作者文案 |
+|---|---|
+| 写作上下文 | 写作上下文 |
+| AI 写作任务 | AI 写作任务 |
+| blocked | 当前无法继续 |
+| degraded | 信息不完整，可继续尝试 |
+| stale | 可能已过期 |
+| superseded | 已有新版本 |
+| waiting_for_user | 等你确认 |
+
+状态收敛展示（冻结）：
+
+| 内部状态集合 | 作者可见状态 |
+|---|---|
+| running / waiting_observation | 正在处理中 |
+| waiting_for_user | 等你确认 |
+| completed / applied | 已完成 |
+| partial_success / degraded | 部分完成 |
+| blocked / failed | 需要处理问题 |
+
 ---
 
 ## 四、整体布局设计
@@ -113,7 +162,7 @@
 ```text
 ┌──────────────────────────────────────────────────────────┐
 │  顶部状态栏（56px）                                        │
-│  作品名 · 初始化状态 · ContextPack readiness · 保存状态      │
+│  作品名 · 初始化状态 · 写作上下文就绪度 · 保存状态            │
 ├──────────┬────────────────────────┬──────────────────────┤
 │          │                        │                      │
 │ 左侧     │   中间                  │   右侧               │
@@ -279,15 +328,15 @@
 
 ```text
 ┌──────────────────────────────────────────────────┐
-│ 《旧城灯船》  ·  AI ready ●  ·  已保存 v3  ·  3章  │
-│                              [初始化] [ContextPack] │
+│ 《旧城灯船》  ·  AI 可用 ●  ·  已保存 v3  ·  3章    │
+│                            [初始化] [写作上下文]    │
 └──────────────────────────────────────────────────┘
 ```
 
 内容：
 - 作品名
-- AI 初始化状态标签：`ready` / `degraded` / `blocked` / `not_started` / `stale`
-- ContextPack readiness 小圆点
+- AI 初始化状态标签：可用 / 信息不完整 / 当前无法继续 / 尚未开始 / 可能已过期
+- 写作上下文就绪度小圆点
 - 保存/同步状态
 - 当前章节位置
 
@@ -315,7 +364,7 @@
 | 线索 | 🔗 | 当前章节相关线索/未闭合线索/已回收线索 | StoryMemory.plot_threads |
 | 伏笔 | 🪝 | 已埋伏笔/待回收伏笔/风险提示 | StoryMemory + ConflictGuard |
 | 人物 | 👤 | 当前出场人物/人物状态/关系/最近变化 | StoryMemory.characters |
-| AI | ✦ | AI Settings/初始化/ContextPack/续写/CandidateDraft/QuickTrial/Agent | P0+P1 AI 全能力 |
+| AI | ✦ | AI 设置/初始化/写作上下文/续写/CandidateDraft/快速试写/AI 写作任务 | P0+P1 AI 全能力 |
 | 审阅 | 🔍 | AIReview/ConflictGuard/HumanReviewGate/MemoryReviewGate | P0 AIReview + P1 门控 |
 
 ### 7.2 折叠态
@@ -435,7 +484,7 @@ AI Tab 是 P0/P1 AI 能力的统一任务式面板入口。采用"卡片流"而�
 │ AI 状态：ready ●              │
 ├──────────────────────────────┤
 │                              │
-│ ┌─ AI Settings ────────────┐ │
+│ ┌─ AI 设置 ──┐ │
 │ │ kimi ● ready  deepseek ● │ │
 │ │ [配置] [测试连接]         │ │
 │ └──────────────────────────┘ │
@@ -447,7 +496,7 @@ AI Tab 是 P0/P1 AI 能力的统一任务式面板入口。采用"卡片流"而�
 │ │ [查看详情] [重新分析]     │ │
 │ └──────────────────────────┘ │
 │                              │
-│ ┌─ ContextPack ───────────┐ │
+│ ┌─ 写作上下文 ─────────────┐ │
 │ │ ready ● · estimate 2.8K │ │
 │ │ tokens                  │ │
 │ │ [构建] [查看]            │ │
@@ -458,11 +507,11 @@ AI Tab 是 P0/P1 AI 能力的统一任务式面板入口。采用"卡片流"而�
 │ │ [开始续写]               │ │
 │ └──────────────────────────┘ │
 │                              │
-│ ┌─ AgentSession ──────────┐ │
+│ ┌─ AI 写作任务 ────────────┐ │
 │ │ P1 预留 · 暂无活跃会话    │ │
 │ └──────────────────────────┘ │
 │                              │
-│ ┌─ Quick Trial ───────────┐ │
+│ ┌─ 快速试写 ─┐ │
 │ │ 试写一段夜景描写...       │ │
 │ │ [试写]                   │ │
 │ └──────────────────────────┘ │
@@ -490,12 +539,37 @@ AI Tab 是 P0/P1 AI 能力的统一任务式面板入口。采用"卡片流"而�
 - `waiting_for_user`：橙色 + 脉冲动画
 - `idle` / `not_started`：灰色
 
-### 8.3 AI Settings 卡片
+### 8.3 AI 设置卡片（作者任务优先）
 
-- 显示已配置 Provider 列表，每个 Provider 一行：名称 + 状态圆点 + 默认模型名
-- `key_configured` 只显示 ✓/✗，不展示 API Key 任何片段
-- "测试连接"按钮 → 执行测试 → 结果显示绿色 ✓ 或红色 ✗ + safe_message
-- 展开后显示完整 Provider 配置表单（API Key 输入框为 password 类型）
+设计原则：该卡片是“作者启用 AI”的入口，不是“平台参数控制台”。
+
+作者模式（默认）：
+- 主标题使用中文任务文案：`配置分析模型`、`配置写作模型`。
+- 第一屏只显示两个关键输入：
+  - 分析模型 Key（Kimi）
+  - 写作模型 Key（DeepSeek）
+- 第一屏只显示两个关键动作：
+  - 保存并启用
+  - 测试连接
+- `key_configured` 只显示 ✓/✗，不展示 API Key 任何片段。
+- 保存成功后默认形成模型分工：
+  - `analysis` → Kimi
+  - `writer` → DeepSeek
+- 主路径禁止出现 Provider/base_url/timeout/role mapping 等技术术语作为主要文案。
+
+分工设置（次级展开）：
+- 允许查看与调整 `analysis / planning / writer / reviewer / rewriter` 的模型分工。
+- 分工调整属于可选能力，不得阻塞作者完成主路径配置。
+
+系统设置（高级折叠）：
+- Provider 开关、默认模型名、base_url、timeout 等参数放入“高级设置”折叠区。
+- 高级折叠区默认收起，不得占据作者入口第一屏。
+- API Key 输入框为 password 类型，不允许明文回填。
+
+闭环要求：
+- "测试连接"按钮 → 执行测试 → 结果显示绿色 ✓ 或红色 ✗ + safe_message。
+- 当关键分工无效或 key 未配置时，AI 生成类操作入口（续写/审阅/建议）必须禁用并显示阻断原因。
+- 保存失败时必须显示可理解错误（safe_message）+ 可定位字段提示，不允许静默失败。
 
 ### 8.4 初始化分析卡片
 
@@ -506,7 +580,7 @@ AI Tab 是 P0/P1 AI 能力的统一任务式面板入口。采用"卡片流"而�
 - `failed`：红色 ✗ + safe_message + [重试]
 - `stale`：橙色 ⚠ + stale_reason + [重新分析]
 
-### 8.5 ContextPack 卡片
+### 8.5 写作上下文卡片
 
 - `ready`：绿色 + token 估算 + [查看结构]
 - `degraded`：橙色 + degraded_reason 摘要 + [查看详情] [重新构建]
@@ -518,31 +592,40 @@ AI Tab 是 P0/P1 AI 能力的统一任务式面板入口。采用"卡片流"而�
 ### 8.6 续写生成卡片
 
 - 输入框：用户续写指令（可选）
-- 按钮：[开始续写]
+- 主按钮：[一键续写（快速）]
+- 次按钮：[完整规划后续写]
 - 运行中：Agent 进度（当前 Agent 类型 + Step 名称 + 进度百分比）
 - 完成：CandidateDraft 生成完成，跳转到审阅 Tab
 
-### 8.7 AgentSession 卡片（P1 预留）
+行为冻结：
 
-P1 完整 AgentSession 的最小可查看入口：
+1. `[一键续写（快速）]` 对应 `fast_continuation_workflow`。
+2. `[完整规划后续写]` 对应 `continuation_workflow`。
+3. 两条路径都必须进入 HumanReviewGate，不允许直接写正式正文。
+4. 若快速续写前置条件不足但非阻断，允许继续并显示“信息不完整，可继续尝试”提示。
+5. 若阻断条件成立，按钮禁用并提示“当前无法继续”。
+
+### 8.7 AI 写作任务卡（P1 预留）
+
+P1 完整 AI 写作任务的最小可查看入口：
 
 ```text
-┌─ AgentSession ─────────────┐
+┌─ AI 写作任务 ──────────────┐
 │ running ●                   │
-│ Memory Agent → 分析中...     │
+│ 正在理解故事...              │
 │ Step 1/5 · 45%              │
 │ [▮▮▮▮▮▮▮▮▮▯▯▯▯▯▯▯▯▯▯▯]    │
 │ [查看进度] [暂停] [取消]     │
 └─────────────────────────────┘
 ```
 
-展示：当前 Agent 类型 + Step 名称 + 状态 + 进度条。
+展示：当前任务阶段 + 状态 + 进度条。
 **不展示**：完整 Perceive/Plan/Act/Observe 内部日志，不展示 Tool 调用列表。
 
-### 8.8 Quick Trial 卡片
+### 8.8 快速试写卡片
 
 ```text
-┌─ Quick Trial ──────────────┐
+┌─ 快速试写 ───┐
 │ 试写提示词：                │
 │ ┌─────────────────────────┐│
 │ │ 写一段海雾中的灯塔夜景...  ││
@@ -557,7 +640,7 @@ P1 完整 AgentSession 的最小可查看入口：
 └─────────────────────────────┘
 ```
 
-Quick Trial 结果不自动成为 CandidateDraft。用户必须点击"保存为候选稿"后才进入 P0-09 CandidateDraft 流程。
+快速试写结果不自动成为 CandidateDraft。用户必须点击"保存为候选稿"后才进入 P0-09 CandidateDraft 流程。
 
 ---
 
@@ -566,10 +649,10 @@ Quick Trial 结果不自动成为 CandidateDraft。用户必须点击"保存为�
 ### 9.1 候选稿卡片（审阅 Tab 中）
 
 ```text
-┌─ 候选稿 · pending_review ──────────────────┐
+┌─ 候选稿 · 待确认 ───────────────────────────┐
 │ 生成时间：2026-05-13 14:30                   │
-│ 来源：Writer Agent  ·  deepseek-writer       │
-│ ContextPack: degraded ⚠                     │
+│ 来源：AI 写作阶段  ·  deepseek-writer        │
+│ 写作上下文：信息不完整，可继续尝试 ⚠         │
 │ 字数：1,247 · 校验：通过 ✓                    │
 │                                              │
 │ ┌──────────────────────────────────────────┐ │
@@ -588,12 +671,12 @@ Quick Trial 结果不自动成为 CandidateDraft。用户必须点击"保存为�
 
 | 状态 | 标签颜色 | 操作按钮 |
 |---|---|---|
-| `pending_review` | 蓝色 | [接受] [拒绝] [查看全文对比] |
-| `accepted` | 绿色 ✓ | [应用到草稿] [查看全文对比] |
-| `rejected` | 灰色 ✗ | [查看原文]（只读） |
-| `applied` | 绿色 ✓✓ | 已应用到第3章 v4 · [查看] |
-| `stale` | 橙色 ⚠ | 此候选稿上下文可能过期 · [仍可查看] |
-| `superseded` | 灰色 | 已被新候选稿替代 · [查看] |
+| 待确认（pending_review） | 蓝色 | [接受] [拒绝] [查看全文对比] |
+| 已接受（accepted） | 绿色 ✓ | [应用到草稿] [查看全文对比] |
+| 已拒绝（rejected） | 灰色 ✗ | [查看原文]（只读） |
+| 已应用（applied） | 绿色 ✓✓ | 已应用到第3章 v4 · [查看] |
+| 可能已过期（stale） | 橙色 ⚠ | 此候选稿依据可能已过期 · [仍可查看] |
+| 已有新版本（superseded） | 灰色 | 已被新候选稿替代 · [查看] |
 
 **accepted ≠ applied 的视觉区分**：
 - `accepted`：卡片左边缘绿色竖线 + "已接受"标签 + [应用到草稿] 按钮（主操作）
@@ -616,7 +699,7 @@ Quick Trial 结果不自动成为 CandidateDraft。用户必须点击"保存为�
 └─────────────────────────────┘
 ```
 
-P1 多轮版本（CandidateDraftVersion）在对比视图中以版本下拉切换：`v1 (原始) | v2 (修订) | v3 (当前)`。
+P1 多轮版本（候选稿版本）在对比视图中以版本下拉切换：`v1 (原始) | v2 (修订) | v3 (当前)`。
 
 ### 9.4 HumanReviewGate 操作流
 
@@ -733,7 +816,7 @@ P1 多轮版本（CandidateDraftVersion）在对比视图中以版本下拉切�
 
 ```text
 ┌─ 剧情方向推演 ──────────────────────────────┐
-│ Planner Agent · 2026-05-13 14:20            │
+│ AI 规划阶段 · 2026-05-13 14:20               │
 │                                              │
 │ 基于当前剧情位置，AI 推演出三个后续方向：       │
 │                                              │
@@ -769,7 +852,7 @@ P1 多轮版本（CandidateDraftVersion）在对比视图中以版本下拉切�
 ### 11.2 DirectionSelection 交互流
 
 ```text
-Planner Agent 完成 → A/B/C 方向卡片展示
+AI 完成方向推演 → A/B/C 方向卡片展示
   │
   ├─ 用户点击 [选择 A/B/C]
   │    └→ 方向被选中，卡片高亮蓝边
@@ -780,7 +863,7 @@ Planner Agent 完成 → A/B/C 方向卡片展示
   │       └→ 保存后触发 ChapterPlan 刷新
   │
   ├─ 用户点击 [重新生成方向]
-  │    └→ Planner Agent 重新生成 A/B/C
+  │    └→ AI 重新生成 A/B/C
   │
   └─ 用户未选择（取消/关闭）
        └→ 不产生任何正式计划，不推进 Workflow
@@ -821,22 +904,22 @@ Planner Agent 完成 → A/B/C 方向卡片展示
 
 ---
 
-## 十二、AgentSession / Agent 进度交互设计
+## 十二、AI 写作任务进度交互设计
 
-### 12.1 Agent 进度卡（AI Tab 中，P1 预留）
+### 12.1 AI 写作任务进度卡（AI Tab 中，P1 预留）
 
 ```text
-┌─ AgentSession · running ────────────────────┐
+┌─ AI 写作任务 · 进行中 ──────────────────────┐
 │ 任务：续写第3章                               │
 │                                              │
-│ ● Memory Agent         ✓ 完成 (1.2s)         │
-│ ● Planner Agent        ✓ 完成 (3.5s)         │
-│ ◉ Writer Agent         运行中...             │
-│ ○ Reviewer Agent       等待中                │
-│ ○ Rewriter Agent       等待中                │
+│ ● 理解故事             ✓ 完成 (1.2s)         │
+│ ● 规划方向             ✓ 完成 (3.5s)         │
+│ ◉ 生成候选稿           运行中...             │
+│ ○ 审阅稿件             等待中                │
+│ ○ 修订稿件             等待中                │
 │                                              │
-│ 当前步骤：Writer Agent · Action               │
-│ 正在调用 writer model 生成候选稿...            │
+│ 当前步骤：生成候选稿 · 执行中                  │
+│ 正在调用写作模型生成候选稿...                  │
 │                                              │
 │ [暂停] [取消]                                 │
 │                                              │
@@ -858,7 +941,7 @@ idle → running → waiting_for_user → running → completed
 
 ### 12.3 waiting_for_user 高亮
 
-当 AgentSession 进入 `waiting_for_user` 状态时：
+当 AI 写作任务 进入 `waiting_for_user` 状态时：
 
 - AI Tab 图标右上角橙色脉冲圆点
 - 审阅 Tab 图标右上角蓝色圆点（如涉及候选稿）
@@ -869,14 +952,14 @@ idle → running → waiting_for_user → running → completed
 
 ```text
 ▸ 展开详细 Trace（开发者）
-  ├ Memory Agent Trace
-  │  ├ Perception Step ✓
-  │  ├ Planning Step ✓
-  │  └ Action Step ✓ · Tool: get_story_memory
-  ├ Planner Agent Trace
+  ├ 理解故事轨迹
+  │  ├ 感知步骤 ✓
+  │  ├ 规划步骤 ✓
+  │  └ 执行步骤 ✓ · 工具：get_story_memory
+  ├ 规划方向轨迹
   │  └ ...
-  └ Writer Agent Trace（进行中）
-     └ Action Step ◉ · Tool: call_writer_model
+  └ 生成候选稿轨迹（进行中）
+     └ 执行步骤 ◉ · 工具：call_writer_model
 ```
 
 **不展示**：完整 Prompt 文本、完整 CandidateDraft 内容、API Key。普通模式只显示摘要，详细 Trace 默认折叠。
@@ -1083,6 +1166,31 @@ idle → running → waiting_for_user → running → completed
 
 UI 设计必须支持这个心智模型：1-3 始终可访问，4-5 一触可及，6 深埋。
 
+### 17.3 场景聚合视图规范（冻结）
+
+为避免“按系统模块切碎信息”，右侧工作区增加场景聚合视图规范：
+
+1. 在“审阅 Tab”内提供“本章创作面板”（聚合视图），按章节场景汇总展示：
+   - 当前章节目标（来自 ChapterPlan）
+   - 关键人物状态变更（来自人物 Tab 摘要）
+   - 相关线索与伏笔（来自线索/伏笔摘要）
+   - 当前候选稿状态与风险（CandidateDraft + ConflictGuard）
+2. 聚合视图是摘要视图，不替代原始 Tab；点击条目可跳转到对应 Tab 详情。
+3. 聚合视图优先回答三个问题：
+   - 这一章要达成什么？
+   - 这一章涉及谁、埋/收了什么？
+   - 当前稿件有什么风险、下一步该做什么？
+4. 聚合视图默认对作者可见；开发者细节仍在三级折叠区。
+
+聚合卡片最小字段（冻结）：
+
+| 卡片 | 最小字段 |
+|---|---|
+| 章节目标卡 | goal_summary / must_not_do / estimated_words |
+| 人物影响卡 | character_names / state_change_summary / risk_flag |
+| 线索伏笔卡 | open_threads / foreshadow_actions / conflict_hint |
+| 候选稿风险卡 | display_status / review_summary / conflict_severity / next_action_hint |
+
 ---
 
 ## 十八、交互状态设计
@@ -1094,10 +1202,10 @@ UI 设计必须支持这个心智模型：1-3 始终可访问，4-5 一触可及
 | 页面加载 | 顶部进度条（蓝色 2px）+ 编辑器骨架屏 |
 | 章节加载 | 编辑器区域轻微闪烁 + 中央小转圈（≤1s 不显示） |
 | AIJob running | AI Tab 卡片蓝色进度条 + 当前步骤标签旋转图标 |
-| ContextPack building | AI Tab 卡片灰色骨架 → 完成切换为 ready 卡片 |
+| 写作上下文 building | AI Tab 卡片灰色骨架 → 完成切换为 ready 卡片 |
 | CandidateDraft generating | AI Tab 显示"正在生成..." + 蓝色进度条 + 取消按钮 |
 | AIReview running | 审阅 Tab 显示"审阅中..." + 进度条 |
-| AgentSession running | AI Tab Agent 进度卡蓝色步进指示器 |
+| AI 写作任务 running | AI Tab Agent 进度卡蓝色步进指示器 |
 
 ### 18.2 Empty 状态
 
@@ -1115,8 +1223,8 @@ UI 设计必须支持这个心智模型：1-3 始终可访问，4-5 一触可及
 | 场景 | 视觉 |
 |---|---|
 | API 404 | 对应卡片/区域显示"未找到" + 图标 + 返回按钮 |
-| Provider 配置错误 | AI Settings 卡片显示红色 ✗ + safe_message + [配置] 按钮 |
-| ContextPack blocked | AI Tab 卡片红色 + blocked_reason + [查看详情] |
+| Provider 配置错误 | AI 设置卡片显示红色 ✗ + safe_message + [配置] 按钮 |
+| 写作上下文 blocked | AI Tab 卡片红色 + blocked_reason + [查看详情] |
 | 章节版本冲突 | 弹窗 + 冲突提示 + [刷新版本] [取消] |
 | apply 失败 | Toast 通知 + safe_message（不展示内部错误堆栈） |
 | AIReview failed | 审阅 Tab 卡片红色 ✗ + safe_message + 提示"不影响手动操作" |
@@ -1125,7 +1233,7 @@ UI 设计必须支持这个心智模型：1-3 始终可访问，4-5 一触可及
 
 | 场景 | 视觉 |
 |---|---|
-| ContextPack degraded | AI Tab 卡片橙色 ⚠ + degraded_reason 摘要 |
+| 写作上下文 degraded | AI Tab 卡片橙色 ⚠ + degraded_reason 摘要 |
 | VectorRecall 不可用 | 橙色标签 "RAG 不可用" |
 | StoryMemory 过期 | 橙色标签 "记忆过期" + stale_reason |
 | CandidateDraft stale | 候选稿卡片橙色 ⚠ + "上下文可能过期" |
@@ -1161,11 +1269,11 @@ UI 设计必须支持这个心智模型：1-3 始终可访问，4-5 一触可及
 ### 19.2 P0 AI Panel 处理策略
 
 P0 AI Panel 在 P1 前端重构时**完全移除**，功能迁移到：
-- AI Settings → 右侧 AI Tab 顶部卡片
+- AI 设置→ 右侧 AI Tab 顶部卡片
 - 初始化分析 → 右侧 AI Tab 卡片
-- ContextPack → 右侧 AI Tab 卡片
+- 写作上下文 → 右侧 AI Tab 卡片
 - 续写生成 → 右侧 AI Tab 卡片 + 审阅 Tab CandidateDraft
-- Quick Trial → 右侧 AI Tab 底部卡片
+- 快速试写→ 右侧 AI Tab 底部卡片
 
 P0 AI Panel 不作为开发者调试入口保留——调试入口统一放入 Agent Trace 折叠区。
 
@@ -1175,10 +1283,10 @@ P0 AI Panel 不作为开发者调试入口保留——调试入口统一放入 A
 
 | P1 能力 | UI 入口 | Tab |
 |---|---|---|
-| AgentSession 进度 | Agent 进度卡 | AI |
+| AI 写作任务 进度 | Agent 进度卡 | AI |
 | Direction Proposal A/B/C | 方向选择卡片 | AI |
 | ChapterPlan | 章节计划列表 | AI + 大纲 |
-| CandidateDraftVersion | 版本下拉切换 + 对比视图 | 审阅 |
+| 候选稿版本 | 版本下拉切换 + 对比视图 | 审阅 |
 | Multi-round Review | ReviewReport + Issue 列表 | 审阅 |
 | ConflictGuard | 冲突横幅 + 冲突处理卡片 | 审阅 |
 | MemoryReviewGate | 记忆更新建议卡片 | 审阅 |
@@ -1201,19 +1309,19 @@ P0 AI Panel 不作为开发者调试入口保留——调试入口统一放入 A
 | UI 需求 | P1-11 需定义的数据能力（方向） |
 |---|---|
 | AI Tab 状态一览 | 聚合查询接口：settings 摘要 + init 状态 + context_pack 状态 + agent 活跃状态 |
-| Agent 进度卡 | AgentSession 状态查询：含 steps 列表、status、progress、当前 agent_type |
+| Agent 进度卡 | AI 写作任务 状态查询：含 steps 列表、status、progress、当前 agent_type |
 | 方向选择卡片 | DirectionProposal 列表查询 + 用户选择方向（标记 selected） |
 | ChapterPlan | ChapterPlan 列表查询 + 用户确认/编辑计划 |
 | 候选稿卡片 + 对比视图 | CandidateDraft 查询扩展：version 列表、版本间 diff（安全引用） |
 | 审阅结果卡片 | AIReview 查询扩展：issues 详情、分项评分维度 |
 | 冲突横幅 + 处理卡片 | Conflict 列表查询 + 用户处理冲突（采纳/拒绝/编辑后采纳） |
 | 记忆更新卡片 | MemoryUpdateSuggestion 列表查询 + 用户确认/拒绝 |
-| 轮询 | AgentSession / AIJob 状态轮询（建议间隔 2-5s） |
+| 轮询 | AI 写作任务 / AIJob 状态轮询（建议间隔 2-5s） |
 
 ### 20.3 前端数据协议方向
 
 - 所有卡片返回 `safe_summary` 字段（非完整正文/非完整 Prompt）
-- 状态标签统一为枚举字符串
+- 状态标签返回双字段：`status`（内部枚举）+ `display_status`（作者可读）
 - warning / error 返回 `safe_message` + `error_code`（不返回原始异常堆栈）
 - CandidateDraft 列表**默认不返回 content**，详情接口单独返回
 - AgentTrace 默认不返回 detail 级别，展开后才加载
@@ -1231,7 +1339,7 @@ P1-UI 不做：
 - 不设计五 Agent 职责细节（属于 P1-03）
 - 不设计四层剧情轨道数据结构（属于 P1-04）
 - 不设计 Direction Proposal 算法（属于 P1-05）
-- 不设计 CandidateDraftVersion 完整数据结构（属于 P1-06）
+- 不设计 候选稿版本 完整数据结构（属于 P1-06）
 - 不设计 Conflict Guard 规则矩阵（属于 P1-08）
 - 不设计 StoryMemoryRevision 数据结构（属于 P1-09）
 - 不实现任何代码
@@ -1264,11 +1372,14 @@ P1-UI 不做：
 - [ ] AIReview failed 不阻断 HumanReviewGate 按钮
 - [ ] DirectionSelection / PlanConfirmation / HumanReviewGate / MemoryReviewGate 交互清楚区分
 - [ ] ConflictGuard blocking / warning 视觉分离，blocking 未处理时 [应用到草稿] 按钮被限制
-- [ ] AgentSession 进度有用户可理解的卡片展示
+- [ ] 作者模式默认提供 [一键续写（快速）] 与 [完整规划后续写] 双入口
+- [ ] 一键续写仅跳过前置方向/计划显式等待，不绕过 HumanReviewGate / MemoryReviewGate
+- [ ] 作者主界面状态文案使用中文任务语义，不直接展示 blocked/degraded/stale/superseded 原始枚举
+- [ ] AI 写作任务 进度有用户可理解的卡片展示
 - [ ] 普通用户默认看不到 AgentTrace 详情、Tool 调用列表、LLM 日志
 - [ ] API Key 不在任何 UI 中展示
 - [ ] 完整 Prompt 不在任何 UI 中展示
-- [ ] 完整 ContextPack 内容不在任何 UI 中展示
+- [ ] 完整 写作上下文 内容不在任何 UI 中展示
 - [ ] 响应式断点：≥1280px 三栏 / 1024-1279px 双栏 / <1024px 单栏+抽屉
 - [ ] P1-11 可以基于本文档设计 API 与前端 DTO
 
@@ -1307,12 +1418,12 @@ P1-UI 不做：
 
 | 卡片类型 | 折叠态高度 | 展开态最大高度 |
 |---|---|---|
-| AI Settings | 56px | 240px |
+| AI 设置 | 56px | 240px |
 | 初始化分析 | 56px | 180px |
-| ContextPack | 56px | 200px |
+| 写作上下文 | 56px | 200px |
 | 续写生成 | 64px | 300px |
-| AgentSession | 80px | 400px（含 Trace） |
-| Quick Trial | 64px | 250px |
+| AI 写作任务 | 80px | 400px（含 Trace） |
+| 快速试写 | 64px | 250px |
 | CandidateDraft | 100px | 500px（含全文对比） |
 | AIReview | 100px | 400px |
 | Direction Proposal | 200px（三卡片） | 600px |
@@ -1330,9 +1441,9 @@ P1-UI 不做：
 - `RightWorkspacePanel`（右侧工作区容器 + Tab 切换）
 - `OutlineTab` / `PlotThreadTab` / `ForeshadowTab` / `CharacterTab`（资产 Tab）
 - `AITab`（AI 任务卡片容器）
-- `AISettingsCard` / `InitializationCard` / `ContextPackCard` / `ContinuationCard` / `AgentSessionCard` / `QuickTrialCard`
+- `AI设置卡片` / `InitializationCard` / `写作上下文Card` / `ContinuationCard` / `AI 写作任务Card` / `快速试写卡片`
 - `ReviewTab`（审阅与门控容器）
-- `CandidateDraftCard` / `CandidateDraftCompareView` / `CandidateDraftVersionSwitcher`
+- `CandidateDraftCard` / `CandidateDraftCompareView` / `候选稿版本Switcher`
 - `AIReviewCard` / `ReviewIssueList`
 - `DirectionProposalCard` / `ChapterPlanList`
 - `ConflictGuardBanner` / `ConflictResolveCard`
@@ -1340,3 +1451,4 @@ P1-UI 不做：
 - `ApplyConfirmDialog`
 - `BottomStatusBar`（增强：AI 运行指示）
 - `FocusModeOverlay`（沉浸模式遮罩）
+

@@ -72,6 +72,9 @@ def _save_ai_settings(client: TestClient) -> None:
                 "writer": {"provider_name": "fake", "model_name": "fake-writer"},
                 "quick_trial_writer": {"provider_name": "fake", "model_name": "fake-chat"},
             },
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p0-settings-save",
         },
     )
     assert response.status_code == 200
@@ -81,11 +84,27 @@ def test_ai_settings_provider_test_reports_success_and_failure(monkeypatch, tmp_
     client = _configure_runtime(monkeypatch, tmp_path)
     _save_ai_settings(client)
 
-    success = client.post("/api/v2/ai/settings/providers/fake/test", json={"model_name": "fake-chat"})
+    success = client.post(
+        "/api/v2/ai/settings/providers/fake/test",
+        json={
+            "model_name": "fake-chat",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p0-provider-test-success",
+        },
+    )
     assert success.status_code == 200
     assert success.json()["data"]["test_status"] == "ok"
 
-    failed = client.post("/api/v2/ai/settings/providers/fake/test", json={"model_name": "missing-model"})
+    failed = client.post(
+        "/api/v2/ai/settings/providers/fake/test",
+        json={
+            "model_name": "missing-model",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p0-provider-test-failed",
+        },
+    )
     assert failed.status_code == 400
     assert failed.json()["error"]["error_code"] == "model_not_supported"
 
@@ -179,7 +198,12 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
 
     accept_response = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_1}/accept",
-        json={"user_action": True, "user_id": "u1"},
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "u1",
+            "idempotency_key": "accept-e2e-success",
+        },
     )
     assert accept_response.status_code == 200
     assert accept_response.json()["data"]["status"] == "accepted"
@@ -195,7 +219,13 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
 
     reject_response = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_2}/reject",
-        json={"user_action": True, "user_id": "u1", "reason": "保留旧方案"},
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "u1",
+            "reason": "保留旧方案",
+            "idempotency_key": "reject-e2e-success",
+        },
     )
     assert reject_response.status_code == 200
     assert reject_response.json()["data"]["status"] == "rejected"
@@ -204,7 +234,13 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
 
     rejected_apply = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_2}/apply",
-        json={"user_action": True, "user_id": "u1", "expected_chapter_version": chapter_before.version, "idempotency_key": "apply-rejected-e2e"},
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "u1",
+            "expected_chapter_version": chapter_before.version,
+            "idempotency_key": "apply-rejected-e2e",
+        },
     )
     assert rejected_apply.status_code == 400
     assert rejected_apply.json()["error"]["error_code"] == "candidate_already_rejected"
@@ -231,6 +267,7 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
     apply_response = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_1}/apply",
         json={
+            "caller_type": "user_action",
             "user_action": True,
             "user_id": "u1",
             "expected_chapter_version": chapter_before.version,

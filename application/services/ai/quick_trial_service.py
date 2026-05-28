@@ -25,11 +25,12 @@ class QuickTrialApplicationService:
         model_router,
         provider_registry: ProviderRegistry,
         llm_call_log_repository: LLMCallLogRepository,
+        trace_service=None,
     ) -> None:
         self._settings_repository = settings_repository
         self._model_router = model_router
         self._provider_registry = provider_registry
-        self._call_logger = LLMCallLogger(llm_call_log_repository)
+        self._call_logger = LLMCallLogger(llm_call_log_repository, trace_service=trace_service)
         self._output_validation_service = OutputValidationService()
 
     def run_quick_trial(self, request: QuickTrialRequest) -> QuickTrialResult:

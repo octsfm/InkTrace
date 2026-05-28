@@ -43,6 +43,7 @@ class MemoryReviewGateService:
         ai_review_repository: AIReviewRepository,
         candidate_draft_repository: CandidateDraftRepository,
         conflict_guard_service=None,
+        trace_service=None,
     ) -> None:
         self._memory_review_repository = memory_review_repository
         self._story_memory_repository = story_memory_repository
@@ -50,6 +51,7 @@ class MemoryReviewGateService:
         self._ai_review_repository = ai_review_repository
         self._candidate_draft_repository = candidate_draft_repository
         self._conflict_guard_service = conflict_guard_service
+        self._trace_service = trace_service
 
     def generate_from_review(self, review_id: str):
         review = self._ai_review_repository.get(review_id)
@@ -153,6 +155,14 @@ class MemoryReviewGateService:
         self._require_user_action(user_action)
         self._claim_idempotency_key(idempotency_key, operation_name=f"approve:{gate_id}:{suggestion_id}")
         suggestion = self.get_suggestion(suggestion_id)
+        self._record_high_risk_audit(
+            trace_id=trace_id,
+            session_id=suggestion.agent_session_id,
+            step_id="",
+            event_type="user_decision_recorded",
+            summary="approve_memory",
+            payload_digest={"decision_type": "approve_memory", "suggestion_id": suggestion_id},
+        )
         now = self._now()
         updated = suggestion.model_copy(
             update={
@@ -185,6 +195,14 @@ class MemoryReviewGateService:
         self._require_user_action(user_action)
         self._claim_idempotency_key(idempotency_key, operation_name=f"edit_and_approve:{gate_id}:{suggestion_id}")
         suggestion = self.get_suggestion(suggestion_id)
+        self._record_high_risk_audit(
+            trace_id=trace_id,
+            session_id=suggestion.agent_session_id,
+            step_id="",
+            event_type="user_decision_recorded",
+            summary="approve_memory",
+            payload_digest={"decision_type": "approve_memory", "suggestion_id": suggestion_id},
+        )
         if not str(proposed_value_summary or "").strip():
             raise ValueError("memory_edit_value_required")
         now = self._now()
@@ -226,6 +244,14 @@ class MemoryReviewGateService:
         self._require_user_action(user_action)
         self._claim_idempotency_key(idempotency_key, operation_name=f"reject:{gate_id}:{suggestion_id}")
         suggestion = self.get_suggestion(suggestion_id)
+        self._record_high_risk_audit(
+            trace_id=trace_id,
+            session_id=suggestion.agent_session_id,
+            step_id="",
+            event_type="user_decision_recorded",
+            summary="reject_memory",
+            payload_digest={"decision_type": "reject_memory", "suggestion_id": suggestion_id},
+        )
         self._memory_review_repository.save_suggestion(
             suggestion.model_copy(
                 update={
@@ -284,6 +310,14 @@ class MemoryReviewGateService:
         self._require_user_action(user_action)
         self._claim_idempotency_key(idempotency_key, operation_name=f"apply_gate:{gate_id}")
         gate = self.get_gate(gate_id)
+        self._record_high_risk_audit(
+            trace_id=trace_id,
+            session_id="",
+            step_id="",
+            event_type="memory_revision_applied",
+            summary="apply_memory",
+            payload_digest={"gate_id": gate_id},
+        )
         suggestions = self.list_gate_suggestions(gate_id)
         approved_suggestions = [
             item
@@ -357,6 +391,14 @@ class MemoryReviewGateService:
     ) -> dict[str, object]:
         self._require_user_action(user_action)
         self._claim_idempotency_key(idempotency_key, operation_name=f"rollback_revision:{revision_id}")
+        self._record_high_risk_audit(
+            trace_id=trace_id,
+            session_id="",
+            step_id="",
+            event_type="memory_revision_rolled_back",
+            summary="rollback_memory",
+            payload_digest={"revision_id": revision_id},
+        )
         try:
             revision = self._memory_review_repository.get_story_memory_revision(revision_id)
             if revision.status != MemoryRevisionStatus.APPLIED:
@@ -501,6 +543,13 @@ class MemoryReviewGateService:
                 }
             )
             self._memory_review_repository.save_story_memory_revision(revision)
+            self._record_revision_created_trace(
+                trace_id=trace_id,
+                session_id=suggestion.agent_session_id,
+                revision_id=revision.id,
+                target_asset="story_memory",
+                source_suggestion_id=suggestion.id,
+            )
             self._record_revision_decision(revision.id, MemoryReviewDecisionType.APPROVED, user_id, decision_note, request_id)
         if suggestion.target_memory_type in {MemoryTargetType.STORY_STATE, MemoryTargetType.BOTH}:
             revision = StoryStateRevision(
@@ -529,6 +578,13 @@ class MemoryReviewGateService:
                 updated_at=now,
             )
             self._memory_review_repository.save_story_state_revision(revision)
+            self._record_revision_created_trace(
+                trace_id=trace_id,
+                session_id=suggestion.agent_session_id,
+                revision_id=revision.id,
+                target_asset="story_state",
+                source_suggestion_id=suggestion.id,
+            )
             self._record_revision_decision(revision.id, MemoryReviewDecisionType.APPROVED, user_id, decision_note, request_id)
 
     def _apply_story_memory_revision(
@@ -704,6 +760,52 @@ class MemoryReviewGateService:
         self._memory_review_repository.claim_idempotency_key(
             idempotency_key=idempotency_key,
             operation_name=operation_name,
+        )
+
+    def _record_high_risk_audit(
+        self,
+        *,
+        trace_id: str,
+        session_id: str,
+        step_id: str,
+        event_type: str,
+        summary: str,
+        payload_digest: dict[str, object],
+    ) -> None:
+        if self._trace_service is None or not str(trace_id or "").strip():
+            return
+        self._trace_service.record_audit_event(
+            trace_id=trace_id,
+            session_id=session_id,
+            step_id=step_id,
+            event_type=event_type,
+            summary=summary,
+            payload_digest=payload_digest,
+            high_risk_user_action=True,
+        )
+
+    def _record_revision_created_trace(
+        self,
+        *,
+        trace_id: str,
+        session_id: str,
+        revision_id: str,
+        target_asset: str,
+        source_suggestion_id: str,
+    ) -> None:
+        if self._trace_service is None or not str(trace_id or "").strip():
+            return
+        self._trace_service.record_audit_event(
+            trace_id=trace_id,
+            session_id=session_id,
+            step_id="",
+            event_type="memory_revision_created",
+            summary=revision_id,
+            payload_digest={
+                "revision_id": revision_id,
+                "target_asset": target_asset,
+                "source_suggestion_id": source_suggestion_id,
+            },
         )
 
     def _extract_applied_ref(self, apply_result_ref: str, *, prefix: str) -> str:

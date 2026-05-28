@@ -233,6 +233,18 @@ export const aiApi = {
     { params: { chapter_id: chapterId } }
   ),
 
+  // Agent Session
+  listAgentSessions: (params = {}) => api.get('/v2/ai/sessions', { params }),
+  getAgentSession: (sessionId) => api.get(`/v2/ai/sessions/${encodeURIComponent(sessionId)}`),
+  pauseAgentSession: (sessionId, payload) => api.post(`/v2/ai/sessions/${encodeURIComponent(sessionId)}/pause`, payload),
+  resumeAgentSession: (sessionId, payload) => api.post(`/v2/ai/sessions/${encodeURIComponent(sessionId)}/resume`, payload),
+  cancelAgentSession: (sessionId, payload) => api.post(`/v2/ai/sessions/${encodeURIComponent(sessionId)}/cancel`, payload),
+
+  // Plot Arc
+  listPlotArcs: (params = {}) => api.get('/v2/ai/plot-arcs', { params }),
+  getPlotArc: (arcId) => api.get(`/v2/ai/plot-arcs/${encodeURIComponent(arcId)}`),
+  getPlotArcStatus: (params = {}) => api.get('/v2/ai/plot-arcs/status', { params }),
+
   // P1-S5 planning
   generateDirectionProposal: (payload) => api.post('/v2/ai/directions', payload),
   listDirectionProposals: (params = {}) => api.get('/v2/ai/directions', { params }),
@@ -305,6 +317,15 @@ export const aiApi = {
   rollbackMemoryRevision: (revisionId, payload) => api.post(
     `/v2/ai/memory-revisions/${encodeURIComponent(revisionId)}/rollback`,
     payload
+  ),
+
+  // AgentTrace
+  listAgentTraces: (params = {}) => api.get('/v2/ai/traces', { params }),
+  getAgentTrace: (traceId) => api.get(`/v2/ai/traces/${encodeURIComponent(traceId)}`),
+  getAgentTraceSteps: (traceId) => api.get(`/v2/ai/traces/${encodeURIComponent(traceId)}/steps`),
+  getAgentTraceDetailView: (traceId, params = {}) => api.get(
+    `/v2/ai/traces/${encodeURIComponent(traceId)}/detail-view`,
+    { params }
   )
 }
 

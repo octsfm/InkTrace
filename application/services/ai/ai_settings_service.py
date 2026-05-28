@@ -12,6 +12,13 @@ from domain.entities.ai.models import (
     build_default_model_role_mappings,
 )
 from domain.repositories.ai.ai_settings_repository import AISettingsRepository
+from domain.services.ai.provider import ProviderConfigurationError, ProviderNotFoundError
+
+
+class AISettingsValidationError(RuntimeError):
+    def __init__(self, error_code: str) -> None:
+        self.error_code = error_code
+        super().__init__(error_code)
 
 
 class AISettingsService:
@@ -69,6 +76,11 @@ class AISettingsService:
                 provider_name=str(payload["provider_name"]),
                 model_name=str(payload["model_name"]),
             )
+
+        self._validate_settings(
+            provider_configs=updated_provider_configs,
+            model_role_mappings=model_role_mappings,
+        )
 
         saved = self._settings_repository.save(
             AISettings(
@@ -137,3 +149,36 @@ class AISettingsService:
         if len(api_key) <= 5:
             return "*" * len(api_key)
         return f"{api_key[:3]}{'*' * (len(api_key) - 5)}{api_key[-2:]}"
+
+    def _validate_settings(
+        self,
+        *,
+        provider_configs: dict[str, AIProviderConfig],
+        model_role_mappings: dict[str, dict[str, str]],
+    ) -> None:
+        for provider_name, config in provider_configs.items():
+            try:
+                self._model_router._provider_registry.get(provider_name)
+            except ProviderNotFoundError as exc:
+                raise AISettingsValidationError("provider_not_supported") from exc
+            if config.enabled and config.default_model:
+                provider = self._model_router._provider_registry.get(provider_name)
+                if not provider.supports_model(config.default_model):
+                    raise AISettingsValidationError("model_not_available")
+
+        for payload in model_role_mappings.values():
+            provider_name = str(payload.get("provider_name") or "").strip()
+            model_name = str(payload.get("model_name") or "").strip()
+            if not provider_name or not model_name:
+                raise AISettingsValidationError("model_role_mapping_invalid")
+            provider_config = provider_configs.get(provider_name)
+            if provider_config is None or not provider_config.enabled:
+                raise AISettingsValidationError("model_role_mapping_invalid")
+            if not provider_config.encrypted_api_key:
+                raise ProviderConfigurationError("provider_key_missing")
+            try:
+                provider = self._model_router._provider_registry.get(provider_name)
+            except ProviderNotFoundError as exc:
+                raise AISettingsValidationError("provider_not_supported") from exc
+            if not provider.supports_model(model_name):
+                raise AISettingsValidationError("model_not_available")

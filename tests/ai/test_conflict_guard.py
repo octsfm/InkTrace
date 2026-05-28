@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from application.services.ai.agent_trace_service import AgentTraceService
 from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
@@ -21,12 +22,13 @@ from domain.entities.ai.models import (
 )
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from infrastructure.database.repositories.ai.file_ai_suggestion_store import FileAISuggestionStore
+from infrastructure.database.repositories.ai.file_agent_trace_store import FileAgentTraceStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
 from infrastructure.database.repositories.ai.file_conflict_guard_store import FileConflictGuardStore
 from infrastructure.database.repositories.ai.file_direction_plan_store import FileDirectionPlanStore
 
 
-def _build_services(tmp_path: Path):
+def _build_services(tmp_path: Path, *, allow_override_blocking: bool = False):
     work_repo = WorkRepo()
     chapter_repo = ChapterRepo()
     work_service = WorkService(work_repo=work_repo, chapter_repo=chapter_repo)
@@ -35,18 +37,31 @@ def _build_services(tmp_path: Path):
     conflict_store = FileConflictGuardStore(tmp_path / "conflict_guard.json")
     suggestion_store = FileAISuggestionStore(tmp_path / "conflict_suggestions.json")
     direction_store = FileDirectionPlanStore(tmp_path / "direction_plan.json")
+    trace_store = FileAgentTraceStore(tmp_path / "conflict_trace.json")
+    trace_service = AgentTraceService(repository=trace_store)
     guard_service = ConflictGuardService(
         conflict_guard_repository=conflict_store,
         candidate_draft_repository=candidate_store,
         chapter_service=chapter_service,
         ai_suggestion_repository=suggestion_store,
         direction_plan_repository=direction_store,
+        trace_service=trace_service,
+        allow_override_blocking=allow_override_blocking,
     )
-    return work_service, chapter_service, candidate_store, conflict_store, suggestion_store, direction_store, guard_service
+    return work_service, chapter_service, candidate_store, conflict_store, suggestion_store, direction_store, guard_service, trace_service
 
 
-def _seed_candidate(tmp_path: Path, *, version_warning_codes: list[str] | None = None, stale_status: str = "fresh"):
-    work_service, chapter_service, candidate_store, conflict_store, suggestion_store, direction_store, guard_service = _build_services(tmp_path)
+def _seed_candidate(
+    tmp_path: Path,
+    *,
+    version_warning_codes: list[str] | None = None,
+    stale_status: str = "fresh",
+    allow_override_blocking: bool = False,
+):
+    work_service, chapter_service, candidate_store, conflict_store, suggestion_store, direction_store, guard_service, trace_service = _build_services(
+        tmp_path,
+        allow_override_blocking=allow_override_blocking,
+    )
     work = work_service.create_work("Conflict Work", "Author")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter = chapter_service.update_chapter(
@@ -113,11 +128,11 @@ def _seed_candidate(tmp_path: Path, *, version_warning_codes: list[str] | None =
             updated_at="2026-05-21T00:00:00+00:00",
         )
     )
-    return chapter_service, candidate_store, conflict_store, suggestion_store, direction_store, guard_service, draft, chapter
+    return chapter_service, candidate_store, conflict_store, suggestion_store, direction_store, guard_service, draft, chapter, trace_service
 
 
 def test_conflict_guard_precheck_creates_blocking_apply_version_conflict_record(tmp_path: Path) -> None:
-    _, _, conflict_store, _, _, guard_service, draft, chapter = _seed_candidate(tmp_path)
+    _, _, conflict_store, _, _, guard_service, draft, chapter, _ = _seed_candidate(tmp_path)
 
     result = guard_service.precheck_apply_conflicts(
         candidate_draft_id=draft.candidate_draft_id,
@@ -139,7 +154,7 @@ def test_conflict_guard_precheck_creates_blocking_apply_version_conflict_record(
 
 
 def test_conflict_guard_precheck_creates_warning_record_and_conflict_resolution_suggestion_for_stale_inputs(tmp_path: Path) -> None:
-    _, _, conflict_store, suggestion_store, _, guard_service, draft, chapter = _seed_candidate(
+    _, _, conflict_store, suggestion_store, _, guard_service, draft, chapter, _ = _seed_candidate(
         tmp_path,
         version_warning_codes=["context_pack_degraded"],
         stale_status="stale",
@@ -169,7 +184,7 @@ def test_conflict_guard_precheck_creates_warning_record_and_conflict_resolution_
 
 
 def test_conflict_guard_async_detection_failure_is_recorded_as_failed_without_blocking_apply(tmp_path: Path) -> None:
-    _, candidate_store, conflict_store, _, _, guard_service, draft, _ = _seed_candidate(tmp_path)
+    _, candidate_store, conflict_store, _, _, guard_service, draft, _, _ = _seed_candidate(tmp_path)
     version = candidate_store.get_version("ver_1").model_copy(
         update={
             "warning_codes": ["detection_timeout"],
@@ -199,7 +214,7 @@ def test_conflict_guard_async_detection_failure_is_recorded_as_failed_without_bl
 
 
 def test_conflict_guard_precheck_creates_info_record_for_fresh_warning_free_candidate(tmp_path: Path) -> None:
-    _, _, conflict_store, _, _, guard_service, draft, chapter = _seed_candidate(tmp_path)
+    _, _, conflict_store, _, _, guard_service, draft, chapter, _ = _seed_candidate(tmp_path)
 
     result = guard_service.precheck_apply_conflicts(
         candidate_draft_id=draft.candidate_draft_id,
@@ -219,7 +234,7 @@ def test_conflict_guard_precheck_creates_info_record_for_fresh_warning_free_cand
 
 
 def test_conflict_guard_precheck_creates_direction_plan_conflict_when_candidate_hits_must_not_include(tmp_path: Path) -> None:
-    _, candidate_store, conflict_store, suggestion_store, _, guard_service, draft, chapter = _seed_candidate(tmp_path)
+    _, candidate_store, conflict_store, suggestion_store, _, guard_service, draft, chapter, _ = _seed_candidate(tmp_path)
     candidate_store.save_version(
         candidate_store.get_version("ver_1").model_copy(
             update={
@@ -248,7 +263,7 @@ def test_conflict_guard_precheck_creates_direction_plan_conflict_when_candidate_
 
 
 def test_conflict_guard_precheck_creates_direction_plan_conflicts_when_required_items_are_missing(tmp_path: Path) -> None:
-    _, candidate_store, conflict_store, suggestion_store, direction_store, guard_service, draft, chapter = _seed_candidate(tmp_path)
+    _, candidate_store, conflict_store, suggestion_store, direction_store, guard_service, draft, chapter, _ = _seed_candidate(tmp_path)
     direction_store.save_writing_task(
         direction_store.get_writing_task("wt_1").model_copy(
             update={
@@ -284,3 +299,55 @@ def test_conflict_guard_precheck_creates_direction_plan_conflicts_when_required_
     }
     suggestions = suggestion_store.list_suggestions(work_id=draft.work_id, chapter_id=draft.chapter_id)
     assert len([item for item in suggestions if item.suggestion_type == AISuggestionType.CONFLICT_RESOLUTION_SUGGESTION]) >= 2
+
+
+def test_conflict_guard_records_resolve_and_override_trace_events(tmp_path: Path) -> None:
+    _, _, conflict_store, _, _, guard_service, draft, chapter, trace_service = _seed_candidate(
+        tmp_path,
+        version_warning_codes=["context_pack_degraded"],
+        stale_status="stale",
+        allow_override_blocking=True,
+    )
+
+    result = guard_service.precheck_apply_conflicts(
+        candidate_draft_id=draft.candidate_draft_id,
+        candidate_version_id="ver_1",
+        expected_chapter_version=chapter.version,
+        request_id="req_conflict_trace",
+        trace_id="trace_conflict_trace",
+    )
+    warning_record = conflict_store.get_record(result.record_refs[0])
+    guard_service.decide_record(
+        warning_record.record_id,
+        decision="resolved",
+        user_id="ui-user",
+        user_action=True,
+        request_id="req_conflict_resolved",
+        trace_id="trace_conflict_trace",
+        note="已人工确认",
+    )
+
+    blocking_record = conflict_store.save_record(
+        warning_record.model_copy(
+            update={
+                "record_id": "cgr_override_allowed",
+                "conflict_type": ConflictType.UNKNOWN_CONFLICT,
+                "severity": ConflictSeverity.BLOCKING,
+                "status": ConflictRecordStatus.ACKNOWLEDGED,
+                "trace_id": "trace_conflict_trace",
+            }
+        )
+    )
+    guard_service.decide_record(
+        blocking_record.record_id,
+        decision="overridden",
+        user_id="ui-user",
+        user_action=True,
+        request_id="req_conflict_overridden",
+        trace_id="trace_conflict_trace",
+        note="允许覆盖",
+    )
+
+    event_types = [item.event_type for item in trace_service.list_events("trace_conflict_trace")]
+    assert "conflict_resolved" in event_types
+    assert "conflict_overridden" in event_types

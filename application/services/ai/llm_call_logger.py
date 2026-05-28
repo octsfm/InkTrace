@@ -7,8 +7,9 @@ from domain.repositories.ai.llm_call_log_repository import LLMCallLogRepository
 
 
 class LLMCallLogger:
-    def __init__(self, repository: LLMCallLogRepository) -> None:
+    def __init__(self, repository: LLMCallLogRepository, trace_service=None) -> None:
         self._repository = repository
+        self._trace_service = trace_service
 
     def record(
         self,
@@ -29,6 +30,9 @@ class LLMCallLogger:
         attempt_no: int = 1,
         context_pack_snapshot_id: str = "",
         output_schema_key: str = "",
+        session_id: str = "",
+        step_id: str = "",
+        content_hash: str = "",
     ) -> None:
         entry = LLMCallLog(
             prompt_key=prompt_key,
@@ -49,3 +53,14 @@ class LLMCallLogger:
             output_schema_key=output_schema_key,
         )
         self._repository.append(entry)
+        if self._trace_service is not None and trace_id:
+            try:
+                self._trace_service.record_llm_call(
+                    entry,
+                    session_id=session_id,
+                    step_id=step_id,
+                    content_hash=content_hash,
+                )
+            except ValueError as exc:
+                if str(exc) != "trace_not_found":
+                    raise

@@ -1,0 +1,59 @@
+{
+  "records": {
+    "cgr_5402e887be": {
+      "record_id": "cgr_5402e887be",
+      "work_id": "d25d701e-64f4-44e1-946c-bba1d33f8ca9",
+      "chapter_id": "190d964a-0fc6-40b8-a956-a6c0e06b60c9",
+      "candidate_draft_id": "cd_conflict",
+      "candidate_version_id": "ver_1",
+      "agent_session_id": "",
+      "source_type": "candidate_version_state",
+      "source_ref_id": "ver_1",
+      "target_type": "candidate_draft_version",
+      "target_ref_id": "ver_1",
+      "conflict_type": "candidate_version_conflict",
+      "severity": "warning",
+      "status": "detected",
+      "title": "检测结果可能不完整",
+      "summary": "当前版本依赖的上下文存在降级或过期风险，继续 apply 代表已知风险。",
+      "evidence_refs": [
+        "stale_status:stale",
+        "warning_code:context_pack_degraded"
+      ],
+      "suggested_action_refs": [
+        "open_conflict_resolution",
+        "review_context_before_apply"
+      ],
+      "resolution_status": "unresolved",
+      "resolved_by": "",
+      "resolved_at": "",
+      "warning_codes": [
+        "context_pack_degraded"
+      ],
+      "created_by": "conflict_guard",
+      "created_at": "2026-05-25T02:47:03.097614+00:00",
+      "updated_at": "2026-05-25T02:47:03.097614+00:00",
+      "request_id": "req_conflict_api",
+      "trace_id": "trace_conflict_api"
+    }
+  },
+  "results": {
+    "cgrs_e90d068c47": {
+      "result_id": "cgrs_e90d068c47",
+      "work_id": "d25d701e-64f4-44e1-946c-bba1d33f8ca9",
+      "chapter_id": "190d964a-0fc6-40b8-a956-a6c0e06b60c9",
+      "candidate_version_id": "ver_1",
+      "total_conflicts": 1,
+      "blocking_count": 0,
+      "warning_count": 1,
+      "info_count": 0,
+      "record_refs": [
+        "cgr_5402e887be"
+      ],
+      "detection_status": "completed",
+      "detection_started_at": "2026-05-25T02:47:03.097614+00:00",
+      "detection_finished_at": "2026-05-25T02:47:03.102681+00:00"
+    }
+  },
+  "decisions": {}
+}

@@ -313,28 +313,16 @@ def generate_direction_proposal(payload: GenerateDirectionProposalRequest, reque
     denied = _ensure_write_request(request, caller_type=payload.caller_type, idempotency_key=payload.idempotency_key)
     if denied is not None:
         return denied
+    service = dependencies.get_planning_api_service()
     try:
-        dependencies.get_work_service().get_work(payload.work_id)
-        proposal_payload = _build_direction_payload(
+        proposal = service.generate_direction_proposal(
             work_id=payload.work_id,
             chapter_id=payload.chapter_id,
-            request=request,
             user_instruction=payload.user_instruction,
+            request_id=getattr(request.state, "request_id", ""),
+            trace_id=request.headers.get("X-Trace-Id", "").strip(),
+            idempotency_key=payload.idempotency_key,
         )
-        result = dependencies.get_core_tool_facade().call(
-            "create_direction_proposal",
-            context=_context_from_request(
-                request,
-                work_id=payload.work_id,
-                chapter_id=payload.chapter_id,
-                idempotency_key=payload.idempotency_key,
-                agent_session_id=str(proposal_payload["agent_session_id"]),
-                agent_step_id="direction_generation",
-            ),
-            payload=proposal_payload,
-        )
-        proposal_id = str(result.payload.get("result_ref", "")).split(":", 1)[-1]
-        proposal = dependencies.get_direction_plan_repository().get_direction_proposal(proposal_id)
     except ValueError as exc:
         error_code = str(exc)
         return error_response(request, error_code=error_code, status_code=404 if error_code in {"work_not_found", "chapter_not_found"} else 400)
@@ -344,7 +332,7 @@ def generate_direction_proposal(payload: GenerateDirectionProposalRequest, reque
 @router.get("/api/v2/ai/directions")
 def list_direction_proposals(work_id: str, request: Request, chapter_id: str = ""):
     try:
-        items = dependencies.get_direction_plan_repository().list_direction_proposals(work_id, chapter_id=chapter_id)
+        items = dependencies.get_planning_api_service().list_direction_proposals(work_id, chapter_id=chapter_id)
     except ValueError as exc:
         return error_response(request, error_code=str(exc), status_code=400)
     return success_response(request, data={"items": [_serialize_direction_proposal(item) for item in items]})
@@ -353,7 +341,7 @@ def list_direction_proposals(work_id: str, request: Request, chapter_id: str = "
 @router.get("/api/v2/ai/directions/{proposal_id}")
 def get_direction_proposal(proposal_id: str, request: Request):
     try:
-        proposal = dependencies.get_direction_plan_repository().get_direction_proposal(proposal_id)
+        proposal = dependencies.get_planning_api_service().get_direction_proposal(proposal_id)
     except ValueError:
         return error_response(request, error_code="direction_proposal_not_found", status_code=404)
     return success_response(request, data=_serialize_direction_proposal(proposal))
@@ -369,53 +357,27 @@ def select_direction(proposal_id: str, payload: SelectDirectionRequest, request:
     )
     if denied is not None:
         return denied
+    service = dependencies.get_planning_api_service()
     try:
-        proposal = dependencies.get_direction_plan_repository().get_direction_proposal(proposal_id)
-    except ValueError:
-        return error_response(request, error_code="direction_proposal_not_found", status_code=404)
-    if proposal.status not in {DirectionPlanStatus.WAITING_FOR_SELECTION, DirectionPlanStatus.EDITED, DirectionPlanStatus.SELECTED}:
-        return error_response(request, error_code="direction_proposal_not_ready", status_code=400)
-
-    orchestrator = dependencies.get_agent_orchestrator()
-    run = orchestrator.start_workflow(
-        work_id=proposal.work_id,
-        chapter_id=proposal.chapter_id,
-        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
-        user_instruction="direction_selection_api",
-        caller_type="user_action",
-    )
-    run = orchestrator.advance_workflow(
-        run.session_id,
-        decision="continue",
-        result_ref=f"memory_context:{proposal.source_context_pack_id or 'cp_api'}",
-        safe_message="memory ready",
-    )
-    run = orchestrator.advance_workflow(
-        run.session_id,
-        decision="continue",
-        result_ref=f"direction:{proposal.direction_proposal_id}",
-        safe_message="direction ready",
-    )
-    run = orchestrator.submit_user_decision(
-        run.session_id,
-        user_decision="confirm_direction",
-        safe_message="direction selected",
-        request_id=getattr(request.state, "request_id", ""),
-        metadata={
-            "selected_direction_id": proposal.direction_proposal_id,
-            "selected_option_id": payload.selected_option_id,
-            "edited_fields": payload.edited_fields,
-            "edited_values": payload.edited_values,
-        },
-    )
-    selection = dependencies.get_direction_plan_repository().get_direction_selection(f"ds_{run.session_id}_{proposal.direction_proposal_id}")
-    updated_proposal = dependencies.get_direction_plan_repository().get_direction_proposal(proposal_id)
+        result = service.select_direction(
+            proposal_id=proposal_id,
+            selected_option_id=payload.selected_option_id,
+            user_id=payload.user_id,
+            edited_fields=payload.edited_fields,
+            edited_values=payload.edited_values,
+            request_id=getattr(request.state, "request_id", ""),
+            user_action=payload.user_action,
+        )
+    except ValueError as exc:
+        error_code = str(exc)
+        status_code = 404 if error_code == "direction_proposal_not_found" else 400
+        return error_response(request, error_code=error_code, status_code=status_code)
     return success_response(
         request,
         data={
-            "selection": selection.model_dump(mode="json"),
-            "proposal": _serialize_direction_proposal(updated_proposal),
-            "workflow_stage": run.current_stage,
+            "selection": result["selection"].model_dump(mode="json"),
+            "proposal": _serialize_direction_proposal(result["proposal"]),
+            "workflow_stage": result["workflow_stage"],
         },
     )
 
@@ -425,45 +387,33 @@ def generate_chapter_plan(payload: GenerateChapterPlanRequest, request: Request)
     denied = _ensure_write_request(request, caller_type=payload.caller_type, idempotency_key=payload.idempotency_key)
     if denied is not None:
         return denied
+    service = dependencies.get_planning_api_service()
     try:
-        proposal = dependencies.get_direction_plan_repository().get_direction_proposal(payload.direction_proposal_id)
-    except ValueError:
-        return error_response(request, error_code="direction_proposal_not_found", status_code=404)
-    if proposal.status not in {DirectionPlanStatus.SELECTED, DirectionPlanStatus.EDITED}:
-        return error_response(request, error_code="direction_proposal_not_ready", status_code=400)
-    plan_payload = _build_plan_payload(
-        work_id=payload.work_id,
-        chapter_id=payload.chapter_id,
-        proposal=proposal,
-        request=request,
-    )
-    result = dependencies.get_core_tool_facade().call(
-        "create_chapter_plan",
-        context=_context_from_request(
-            request,
+        plan = service.generate_chapter_plan(
             work_id=payload.work_id,
             chapter_id=payload.chapter_id,
+            direction_proposal_id=payload.direction_proposal_id,
+            request_id=getattr(request.state, "request_id", ""),
+            trace_id=request.headers.get("X-Trace-Id", "").strip(),
             idempotency_key=payload.idempotency_key,
-            agent_session_id=str(plan_payload["agent_session_id"]),
-            agent_step_id="chapter_plan_generation",
-        ),
-        payload=plan_payload,
-    )
-    plan_id = str(result.payload.get("result_ref", "")).split(":", 1)[-1]
-    plan = dependencies.get_chapter_plan_repository().get(plan_id)
+        )
+    except ValueError as exc:
+        error_code = str(exc)
+        status_code = 404 if error_code == "direction_proposal_not_found" else 400
+        return error_response(request, error_code=error_code, status_code=status_code)
     return success_response(request, data=_serialize_chapter_plan(plan))
 
 
 @router.get("/api/v2/ai/chapter-plans")
 def list_chapter_plans(work_id: str, request: Request, chapter_id: str = ""):
-    items = dependencies.get_chapter_plan_repository().list_by_work(work_id, chapter_id=chapter_id)
+    items = dependencies.get_planning_api_service().list_chapter_plans(work_id, chapter_id=chapter_id)
     return success_response(request, data={"items": [_serialize_chapter_plan(item) for item in items]})
 
 
 @router.get("/api/v2/ai/chapter-plans/{plan_id}")
 def get_chapter_plan(plan_id: str, request: Request):
     try:
-        plan = dependencies.get_chapter_plan_repository().get(plan_id)
+        plan = dependencies.get_planning_api_service().get_chapter_plan(plan_id)
     except ValueError:
         return error_response(request, error_code="chapter_plan_not_found", status_code=404)
     return success_response(request, data=_serialize_chapter_plan(plan))
@@ -480,61 +430,24 @@ def confirm_chapter_plan(plan_id: str, payload: ConfirmChapterPlanRequest, reque
     if denied is not None:
         return denied
     try:
-        plan = dependencies.get_chapter_plan_repository().get(plan_id)
+        result = dependencies.get_planning_api_service().confirm_chapter_plan(
+            plan_id=plan_id,
+            user_id=payload.user_id,
+            edited_items=payload.edited_items,
+            edited_fields=payload.edited_fields,
+            user_edit_notes=payload.user_edit_notes,
+            request_id=getattr(request.state, "request_id", ""),
+            user_action=payload.user_action,
+        )
     except ValueError:
         return error_response(request, error_code="chapter_plan_not_found", status_code=404)
-    orchestrator = dependencies.get_agent_orchestrator()
-    run = orchestrator.start_workflow(
-        work_id=plan.work_id,
-        chapter_id=plan.chapter_id,
-        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
-        user_instruction="chapter_plan_confirm_api",
-        caller_type="user_action",
-    )
-    run = orchestrator.advance_workflow(
-        run.session_id,
-        decision="continue",
-        result_ref=f"memory_context:{plan.source_context_pack_id or 'cp_api'}",
-        safe_message="memory ready",
-    )
-    run = orchestrator.advance_workflow(
-        run.session_id,
-        decision="continue",
-        result_ref=f"direction:{plan.direction_proposal_id}",
-        safe_message="direction ready",
-    )
-    run = orchestrator.submit_user_decision(
-        run.session_id,
-        user_decision="confirm_direction",
-        safe_message="direction confirmed",
-        request_id=getattr(request.state, "request_id", ""),
-        metadata={
-            "selected_direction_id": plan.direction_proposal_id,
-            "selected_option_id": plan.selected_option_id,
-        },
-    )
-    run = orchestrator.submit_user_decision(
-        run.session_id,
-        user_decision="confirm_chapter_plan",
-        safe_message="plan confirmed",
-        request_id=getattr(request.state, "request_id", ""),
-        metadata={
-            "selected_chapter_plan_id": plan.chapter_plan_id,
-            "edited_items": payload.edited_items,
-            "edited_fields": payload.edited_fields,
-            "user_edit_notes": payload.user_edit_notes,
-        },
-    )
-    confirmation = dependencies.get_direction_plan_repository().get_plan_confirmation(f"pc_{run.session_id}_{plan.chapter_plan_id}")
-    updated_plan = dependencies.get_chapter_plan_repository().get(plan_id)
-    task = dependencies.get_direction_plan_repository().get_active_writing_task(plan.work_id, chapter_id=plan.chapter_id)
     return success_response(
         request,
         data={
-            "confirmation": _serialize_plan_confirmation(confirmation),
-            "plan": _serialize_chapter_plan(updated_plan),
-            "writing_task": _serialize_writing_task(task) if task is not None else {},
-            "workflow_stage": run.current_stage,
+            "confirmation": _serialize_plan_confirmation(result["confirmation"]),
+            "plan": _serialize_chapter_plan(result["plan"]),
+            "writing_task": _serialize_writing_task(result["writing_task"]) if result["writing_task"] is not None else {},
+            "workflow_stage": result["workflow_stage"],
         },
     )
 
@@ -550,71 +463,35 @@ def reject_chapter_plan(plan_id: str, payload: RejectChapterPlanRequest, request
     if denied is not None:
         return denied
     try:
-        plan = dependencies.get_chapter_plan_repository().get(plan_id)
+        result = dependencies.get_planning_api_service().reject_chapter_plan(
+            plan_id=plan_id,
+            user_id=payload.user_id,
+            user_edit_notes=payload.user_edit_notes,
+            request_id=getattr(request.state, "request_id", ""),
+            user_action=payload.user_action,
+        )
     except ValueError:
         return error_response(request, error_code="chapter_plan_not_found", status_code=404)
-    orchestrator = dependencies.get_agent_orchestrator()
-    run = orchestrator.start_workflow(
-        work_id=plan.work_id,
-        chapter_id=plan.chapter_id,
-        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
-        user_instruction="chapter_plan_reject_api",
-        caller_type="user_action",
-    )
-    run = orchestrator.advance_workflow(
-        run.session_id,
-        decision="continue",
-        result_ref=f"memory_context:{plan.source_context_pack_id or 'cp_api'}",
-        safe_message="memory ready",
-    )
-    run = orchestrator.advance_workflow(
-        run.session_id,
-        decision="continue",
-        result_ref=f"direction:{plan.direction_proposal_id}",
-        safe_message="direction ready",
-    )
-    run = orchestrator.submit_user_decision(
-        run.session_id,
-        user_decision="confirm_direction",
-        safe_message="direction confirmed",
-        request_id=getattr(request.state, "request_id", ""),
-        metadata={
-            "selected_direction_id": plan.direction_proposal_id,
-            "selected_option_id": plan.selected_option_id,
-        },
-    )
-    run = orchestrator.submit_user_decision(
-        run.session_id,
-        user_decision="reject",
-        safe_message="plan rejected",
-        request_id=getattr(request.state, "request_id", ""),
-        metadata={
-            "selected_chapter_plan_id": plan.chapter_plan_id,
-            "user_edit_notes": payload.user_edit_notes,
-        },
-    )
-    confirmation = dependencies.get_direction_plan_repository().get_plan_confirmation(f"pc_{run.session_id}_{plan.chapter_plan_id}")
-    updated_plan = dependencies.get_chapter_plan_repository().get(plan_id)
     return success_response(
         request,
         data={
-            "confirmation": _serialize_plan_confirmation(confirmation),
-            "plan": _serialize_chapter_plan(updated_plan),
-            "workflow_stage": run.current_stage,
+            "confirmation": _serialize_plan_confirmation(result["confirmation"]),
+            "plan": _serialize_chapter_plan(result["plan"]),
+            "workflow_stage": result["workflow_stage"],
         },
     )
 
 
 @router.get("/api/v2/ai/writing-tasks")
 def list_writing_tasks(work_id: str, request: Request, chapter_id: str = ""):
-    items = dependencies.get_direction_plan_repository().list_writing_tasks(work_id, chapter_id=chapter_id)
+    items = dependencies.get_planning_api_service().list_writing_tasks(work_id, chapter_id=chapter_id)
     return success_response(request, data={"items": [_serialize_writing_task(item) for item in items]})
 
 
 @router.get("/api/v2/ai/writing-tasks/{writing_task_id}")
 def get_writing_task(writing_task_id: str, request: Request):
     try:
-        task = dependencies.get_direction_plan_repository().get_writing_task(writing_task_id)
+        task = dependencies.get_planning_api_service().get_writing_task(writing_task_id)
     except ValueError:
         return error_response(request, error_code="writing_task_not_found", status_code=404)
     return success_response(request, data=_serialize_writing_task(task))

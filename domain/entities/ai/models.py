@@ -412,6 +412,252 @@ class AgentRunContext(AIBaseModel):
         return payload
 
 
+class TraceLevel(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
+class TraceEventStage(StrEnum):
+    PERCEPTION = "perception"
+    PLANNING = "planning"
+    ACTION = "action"
+    OBSERVATION = "observation"
+    ORCHESTRATION = "orchestration"
+    AUDIT = "audit"
+
+
+class TraceEventType(StrEnum):
+    SESSION_CREATED = "session_created"
+    SESSION_STARTED = "session_started"
+    SESSION_PAUSED = "session_paused"
+    SESSION_RESUMED = "session_resumed"
+    SESSION_CANCELLING = "session_cancelling"
+    SESSION_CANCELLED = "session_cancelled"
+    SESSION_FAILED = "session_failed"
+    SESSION_COMPLETED = "session_completed"
+    SESSION_PARTIAL_SUCCESS = "session_partial_success"
+    STAGE_ENTERED = "stage_entered"
+    STAGE_EXITED = "stage_exited"
+    STEP_CREATED = "step_created"
+    STEP_STARTED = "step_started"
+    STEP_RETRYING = "step_retrying"
+    STEP_SUCCEEDED = "step_succeeded"
+    STEP_FAILED = "step_failed"
+    STEP_SKIPPED = "step_skipped"
+    STEP_CANCELLED = "step_cancelled"
+    STEP_IGNORED_LATE_RESULT = "step_ignored_late_result"
+    TOOL_CALL_STARTED = "tool_call_started"
+    TOOL_CALL_SUCCEEDED = "tool_call_succeeded"
+    TOOL_CALL_FAILED = "tool_call_failed"
+    TOOL_CALL_DENIED = "tool_call_denied"
+    OBSERVATION_RECORDED = "observation_recorded"
+    WAITING_FOR_USER_ENTERED = "waiting_for_user_entered"
+    WAITING_FOR_USER_RESOLVED = "waiting_for_user_resolved"
+    POLICY_BLOCKED = "policy_blocked"
+    DEGRADED_DETECTED = "degraded_detected"
+    BLOCKED_DETECTED = "blocked_detected"
+    CHECKPOINT_SAVED = "checkpoint_saved"
+    CHECKPOINT_RESTORED = "checkpoint_restored"
+    ALERT_TRIGGERED = "alert_triggered"
+    ALERT_RESOLVED = "alert_resolved"
+    TRACE_WRITE_FAILED = "trace_write_failed"
+    AGENT_SESSION_STARTED = "agent_session_started"
+    AGENT_SESSION_COMPLETED = "agent_session_completed"
+    AGENT_SESSION_FAILED = "agent_session_failed"
+    AGENT_SESSION_CANCELLED = "agent_session_cancelled"
+    TOOL_CALL_FORBIDDEN = "tool_call_forbidden"
+    USER_DECISION_RECORDED = "user_decision_recorded"
+    SUGGESTION_ACCEPTED = "suggestion_accepted"
+    SUGGESTION_DISMISSED = "suggestion_dismissed"
+    CONFLICT_RESOLVED = "conflict_resolved"
+    CONFLICT_OVERRIDDEN = "conflict_overridden"
+    MEMORY_REVISION_CREATED = "memory_revision_created"
+    MEMORY_REVISION_APPLIED = "memory_revision_applied"
+    MEMORY_REVISION_ROLLED_BACK = "memory_revision_rolled_back"
+    DUPLICATE_IGNORED = "duplicate_ignored"
+
+
+class AgentTraceStatus(StrEnum):
+    RUNNING = "running"
+    WAITING_FOR_USER = "waiting_for_user"
+    COMPLETED = "completed"
+    PARTIAL_SUCCESS = "partial_success"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ToolPermissionResult(StrEnum):
+    ALLOW = "allow"
+    DENY = "deny"
+    CONDITIONAL_ALLOW = "conditional_allow"
+
+
+class ToolCallTraceStatus(StrEnum):
+    STARTED = "started"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
+    IGNORED_LATE_RESULT = "ignored_late_result"
+
+
+class TraceAlertScope(StrEnum):
+    STEP = "step"
+    SESSION = "session"
+    WORKFLOW = "workflow"
+    SYSTEM = "system"
+
+
+class TraceAlertType(StrEnum):
+    TIMEOUT_SPIKE = "timeout_spike"
+    FAILURE_SPIKE = "failure_spike"
+    BLOCKED_SPIKE = "blocked_spike"
+    RETRY_EXHAUSTED = "retry_exhausted"
+    QUEUE_BACKLOG = "queue_backlog"
+    AUDIT_WRITE_FAILED = "audit_write_failed"
+
+
+class TraceAlertStatus(StrEnum):
+    OPEN = "open"
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED = "resolved"
+    MUTED = "muted"
+
+
+class AgentTrace(AIBaseModel):
+    trace_id: str
+    work_id: str
+    chapter_id: str = ""
+    session_id: str
+    workflow_run_id: str = ""
+    workflow_type: str = ""
+    status: AgentTraceStatus = AgentTraceStatus.RUNNING
+    agent_sequence: list[str] = Field(default_factory=list)
+    total_steps: int = 0
+    result_summary: str = ""
+    result_ref_ids: list[str] = Field(default_factory=list)
+    total_elapsed_ms: int = 0
+    total_tokens: int = 0
+    warning_codes: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    started_at: str = ""
+    ended_at: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class AgentTraceEvent(AIBaseModel):
+    event_id: str
+    trace_id: str
+    session_id: str
+    step_id: str = ""
+    event_type: TraceEventType
+    event_stage: TraceEventStage = TraceEventStage.ORCHESTRATION
+    event_time: str
+    level: TraceLevel = TraceLevel.INFO
+    summary: str
+    safe_refs: list[str] = Field(default_factory=list)
+    payload_digest: dict[str, Any] = Field(default_factory=dict)
+    request_id: str = ""
+    correlation_id: str = ""
+
+
+class AgentStepTrace(AIBaseModel):
+    step_trace_id: str
+    trace_id: str
+    step_id: str
+    session_id: str
+    agent_type: str
+    action: str
+    attempt_no: int = 0
+    status: str
+    started_at: str = ""
+    ended_at: str = ""
+    duration_ms: int = 0
+    warning_codes: list[str] = Field(default_factory=list)
+    error_code: str = ""
+
+
+class ToolCallTrace(AIBaseModel):
+    tool_trace_id: str
+    trace_id: str
+    step_id: str
+    tool_name: str
+    caller_type: str
+    side_effect_level: str
+    permission_result: ToolPermissionResult = ToolPermissionResult.ALLOW
+    call_status: ToolCallTraceStatus = ToolCallTraceStatus.STARTED
+    duration_ms: int = 0
+    error_code: str = ""
+    safe_input_digest: dict[str, Any] = Field(default_factory=dict)
+    safe_output_digest: dict[str, Any] = Field(default_factory=dict)
+    tool_audit_log_ref: str = ""
+
+
+class ObservationTrace(AIBaseModel):
+    observation_trace_id: str
+    trace_id: str
+    step_id: str
+    observation_type: str
+    decision_hint: str = ""
+    decision_source: str = ""
+    is_blocking: bool = False
+    warning_codes: list[str] = Field(default_factory=list)
+    summary: str
+    safe_refs: list[str] = Field(default_factory=list)
+
+
+class LLMCallTraceView(AIBaseModel):
+    llm_call_log_ref: str
+    trace_id: str
+    step_id: str = ""
+    prompt_ref: str
+    model_role: str
+    provider: str
+    model: str
+    context_pack_ref: str = ""
+    output_schema_key: str = ""
+    token_count: int = 0
+    elapsed_ms: int = 0
+    content_hash: str = ""
+
+
+class UserDecisionTrace(AIBaseModel):
+    decision_trace_id: str
+    trace_id: str
+    session_id: str
+    step_id: str = ""
+    decision_type: str
+    target_entity_type: str
+    target_entity_id: str
+    decided_by: str
+    decision_note: str = ""
+    decided_at: str
+
+
+class TraceMetricPoint(AIBaseModel):
+    metric_id: str
+    trace_id: str
+    metric_name: str
+    metric_value: float
+    labels: dict[str, str] = Field(default_factory=dict)
+    timestamp: str
+
+
+class TraceAlertRecord(AIBaseModel):
+    alert_id: str
+    trace_id: str = ""
+    scope: TraceAlertScope
+    alert_type: TraceAlertType
+    severity: TraceLevel
+    status: TraceAlertStatus = TraceAlertStatus.OPEN
+    summary: str
+    triggered_at: str
+    resolved_at: str = ""
+
+
 class ResultRef(AIBaseModel):
     ref_type: str
     ref_id: str

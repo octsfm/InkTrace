@@ -25,6 +25,15 @@
 3. 不引入 P2 自动记忆归纳、复杂知识图谱、批量自动更新、自动连续续写队列。
 4. 不写代码、不生成开发计划、不处理 Git。
 
+### 1.1 作者可见记忆门控表达约束（冻结）
+
+1. MemoryReviewGate 默认文案使用“记忆更新确认”，不直接暴露 Revision 内部字段术语。
+2. `approved` 与 `applied` 必须明确区分：
+   - approved：已批准，待应用
+   - applied：已写入正式记忆
+3. `defer` 必须以“稍后处理”表达，不作为失败态呈现。
+4. 记忆更新卡片默认展示“当前值摘要 / 建议值摘要 / 影响范围 / 下一步动作”，不展示内部审计字段。
+
 依据文档：
 
 - `docs/01_requirements/InkTrace-V2.0-需求规格说明书.md`
@@ -504,6 +513,8 @@ StoryStateRevision 与 StoryMemoryRevision 并列，针对当前章节状态域�
 6. blocking conflict 存在时 apply 按钮必须受限。
 7. 普通用户不展示完整 Prompt / ContextPack / JSON / Tool 原始日志。
 8. 状态色遵守 InkTrace-DESIGN.md。
+9. 给人用优先：默认先展示“影响范围（人物/设定/时间线）+ 变更前后摘要 + 风险等级”，字段级结构放在二级展开。
+10. 用户动作文案固定中文：确认更新 / 编辑后确认 / 拒绝 / 稍后处理；不得以 revision/status 枚举值作为按钮文案。
 
 ---
 

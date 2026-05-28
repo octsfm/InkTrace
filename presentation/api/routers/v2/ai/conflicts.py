@@ -16,7 +16,7 @@ def _serialize_conflict(item) -> dict[str, object]:  # noqa: ANN001
 def _conflict_error_status(error_code: str) -> int:
     if error_code in {"conflict_record_not_found"}:
         return 404
-    if error_code in {"action_not_allowed", "caller_type_not_allowed"}:
+    if error_code in {"action_not_allowed", "caller_type_forbidden"}:
         return 403
     if error_code in {"blocking_conflict_unresolved", "cannot_override_blocking"}:
         return 409
@@ -27,7 +27,7 @@ def _conflict_error_status(error_code: str) -> int:
 
 def _reject_invalid_decision_request(request: Request, payload: ConflictDecisionRequest):
     if payload.caller_type != "user_action":
-        return error_response(request, error_code="caller_type_not_allowed", status_code=403)
+        return error_response(request, error_code="caller_type_forbidden", status_code=403)
     if not payload.user_action:
         return error_response(request, error_code="action_not_allowed", status_code=403)
     if not str(payload.idempotency_key or "").strip():

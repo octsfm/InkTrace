@@ -43,6 +43,13 @@ P1-05 的目标是冻结从"四层剧情轨道就绪 → Planner Agent 生成 A/
 
 本模块覆盖：
 
+### 1.3 作者主路径兼容约束（冻结）
+
+1. Direction Proposal / ChapterPlan 是“深度规划路径”，不应强制替代作者快捷写作路径。
+2. 与 P1-02 `fast_continuation_workflow` 对齐：作者可先生成候选稿，再决定是否进入方向与计划细化。
+3. 作者界面默认文案必须使用“写作方向/章节计划/确认计划”，不直接暴露 DirectionSelection / PlanConfirmation 术语。
+4. 方向与计划相关状态（generated/stale/superseded）必须提供中文解释，不得只显示英文枚举。
+
 - DirectionProposal 数据模型（含 A/B/C 三个 DirectionOption）。
 - DirectionOption 的结构、评分维度、轨道引用、展示字段。
 - DirectionSelection 用户确认门模型与规则。
@@ -1176,6 +1183,8 @@ memory_context_prepare → planning_prepare → direction_selection_waiting
 - **不提供"自动选择方向"按钮**。
 - **不提供"自动确认计划"按钮**。
 - **DirectionSelection 和 PlanConfirmation 按钮文案明确区分**（"选择方向 A" vs "确认计划"）。
+- **给人用优先**：方向与计划卡片主文案必须回答“这条路会带来什么结果与风险”，不得以 Tool/Workflow 字段名作为主文案。
+- **作者视角文案**：默认显示“稳妥推进/冲突增强/情感深化”等创作意图标签，不要求用户理解内部状态机术语。
 - **未选择方向时，ChapterPlan 区域不可见或显示"请先选择方向"**。
 - **未确认计划时，续写按钮不可用或提示"请先确认章节计划"**。
 

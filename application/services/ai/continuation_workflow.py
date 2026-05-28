@@ -18,6 +18,7 @@ from domain.repositories.ai.ai_job_attempt_repository import AIJobAttemptReposit
 from domain.repositories.ai.ai_job_repository import AIJobRepository
 from domain.repositories.ai.ai_job_step_repository import AIJobStepRepository
 from domain.repositories.ai.candidate_draft_repository import CandidateDraftRepository
+from domain.repositories.ai.direction_plan_repository import DirectionPlanRepository
 
 
 class MinimalContinuationWorkflow:
@@ -28,6 +29,7 @@ class MinimalContinuationWorkflow:
         chapter_service: ChapterService,
         tool_facade,
         candidate_draft_repository: CandidateDraftRepository,
+        direction_plan_repository: DirectionPlanRepository | None = None,
         conflict_guard_service=None,
         job_repository: AIJobRepository,
         step_repository: AIJobStepRepository,
@@ -37,6 +39,7 @@ class MinimalContinuationWorkflow:
         self._chapter_service = chapter_service
         self._tool_facade = tool_facade
         self._candidate_draft_repository = candidate_draft_repository
+        self._direction_plan_repository = direction_plan_repository
         self._conflict_guard_service = conflict_guard_service
         self._job_service = AIJobService(
             job_repository=job_repository,
@@ -57,15 +60,13 @@ class MinimalContinuationWorkflow:
         self._work_service.get_work(work_id)
         chapter = self._get_chapter(work_id, chapter_id)
         workflow_id = f"wf_{uuid.uuid4().hex[:12]}"
-        writing_task = WritingTask(
-            writing_task_id=f"wt_{uuid.uuid4().hex[:12]}",
+        writing_task = self._resolve_writing_task(
             work_id=work_id,
-            target_chapter_id=chapter_id,
-            continuation_mode="continue_chapter",
-            user_instruction=str(user_instruction or "").strip(),
+            chapter_id=chapter_id,
+            user_instruction=user_instruction,
             created_by=created_by,
-            created_at=self._now(),
         )
+        direction_plan_snapshot_id = self._resolve_direction_plan_snapshot_id(writing_task)
         job = self._job_service.create_job(
             job_type="continuation",
             work_id=work_id,
@@ -295,10 +296,13 @@ class MinimalContinuationWorkflow:
                 "writer_model_role": writer_output.get("model_role", "writer"),
                 "provider_name": writer_output.get("provider_name", ""),
                 "model_name": writer_output.get("model_name", ""),
+                "writing_task_id": writing_task.writing_task_id,
+                "direction_plan_snapshot_id": direction_plan_snapshot_id,
                 "created_by": created_by,
                 "metadata": {
                     "workflow_id": workflow_id,
                     "writing_task_id": writing_task.writing_task_id,
+                    "direction_plan_snapshot_id": direction_plan_snapshot_id,
                     "context_pack_status": context_pack.status.value,
                     "degraded_reason": context_pack.degraded_reason,
                     "warnings": list(context_pack.warnings),
@@ -385,6 +389,33 @@ class MinimalContinuationWorkflow:
         result = self._tool_facade.call(tool_name, context=context, payload=dict(payload))
         if not result.ok:
             raise RuntimeError(result.error_code or "job_tool_failed")
+
+    def _resolve_writing_task(
+        self,
+        *,
+        work_id: str,
+        chapter_id: str,
+        user_instruction: str | None,
+        created_by: str,
+    ) -> WritingTask:
+        if self._direction_plan_repository is not None:
+            active_task = self._direction_plan_repository.get_active_writing_task(work_id, chapter_id=chapter_id)
+            if active_task is not None:
+                return active_task
+        return WritingTask(
+            writing_task_id=f"wt_{uuid.uuid4().hex[:12]}",
+            work_id=work_id,
+            target_chapter_id=chapter_id,
+            continuation_mode="continue_chapter",
+            user_instruction=str(user_instruction or "").strip(),
+            created_by=created_by,
+            created_at=self._now(),
+        )
+
+    def _resolve_direction_plan_snapshot_id(self, writing_task: WritingTask) -> str:
+        if not writing_task.agent_session_id or not writing_task.chapter_plan_id:
+            return ""
+        return f"dps_{writing_task.agent_session_id}_{writing_task.chapter_plan_id}"
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()

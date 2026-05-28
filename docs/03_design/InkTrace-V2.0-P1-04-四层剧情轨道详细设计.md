@@ -43,6 +43,22 @@ P1-04 的目标是冻结四层轨道的数据模型、状态机、构建策略�
 - Immediate Window（临近窗口）：数据结构、字段、构建来源、动态组装规则。
 - 四层轨道之间的父子关系与继承规则。
 - 四层轨道的统一状态机（ArcStatus）与 quality_level 体系。
+
+### 1.3 作者可见命名映射约束（冻结）
+
+四层轨道是系统约束层，但面向作者必须使用可理解命名：
+
+1. `Master Arc` -> 全书主线
+2. `Volume Arc` -> 本卷脉络
+3. `Sequence Arc` -> 近期段落
+4. `Immediate Window` -> 当前上下文
+
+约束：
+
+1. 内部模型字段和接口可保留正式英文命名；
+2. 作者主界面与提示文案必须使用中文命名映射；
+3. `ready/degraded/blocked/stale` 必须翻译为中文任务提示，不直接裸露原始枚举。
+4. 文档中的 UI 示例、卡片标题、附录速查项若面向作者展示，必须使用中文外显命名，不得以 `Master/Volume/Sequence/Immediate` 作为默认标题。
 - 轨道缺失时的 blocked / degraded / ready 判定规则。
 - 轨道 stale 时的处理规则。
 - 初始化阶段轨道的生成与占位策略（placeholder / minimal / complete 三级质量体系）。
@@ -936,6 +952,7 @@ P1-04 不做：
 - [ ] 与 Direction Proposal / ChapterPlan 的约束关系方向明确
 - [ ] 与 Conflict Guard 的偏离检测维度方向明确（7 个维度）
 - [ ] UI 展示方向与 P1-UI §7 / DESIGN.md 对齐
+- [ ] 作者可见命名必须使用“全书主线 / 本卷脉络 / 近期段落 / 当前上下文”，不得直接以 Master/Volume/Sequence/Immediate 作为主标题
 - [ ] 旧稿 Chapter/Scene 命名已映射到正式口径
 - [ ] 不引入 P2 能力
 - [ ] P1-05 / P1-08 / P1-11 可以基于本文档进行各自的详细设计

@@ -74,6 +74,31 @@ P1-02 不覆盖：
 - AI 自动 apply。
 - AI 自动写正式正文。
 
+### 1.7 作者主路径编排策略（冻结）
+
+为降低“多门控串行”对作者写作体验的摩擦，P1-02 增加作者主路径编排策略：
+
+1. 新增 `fast_continuation_workflow`（快速续写工作流）类型。
+2. 快速续写允许跳过 `DirectionSelection` 与 `PlanConfirmation` 的显式等待阶段，直接进入写作准备与候选稿生成。
+3. 快速续写**不**跳过 `HumanReviewGate`，也**不**跳过 `MemoryReviewGate` 的边界约束。
+4. 快速续写仍严格遵守 CandidateDraft 隔离层与 user_action apply 规则。
+5. 快速续写用于“先产出候选稿，再决定是否深度规划”，不是自动写正式正文能力。
+
+快速续写阶段方向（冻结）：
+
+`memory_context_prepare -> writing_prepare -> drafting -> reviewing(optional) -> candidate_ready -> human_review_waiting`
+
+进入条件：
+
+1. 用户显式选择“快速续写”模式；
+2. WorkflowPolicy 允许该模式；
+3. 未触发 blocked 级前置阻断。
+
+退出条件：
+
+1. 进入 HumanReviewGate 后，由用户执行 accept/reject/apply；
+2. 后续是否进入方向/计划深度链路，由用户决策触发，不自动推进。
+
 ### 1.4 与 P1 总纲的关系
 
 P1 总纲已冻结以下 AgentWorkflow 相关方向，P1-02 必须直接继承：
@@ -510,19 +535,21 @@ WorkflowCheckpoint 是工作流在特定时刻的状态快照，用于 pause / r
 | workflow_type | P1 边界 | 说明 |
 |---|---|---|
 | continuation_workflow | P1 必须 | P1 默认完整续写主流程：Memory → Planner → Writer → Reviewer → [Rewriter → Reviewer] → CandidateReady → HumanReviewGate → [MemoryUpdateSuggestion] |
+| fast_continuation_workflow | P1 必须（作者快捷） | 作者快捷续写：跳过 DirectionSelection / ChapterPlan 显式等待，优先生成候选稿；后续门控仍保留，不允许自动 apply |
 | revision_workflow | P1 必须 | 基于已有 CandidateDraft / CandidateDraftVersion 的修订流程：Rewriter → Reviewer → [Rewriter → Reviewer] → CandidateReady |
 | planning_workflow | P1 必须 | 只做方向推演与章节计划：Memory → Planner → DirectionSelection → ChapterPlan，不生成正式候选稿 |
 | memory_update_workflow | P1 可选独立 workflow | MemoryUpdateSuggestion / MemoryReviewGate 能力属于 P1-09，但独立 workflow_type 不作为 P1 默认必须。MemorySuggestion / MemoryReviewGate 可以作为 continuation_workflow apply 后的可选阶段存在，但这不等于 memory_update_workflow 独立 workflow 必须产品化 |
 | review_workflow | P1 可选独立 workflow | Reviewer Agent 审稿能力是主链路的一部分，但独立 review_workflow 不作为 P1 默认必须 |
 | full_workflow | 预留 / P1 可选 | 一键全流程编排类型：Memory → Planner → DirectionSelection → ChapterPlan → Writer → Reviewer → [Rewriter → Reviewer] → CandidateReady → HumanReviewGate → MemoryUpdateSuggestion → MemoryReviewGate。不作为 P1 默认必须交付。full_workflow 是否进入 P1 必须范围，保留为待确认点或交由 P1 开发计划决定 |
 
-P1 默认主链路仍以 continuation_workflow 为核心。P1-02 只冻结类型方向。各类型的具体 Agent 职责与 Tool 权限由 P1-03 细化。
+P1 默认主链路仍以 continuation_workflow 为核心；`fast_continuation_workflow` 作为作者快捷主路径并行存在。P1-02 只冻结类型方向。各类型的具体 Agent 职责与 Tool 权限由 P1-03 细化。
 
 ### 5.2 workflow_type 与 AgentSession.agent_workflow_type 的映射
 
 | AgentWorkflowDefinition.workflow_type | AgentSession.agent_workflow_type | 说明 |
 |---|---|---|
 | continuation_workflow | continuation | 一一对应 |
+| fast_continuation_workflow | fast_continuation | 一一对应 |
 | revision_workflow | revision | 一一对应 |
 | planning_workflow | planning | 一一对应 |
 | memory_update_workflow | memory_update | 一一对应 |
@@ -549,6 +576,25 @@ session_init
 → [memory_review_waiting]
 → completed
 ```
+
+**fast_continuation_workflow（作者快捷续写）**：
+
+```text
+session_init
+→ memory_context_prepare
+→ writing_prepare
+→ drafting
+→ [reviewing]
+→ candidate_ready
+→ human_review_waiting
+→ completed
+```
+
+说明：
+
+1. 快捷续写跳过 `direction_selection_waiting` 与 `chapter_plan_confirm_waiting` 的显式等待。
+2. 快捷续写只用于降低前置交互摩擦，不改变 CandidateDraft 与 HumanReviewGate 边界。
+3. 快捷续写若发生 blocked 级冲突，仍必须进入相应门控处理，不能直接完成。
 
 **revision_workflow（修订）**：
 
@@ -610,6 +656,34 @@ session_init
 → memory_review_waiting
 → completed
 ```
+
+### 5.4 快速续写与完整规划切换准则（冻结）
+
+目标：避免实现阶段“随意走快/慢路径”，确保切换可预测、可解释。
+
+默认策略：
+
+1. 首次进入新章节：默认推荐 `continuation_workflow`（完整规划后续写）。
+2. 用户显式点击“一键续写（快速）”：走 `fast_continuation_workflow`。
+3. 存在 blocking 前置条件：两条路径均不可启动，优先提示处理问题。
+
+推荐走快速续写的场景：
+
+1. 用户目标是先拿到候选稿草案，再做方向/计划细化。
+2. 章节已有明确上下文，且方向不确定性较低。
+3. 用户处于高频迭代模式（连续修订、快速试写）。
+
+推荐走完整规划续写的场景：
+
+1. 新卷/新阶段开篇，剧情方向分歧较大。
+2. 近期冲突较多，需先做方向与计划收敛。
+3. 用户明确希望先确定方向与章节目标再写。
+
+自动回退规则：
+
+1. 快速续写失败且失败原因为规划约束不足时，系统应建议切换到完整规划续写。
+2. 完整规划在 DirectionSelection/PlanConfirmation 长时间等待时，系统可建议切换到快速续写，但不得自动切换。
+3. 任意路径都不得绕过 HumanReviewGate。
 
 ### 5.4 revision_workflow 触发来源与边界
 
@@ -1458,9 +1532,11 @@ P1-02 不做：
 ### 18.3 Workflow 类型
 
 - [ ] continuation_workflow、revision_workflow、planning_workflow 三种 P1 必须类型定义清楚。
+- [ ] fast_continuation_workflow（作者快捷路径）定义清楚，且不绕过后置门控。
 - [ ] memory_update_workflow、review_workflow 两种 P1 可选独立 workflow 类型定义清楚。
 - [ ] full_workflow 预留 / P1 可选类型定义清楚。
 - [ ] P1 必须 vs 可选 vs 预留边界明确。
+- [ ] 快速续写与完整规划切换准则清楚，并可给出可解释的推荐路径。
 
 ### 18.4 Stage / Transition / Decision
 

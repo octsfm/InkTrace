@@ -17,17 +17,26 @@ class CandidateReviewService:
         chapter_service: ChapterService,
         initialization_service=None,
         conflict_guard_service=None,
+        trace_service=None,
     ) -> None:
         self._candidate_draft_repository = candidate_draft_repository
         self._chapter_service = chapter_service
         self._initialization_service = initialization_service
         self._conflict_guard_service = conflict_guard_service
+        self._trace_service = trace_service
 
     def get_candidate_draft(self, candidate_draft_id: str) -> CandidateDraft:
         return self._candidate_draft_repository.get(candidate_draft_id)
 
     def list_candidate_drafts(self, work_id: str, chapter_id: str | None = None) -> list[CandidateDraft]:
         return self._candidate_draft_repository.list_by_work(work_id, chapter_id=chapter_id or "")
+
+    def list_candidate_versions(self, candidate_draft_id: str) -> list[CandidateDraftVersion]:
+        self.get_candidate_draft(candidate_draft_id)
+        return self._candidate_draft_repository.list_versions(candidate_draft_id)
+
+    def get_candidate_version(self, candidate_draft_id: str, candidate_version_id: str) -> CandidateDraftVersion:
+        return self._require_version(candidate_draft_id, candidate_version_id)
 
     def select_candidate_version(
         self,
@@ -209,6 +218,13 @@ class CandidateReviewService:
                 raise ValueError("blocking_conflict_unresolved")
         if chapter.version != int(expected_chapter_version):
             raise ValueError("blocking_conflict_unresolved")
+        self._record_high_risk_audit(
+            trace_id=draft.trace_id,
+            session_id=draft.agent_session_id,
+            event_type="user_decision_recorded",
+            summary="apply_candidate",
+            payload_digest={"decision_type": "apply_candidate", "candidate_draft_id": draft.candidate_draft_id},
+        )
 
         next_content = self._build_applied_content(
             original_content=chapter.content,
@@ -262,6 +278,27 @@ class CandidateReviewService:
             "apply_result_ref": updated_draft.metadata.get("apply_result_ref", ""),
             "stale_marked": True,
         }
+
+    def _record_high_risk_audit(
+        self,
+        *,
+        trace_id: str,
+        session_id: str,
+        event_type: str,
+        summary: str,
+        payload_digest: dict[str, object],
+    ) -> None:
+        if self._trace_service is None or not str(trace_id or "").strip():
+            return
+        self._trace_service.record_audit_event(
+            trace_id=trace_id,
+            session_id=session_id,
+            step_id="",
+            event_type=event_type,
+            summary=summary,
+            payload_digest=payload_digest,
+            high_risk_user_action=True,
+        )
 
     def _save_with_status(
         self,

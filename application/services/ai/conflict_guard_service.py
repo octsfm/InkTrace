@@ -38,6 +38,8 @@ class ConflictGuardService:
         ai_suggestion_repository=None,
         direction_plan_repository: DirectionPlanRepository | None = None,
         ai_review_repository: AIReviewRepository | None = None,
+        trace_service=None,
+        allow_override_blocking: bool = False,
     ) -> None:
         self._conflict_guard_repository = conflict_guard_repository
         self._candidate_draft_repository = candidate_draft_repository
@@ -45,6 +47,8 @@ class ConflictGuardService:
         self._ai_suggestion_repository = ai_suggestion_repository
         self._direction_plan_repository = direction_plan_repository
         self._ai_review_repository = ai_review_repository
+        self._trace_service = trace_service
+        self._allow_override_blocking = allow_override_blocking
 
     def precheck_apply_conflicts(
         self,
@@ -393,16 +397,17 @@ class ConflictGuardService:
         normalized = ConflictDecisionType(decision)
         if item.severity == ConflictSeverity.BLOCKING and normalized == ConflictDecisionType.DISMISSED:
             raise ValueError("blocking_conflict_unresolved")
-        if normalized == ConflictDecisionType.OVERRIDDEN:
-            raise ValueError("cannot_override_blocking")
-        if item.severity == ConflictSeverity.BLOCKING and normalized == ConflictDecisionType.DISMISSED:
-            raise ValueError("blocking_conflict_unresolved")
-        if item.severity != ConflictSeverity.BLOCKING and normalized == ConflictDecisionType.OVERRIDDEN:
+        if normalized == ConflictDecisionType.OVERRIDDEN and (
+            not self._allow_override_blocking
+            or item.severity != ConflictSeverity.BLOCKING
+            or item.conflict_type == ConflictType.APPLY_VERSION_CONFLICT
+        ):
             raise ValueError("cannot_override_blocking")
         status_mapping = {
             ConflictDecisionType.ACKNOWLEDGED: ConflictRecordStatus.ACKNOWLEDGED,
             ConflictDecisionType.RESOLVED: ConflictRecordStatus.RESOLVED,
             ConflictDecisionType.DISMISSED: ConflictRecordStatus.DISMISSED,
+            ConflictDecisionType.OVERRIDDEN: ConflictRecordStatus.OVERRIDDEN,
         }
         updated = item.model_copy(
             update={
@@ -425,7 +430,40 @@ class ConflictGuardService:
                 trace_id=trace_id,
             )
         )
-        return self._conflict_guard_repository.save_record(updated)
+        saved = self._conflict_guard_repository.save_record(updated)
+        self._record_trace_decision(saved, decision=normalized, request_id=request_id, trace_id=trace_id)
+        return saved
+
+    def _record_trace_decision(
+        self,
+        record: ConflictGuardRecord,
+        *,
+        decision: ConflictDecisionType,
+        request_id: str,
+        trace_id: str,
+    ) -> None:
+        if self._trace_service is None or not str(trace_id or record.trace_id or "").strip():
+            return
+        event_type = {
+            ConflictDecisionType.RESOLVED: "conflict_resolved",
+            ConflictDecisionType.OVERRIDDEN: "conflict_overridden",
+        }.get(decision)
+        if not event_type:
+            return
+        self._trace_service.record_audit_event(
+            trace_id=trace_id or record.trace_id,
+            session_id=record.agent_session_id,
+            step_id="",
+            event_type=event_type,
+            summary=record.record_id,
+            payload_digest={
+                "record_id": record.record_id,
+                "conflict_type": record.conflict_type.value,
+                "decision": decision.value,
+                "request_id": request_id,
+            },
+            high_risk_user_action=True,
+        )
 
     def _get_chapter(self, work_id: str, chapter_id: str):
         chapters = self._chapter_service.list_chapters(work_id)

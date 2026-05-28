@@ -39,6 +39,9 @@ def test_quick_trial_api_runs_and_hides_provider_secret(monkeypatch, tmp_path) -
                     "model_name": "fake-chat",
                 }
             },
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "quick-trial-settings-save",
         },
     )
     assert save_response.status_code == 200
@@ -98,4 +101,4 @@ def test_quick_trial_api_rejects_non_user_action_caller_type(monkeypatch, tmp_pa
     )
 
     assert response.status_code == 403
-    assert response.json()["error"]["error_code"] == "caller_type_not_allowed"
+    assert response.json()["error"]["error_code"] == "caller_type_forbidden"

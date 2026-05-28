@@ -446,12 +446,14 @@ class AgentOrchestrator:
         chapter_plan_repository: ChapterPlanRepository | None = None,
         direction_plan_repository: DirectionPlanRepository | None = None,
         registry: type[AgentWorkflowDefinitionRegistry] = AgentWorkflowDefinitionRegistry,
+        trace_service=None,
     ) -> None:
         self._runtime_service = runtime_service
         self._plot_arc_repository = plot_arc_repository
         self._chapter_plan_repository = chapter_plan_repository
         self._direction_plan_repository = direction_plan_repository
         self._registry = registry
+        self._trace_service = trace_service
 
     def start_workflow(
         self,
@@ -535,12 +537,42 @@ class AgentOrchestrator:
             decision=normalized_decision,
             result_ref=result_ref,
         )
-        self._validate_degraded_progression(
-            run,
-            current_stage=current_stage,
-            decision=normalized_decision,
-            warning_codes=warning_codes or [],
-        )
+        try:
+            self._validate_degraded_progression(
+                run,
+                current_stage=current_stage,
+                decision=normalized_decision,
+                warning_codes=warning_codes or [],
+            )
+        except ValueError as exc:
+            if str(exc) == "degraded_policy_forbidden":
+                self._trace_workflow_event(
+                    session,
+                    run,
+                    event_type="policy_blocked",
+                    summary=str(exc),
+                    payload_digest={"stage": current_stage.value, "decision": normalized_decision.value},
+                )
+                self._trace_workflow_event(
+                    session,
+                    run,
+                    event_type="blocked_detected",
+                    summary=error_code or str(exc),
+                    payload_digest={
+                        "stage": current_stage.value,
+                        "decision": normalized_decision.value,
+                        "error_code": error_code or str(exc),
+                    },
+                )
+            raise
+        if warning_codes and self._contains_degraded_warning(warning_codes):
+            self._trace_workflow_event(
+                session,
+                run,
+                event_type="degraded_detected",
+                summary=current_stage.value,
+                payload_digest={"warning_codes": list(warning_codes)},
+            )
         if source_step_id:
             self._complete_step(
                 session_id,
@@ -569,6 +601,14 @@ class AgentOrchestrator:
         )
         if normalized_decision == WorkflowDecision.FAIL_WORKFLOW:
             run.error_code = error_code or "workflow_failed"
+            if "blocked" in str(run.error_code or ""):
+                self._trace_workflow_event(
+                    session,
+                    run,
+                    event_type="blocked_detected",
+                    summary=run.error_code,
+                    payload_digest={"stage": current_stage.value, "error_code": run.error_code},
+                )
             return self._enter_stage(run, WorkflowStageName.FAILED)
         if normalized_decision == WorkflowDecision.CANCEL_WORKFLOW:
             return self._enter_stage(run, WorkflowStageName.CANCELLED)
@@ -671,6 +711,7 @@ class AgentOrchestrator:
     def resume_workflow(self, session_id: str) -> AgentWorkflowRun:
         run = self._load_run(session_id)
         session = self._runtime_service.get_session(session_id)
+        checkpoint_id = run.checkpoints[-1].checkpoint_id if run.checkpoints else ""
         if session.status in {AgentSessionStatus.CANCELLED, AgentSessionStatus.FAILED}:
             raise ValueError("workflow_not_resumable")
         if run.metadata.get("stale_result_refs"):
@@ -682,6 +723,13 @@ class AgentOrchestrator:
                 rerun_stage = WorkflowStageName(recovery_rerun_stage)
                 self._cancel_current_step_for_rerun(session_id, reason=recovery_reason_code)
                 session = self._runtime_service.resume_session(session_id)
+                self._trace_workflow_event(
+                    session,
+                    run,
+                    event_type="checkpoint_restored",
+                    summary=run.current_stage.value,
+                    payload_digest={"checkpoint_id": checkpoint_id, "stage": run.current_stage.value},
+                )
                 run.stage_history.append(
                     StageRecord(
                         stage_name=run.current_stage,
@@ -696,6 +744,13 @@ class AgentOrchestrator:
                 return self._enter_stage(run, rerun_stage)
             raise ValueError(recovery_reason_code)
         session = self._runtime_service.resume_session(session_id)
+        self._trace_workflow_event(
+            session,
+            run,
+            event_type="checkpoint_restored",
+            summary=run.current_stage.value,
+            payload_digest={"checkpoint_id": checkpoint_id, "stage": run.current_stage.value},
+        )
         if not session.current_step_id and self._is_stage_completed_in_checkpoint(run, run.current_stage):
             next_stage = self._resolve_next_stage(run, run.current_stage, WorkflowDecision.CONTINUE)
             session = session.model_copy(update={"current_step_id": "", "current_agent_type": "", "updated_at": _now()})
@@ -785,7 +840,24 @@ class AgentOrchestrator:
         }[workflow_type]
 
     def _enter_stage(self, run: AgentWorkflowRun, stage_name: WorkflowStageName) -> AgentWorkflowRun:
+        session = self._runtime_service.get_session(run.session_id)
+        previous_stage = run.current_stage
+        if previous_stage and previous_stage != stage_name:
+            self._trace_workflow_event(
+                session,
+                run,
+                event_type="stage_exited",
+                summary=previous_stage.value,
+                payload_digest={"stage": previous_stage.value, "next_stage": stage_name.value},
+            )
         run.current_stage = stage_name
+        self._trace_workflow_event(
+            session,
+            run,
+            event_type="stage_entered",
+            summary=stage_name.value,
+            payload_digest={"stage": stage_name.value},
+        )
         if stage_name == WorkflowStageName.REWRITING:
             run.revision_round += 1
         if stage_name == WorkflowStageName.COMPLETED:
@@ -940,7 +1012,34 @@ class AgentOrchestrator:
             created_at=_now(),
         )
         run.checkpoints.append(checkpoint)
+        self._trace_workflow_event(
+            session,
+            run,
+            event_type="checkpoint_saved",
+            summary=run.current_stage.value,
+            payload_digest={"checkpoint_id": checkpoint.checkpoint_id, "stage": run.current_stage.value},
+        )
         return self._persist_run(run)
+
+    def _trace_workflow_event(
+        self,
+        session,
+        run: AgentWorkflowRun,
+        *,
+        event_type: str,
+        summary: str,
+        payload_digest: dict[str, object] | None = None,
+    ) -> None:
+        if self._trace_service is None:
+            return
+        self._trace_service.record_workflow_event(
+            session,
+            workflow_run_id=run.run_id,
+            workflow_type=run.workflow_type.value,
+            event_type=event_type,
+            summary=summary,
+            payload_digest=dict(payload_digest or {}),
+        )
 
     def _retry_current_step(self, run: AgentWorkflowRun, *, session) -> AgentWorkflowRun:
         current_step_id = session.current_step_id
@@ -1005,11 +1104,32 @@ class AgentOrchestrator:
     def _skip_current_stage(self, run: AgentWorkflowRun, *, session, safe_message: str) -> AgentWorkflowRun:
         stage = self._stage_definition(run, run.current_stage)
         if run.current_stage == WorkflowStageName.REVIEWING and not run.policy.allow_skip_reviewer:
+            self._trace_workflow_event(
+                session,
+                run,
+                event_type="policy_blocked",
+                summary="stage_skip_policy_forbidden",
+                payload_digest={"stage": run.current_stage.value},
+            )
             raise ValueError("stage_skip_policy_forbidden")
         if run.current_stage == WorkflowStageName.REWRITING and not run.policy.allow_skip_rewriter:
+            self._trace_workflow_event(
+                session,
+                run,
+                event_type="policy_blocked",
+                summary="stage_skip_policy_forbidden",
+                payload_digest={"stage": run.current_stage.value},
+            )
             raise ValueError("stage_skip_policy_forbidden")
         reviewer_skip_allowed = run.current_stage == WorkflowStageName.REVIEWING and run.policy.allow_skip_reviewer
         if not stage.is_optional and not reviewer_skip_allowed:
+            self._trace_workflow_event(
+                session,
+                run,
+                event_type="policy_blocked",
+                summary="stage_not_skippable",
+                payload_digest={"stage": run.current_stage.value},
+            )
             raise ValueError("stage_not_skippable")
         current_step_id = session.current_step_id
         if current_step_id:

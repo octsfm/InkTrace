@@ -12,7 +12,7 @@ def _request_stub():
 def test_error_response_maps_safe_message_to_readable_text() -> None:
     request = _request_stub()
 
-    caller_type_denied = error_response(request, error_code="caller_type_not_allowed", status_code=403)
+    caller_type_denied = error_response(request, error_code="caller_type_forbidden", status_code=403)
     work_not_found = error_response(request, error_code="work_not_found", status_code=404)
     internal = error_response(request, error_code="RuntimeError", status_code=500, safe_message="internal_error")
 

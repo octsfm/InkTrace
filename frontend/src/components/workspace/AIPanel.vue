@@ -2,28 +2,127 @@
   <section class="ai-panel" data-test="ai-panel">
     <header class="ai-panel-header">
       <div>
-        <h3>AI 助手</h3>
-        <p>最小集成入口：设置、初始化、ContextPack、续写、Quick Trial、AIReview。</p>
+        <h3>{{ panelTitle }}</h3>
+        <p>{{ panelDescription }}</p>
       </div>
     </header>
 
-    <div class="ai-section">
+    <div v-if="showAIMode" class="ai-section">
       <h4>AI 设置</h4>
-      <div class="ai-meta">
-        <span v-for="provider in providerConfigs" :key="provider.provider_name" class="tag">
-          {{ provider.provider_name }} / {{ provider.default_model || '未设置模型' }}
-        </span>
+      <div v-if="providerConfigs.length" class="ai-list ai-settings-list">
+        <div
+          v-for="provider in providerConfigs"
+          :key="provider.provider_name"
+          class="ai-settings-card"
+        >
+          <div class="candidate-summary">
+            <strong>{{ provider.provider_name }}</strong>
+            <span>{{ provider.enabled ? '已启用' : '已停用' }}</span>
+            <span>模型 {{ provider.default_model || '未设置' }}</span>
+            <span>Key {{ provider.key_configured ? '已配置' : '未配置' }}</span>
+            <span v-if="provider.api_key_masked">{{ provider.api_key_masked }}</span>
+          </div>
+          <div class="field-grid ai-settings-fields">
+            <label class="ai-field">
+              <span>启用 Provider</span>
+              <input
+                :data-test="`ai-settings-provider-enabled-${provider.provider_name}`"
+                v-model="provider.enabled"
+                type="checkbox"
+              />
+            </label>
+            <label class="ai-field">
+              <span>默认模型</span>
+              <input
+                :data-test="`ai-settings-provider-model-${provider.provider_name}`"
+                v-model="provider.default_model"
+                type="text"
+                placeholder="default model"
+              />
+            </label>
+            <label class="ai-field">
+              <span>API Key</span>
+              <input
+                :data-test="`ai-settings-provider-key-${provider.provider_name}`"
+                v-model="provider.api_key"
+                type="password"
+                autocomplete="new-password"
+                placeholder="输入新的 Provider Key"
+              />
+            </label>
+            <label class="ai-field">
+              <span>Base URL</span>
+              <input
+                :data-test="`ai-settings-provider-base-url-${provider.provider_name}`"
+                v-model="provider.base_url"
+                type="text"
+                placeholder="可选 base_url"
+              />
+            </label>
+            <label class="ai-field">
+              <span>超时秒数</span>
+              <input
+                :data-test="`ai-settings-provider-timeout-${provider.provider_name}`"
+                v-model.number="provider.timeout"
+                type="number"
+                min="1"
+              />
+            </label>
+          </div>
+          <div class="ai-meta">
+            <span v-if="provider.last_test_status">测试 {{ provider.last_test_status }}</span>
+            <span v-if="provider.last_test_error_message">{{ provider.last_test_error_message }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="field-grid ai-settings-role-grid">
+        <label v-for="role in requiredSettingsRoles" :key="role" class="ai-field">
+          <span>{{ role }} 映射</span>
+          <select
+            :data-test="`ai-settings-role-provider-${role}`"
+            v-model="settingsForm.model_role_mappings[role].provider_name"
+          >
+            <option value="">请选择 Provider</option>
+            <option
+              v-for="provider in providerConfigs"
+              :key="`${role}-${provider.provider_name}`"
+              :value="provider.provider_name"
+            >
+              {{ provider.provider_name }}
+            </option>
+          </select>
+          <input
+            :data-test="`ai-settings-role-${role}`"
+            v-model="settingsForm.model_role_mappings[role].model_name"
+            type="text"
+            :placeholder="`${role} model`"
+          />
+        </label>
+      </div>
+      <div v-if="aiSettingsBlocked" class="settings-block-banner" data-test="ai-settings-blocked">
+        <strong>AI 设置未完成</strong>
+        <span>{{ aiSettingsBlockMessage }}</span>
       </div>
       <div class="ai-actions">
+        <button data-test="ai-settings-save" type="button" @click="handleSaveSettings">保存配置</button>
         <button data-test="ai-test-provider" type="button" @click="handleTestProvider">测试 Provider</button>
       </div>
+      <p v-if="settingsSaveMessage" class="ai-note">{{ settingsSaveMessage }}</p>
+      <p v-if="settingsErrorMessage" class="ai-error">{{ settingsErrorMessage }}</p>
       <p v-if="providerTestMessage" class="ai-note">{{ providerTestMessage }}</p>
     </div>
 
-    <div class="ai-section">
+    <div v-if="showAIMode" class="ai-section">
       <h4>初始化分析</h4>
       <div class="ai-actions">
-        <button data-test="ai-start-initialization" type="button" @click="handleStartInitialization">启动初始化</button>
+        <button
+          data-test="ai-start-initialization"
+          type="button"
+          :disabled="aiSettingsBlocked"
+          @click="handleStartInitialization"
+        >
+          启动初始化
+        </button>
         <button
           v-if="polling.jobId"
           data-test="ai-cancel-job"
@@ -47,10 +146,17 @@
       <p v-if="polling.error" class="ai-error">{{ polling.error }}</p>
     </div>
 
-    <div class="ai-section">
+    <div v-if="showAIMode" class="ai-section">
       <h4>ContextPack</h4>
       <div class="ai-actions">
-        <button data-test="ai-build-context-pack" type="button" @click="handleBuildContextPack">构建 ContextPack</button>
+        <button
+          data-test="ai-build-context-pack"
+          type="button"
+          :disabled="aiSettingsBlocked"
+          @click="handleBuildContextPack"
+        >
+          构建 ContextPack
+        </button>
       </div>
       <div class="ai-meta">
         <span>readiness {{ contextPackReadiness.status || 'unknown' }}</span>
@@ -64,8 +170,8 @@
       </ul>
     </div>
 
-    <div v-if="plotArcVisible" class="ai-section">
-      <h4>剧情轨道</h4>
+    <div v-if="showAIMode && plotArcVisible" class="ai-section">
+      <h4>剧情轨道详情</h4>
       <div class="ai-meta">
         <span>{{ contextPackReadiness.status || 'unknown' }}</span>
         <span v-if="masterArcSummary.arc_title">{{ masterArcSummary.arc_title }}</span>
@@ -84,12 +190,91 @@
           {{ key }}: {{ value.status || 'unknown' }}
         </span>
       </div>
+      <ul v-if="plotArcs.length" class="ai-list">
+        <li v-for="arc in plotArcs" :key="arc.arc_id" class="planning-item">
+          <div class="candidate-summary">
+            <strong>{{ arc.title || arc.arc_id }}</strong>
+            <span>{{ arc.arc_level }}</span>
+            <span>{{ arc.status }}</span>
+          </div>
+          <p v-if="arc.summary" class="ai-note">{{ arc.summary }}</p>
+          <div class="ai-actions">
+            <button
+              :data-test="`plot-arc-detail-${arc.arc_id}`"
+              type="button"
+              @click="handlePlotArcDetail(arc.arc_id)"
+            >
+              查看详情
+            </button>
+          </div>
+          <ul v-if="plotArcDetails[arc.arc_id]?.key_points?.length" class="ai-list">
+            <li v-for="point in plotArcDetails[arc.arc_id].key_points" :key="point">{{ point }}</li>
+          </ul>
+        </li>
+      </ul>
     </div>
 
-    <div class="ai-section">
+    <div v-if="showAIMode" class="ai-section">
+      <h4>AgentSession</h4>
+      <ul v-if="agentSessions.length" class="ai-list">
+        <li v-for="session in agentSessions" :key="session.session_id" class="planning-item">
+          <div class="candidate-summary">
+            <strong>{{ session.session_id }}</strong>
+            <span>{{ session.status }}</span>
+            <span>{{ session.workflow_type }}</span>
+            <span>{{ session.current_agent_type || session.current_stage || '-' }}</span>
+            <span v-if="session.progress_percent !== undefined">{{ session.progress_percent }}%</span>
+          </div>
+          <div class="ai-actions">
+            <button
+              :data-test="`agent-session-detail-${session.session_id}`"
+              type="button"
+              @click="handleAgentSessionDetail(session.session_id)"
+            >
+              查看详情
+            </button>
+            <button
+              :data-test="`agent-session-pause-${session.session_id}`"
+              type="button"
+              @click="handleAgentSessionAction(session.session_id, 'pause')"
+            >
+              暂停
+            </button>
+            <button
+              :data-test="`agent-session-resume-${session.session_id}`"
+              type="button"
+              @click="handleAgentSessionAction(session.session_id, 'resume')"
+            >
+              恢复
+            </button>
+            <button
+              :data-test="`agent-session-cancel-${session.session_id}`"
+              type="button"
+              @click="handleAgentSessionAction(session.session_id, 'cancel')"
+            >
+              取消
+            </button>
+          </div>
+          <div v-if="agentSessionDetails[session.session_id]" class="ai-meta">
+            <span>{{ agentSessionDetails[session.session_id].status }}</span>
+            <span>{{ agentSessionDetails[session.session_id].current_stage || '-' }}</span>
+            <span>{{ agentSessionDetails[session.session_id].current_agent_type || '-' }}</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div v-if="showAIMode" class="ai-section">
       <h4>方向推演</h4>
       <div class="ai-actions">
-        <button data-test="ai-generate-directions" type="button" @click="handleGenerateDirections">生成方向</button>
+        <button
+          data-test="ai-generate-directions"
+          type="button"
+          :disabled="aiSettingsBlocked"
+          @click="handleGenerateDirections"
+        >
+          生成方向
+        </button>
       </div>
       <ul v-if="directionProposals.length" class="ai-list">
         <li v-for="proposal in directionProposals" :key="proposal.direction_proposal_id" class="planning-item">
@@ -107,6 +292,7 @@
                 <button
                   :data-test="`select-direction-${proposal.direction_proposal_id}-${option.option_id}`"
                   type="button"
+                  :disabled="aiSettingsBlocked"
                   @click="handleSelectDirection(proposal.direction_proposal_id, option.option_id)"
                 >
                   选择方向
@@ -118,6 +304,7 @@
             <button
               :data-test="`generate-plan-${proposal.direction_proposal_id}`"
               type="button"
+              :disabled="aiSettingsBlocked"
               @click="handleGeneratePlan(proposal.direction_proposal_id)"
             >
               生成计划
@@ -127,7 +314,7 @@
       </ul>
     </div>
 
-    <div class="ai-section">
+    <div v-if="showAIMode" class="ai-section">
       <h4>章节计划</h4>
       <ul v-if="chapterPlans.length" class="ai-list">
         <li v-for="plan in chapterPlans" :key="plan.chapter_plan_id" class="planning-item">
@@ -161,7 +348,7 @@
       </ul>
     </div>
 
-    <div class="ai-section">
+    <div v-if="showAIMode" class="ai-section">
       <h4>写作任务</h4>
       <ul v-if="writingTasks.length" class="ai-list">
         <li v-for="task in writingTasks" :key="task.writing_task_id">
@@ -176,8 +363,12 @@
       <p v-if="planningActionError" class="ai-error">{{ planningActionError }}</p>
     </div>
 
-    <div class="ai-section">
+    <div v-if="showReviewMode" class="ai-section">
       <h4>续写与候选稿</h4>
+      <div v-if="aiSettingsBlocked" class="settings-block-banner">
+        <strong>AI 设置未完成</strong>
+        <span>{{ aiSettingsBlockMessage }}</span>
+      </div>
       <div
         v-if="conflictSummary.blockingCount || conflictSummary.warningCount"
         class="conflict-banner"
@@ -192,7 +383,14 @@
         <span v-else>存在 warning {{ conflictSummary.warningCount }}，继续 apply 代表已知风险。</span>
       </div>
       <div class="ai-actions">
-        <button data-test="ai-start-continuation" type="button" @click="handleStartContinuation">生成候选稿</button>
+        <button
+          data-test="ai-start-continuation"
+          type="button"
+          :disabled="aiSettingsBlocked"
+          @click="handleStartContinuation"
+        >
+          生成候选稿
+        </button>
       </div>
       <div class="ai-meta">
         <span v-if="continuationResult.job_id">续写 job {{ continuationResult.job_id }}</span>
@@ -225,7 +423,12 @@
             <button :data-test="`candidate-apply-${item.candidate_draft_id}`" type="button" @click="handleApplyCandidate(item.candidate_draft_id)">
               apply
             </button>
-            <button :data-test="`candidate-review-${item.candidate_draft_id}`" type="button" @click="handleReviewCandidate(item.candidate_draft_id)">
+            <button
+              :data-test="`candidate-review-${item.candidate_draft_id}`"
+              type="button"
+              :disabled="aiSettingsBlocked"
+              @click="handleReviewCandidate(item.candidate_draft_id)"
+            >
               AIReview
             </button>
           </div>
@@ -355,7 +558,7 @@
       <p v-if="candidateActionError" class="ai-error">{{ candidateActionError }}</p>
     </div>
 
-    <div class="ai-section">
+    <div v-if="showReviewMode" class="ai-section">
       <h4>AI 建议</h4>
       <ul v-if="aiSuggestions.length" class="ai-list">
         <li v-for="item in aiSuggestions" :key="item.suggestion_id" class="planning-item">
@@ -391,8 +594,8 @@
       </ul>
     </div>
 
-    <div class="ai-section">
-      <h4>记忆更新审批</h4>
+    <div v-if="showReviewMode" class="ai-section">
+      <h4>记忆审批</h4>
       <ul v-if="memoryGates.length" class="ai-list">
         <li v-for="gate in memoryGates" :key="gate.gate_id" class="planning-item">
           <div class="candidate-summary">
@@ -483,14 +686,82 @@
       <p v-if="memoryActionError" class="ai-error">{{ memoryActionError }}</p>
     </div>
 
-    <div class="ai-section">
+    <div v-if="showReviewMode" class="ai-section">
+      <h4>Agent Trace</h4>
+      <ul v-if="agentTraces.length" class="ai-list">
+        <li v-for="trace in agentTraces" :key="trace.trace_id" class="planning-item">
+          <div class="candidate-summary">
+            <strong>{{ trace.trace_id }}</strong>
+            <span>{{ trace.status }}</span>
+            <span>{{ trace.workflow_type }}</span>
+            <span>steps {{ trace.total_steps || 0 }}</span>
+            <span>tokens {{ trace.total_tokens || 0 }}</span>
+          </div>
+          <div class="ai-actions">
+            <button
+              :data-test="`trace-steps-${trace.trace_id}`"
+              type="button"
+              @click="handleTraceSteps(trace.trace_id)"
+            >
+              查看步骤
+            </button>
+            <button
+              v-if="developerMode"
+              :data-test="`trace-detail-${trace.trace_id}`"
+              type="button"
+              @click="handleTraceDetail(trace.trace_id)"
+            >
+              查看 Detail
+            </button>
+          </div>
+          <ul v-if="agentTraceSteps[trace.trace_id]?.length" class="ai-list">
+            <li v-for="step in agentTraceSteps[trace.trace_id]" :key="step.step_id">
+              {{ step.agent_type }} / {{ step.action }} / {{ step.status }}
+            </li>
+          </ul>
+          <div v-if="agentTraceDetails[trace.trace_id]" class="ai-note">
+            <div v-if="agentTraceDetails[trace.trace_id].tool_calls?.length">
+              tool {{ agentTraceDetails[trace.trace_id].tool_calls[0].tool_name }} / {{ agentTraceDetails[trace.trace_id].tool_calls[0].permission_result }}
+            </div>
+            <div v-if="agentTraceDetails[trace.trace_id].events?.length">
+              event {{ agentTraceDetails[trace.trace_id].events[0].event_type }}
+            </div>
+            <ul v-if="agentTraceDetails[trace.trace_id].metrics?.length" class="ai-list">
+              <li v-for="metric in agentTraceDetails[trace.trace_id].metrics" :key="metric.metric_id">
+                {{ metric.metric_name }} / {{ metric.metric_value }}
+              </li>
+            </ul>
+            <ul v-if="agentTraceDetails[trace.trace_id].alerts?.length" class="ai-list">
+              <li v-for="alert in agentTraceDetails[trace.trace_id].alerts" :key="alert.alert_id">
+                {{ alert.alert_type }} / {{ alert.status }} / {{ alert.summary }}
+              </li>
+            </ul>
+            <ul v-if="agentTraceDetails[trace.trace_id].user_decisions?.length" class="ai-list">
+              <li v-for="decision in agentTraceDetails[trace.trace_id].user_decisions" :key="decision.decision_trace_id">
+                {{ decision.decision_type }} / {{ decision.target_entity_type }} / {{ decision.target_entity_id }}
+              </li>
+            </ul>
+          </div>
+        </li>
+      </ul>
+      <p v-if="traceActionError" class="ai-error">{{ traceActionError }}</p>
+    </div>
+
+    <div v-if="showAIMode" class="ai-section">
       <h4>Quick Trial</h4>
       <div class="field-grid">
         <input v-model="quickTrialForm.input_text" type="text" placeholder="临时 prompt" />
         <input v-model="quickTrialForm.model_role" type="text" placeholder="model_role" />
       </div>
       <div class="ai-actions">
-        <button data-test="quick-trial-run" type="button" @click="handleRunQuickTrial">运行试跑</button>
+        <button
+          data-test="quick-trial-run"
+          type="button"
+          :disabled="aiSettingsBlocked"
+          @click="handleRunQuickTrial"
+        >
+          运行试跑
+        </button>
       </div>
       <div class="ai-meta">
         <span v-if="quickTrialResult.status">{{ quickTrialResult.status }}</span>
@@ -519,10 +790,28 @@ const props = defineProps({
   chapterVersion: {
     type: Number,
     default: 0
+  },
+  developerMode: {
+    type: Boolean,
+    default: false
+  },
+  mode: {
+    type: String,
+    default: 'all'
   }
 })
 
+const REQUIRED_SETTINGS_ROLES = ['analysis', 'planning', 'writer', 'reviewer', 'rewriter']
+
 const settings = ref({ provider_configs: [], model_role_mappings: {} })
+const settingsForm = reactive({
+  provider_configs: [],
+  model_role_mappings: Object.fromEntries(
+    REQUIRED_SETTINGS_ROLES.map((role) => [role, { provider_name: '', model_name: '' }])
+  )
+})
+const settingsSaveMessage = ref('')
+const settingsErrorMessage = ref('')
 const providerTestMessage = ref('')
 const initializationInfo = ref({})
 const contextPackReadiness = ref({})
@@ -540,8 +829,16 @@ const aiSuggestionDetails = ref({})
 const memoryGates = ref([])
 const memoryRevisionDetails = ref({})
 const memoryActionError = ref('')
+const agentSessions = ref([])
+const agentSessionDetails = ref({})
+const agentTraces = ref([])
+const agentTraceSteps = ref({})
+const agentTraceDetails = ref({})
+const traceActionError = ref('')
 const conflicts = ref([])
 const conflictDetails = ref({})
+const plotArcs = ref([])
+const plotArcDetails = ref({})
 const candidateActionError = ref('')
 const directionProposals = ref([])
 const chapterPlans = ref([])
@@ -549,13 +846,36 @@ const writingTasks = ref([])
 const planningActionError = ref('')
 const quickTrialResult = ref({})
 const polling = useAIJobPolling({ intervalMs: 1000 })
+const sessionPolling = useAIJobPolling({
+  intervalMs: 2000,
+  maxIntervalMs: 5000,
+  fetchJob: (sessionId) => aiApi.getAgentSession(sessionId),
+  terminalStatuses: new Set(['completed', 'failed', 'cancelled', 'waiting_for_user']),
+  sse: {
+    enabled: typeof import.meta !== 'undefined' && String(import.meta.env?.VITE_AI_SSE_ENABLED || 'false') === 'true',
+    buildUrl: (sessionId) => `/api/v2/ai/sessions/${encodeURIComponent(sessionId)}/events`
+  }
+})
 
 const quickTrialForm = reactive({
   input_text: '请试写一小段灯塔夜景。',
   model_role: 'quick_trial_writer'
 })
 
-const providerConfigs = computed(() => settings.value?.provider_configs || [])
+const requiredSettingsRoles = REQUIRED_SETTINGS_ROLES
+const providerConfigs = computed(() => settingsForm.provider_configs || [])
+const showAIMode = computed(() => props.mode !== 'review')
+const showReviewMode = computed(() => props.mode !== 'ai')
+const panelTitle = computed(() => (
+  props.mode === 'review' ? '审阅工作区' : props.mode === 'ai' ? 'AI 工作区' : 'AI 助手'
+))
+const panelDescription = computed(() => (
+  props.mode === 'review'
+    ? '候选稿、审阅、冲突、记忆门控与 Trace 在此集中处理。'
+    : props.mode === 'ai'
+      ? '设置、初始化、ContextPack、剧情轨道、方向计划、会话进度与 Quick Trial。'
+      : '最小集成入口：设置、初始化、ContextPack、续写、Quick Trial、AIReview。'
+))
 const jobSteps = computed(() => polling.job.value?.steps || [])
 const jobStatusText = computed(() => String(polling.job.value?.status || ''))
 const plotArcStatuses = computed(() => contextPackReadiness.value?.plot_arc_statuses || {})
@@ -618,13 +938,77 @@ const conflictSummary = computed(() => conflicts.value.reduce((acc, item) => {
   else acc.infoCount += 1
   return acc
 }, { blockingCount: 0, warningCount: 0, infoCount: 0 }))
+const providerNameOptions = computed(() => providerConfigs.value.map((item) => item.provider_name).filter(Boolean))
+const aiSettingsBlockMessage = computed(() => {
+  const enabledProviders = providerConfigs.value.filter((provider) => provider.enabled)
+  if (!enabledProviders.some((provider) => provider.key_configured || String(provider.api_key || '').trim())) {
+    return '请先配置可用 Provider Key 与 analysis/writer 角色映射。'
+  }
+  const requiredRoles = ['analysis', 'writer']
+  const missingCriticalRole = requiredRoles.some((role) => {
+    const mapping = settingsForm.model_role_mappings[role]
+    if (!mapping) return true
+    if (!String(mapping.provider_name || '').trim() || !String(mapping.model_name || '').trim()) return true
+    const provider = providerConfigs.value.find((item) => item.provider_name === mapping.provider_name)
+    if (!provider || !provider.enabled) return true
+    return !(provider.key_configured || String(provider.api_key || '').trim())
+  })
+  if (missingCriticalRole) {
+    return '请先配置可用 Provider Key 与 analysis/writer 角色映射。'
+  }
+  return ''
+})
+const aiSettingsBlocked = computed(() => Boolean(aiSettingsBlockMessage.value))
 
 const unwrapData = (payload) => payload?.data ?? payload ?? {}
 
 const buildIdempotencyKey = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
+const resetSettingsForm = (payload) => {
+  const nextSettings = payload || { provider_configs: [], model_role_mappings: {} }
+  const nextProviders = Array.isArray(nextSettings.provider_configs)
+    ? nextSettings.provider_configs.map((provider) => ({
+      provider_name: provider.provider_name || '',
+      enabled: provider.enabled !== false,
+      default_model: provider.default_model || '',
+      api_key: '',
+      api_key_masked: provider.api_key_masked || '',
+      key_configured: Boolean(provider.key_configured),
+      timeout: Number(provider.timeout || 30),
+      base_url: provider.base_url || '',
+      last_test_status: provider.last_test_status || '',
+      last_test_at: provider.last_test_at || '',
+      last_test_error_code: provider.last_test_error_code || '',
+      last_test_error_message: provider.last_test_error_message || ''
+    }))
+    : []
+  settingsForm.provider_configs.splice(0, settingsForm.provider_configs.length, ...nextProviders)
+
+  const nextMappings = {}
+  for (const role of REQUIRED_SETTINGS_ROLES) {
+    const current = nextSettings.model_role_mappings?.[role] || {}
+    nextMappings[role] = {
+      provider_name: current.provider_name || providerNameOptions.value[0] || '',
+      model_name: current.model_name || ''
+    }
+  }
+  for (const [role, mapping] of Object.entries(nextSettings.model_role_mappings || {})) {
+    if (!nextMappings[role]) {
+      nextMappings[role] = {
+        provider_name: mapping?.provider_name || providerNameOptions.value[0] || '',
+        model_name: mapping?.model_name || ''
+      }
+    }
+  }
+  for (const key of Object.keys(settingsForm.model_role_mappings)) {
+    delete settingsForm.model_role_mappings[key]
+  }
+  Object.assign(settingsForm.model_role_mappings, nextMappings)
+}
+
 const loadSettings = async () => {
   settings.value = unwrapData(await aiApi.getAISettings())
+  resetSettingsForm(settings.value)
 }
 
 const loadInitialization = async () => {
@@ -652,6 +1036,40 @@ const loadCandidateDrafts = async () => {
     chapter_id: props.chapterId
   }))
   candidateDrafts.value = payload.items || []
+}
+
+const loadAgentSessions = async () => {
+  if (!props.workId) return
+  const payload = unwrapData(await aiApi.listAgentSessions({
+    work_id: props.workId,
+    chapter_id: props.chapterId
+  }))
+  agentSessions.value = payload.items || []
+  const activeSessionId = String(agentSessions.value[0]?.session_id || '')
+  if (activeSessionId) {
+    await sessionPolling.start(activeSessionId)
+  } else {
+    sessionPolling.stop()
+  }
+}
+
+const loadPlotArcs = async () => {
+  if (!props.workId) return
+  const [itemsPayload, statusPayload] = await Promise.all([
+    aiApi.listPlotArcs({ work_id: props.workId }),
+    aiApi.getPlotArcStatus({ work_id: props.workId, chapter_id: props.chapterId })
+  ])
+  plotArcs.value = unwrapData(itemsPayload).items || []
+  const statusItems = unwrapData(statusPayload).items || []
+  if (statusItems.length) {
+    contextPackReadiness.value = {
+      ...contextPackReadiness.value,
+      plot_arc_statuses: statusItems.reduce((acc, item) => {
+        acc[item.arc_level] = { status: item.status }
+        return acc
+      }, {})
+    }
+  }
 }
 
 const loadPlanningData = async () => {
@@ -702,31 +1120,142 @@ const loadConflicts = async () => {
   conflicts.value = payload.items || []
 }
 
+const loadAgentTraces = async () => {
+  if (!props.workId) return
+  const payload = unwrapData(await aiApi.listAgentTraces({
+    work_id: props.workId,
+    chapter_id: props.chapterId
+  }))
+  agentTraces.value = payload.items || []
+}
+
 const refreshPanel = async () => {
   await Promise.all([
     loadSettings(),
     loadInitialization(),
     loadContextReadiness(),
+    loadAgentSessions(),
+    loadPlotArcs(),
     loadCandidateDrafts(),
     loadPlanningData(),
     loadAISuggestions(),
     loadMemoryGates(),
-    loadConflicts()
+    loadConflicts(),
+    loadAgentTraces()
   ])
 }
 
+const ensureAISettingsReady = (targetRef) => {
+  if (!aiSettingsBlocked.value) return true
+  const message = aiSettingsBlockMessage.value
+  if (targetRef) {
+    targetRef.value = message
+  } else {
+    providerTestMessage.value = message
+  }
+  return false
+}
+
+const buildSettingsPayload = () => ({
+  caller_type: 'user_action',
+  user_action: true,
+  idempotency_key: buildIdempotencyKey('settings_update'),
+  provider_configs: providerConfigs.value.map((provider) => ({
+    provider_name: provider.provider_name,
+    enabled: provider.enabled,
+    api_key: String(provider.api_key || '').trim(),
+    default_model: String(provider.default_model || '').trim(),
+    timeout: Number(provider.timeout || 30),
+    base_url: String(provider.base_url || '').trim() || null
+  })),
+  model_role_mappings: Object.fromEntries(
+    Object.entries(settingsForm.model_role_mappings).map(([role, mapping]) => [role, {
+      provider_name: String(mapping.provider_name || '').trim(),
+      model_name: String(mapping.model_name || '').trim()
+    }])
+  )
+})
+
+const handleSaveSettings = async () => {
+  settingsSaveMessage.value = ''
+  settingsErrorMessage.value = ''
+  providerTestMessage.value = ''
+  if (!providerConfigs.value.length) {
+    settingsErrorMessage.value = '当前没有可配置的 Provider。'
+    return
+  }
+  try {
+    const payload = unwrapData(await aiApi.updateAISettings(buildSettingsPayload()))
+    settings.value = payload
+    resetSettingsForm(payload)
+    settingsSaveMessage.value = 'AI Settings 已保存。'
+  } catch (error) {
+    settingsErrorMessage.value = String(error?.userMessage || error?.message || 'settings save failed')
+  }
+}
+
 const handleTestProvider = async () => {
-  const providerName = providerConfigs.value[0]?.provider_name || 'fake'
-  const modelName = providerConfigs.value[0]?.default_model || 'fake-chat'
-  const payload = unwrapData(await aiApi.testProvider(providerName, { model_name: modelName }))
-  providerTestMessage.value = payload.message || payload.test_status || 'ok'
+  providerTestMessage.value = ''
+  settingsErrorMessage.value = ''
+  const provider = providerConfigs.value[0]
+  if (!provider) {
+    settingsErrorMessage.value = '当前没有可测试的 Provider。'
+    return
+  }
+  try {
+    const payload = unwrapData(await aiApi.testProvider(provider.provider_name, {
+      model_name: provider.default_model || 'fake-chat',
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: buildIdempotencyKey('provider_test')
+    }))
+    provider.key_configured = true
+    providerTestMessage.value = payload.message || payload.test_status || 'ok'
+  } catch (error) {
+    providerTestMessage.value = String(error?.userMessage || error?.message || 'provider test failed')
+  }
 }
 
 const handleStartInitialization = async () => {
+  if (!ensureAISettingsReady(planningActionError)) return
   const payload = unwrapData(await aiApi.startInitialization({ work_id: props.workId }))
   initializationInfo.value = payload
   if (payload.job_id) {
     await polling.start(payload.job_id)
+  }
+}
+
+const handleAgentSessionDetail = async (sessionId) => {
+  const payload = unwrapData(await aiApi.getAgentSession(sessionId))
+  agentSessionDetails.value = {
+    ...agentSessionDetails.value,
+    [sessionId]: payload
+  }
+}
+
+const handleAgentSessionAction = async (sessionId, action) => {
+  const payload = {
+    caller_type: 'user_action',
+    user_action: true,
+    user_id: 'ui-user',
+    idempotency_key: buildIdempotencyKey(`session_${action}`)
+  }
+  if (action === 'pause') {
+    await aiApi.pauseAgentSession(sessionId, payload)
+  } else if (action === 'resume') {
+    await aiApi.resumeAgentSession(sessionId, payload)
+  } else if (action === 'cancel') {
+    await aiApi.cancelAgentSession(sessionId, payload)
+  }
+  await loadAgentSessions()
+  await handleAgentSessionDetail(sessionId)
+}
+
+const handlePlotArcDetail = async (arcId) => {
+  const payload = unwrapData(await aiApi.getPlotArc(arcId))
+  plotArcDetails.value = {
+    ...plotArcDetails.value,
+    [arcId]: payload
   }
 }
 
@@ -737,6 +1266,7 @@ const handleCancelJob = async () => {
 }
 
 const handleBuildContextPack = async () => {
+  if (!ensureAISettingsReady(planningActionError)) return
   const buildPayload = unwrapData(await aiApi.buildContextPack({
     work_id: props.workId,
     chapter_id: props.chapterId
@@ -754,6 +1284,7 @@ const handleBuildContextPack = async () => {
 }
 
 const handleStartContinuation = async () => {
+  if (!ensureAISettingsReady(candidateActionError)) return
   continuationResult.value = unwrapData(await aiApi.startContinuation({
     work_id: props.workId,
     chapter_id: props.chapterId
@@ -763,6 +1294,7 @@ const handleStartContinuation = async () => {
 
 const handleGenerateDirections = async () => {
   planningActionError.value = ''
+  if (!ensureAISettingsReady(planningActionError)) return
   try {
     await aiApi.generateDirectionProposal({
       work_id: props.workId,
@@ -795,6 +1327,7 @@ const handleSelectDirection = async (proposalId, optionId) => {
 
 const handleGeneratePlan = async (proposalId) => {
   planningActionError.value = ''
+  if (!ensureAISettingsReady(planningActionError)) return
   try {
     await aiApi.generateChapterPlan({
       work_id: props.workId,
@@ -932,6 +1465,7 @@ const handleApplyCandidate = async (candidateDraftId) => {
 }
 
 const handleRunQuickTrial = async () => {
+  if (!ensureAISettingsReady(planningActionError)) return
   quickTrialResult.value = unwrapData(await aiApi.runQuickTrial({
     model_role: quickTrialForm.model_role,
     input_text: quickTrialForm.input_text
@@ -939,6 +1473,7 @@ const handleRunQuickTrial = async () => {
 }
 
 const handleReviewCandidate = async (candidateDraftId) => {
+  if (!ensureAISettingsReady(candidateActionError)) return
   const payload = unwrapData(await aiApi.reviewCandidateDraft(candidateDraftId, { user_instruction: '' }))
   let reviewDetail = payload
   if (payload.review_id) {
@@ -1248,12 +1783,52 @@ const handleRollbackMemoryRevision = async (revisionId) => {
   }
 }
 
+const handleTraceSteps = async (traceId) => {
+  traceActionError.value = ''
+  try {
+    await aiApi.getAgentTrace(traceId)
+    const payload = unwrapData(await aiApi.getAgentTraceSteps(traceId))
+    agentTraceSteps.value = {
+      ...agentTraceSteps.value,
+      [traceId]: payload.items || []
+    }
+  } catch (error) {
+    traceActionError.value = String(error?.userMessage || error?.message || 'trace steps load failed')
+  }
+}
+
+const handleTraceDetail = async (traceId) => {
+  traceActionError.value = ''
+  try {
+    const payload = unwrapData(await aiApi.getAgentTraceDetailView(traceId, {
+      detail: true,
+      developer_mode: props.developerMode
+    }))
+    agentTraceDetails.value = {
+      ...agentTraceDetails.value,
+      [traceId]: payload
+    }
+  } catch (error) {
+    traceActionError.value = String(error?.userMessage || error?.message || 'trace detail load failed')
+  }
+}
+
 watch(() => props.workId, async () => {
   await refreshPanel()
 }, { immediate: true })
 
 watch(() => props.chapterId, async () => {
-  await Promise.all([loadContextReadiness(), loadCandidateDrafts(), loadPlanningData(), loadAISuggestions(), loadMemoryGates(), loadConflicts()])
+  await Promise.all([
+    loadContextReadiness(),
+    loadAgentSessions(),
+    loadPlotArcs(),
+    loadCandidateDrafts(),
+    loadPlanningData(),
+    loadAISuggestions(),
+    loadMemoryGates(),
+    loadConflicts(),
+    loadAgentTraces()
+  ])
 }, { immediate: true })
 
 onMounted(async () => {
@@ -1317,6 +1892,18 @@ onMounted(async () => {
   color: #991b1b;
 }
 
+.settings-block-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
 .ai-actions,
 .ai-meta {
   display: flex;
@@ -1325,7 +1912,8 @@ onMounted(async () => {
 }
 
 .ai-actions button,
-.field-grid input {
+.field-grid input,
+.field-grid select {
   border: 1px solid #d1d5db;
   border-radius: 10px;
   padding: 8px 10px;
@@ -1384,5 +1972,27 @@ onMounted(async () => {
 .field-grid {
   display: grid;
   gap: 8px;
+}
+
+.ai-settings-list,
+.ai-settings-fields,
+.ai-settings-role-grid {
+  padding-left: 0;
+}
+
+.ai-settings-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.ai-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #374151;
 }
 </style>

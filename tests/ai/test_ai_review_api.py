@@ -91,7 +91,7 @@ def test_ai_review_api_rejects_non_user_action_caller_type(monkeypatch, tmp_path
         json={"user_instruction": "关注一致性", "caller_type": "workflow"},
     )
     assert review.status_code == 403
-    assert review.json()["error"]["error_code"] == "caller_type_not_allowed"
+    assert review.json()["error"]["error_code"] == "caller_type_forbidden"
 
 
 def test_ai_review_api_rejects_invalid_caller_type_before_service_invocation(monkeypatch, tmp_path) -> None:
@@ -116,4 +116,4 @@ def test_ai_review_api_rejects_invalid_caller_type_before_service_invocation(mon
     )
 
     assert review.status_code == 403
-    assert review.json()["error"]["error_code"] == "caller_type_not_allowed"
+    assert review.json()["error"]["error_code"] == "caller_type_forbidden"

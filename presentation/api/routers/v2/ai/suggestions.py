@@ -16,7 +16,7 @@ def _serialize_suggestion(item) -> dict[str, object]:  # noqa: ANN001
 def _decision_error_status(error_code: str) -> int:
     if error_code in {"ai_suggestion_not_found"}:
         return 404
-    if error_code in {"action_not_allowed", "caller_type_not_allowed"}:
+    if error_code in {"action_not_allowed", "caller_type_forbidden"}:
         return 403
     if error_code in {"idempotency_key_required"}:
         return 400
@@ -25,7 +25,7 @@ def _decision_error_status(error_code: str) -> int:
 
 def _reject_invalid_decision_request(request: Request, payload: SuggestionDecisionRequest):
     if payload.caller_type != "user_action":
-        return error_response(request, error_code="caller_type_not_allowed", status_code=403)
+        return error_response(request, error_code="caller_type_forbidden", status_code=403)
     if not payload.user_action:
         return error_response(request, error_code="action_not_allowed", status_code=403)
     if not str(payload.idempotency_key or "").strip():

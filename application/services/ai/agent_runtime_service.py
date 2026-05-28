@@ -45,6 +45,7 @@ class AgentRuntimeService:
         ai_job_service: AIJobService,
         tool_facade: CoreToolFacade | None = None,
         agent_profile_registry=None,
+        trace_service=None,
     ) -> None:
         self._session_repository = session_repository
         self._step_repository = step_repository
@@ -52,6 +53,7 @@ class AgentRuntimeService:
         self._ai_job_service = ai_job_service
         self._tool_facade = tool_facade
         self._agent_profile_registry = agent_profile_registry or build_default_agent_profile_registry()
+        self._trace_service = trace_service
 
     def create_session(
         self,
@@ -91,10 +93,15 @@ class AgentRuntimeService:
             updated_at=now,
             metadata={"allow_degraded": allow_degraded},
         )
-        return self._session_repository.create_session(session)
+        saved = self._session_repository.create_session(session)
+        self._trace_session_event(saved, event_type="session_created", summary="session_created")
+        return saved
 
     def get_session(self, session_id: str) -> AgentSession:
         return self._session_repository.get_session(session_id)
+
+    def list_sessions(self, *, work_id: str = "", status: str = "") -> list[AgentSession]:
+        return self._session_repository.list_sessions(work_id=work_id or None, status=status or None)
 
     def start_session(self, session_id: str) -> AgentSession:
         session = self.get_session(session_id)
@@ -113,7 +120,9 @@ class AgentRuntimeService:
                 "current_phase": "",
             }
         )
-        return self._session_repository.save_session(updated)
+        saved = self._session_repository.save_session(updated)
+        self._trace_session_event(saved, event_type="session_started", summary="session_started")
+        return saved
 
     def pause_session(self, session_id: str, *, reason: str = "pause_requested") -> AgentSession:
         session = self.get_session(session_id)
@@ -129,7 +138,9 @@ class AgentRuntimeService:
                 "status_reason": reason,
             }
         )
-        return self._session_repository.save_session(updated)
+        saved = self._session_repository.save_session(updated)
+        self._trace_session_event(saved, event_type="session_paused", summary=reason)
+        return saved
 
     def resume_session(self, session_id: str) -> AgentSession:
         session = self.get_session(session_id)
@@ -149,7 +160,9 @@ class AgentRuntimeService:
                 "status_reason": "",
             }
         )
-        return self._session_repository.save_session(updated)
+        saved = self._session_repository.save_session(updated)
+        self._trace_session_event(saved, event_type="session_resumed", summary="session_resumed")
+        return saved
 
     def cancel_session(self, session_id: str, *, reason: str) -> AgentSession:
         session = self.get_session(session_id)
@@ -170,6 +183,7 @@ class AgentRuntimeService:
             }
         )
         self._session_repository.save_session(cancelling)
+        self._trace_session_event(cancelling, event_type="session_cancelling", summary=reason)
         for step in self._step_repository.list_steps(session_id):
             if step.status in {
                 AgentStepStatus.PENDING,
@@ -184,7 +198,7 @@ class AgentRuntimeService:
                         error_code="step_cancelled",
                         error_message=reason,
                     )
-                self._step_repository.save_step(
+                cancelled_step = self._step_repository.save_step(
                     step.model_copy(
                         update={
                             "status": AgentStepStatus.CANCELLED,
@@ -195,6 +209,7 @@ class AgentRuntimeService:
                         }
                     )
                 )
+                self._trace_step_event(cancelling, cancelled_step, event_type="step_cancelled", summary=reason)
         self._ai_job_service.cancel_job(session.job_id, reason=reason)
         steps = self._step_repository.list_steps(session_id)
         step_counts = self._build_step_counts(steps)
@@ -223,7 +238,9 @@ class AgentRuntimeService:
                 "current_agent_type": "",
             }
         )
-        return self._session_repository.save_session(updated)
+        saved = self._session_repository.save_session(updated)
+        self._trace_session_event(saved, event_type="session_cancelled", summary=reason)
+        return saved
 
     def fail_session(self, session_id: str, *, error_code: str, error_message: str) -> AgentSession:
         session = self.get_session(session_id)
@@ -294,7 +311,9 @@ class AgentRuntimeService:
                 "current_agent_type": "",
             }
         )
-        return self._session_repository.save_session(updated)
+        saved = self._session_repository.save_session(updated)
+        self._trace_session_event(saved, event_type="session_failed", summary=error_code)
+        return saved
 
     def complete_session(
         self,
@@ -386,7 +405,13 @@ class AgentRuntimeService:
                 "current_agent_type": "",
             }
         )
-        return self._session_repository.save_session(updated)
+        saved = self._session_repository.save_session(updated)
+        self._trace_session_event(
+            saved,
+            event_type="session_partial_success" if partial_success else "session_completed",
+            summary=result_ref or saved.status.value,
+        )
+        return saved
 
     def retry_session(self, session_id: str) -> AgentSession:
         session = self.get_session(session_id)
@@ -446,7 +471,9 @@ class AgentRuntimeService:
             metadata=step_metadata,
             created_at=now,
         )
-        return self._step_repository.create_step(step)
+        saved = self._step_repository.create_step(step)
+        self._trace_step_event(session, saved, event_type="step_created", summary=action)
+        return saved
 
     def get_step(self, step_id: str) -> AgentStep:
         return self._step_repository.get_step(step_id)
@@ -613,7 +640,7 @@ class AgentRuntimeService:
         metadata: dict[str, object] | None = None,
     ) -> AgentObservation:
         session = self.get_session(session_id)
-        return self.record_observation(
+        saved = self.record_observation(
             step_id,
             AgentObservation(
                 observation_id=f"obs_user_{uuid.uuid4().hex[:12]}",
@@ -631,6 +658,14 @@ class AgentRuntimeService:
                 metadata=dict(metadata or {}),
             ),
         )
+        self._trace_user_decision(
+            trace_id=session.trace_id,
+            session_id=session_id,
+            step_id=step_id,
+            decision=decision,
+            metadata=dict(metadata or {}),
+        )
+        return saved
 
     def run_next_step(self, session_id: str) -> AgentStep:
         session = self.get_session(session_id)
@@ -663,6 +698,7 @@ class AgentRuntimeService:
                 }
             )
         )
+        self._trace_step_event(session, saved, event_type="step_started", summary=saved.action)
         return saved
 
     def execute_tool_action(
@@ -772,7 +808,9 @@ class AgentRuntimeService:
                 "metadata": self._clear_current_attempt(step.metadata),
             }
         )
-        return self._step_repository.save_step(updated)
+        saved = self._step_repository.save_step(updated)
+        self._trace_step_event(self.get_session(saved.session_id), saved, event_type="step_retrying", summary="retry_requested")
+        return saved
 
     def mark_late_result_ignored(self, step_id: str, *, safe_message: str, tool_call_id: str = "") -> AgentObservation:
         step = self.get_step(step_id)
@@ -811,6 +849,7 @@ class AgentRuntimeService:
                 }
             )
         )
+        self._trace_step_event(session, self.get_step(step.step_id), event_type="step_ignored_late_result", summary=safe_message)
         return saved
 
     def recover_after_restart(self) -> list[str]:
@@ -1317,7 +1356,61 @@ class AgentRuntimeService:
         elif saved_observation.decision == "pause_session":
             self.pause_session(session.session_id)
 
+        latest_session = self.get_session(step.session_id)
+        latest_step = self.get_step(step.step_id)
+        self._trace_observation(latest_session, latest_step, saved_observation)
+        event_type = {
+            AgentStepStatus.SUCCEEDED: "step_succeeded",
+            AgentStepStatus.FAILED: "step_failed",
+            AgentStepStatus.SKIPPED: "step_skipped",
+            AgentStepStatus.WAITING_USER: "waiting_for_user_entered",
+        }.get(latest_step.status)
+        if event_type:
+            self._trace_step_event(latest_session, latest_step, event_type=event_type, summary=latest_step.status_reason or latest_step.status.value)
         return saved_observation
+
+    def _trace_session_event(self, session: AgentSession, *, event_type: str, summary: str) -> None:
+        if self._trace_service is None:
+            return
+        self._trace_service.record_session_event(session, event_type=event_type, summary=summary)
+
+    def _trace_step_event(self, session: AgentSession, step: AgentStep, *, event_type: str, summary: str) -> None:
+        if self._trace_service is None:
+            return
+        self._trace_service.record_step_event(session, step, event_type=event_type, summary=summary)
+
+    def _trace_observation(self, session: AgentSession, step: AgentStep, observation: AgentObservation) -> None:
+        if self._trace_service is None:
+            return
+        self._trace_service.record_observation(session, step, observation)
+
+    def _trace_user_decision(
+        self,
+        *,
+        trace_id: str,
+        session_id: str,
+        step_id: str,
+        decision: str,
+        metadata: dict[str, object],
+    ) -> None:
+        if self._trace_service is None:
+            return
+        target_entity_type = str(metadata.get("target_entity_type", "workflow_gate"))
+        target_entity_id = str(
+            metadata.get("target_entity_id")
+            or metadata.get("selected_direction_id")
+            or metadata.get("selected_chapter_plan_id")
+            or step_id
+        )
+        self._trace_service.record_user_decision(
+            trace_id=trace_id,
+            session_id=session_id,
+            step_id=step_id,
+            decision_type=decision,
+            target_entity_type=target_entity_type,
+            target_entity_id=target_entity_id,
+            decision_note=str(metadata.get("decision_note", "")),
+        )
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()

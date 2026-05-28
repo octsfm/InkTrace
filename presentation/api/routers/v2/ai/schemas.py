@@ -26,13 +26,15 @@ class ModelRoleMappingUpdate(V2AIBaseModel):
     model_name: str
 
 
-class AISettingsUpdateRequest(V2AIBaseModel):
+class AISettingsUpdateRequest(V2AIOperationRequest):
     provider_configs: list[ProviderConfigUpdate] = Field(default_factory=list)
     model_role_mappings: dict[str, ModelRoleMappingUpdate] = Field(default_factory=dict)
+    user_action: bool = False
 
 
-class ProviderConnectionTestRequest(V2AIBaseModel):
+class ProviderConnectionTestRequest(V2AIOperationRequest):
     model_name: str = ""
+    user_action: bool = False
 
 
 class CancelAIJobRequest(V2AIBaseModel):
@@ -180,3 +182,18 @@ class RollbackMemoryRevisionRequest(V2AIOperationRequest):
     user_action: bool = False
     user_id: str = ""
     decision_note: str = ""
+
+
+class StartAgentSessionRequest(V2AIOperationRequest):
+    work_id: str
+    chapter_id: str = ""
+    workflow_type: str = "continuation"
+    user_instruction: str = ""
+    user_action: bool = False
+    allow_degraded: bool = True
+
+
+class SessionActionRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    reason: str = ""

@@ -185,6 +185,9 @@ def test_candidate_draft_list_requires_detail_for_full_content_and_no_streaming_
             "model_role_mappings": {
                 "writer": {"provider_name": "fake", "model_name": "fake-writer"},
             },
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p0-boundary-settings-save",
         },
     )
     assert save_response.status_code == 200

@@ -3,9 +3,9 @@
 版本：v1.1 / P1 模块级详细设计候选冻结版  
 状态：候选冻结  
 所属阶段：InkTrace V2.0 P1  
-设计范围：P1 API 资源边界、通用 DTO 规则、前端最小集成边界、轮询与 SSE 安全事件边界
+设计范围：P1 API 资源边界、通用 DTO 规则、前端首批集成边界、轮询与 SSE 安全事件边界
 
-合并说明：本文档以无后缀 `.md` v1.0 为主版本，吸收 `_001.md` 中的 11 组 API 分组、具体路由方向、caller_type 权限矩阵、前端最小入口、错误码方向、SSE 事件清单和附录路由速查表；`_001.md` 已被完全吸收，不再单独维护。
+合并说明：本文档以无后缀 `.md` v1.0 为主版本，吸收 `_001.md` 中的 11 组 API 分组、具体路由方向、caller_type 权限矩阵、前端首批入口、错误码方向、SSE 事件清单和附录路由速查表；`_001.md` 已被完全吸收，不再单独维护。
 
 ## 一、文档定位与设计范围
 
@@ -18,7 +18,7 @@
 1. P1 API 资源分组与路由前缀方向。
 2. 通用 Request / Response / Error DTO 规则。
 3. caller_type 与 user_action 边界在 API 层的落实方向。
-4. P1 前端最小可用入口（list + detail + action）边界。
+4. P1 前端首批可用入口（list + detail + action）边界。
 5. 轮询优先策略与终态停止规则。
 6. SSE 事件白名单方向（可选增强）与安全约束。
 7. 与 P0 API、P1-01~P1-10、P1-UI、DESIGN.md 的关系。
@@ -49,6 +49,8 @@
 6. SSE 与 API 响应不得泄露完整正文 / Prompt / ContextPack / CandidateDraft / API Key。
 7. HumanReviewGate / ConflictGuard / MemoryReviewGate 门控职责不在 API 层重写。
 8. API 仅表达状态与动作入口，不改变各模块状态机语义。
+9. 前端对普通作者/编辑默认使用任务语言，不直接暴露 API 协议术语与平台参数术语。
+10. API 需支持“用户可读表达层”，至少提供 `display_status` 或等效字段映射能力，避免前端直接暴露原始状态枚举。
 
 ## 三、API 总体原则与安全边界
 
@@ -116,6 +118,90 @@ P1 默认主路径：
 4. 不返回完整 Prompt。
 5. 不返回完整候选稿正文。
 6. 更完整层级展开作为后续增强，不作为 P1 必须能力。
+
+### 4.5 AI Settings 与模型 Key 配置（完整需求，P0 继承，P1 强制）
+
+#### 4.5.1 定位与范围
+
+1. AI Settings 是 P1 全部 AI 能力的基础配置域，属于跨模块基础能力，不计入“11 组业务资源”分组数量。
+2. 前端默认面向作者/编辑，不面向工程平台运维；主路径是“配置分析模型 + 配置写作模型”。
+3. 未完成可用 Key 与关键分工前，续写、审阅、建议、冲突检测、记忆修订等 AI 流程不得进入可执行态。
+4. P1-11 只冻结“API 与前端集成边界”，不重写 P0 设置服务内部实现。
+
+#### 4.5.2 路由方向（冻结）
+
+推荐沿用现有后端方向（与已实现路径一致）：
+- `GET /api/v2/ai/settings`
+- `PUT /api/v2/ai/settings`
+- `POST /api/v2/ai/settings/providers/{provider_name}/test`
+
+#### 4.5.3 配置数据要求（冻结，API 能力）
+
+`PUT /api/v2/ai/settings` 至少支持以下配置对象：
+1. `provider_configs[]`
+   - `provider_name`
+   - `enabled`
+   - `default_model`
+   - `api_key`（仅写入，不可读回）
+   - 可选 Provider 扩展参数（如 base_url、timeout、max_retries，按现有 schema）
+2. `model_role_mappings`
+   - 至少覆盖：`analysis / planning / writer / reviewer / rewriter`
+   - 每个 role 必须可解析到已启用 Provider + 可用模型
+3. 配置版本信息（如 `updated_at`、`updated_by`）用于审计与前端刷新提示。
+
+#### 4.5.4 双模型与角色映射要求（冻结）
+
+1. P1 默认作者模式必须支持双模型分工：`analysis` 与 `writer` 至少可映射到两个可用模型。
+2. 默认推荐分工：`analysis -> kimi`，`writer -> deepseek`；不要求强制绑定为不同 Provider，但必须允许差异化映射。
+3. `planning/reviewer/rewriter` 允许继承默认模板或使用系统默认映射，不得阻塞作者主路径。
+4. 当关键分工目标不可用（Provider 禁用、模型不存在、key 缺失）时，保存应失败并返回明确错误码，不得静默降级。
+
+#### 4.5.5 前端交互闭环要求（冻结）
+
+AI Settings 必须形成“作者主路径 + 高级折叠路径”的双层闭环：
+1. 作者主路径（默认第一屏）：
+   - 加载：展示分析模型与写作模型当前配置状态（脱敏）。
+   - 编辑：仅输入 Kimi Key 与 DeepSeek Key，并可选择对应分析/写作模型名。
+   - 保存：提交后返回成功/失败状态与 `safe_message`。
+   - 测试：支持一键测试关键模型连接，返回成功/失败与建议动作。
+2. 高级折叠路径（默认收起）：
+   - Provider 开关、默认模型、role 细项、base_url、timeout 等平台参数。
+   - 仅作为增强与运维能力，不得阻塞作者主路径。
+3. 阻断：
+   - 当“无可用 key 或 analysis/writer 关键分工无效”时，生成链路入口必须禁用并显示引导。
+
+#### 4.5.6 安全与脱敏要求（冻结）
+
+1. 响应仅允许返回脱敏字段（如 `api_key_masked`、`key_configured`），不得返回明文 API Key。
+2. 前端输入框必须 `password` 类型；不允许明文回填已保存 key。
+3. 日志、SSE、Trace、错误详情不得泄露 key、完整 Prompt、完整 ContextPack、完整候选稿正文。
+4. 配置测试响应只返回安全摘要，不返回供应商原始敏感报文。
+
+#### 4.5.7 门控与权限要求（冻结）
+
+1. Settings 写操作与连接测试属于用户显式运维动作，必须满足：
+   - `caller_type=user_action`
+   - `user_action=true`
+   - `idempotency_key` 存在
+2. `agent/workflow_compat/system_maintenance/quick_trial` 不得执行 key 写入或覆盖配置。
+
+#### 4.5.8 错误码方向（冻结）
+
+AI Settings 相关错误码至少包括：
+- `provider_not_supported`
+- `provider_key_missing`
+- `provider_key_invalid`
+- `provider_test_failed`
+- `model_not_available`
+- `model_role_mapping_invalid`
+- `settings_validation_failed`
+
+#### 4.5.9 验收口径（冻结）
+
+1. 作者可在单一入口完成“分析模型配置 + 写作模型配置 + 保存 + 测试”闭环。
+2. `analysis` 与 `writer` 关键分工映射有效后，P1 主链路可执行。
+3. 若任一关键分工无效，前端必须显示阻断原因并禁止发起相关 AI 动作。
+4. 高级参数区默认收起，不影响作者完成主路径。
 
 ## 五、通用 Request / Response / Error DTO 规则
 
@@ -249,9 +335,9 @@ P1 默认主路径：
 仅允许：状态、ID、安全摘要、`safe_ref`、`warning_code`、`error_code`、计数。  
 禁止：完整正文、完整 Prompt、完整 ContextPack、完整 CandidateDraft、API Key。
 
-## 九、前端最小集成边界
+## 九、前端首批集成边界
 
-### 9.1 最小入口清单
+### 9.1 首批入口清单
 
 1. Agent 进度面板
 2. 方向推演面板
@@ -264,6 +350,7 @@ P1 默认主路径：
 9. Agent Trace 面板
 10. Plot Arc 状态
 11. Context Pack 预览
+12. AI Settings（跨组基础配置：作者模式双模型 Key、模型分工、连接测试；高级参数折叠）
 
 ### 9.2 最低承诺
 
@@ -271,6 +358,8 @@ P1 默认主路径：
 2. 每个关键模块至少有 list + detail 两级可见入口。
 3. `waiting_for_user` 必须有显著前端状态表达。
 4. Detail Trace 默认折叠，且受权限控制。
+5. AI Settings 必须具备“可加载 + 可编辑 + 可保存 + 可测试”闭环入口；默认入口必须面向作者主路径（分析模型 + 写作模型），未配置 key、关键分工无效或测试未通过时必须有阻断式引导，不得静默失败。
+6. 所有面向用户的入口文案必须使用中文任务语义，不得把 `caller_type/idempotency/model_role` 作为用户界面文案。
 
 ### 9.3 AgentTrace Detail 权限（冻结）
 
@@ -306,12 +395,67 @@ P1 默认主路径：
 - `memory_rollback_not_allowed`
 - `idempotency_key_conflict`
 - `caller_type_forbidden`
+- `provider_not_supported`
+- `provider_key_missing`
+- `provider_key_invalid`
+- `provider_test_failed`
+- `model_not_available`
+- `model_role_mapping_invalid`
+- `settings_validation_failed`
 
 ### 10.3 safe_message 规则
 
 1. 可理解、不可泄密。
 2. 不包含堆栈、SQL、Prompt 片段、正文原文。
 3. 对冲突类错误应给出下一步建议。
+
+### 10.4 用户可读状态/错误翻译层（冻结）
+
+1. API 响应应支持 `display_status`（或等价字段）用于用户界面直接显示。
+2. `display_status` 必须来自后端受控映射，不由前端自行猜测内部状态。
+3. 原始状态字段可保留用于调试；作者主视图默认只消费 `display_status`。
+
+推荐映射（方向）：
+
+| 内部状态 | display_status |
+|---|---|
+| running / waiting_observation | 正在处理中 |
+| waiting_for_user | 等你确认 |
+| completed / applied | 已完成 |
+| partial_success / degraded | 部分完成 |
+| blocked / failed | 需要处理问题 |
+
+错误翻译要求：
+
+1. `error_code` 供程序分支；`safe_message` 供用户阅读。
+2. 普通用户界面必须优先显示 `safe_message`，不得直接展示内部错误码。
+3. `safe_message` 缺失时前端只能显示通用降级文案，不得显示内部异常明细。
+
+### 10.5 safe_message 统一文案词典（冻结）
+
+为避免各模块提示语漂移，P1-11 冻结跨模块统一文案方向（可按页面微调语气，不可改变语义）：
+
+| error_code | safe_message（推荐） | next_action_hint |
+|---|---|---|
+| caller_type_forbidden | 当前操作权限不足，无法执行。 | 请使用正确入口或联系管理员。 |
+| action_not_allowed | 当前状态下不允许此操作。 | 请先完成前置步骤后重试。 |
+| idempotency_key_required | 请求缺少防重复标识，操作未执行。 | 刷新页面后重试。 |
+| idempotency_key_conflict | 检测到重复提交，已忽略本次请求。 | 请查看最新结果，无需重复提交。 |
+| direction_proposal_not_ready | 写作方向尚未准备完成。 | 稍后重试或先使用快速续写。 |
+| chapter_plan_not_confirmed | 章节计划尚未确认。 | 请先确认计划，或切换快速续写。 |
+| blocking_conflict_unresolved | 存在必须处理的冲突，当前无法继续。 | 先处理冲突，再执行当前操作。 |
+| cannot_override_blocking | 当前版本不允许跳过阻断冲突。 | 请按冲突处理流程完成修复。 |
+| candidate_version_not_found | 未找到指定候选版本。 | 刷新候选稿列表后重试。 |
+| cannot_apply_superseded_version | 该版本已被新版本替代，不能直接应用。 | 请选择当前有效版本后再应用。 |
+| memory_revision_apply_blocked | 记忆更新被冲突规则阻断。 | 先处理相关冲突，再应用记忆更新。 |
+| provider_key_missing | 尚未完成模型服务配置。 | 请先配置并测试可用的模型 Key。 |
+| provider_test_failed | 模型连接测试失败。 | 检查 Key 与模型名后重试。 |
+
+规则：
+
+1. `safe_message` 必须与词典语义一致；允许同义措辞，不允许语义反转。
+2. 响应建议提供 `next_action_hint`（或等价字段）用于直接指导下一步。
+3. 前端禁止把内部异常拼接成用户文案；只能使用 `safe_message` 与 `next_action_hint`。
 
 ## 十一、与 P1-01 ~ P1-10 的接口边界
 
@@ -339,6 +483,7 @@ P1 默认主路径：
 8. P1 保留 `workflow_compat` caller_type 作为 P0 MinimalContinuationWorkflow 兼容迁移路径。
 9. `workflow_compat` 不得执行任何 user_action 专属动作，且不得 formal_write。
 10. Writing Task 直接 edit 非 P1 首批必须能力；若实现阶段开放，必须 `caller_type=user_action` 且携带 `idempotency_key`，并不得绕过 Direction/ChapterPlan 确认边界。
+11. 作者主界面默认文案不得直接展示内部术语：`ContextPack`、`AgentSession`、`blocked`、`degraded`、`stale`、`superseded`；必须通过 `display_status` / `safe_message` / `next_action_hint` 转译后展示。
 
 ## 十四、P1-11 不做事项清单
 
@@ -371,6 +516,12 @@ P1 默认主路径：
 13. `workflow_compat` 保留为 P0 兼容迁移 caller_type，但不得执行 user_action / formal_write。
 14. Context Pack 预览仅暴露 summary + layers preview，不泄露完整上下文。
 15. Writing Task 首批支持 list + detail + confirm；直接 edit 后置，或必须受 user_action/idempotency 约束。
+16. 必须提供 AI Settings 完整闭环入口，且默认入口为“作者模式”（分析模型 + 写作模型），模型 Key 只允许脱敏回显，禁止明文展示。
+17. 必须支持关键分工校验（至少 analysis/writer）；关键分工无效时禁止进入对应 AI 生成链路，并给出用户可理解的中文提示。
+18. API 必须提供用户可读状态映射能力（`display_status` 或等价字段），前端不得把内部状态枚举直接作为作者主界面文案。
+19. 错误响应必须做到“error_code 可编程、safe_message 可读”，普通用户界面不得直接暴露内部错误码。
+20. 关键错误码必须命中统一 safe_message 词典语义，并提供下一步动作提示（`next_action_hint` 或等价字段）。
+21. 作者主界面不得直接显示 `ContextPack/AgentSession/blocked/degraded/stale/superseded` 原始术语，必须命中用户可读映射。
 
 ## 十六、P1-11 待确认点
 
@@ -385,7 +536,7 @@ P1-11 封板前待确认点已全部落地，无阻塞待确认点。
 
 ## 附录 A：P1 API 分组速查表
 
-| 分组 | 前缀方向 | 最小入口 |
+| 分组 | 前缀方向 | 首批入口 |
 |---|---|---|
 | Agent Session | `/api/v2/ai/sessions` | create + list + detail + pause/resume/cancel |
 | Agent Trace | `/api/v2/ai/traces` | list + detail + step + detail-view |
@@ -398,6 +549,7 @@ P1-11 封板前待确认点已全部落地，无阻塞待确认点。
 | Memory Revision | `/api/v2/ai/memory-gates` `/api/v2/ai/memory-revisions` | gate list/detail + approve/reject/apply + revision detail |
 | Context Pack | `/api/v2/ai/context-packs` | summary + layers preview |
 | Writing Task | `/api/v2/ai/writing-tasks` | list + detail + confirm（edit 为后续增强） |
+| AI Settings（跨组基础配置） | `/api/v2/ai/settings` | get + update + provider test |
 
 ## 附录 B：API 路由速查表
 
@@ -423,16 +575,20 @@ P1-11 封板前待确认点已全部落地，无阻塞待确认点。
 | POST | `/api/v2/ai/memory-gates/{gate_id}/suggestions/{suggestion_id}/reject` | user_action |
 | POST | `/api/v2/ai/memory-gates/{gate_id}/apply` | user_action |
 | GET | `/api/v2/ai/traces/{trace_id}` | user_action（detail 需开发者权限） |
+| GET | `/api/v2/ai/settings` | user_action |
+| PUT | `/api/v2/ai/settings` | user_action |
+| POST | `/api/v2/ai/settings/providers/{provider_name}/test` | user_action |
 
 ## 附录 C：P1-11 与 P1 总纲对照
 
 | P1 总纲要求 | P1-11 冻结内容 |
 |---|---|
-| P1 API 分组方向 | 固化为 11 组分组方向 |
+| P1 API 分组方向 | 固化为 11 组分组方向 + AI Settings 跨组基础配置域 |
 | request_id / trace_id 贯穿 | 通用 DTO 规则冻结 |
 | caller_type 与 user_action 边界 | 门控动作三重校验冻结 |
 | 轮询优先，SSE 可选 | 默认轮询 + SSE 可选增强 |
 | API 不承载业务逻辑 | API/ToolFacade/Application Service 路径边界明确 |
 | 不泄露敏感内容 | 响应、日志、SSE 脱敏规则明确 |
-| 前端最小集成边界 | 11 个入口与最低承诺明确 |
+| 前端首批集成边界 | 12 个入口（含 AI Settings）与最低承诺明确 |
 | 不引入 P2 功能 | 不做事项清单明确排除 |
+

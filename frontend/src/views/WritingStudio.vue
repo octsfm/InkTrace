@@ -92,8 +92,9 @@
       class="studio-shell"
       :class="{
         'studio-shell--focus': isFocusMode,
-        'studio-shell--drawer-open': Boolean(activeAssetTab) && !isFocusMode
+        'studio-shell--drawer-open': Boolean(activeWorkspaceTab) && !isFocusMode
       }"
+      :style="studioShellStyle"
     >
       <aside v-show="!isFocusMode" class="sidebar-column">
         <div class="panel-card sidebar-card">
@@ -143,29 +144,13 @@
         </div>
       </main>
 
-      <aside v-show="!isFocusMode && !activeAssetTab" class="asset-rail-column">
-        <div class="panel-card asset-rail-card">
-          <AssetRail
-            :active-tab="activeAssetTab"
-            @toggle="toggleAssetDrawer"
-          />
-        </div>
-      </aside>
-
-      <aside
-        v-if="activeAssetTab"
-        v-show="!isFocusMode"
-        class="asset-drawer-column"
-        :class="{ 'mobile-overlay-host': isMobileAssetDrawer }"
-      >
-        <AssetDrawer
-          ref="assetDrawerRef"
-          :visible="Boolean(activeAssetTab)"
-          :active-tab="activeAssetTab"
+      <aside v-show="!isFocusMode" class="right-workspace-column">
+        <RightWorkspacePanel
+          :model-value="activeWorkspaceTab"
           :dirty-tabs="assetDirtyTabs"
-          :mobile="isMobileAssetDrawer"
-          @close="closeAssetDrawer"
-          @switch="openAssetDrawer"
+          :mobile="isMobileWorkspacePanel"
+          @update:model-value="handleWorkspaceTabChange"
+          @width-change="handleWorkspacePanelWidthChange"
           @save-dirty="handleAssetSaveDirty"
           @discard-dirty="handleAssetDiscardDirty"
         >
@@ -203,12 +188,19 @@
             <AIPanel
               v-else-if="activeTab === 'ai'"
               ref="aiPanelRef"
+              mode="ai"
+              :work-id="workId"
+              :chapter-id="chapterDataStore.activeChapterId"
+              :chapter-version="Number(chapterDataStore.activeChapter?.version || 0)"
+            />
+            <ReviewTab
+              v-else-if="activeTab === 'review'"
               :work-id="workId"
               :chapter-id="chapterDataStore.activeChapterId"
               :chapter-version="Number(chapterDataStore.activeChapter?.version || 0)"
             />
           </template>
-        </AssetDrawer>
+        </RightWorkspacePanel>
       </aside>
     </section>
   </div>
@@ -225,14 +217,14 @@ import { useSaveStateStore } from '@/stores/useSaveStateStore'
 import { usePreferenceStore } from '@/stores/preference'
 import { useWritingAssetStore } from '@/stores/writingAsset'
 import { countEffectiveCharacters } from '@/utils/textMetrics'
-import AssetDrawer from '@/components/workspace/AssetDrawer.vue'
-import AssetRail from '@/components/workspace/AssetRail.vue'
 import AIPanel from '@/components/workspace/AIPanel.vue'
 import CharacterPanel from '@/components/workspace/CharacterPanel.vue'
 import ForeshadowPanel from '@/components/workspace/ForeshadowPanel.vue'
 import FocusModeToggle from '@/components/workspace/FocusModeToggle.vue'
 import ManualSyncButton from '@/components/workspace/ManualSyncButton.vue'
 import OutlinePanel from '@/components/workspace/OutlinePanel.vue'
+import ReviewTab from '@/components/workspace/ReviewTab.vue'
+import RightWorkspacePanel from '@/components/workspace/RightWorkspacePanel.vue'
 import TimelinePanel from '@/components/workspace/TimelinePanel.vue'
 import WritingPreferencePanel from '@/components/workspace/WritingPreferencePanel.vue'
 import ChapterSidebar from '@/components/workspace/ChapterSidebar.vue'
@@ -254,7 +246,6 @@ const preferencePanelAnchorRef = ref(null)
 const editorRef = ref(null)
 const sidebarRef = ref(null)
 const workTitleInputRef = ref(null)
-const assetDrawerRef = ref(null)
 const outlinePanelRef = ref(null)
 const timelinePanelRef = ref(null)
 const foreshadowPanelRef = ref(null)
@@ -271,9 +262,10 @@ let isDraftSyncing = false
 const DRAFT_SYNC_DELAY_MS = 2500
 const RETRY_DELAYS_MS = [1000, 2000, 4000]
 const MOBILE_ASSET_BREAKPOINT = 760
-const activeAssetTab = ref('')
+const activeWorkspaceTab = ref('')
 const activeAssetFocusArea = ref('outline')
-const isMobileAssetDrawer = ref(false)
+const isMobileWorkspacePanel = ref(false)
+const rightWorkspacePanelWidth = ref(360)
 const preferencePanelVisible = ref(false)
 const lastEffectiveCountByChapterId = ref({})
 const suppressDraftCaching = ref(false)
@@ -368,6 +360,9 @@ const showManualRetry = computed(() => (
   !saveStateStore.nextRetryAt &&
   !conflictModalVisible.value
 ))
+const studioShellStyle = computed(() => ({
+  '--right-workspace-panel-width': `${rightWorkspacePanelWidth.value}px`
+}))
 const conflictDescription = computed(() => {
   const chapterTitle = String(
     conflictPayload.value?.chapterTitle ||
@@ -755,26 +750,32 @@ const handleCachePruned = () => {
   ElMessage.warning('本地缓存空间不足，已自动清理较旧的暂存内容。')
 }
 
-const syncAssetDrawerViewport = () => {
-  isMobileAssetDrawer.value = typeof window !== 'undefined' && window.innerWidth <= MOBILE_ASSET_BREAKPOINT
+const syncWorkspaceViewport = () => {
+  isMobileWorkspacePanel.value = typeof window !== 'undefined' && window.innerWidth <= MOBILE_ASSET_BREAKPOINT
+}
+
+const handleWorkspacePanelWidthChange = (nextWidth) => {
+  const numericWidth = Number(nextWidth)
+  if (!Number.isFinite(numericWidth)) return
+  rightWorkspacePanelWidth.value = Math.min(480, Math.max(320, numericWidth))
 }
 
 const saveFocusedAssetDraft = async () => {
-  if (!activeAssetTab.value) return false
-  if (activeAssetTab.value === 'outline') {
+  if (!activeWorkspaceTab.value) return false
+  if (activeWorkspaceTab.value === 'outline') {
     await outlinePanelRef.value?.saveFocusedDraft?.(activeAssetFocusArea.value)
     return true
   }
-  if (activeAssetTab.value === 'timeline') {
+  if (activeWorkspaceTab.value === 'timeline') {
     const mode = activeAssetFocusArea.value === 'timeline_reorder' ? 'reorder' : 'event'
     await timelinePanelRef.value?.saveFocusedDraft?.(mode)
     return true
   }
-  if (activeAssetTab.value === 'foreshadow') {
+  if (activeWorkspaceTab.value === 'foreshadow') {
     await foreshadowPanelRef.value?.saveFocusedDraft?.()
     return true
   }
-  if (activeAssetTab.value === 'character') {
+  if (activeWorkspaceTab.value === 'character') {
     await characterPanelRef.value?.saveFocusedDraft?.()
     return true
   }
@@ -786,7 +787,7 @@ const handleEditorSaveShortcut = async (event) => {
   if (key !== 's' || (!event?.ctrlKey && !event?.metaKey)) return
   const activeElement = document.activeElement
   const insideEditor = Boolean(activeElement?.closest?.('.editor-shell'))
-  const insideAssetPanel = Boolean(activeElement?.closest?.('.asset-drawer-body'))
+  const insideAssetPanel = Boolean(activeElement?.closest?.('.right-workspace-panel__body'))
   if (!insideEditor && !insideAssetPanel) return
   event.preventDefault()
   if (insideEditor) {
@@ -811,7 +812,7 @@ const activateChapter = async (chapterId) => {
 
 onMounted(async () => {
   preferenceStore.hydrate()
-  syncAssetDrawerViewport()
+  syncWorkspaceViewport()
   saveStateStore.setSaveStatus('synced')
   saveStateStore.clearConflict()
   saveStateStore.clearRetrySchedule()
@@ -820,7 +821,7 @@ onMounted(async () => {
   window.addEventListener('inktrace-cache-pruned', handleCachePruned)
   window.addEventListener('keydown', handleEditorSaveShortcut)
   window.addEventListener('keydown', handlePreferencePanelEscape)
-  window.addEventListener('resize', syncAssetDrawerViewport)
+  window.addEventListener('resize', syncWorkspaceViewport)
   document.addEventListener('pointerdown', handlePreferencePanelPointerDown)
   let workspacePayload = null
   let chapters = []
@@ -871,7 +872,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('inktrace-cache-pruned', handleCachePruned)
   window.removeEventListener('keydown', handleEditorSaveShortcut)
   window.removeEventListener('keydown', handlePreferencePanelEscape)
-  window.removeEventListener('resize', syncAssetDrawerViewport)
+  window.removeEventListener('resize', syncWorkspaceViewport)
   document.removeEventListener('pointerdown', handlePreferencePanelPointerDown)
 })
 
@@ -927,31 +928,14 @@ const handlePreferenceUpdate = (patch = {}) => {
   preferenceStore.updateWritingPreferences(patch)
 }
 
-const toggleAssetDrawer = (tabKey) => {
+const handleWorkspaceTabChange = (tabKey) => {
   const nextKey = String(tabKey || '')
-  if (!nextKey) return
-  activeAssetFocusArea.value = nextKey
-  if (!activeAssetTab.value) {
-    activeAssetTab.value = nextKey
-    return
-  }
-  if (nextKey === activeAssetTab.value) return
-  assetDrawerRef.value?.requestSwitch?.(nextKey)
-}
-
-const openAssetDrawer = (tabKey) => {
-  const nextKey = String(tabKey || '')
-  if (!nextKey) return
-  activeAssetFocusArea.value = nextKey
-  activeAssetTab.value = nextKey
-}
-
-const closeAssetDrawer = () => {
-  activeAssetTab.value = ''
+  activeAssetFocusArea.value = String(nextKey || activeWorkspaceTab.value || 'outline')
+  activeWorkspaceTab.value = nextKey
 }
 
 const handleAssetFocusArea = (area) => {
-  activeAssetFocusArea.value = String(area || activeAssetTab.value || 'outline')
+  activeAssetFocusArea.value = String(area || activeWorkspaceTab.value || 'outline')
 }
 
 const handleAssetSaveDirty = (tabKey) => {
@@ -1429,12 +1413,12 @@ const handleManualSync = async () => {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 72px;
+  grid-template-columns: 280px minmax(0, 1fr) 48px;
   gap: 16px;
 }
 
 .studio-shell--drawer-open {
-  grid-template-columns: 280px minmax(0, 1fr) 360px;
+  grid-template-columns: 280px minmax(0, 1fr) var(--right-workspace-panel-width, 360px);
 }
 
 .studio-shell--focus {
@@ -1443,8 +1427,7 @@ const handleManualSync = async () => {
 
 .sidebar-column,
 .editor-column,
-.asset-rail-column,
-.asset-drawer-column {
+.right-workspace-column {
   min-height: 0;
 }
 
@@ -1522,12 +1505,8 @@ const handleManualSync = async () => {
   display: flex;
 }
 
-.asset-rail-card {
-  padding: 10px;
-}
-
-.asset-drawer-column {
-  width: 360px;
+.right-workspace-column {
+  width: 100%;
 }
 
 @media (max-width: 1120px) {
@@ -1560,10 +1539,8 @@ const handleManualSync = async () => {
     width: auto;
   }
 
-  .asset-drawer-column.mobile-overlay-host {
-    width: 0;
-    min-width: 0;
-    min-height: 0;
+  .right-workspace-column {
+    width: 100%;
   }
 }
 </style>

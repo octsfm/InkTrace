@@ -21,6 +21,11 @@ from infrastructure.database.repositories.ai.file_story_state_store import FileS
 from presentation.api.app import app
 
 
+class _CriticalAuditTraceStub:
+    def record_audit_event(self, **kwargs):
+        raise ValueError("critical_audit_write_failed")
+
+
 def _stores(tmp_path: Path):
     job_store = FileAIJobStore(tmp_path / "jobs.json")
     candidate_store = FileCandidateDraftStore(tmp_path / "candidate_drafts.json")
@@ -243,6 +248,35 @@ def test_apply_rejects_repeated_apply_missing_user_action_and_missing_candidate(
         raise AssertionError("missing candidate should fail")
 
 
+def test_apply_candidate_fail_safe_blocks_formal_write_when_critical_audit_fails(tmp_path: Path) -> None:
+    work_service, chapter_service, init_service, _, candidate_store, work, chapter = _create_initialized_work(tmp_path)
+    draft = _save_candidate(candidate_store, work_id=work.id, chapter_id=chapter.id.value)
+    draft = candidate_store.save(draft.model_copy(update={"trace_id": "trace_apply_candidate_fail_safe", "request_id": "req_apply_candidate_fail_safe"}))
+    review_service = CandidateReviewService(
+        candidate_draft_repository=candidate_store,
+        chapter_service=chapter_service,
+        initialization_service=init_service,
+        trace_service=_CriticalAuditTraceStub(),
+    )
+
+    try:
+        review_service.apply_candidate_to_draft(
+            draft.candidate_draft_id,
+            user_id="u1",
+            expected_chapter_version=chapter.version,
+            user_action=True,
+            idempotency_key="apply-audit-fail-1",
+        )
+    except ValueError as exc:
+        assert str(exc) == "critical_audit_write_failed"
+    else:
+        raise AssertionError("critical audit failure should block apply_candidate")
+
+    chapter_after = chapter_service.list_chapters(work.id)[0]
+    assert chapter_after.content == chapter.content
+    assert review_service.get_candidate_draft(draft.candidate_draft_id).status == CandidateDraftStatus.PENDING_REVIEW
+
+
 def test_apply_modes_reject_whole_chapter_replace_and_validate_targets(tmp_path: Path) -> None:
     _, _, _, review_service, candidate_store, work, chapter = _create_initialized_work(tmp_path)
     draft = _save_candidate(candidate_store, work_id=work.id, chapter_id=chapter.id.value)
@@ -301,31 +335,48 @@ def test_candidate_review_apis_accept_reject_apply_and_require_version() -> None
     client = TestClient(app)
     candidate_draft_id, chapter_version = _api_seed_candidate()
 
-    accept_denied = client.post(f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/accept", json={"user_action": False})
+    accept_denied = client.post(
+        f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/accept",
+        json={"caller_type": "user_action", "user_action": False, "idempotency_key": "accept-denied"},
+    )
     assert accept_denied.status_code == 403
-    assert accept_denied.json()["error"]["error_code"] == "user_confirmation_required"
+    assert accept_denied.json()["error"]["error_code"] == "action_not_allowed"
 
-    accept_response = client.post(f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/accept", json={"user_action": True, "user_id": "u1"})
+    accept_response = client.post(
+        f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/accept",
+        json={"caller_type": "user_action", "user_action": True, "user_id": "u1", "idempotency_key": "accept-success"},
+    )
     assert accept_response.status_code == 200
     assert accept_response.json()["data"]["status"] == "accepted"
 
     missing_version = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/apply",
-        json={"user_action": True, "idempotency_key": "apply-missing-version"},
+        json={"caller_type": "user_action", "user_action": True, "idempotency_key": "apply-missing-version"},
     )
     assert missing_version.status_code == 400
     assert missing_version.json()["error"]["error_code"] == "expected_chapter_version_required"
 
     conflict = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/apply",
-        json={"user_action": True, "expected_chapter_version": chapter_version + 99, "idempotency_key": "apply-conflict-api"},
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "expected_chapter_version": chapter_version + 99,
+            "idempotency_key": "apply-conflict-api",
+        },
     )
     assert conflict.status_code == 409
     assert conflict.json()["error"]["error_code"] == "blocking_conflict_unresolved"
 
     apply_response = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/apply",
-        json={"user_action": True, "user_id": "u1", "expected_chapter_version": chapter_version, "idempotency_key": "apply-api-success"},
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "u1",
+            "expected_chapter_version": chapter_version,
+            "idempotency_key": "apply-api-success",
+        },
     )
     assert apply_response.status_code == 200
     assert apply_response.json()["data"]["status"] == "applied"
@@ -337,7 +388,12 @@ def test_conflict_guard_api_lists_precheck_records_after_apply_block(tmp_path: P
 
     conflict = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/apply",
-        json={"user_action": True, "expected_chapter_version": chapter_version + 99, "idempotency_key": "apply-conflict-api-list"},
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "expected_chapter_version": chapter_version + 99,
+            "idempotency_key": "apply-conflict-api-list",
+        },
     )
     assert conflict.status_code == 409
     assert conflict.json()["error"]["error_code"] == "blocking_conflict_unresolved"
@@ -355,10 +411,16 @@ def test_apply_candidate_api_requires_idempotency_key() -> None:
 
     response = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/apply",
-        json={"user_action": True, "user_id": "u1", "expected_chapter_version": chapter_version, "idempotency_key": ""},
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "u1",
+            "expected_chapter_version": chapter_version,
+            "idempotency_key": "",
+        },
     )
     assert response.status_code == 400
-    assert response.json()["error"]["error_code"] == "idempotency_key_missing"
+    assert response.json()["error"]["error_code"] == "idempotency_key_required"
 
 
 def test_legacy_generated_candidate_status_is_normalized_to_pending_review() -> None:
@@ -382,7 +444,13 @@ def test_reject_api_does_not_write_and_no_ai_review_api_exists() -> None:
 
     reject_response = client.post(
         f"/api/v2/ai/candidate-drafts/{candidate_draft_id}/reject",
-        json={"user_action": True, "user_id": "u1", "reason": "reject"},
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "u1",
+            "reason": "reject",
+            "idempotency_key": "reject-success",
+        },
     )
     assert reject_response.status_code == 200
     assert reject_response.json()["data"]["status"] == "rejected"

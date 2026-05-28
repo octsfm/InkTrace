@@ -12,7 +12,7 @@ router = APIRouter(tags=["v2-ai-review"])
 
 def _reject_invalid_caller_type(request: Request, *, caller_type: str) -> JSONResponse | None:
     if caller_type and caller_type != "user_action":
-        return error_response(request, error_code="caller_type_not_allowed", status_code=403)
+        return error_response(request, error_code="caller_type_forbidden", status_code=403)
     return None
 
 
@@ -61,7 +61,7 @@ def review_candidate_draft(candidate_draft_id: str, payload: ReviewCandidateDraf
         memory_gate = dependencies.get_memory_review_gate_service().generate_from_review(review.review_id)
     except ValueError as exc:
         error_code = str(exc)
-        status_code = 404 if error_code in {"candidate_draft_not_found", "chapter_not_found", "work_not_found"} else 403 if error_code == "caller_type_not_allowed" else 409 if error_code == "review_idempotency_conflict" else 400
+        status_code = 404 if error_code in {"candidate_draft_not_found", "chapter_not_found", "work_not_found"} else 403 if error_code == "caller_type_forbidden" else 409 if error_code == "review_idempotency_conflict" else 400
         return error_response(request, error_code=error_code, status_code=status_code)
     return success_response(
         request,

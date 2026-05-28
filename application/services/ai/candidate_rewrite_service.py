@@ -229,6 +229,12 @@ class CandidateRewriteService:
             "summary": self._build_diff_summary(before, after),
         }
 
+    def get_rewrite_request(self, rewrite_request_id: str):
+        return self._candidate_draft_repository.get_rewrite_request(rewrite_request_id)
+
+    def get_revision_round(self, revision_round_id: str):
+        return self._candidate_draft_repository.get_revision_round(revision_round_id)
+
     @staticmethod
     def _resolve_instruction_source(review_report_id: str, user_instruction: str) -> str:
         if review_report_id and user_instruction:

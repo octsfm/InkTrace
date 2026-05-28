@@ -106,7 +106,18 @@ def _candidate_error_status(error_code: str) -> int:
 
 def _reject_invalid_caller_type(request: Request, *, caller_type: str) -> JSONResponse | None:
     if caller_type and caller_type != "user_action":
-        return error_response(request, error_code="caller_type_not_allowed", status_code=403)
+        return error_response(request, error_code="caller_type_forbidden", status_code=403)
+    return None
+
+
+def _ensure_gate_request(request: Request, *, caller_type: str, user_action: bool, idempotency_key: str) -> JSONResponse | None:
+    denied = _reject_invalid_caller_type(request, caller_type=caller_type)
+    if denied is not None:
+        return denied
+    if not user_action:
+        return error_response(request, error_code="action_not_allowed", status_code=403)
+    if not str(idempotency_key or "").strip():
+        return error_response(request, error_code="idempotency_key_required", status_code=400)
     return None
 
 
@@ -165,10 +176,9 @@ def get_candidate_draft(candidate_draft_id: str, request: Request):
 
 @router.get("/api/v2/ai/candidate-drafts/{candidate_draft_id}/versions")
 def list_candidate_draft_versions(candidate_draft_id: str, request: Request):
-    repository = dependencies.get_candidate_draft_repository()
+    service = dependencies.get_candidate_review_service()
     try:
-        repository.get(candidate_draft_id)
-        versions = repository.list_versions(candidate_draft_id)
+        versions = service.list_candidate_versions(candidate_draft_id)
     except ValueError as exc:
         return error_response(request, error_code=str(exc), status_code=404)
     return success_response(request, data={"items": [_serialize_candidate_version(item) for item in versions]})
@@ -191,12 +201,9 @@ def get_candidate_draft_version_diff(candidate_draft_id: str, request: Request, 
 
 @router.get("/api/v2/ai/candidate-drafts/{candidate_draft_id}/versions/{candidate_version_id}")
 def get_candidate_draft_version(candidate_draft_id: str, candidate_version_id: str, request: Request):
-    repository = dependencies.get_candidate_draft_repository()
+    service = dependencies.get_candidate_review_service()
     try:
-        repository.get(candidate_draft_id)
-        version = repository.get_version(candidate_version_id)
-        if version.candidate_draft_id != candidate_draft_id:
-            raise ValueError("candidate_version_not_found")
+        version = service.get_candidate_version(candidate_draft_id, candidate_version_id)
     except ValueError as exc:
         return error_response(request, error_code=str(exc), status_code=404)
     return success_response(request, data=_serialize_candidate_version(version))
@@ -209,7 +216,12 @@ def select_candidate_draft_version(
     payload: SelectCandidateDraftVersionRequest,
     request: Request,
 ):
-    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    denied = _ensure_gate_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
     if denied is not None:
         return denied
     service = dependencies.get_candidate_review_service()
@@ -233,7 +245,12 @@ def reject_candidate_draft_version(
     payload: RejectCandidateDraftRequest,
     request: Request,
 ):
-    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    denied = _ensure_gate_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
     if denied is not None:
         return denied
     service = dependencies.get_candidate_rewrite_service()
@@ -251,9 +268,43 @@ def reject_candidate_draft_version(
     return success_response(request, data=_serialize_candidate_detail(draft))
 
 
+@router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/versions/{candidate_version_id}/accept")
+def accept_candidate_draft_version(
+    candidate_draft_id: str,
+    candidate_version_id: str,
+    payload: AcceptCandidateDraftRequest,
+    request: Request,
+):
+    denied = _ensure_gate_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
+    if denied is not None:
+        return denied
+    service = dependencies.get_candidate_review_service()
+    try:
+        draft = service.accept_candidate(
+            candidate_draft_id,
+            candidate_version_id=candidate_version_id,
+            user_id=payload.user_id,
+            user_action=payload.user_action,
+        )
+    except ValueError as exc:
+        error_code = str(exc)
+        return error_response(request, error_code=error_code, status_code=_candidate_error_status(error_code))
+    return success_response(request, data=_serialize_candidate_detail(draft))
+
+
 @router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/accept")
 def accept_candidate_draft(candidate_draft_id: str, payload: AcceptCandidateDraftRequest, request: Request):
-    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    denied = _ensure_gate_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
     if denied is not None:
         return denied
     service = dependencies.get_candidate_review_service()
@@ -272,7 +323,12 @@ def accept_candidate_draft(candidate_draft_id: str, payload: AcceptCandidateDraf
 
 @router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/reject")
 def reject_candidate_draft(candidate_draft_id: str, payload: RejectCandidateDraftRequest, request: Request):
-    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    denied = _ensure_gate_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
     if denied is not None:
         return denied
     service = dependencies.get_candidate_review_service()
@@ -292,7 +348,12 @@ def reject_candidate_draft(candidate_draft_id: str, payload: RejectCandidateDraf
 
 @router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/apply")
 def apply_candidate_draft(candidate_draft_id: str, payload: ApplyCandidateDraftRequest, request: Request):
-    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    denied = _ensure_gate_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
     if denied is not None:
         return denied
     service = dependencies.get_candidate_review_service()
@@ -316,7 +377,12 @@ def apply_candidate_draft(candidate_draft_id: str, payload: ApplyCandidateDraftR
 
 @router.post("/api/v2/ai/candidate-drafts/{candidate_draft_id}/rewrites")
 def rewrite_candidate_draft(candidate_draft_id: str, payload: RewriteCandidateDraftRequest, request: Request):
-    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    denied = _ensure_gate_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
     if denied is not None:
         return denied
     service = dependencies.get_candidate_rewrite_service()
@@ -334,9 +400,8 @@ def rewrite_candidate_draft(candidate_draft_id: str, payload: RewriteCandidateDr
     except ValueError as exc:
         error_code = str(exc)
         return error_response(request, error_code=error_code, status_code=_candidate_error_status(error_code))
-    repository = dependencies.get_candidate_draft_repository()
-    rewrite_request = repository.get_rewrite_request(str(result["rewrite_request_id"]))
-    revision_round = repository.get_revision_round(str(result["revision_round_id"]))
+    rewrite_request = service.get_rewrite_request(str(result["rewrite_request_id"]))
+    revision_round = service.get_revision_round(str(result["revision_round_id"]))
     return success_response(
         request,
         data={

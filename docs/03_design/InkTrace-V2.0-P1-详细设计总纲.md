@@ -1,4 +1,4 @@
-# InkTrace V2.0-P1 详细设计总纲
+﻿# InkTrace V2.0-P1 详细设计总纲
 
 版本：v1.2 / P1 详细设计候选冻结版
 状态：候选冻结
@@ -38,13 +38,13 @@
 本文档承接以下已冻结前提：
 
 - V1.1 Local-First 正式正文保存链路继续成立。
-- P0 最小闭环已完成并冻结。
+- P0 基础闭环已完成并冻结。
 - P0 的安全边界、隔离层设计、HumanReviewGate 与 ToolFacade 边界继续有效。
 - P1 只在 P0 之上扩展"完整智能体工作流与剧情轨道系统"，不推翻 P0 已实现设计。
 
 ### 1.2 P1 目标
 
-P1 的目标是将 P0 的"AI 初始化 + 单章受控续写 + CandidateDraft + HumanReviewGate + AIReview"最小闭环，升级为 InkTrace V2.0 的核心完整版本。
+P1 的目标是将 P0 的"AI 初始化 + 单章受控续写 + CandidateDraft + HumanReviewGate + AIReview"基础闭环，升级为 InkTrace V2.0 的核心完整版本。
 
 P1 的核心价值不是让 AI 自动写完作品，而是让 AI 在受控边界内参与"理解作品、规划方向、生成候选稿、审阅修订、提出建议、辅助记忆更新"，同时所有正式写入动作继续保留在人类确认之后。
 
@@ -62,7 +62,7 @@ P1 必须形成：
 
 ### 1.3 P1 与 P0 的关系
 
-P0 是 Agent-ready 的最小闭环；P1 是完整智能体工作流。
+P0 是 Agent-ready 的基础闭环；P1 是完整智能体工作流。
 
 P1 继承 P0 的完整成果，不推翻 P0 任何设计或实现。继承关系：
 
@@ -174,6 +174,47 @@ P1 必须覆盖：
 12. P1 新增的引用建议占位（R-AI-ASSET-02）只产生 AI Suggestion，不写入正式正文或正式资产，不改变正文内联显示。
 13. AI Suggestion、Conflict Guard、Memory Revision 均不得绕过正式资产保护规则。
 14. 无法判断资产来源时，按正式资产保护。
+
+### 1.8 作者主路径与术语翻译层（冻结）
+
+为修正“系统视角主导产品表达”的问题，P1 增加作者主路径约束，所有 P1 子模块必须遵守：
+
+1. **作者主路径优先于系统编排术语**：用户界面和用户可读响应默认使用作者语言，不直接暴露 Runtime/Workflow 内部术语。
+2. **术语双层表达**：内部可保留工程术语，外部必须提供用户可读映射。
+3. **状态双层表达**：内部状态机不变，但面向作者必须收敛为少量可理解状态。
+4. **门控可解释优先**：DirectionSelection / PlanConfirmation / HumanReviewGate / MemoryReviewGate / ConflictGuard 必须给出“我现在该做什么”的任务提示。
+5. **安全边界不变，表达方式收敛**：不降低任何安全约束，只降低用户认知负担。
+
+术语映射基线（冻结）：
+
+| 内部术语 | 作者可见文案 |
+|---|---|
+| ContextPack | 写作上下文 |
+| AgentSession | AI 写作任务 |
+| DirectionSelection | 选择写作方向 |
+| PlanConfirmation | 确认章节计划 |
+| HumanReviewGate | 候选稿确认 |
+| MemoryReviewGate | 记忆更新确认 |
+| blocked | 当前无法继续 |
+| degraded | 信息不完整，可继续尝试 |
+| stale | 可能已过期 |
+| superseded | 已有新版本 |
+
+状态收敛基线（冻结）：
+
+| 内部状态 | 作者可见状态 |
+|---|---|
+| running / waiting_observation | 正在处理中 |
+| waiting_for_user | 等你确认 |
+| completed / applied | 已完成 |
+| partial_success / degraded | 部分完成 |
+| blocked / failed | 需要处理问题 |
+
+约束：
+
+1. P1-UI、DESIGN、P1-11 必须以本节映射为基础提供文案和接口字段方向。
+2. P1-10 的 Trace 术语默认仅开发者可见，不作为作者主界面文案。
+3. 任何新术语若进入作者主路径，必须先补充映射，不得直接暴露内部词汇。
 
 ---
 
@@ -338,7 +379,7 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    P0["P0 最小闭环"] --> P1["P1 完整 Agent Workflow"]
+    P0["P0 基础闭环"] --> P1["P1 完整 Agent Workflow"]
     P1 --> P2Auto["P2 自动连续续写队列"]
     P1 --> P2Style["P2 Style DNA"]
     P1 --> P2Cite["P2 Citation Link / @ 标签"]
@@ -551,7 +592,7 @@ flowchart LR
 
 - **职责**：方向定义 P1 新增 API 分组和路由前缀方向（Agent Session API、Agent Trace API、Plot Arc API、Direction Proposal API、Chapter Plan API、AI Suggestion API、Conflict Guard API、Memory Revision API、Multi-round CandidateDraft API）。方向定义 P1 前端最小集成边界、轮询/SSE 边界。
 - **输入**：以上所有 P1 模块的输出。
-- **输出**：API 路由分组方向、通用 Request/Response 方向、SSE 事件白名单方向、前端最小入口定义。
+- **输出**：API 路由分组方向、通用 Request/Response 方向、SSE 事件白名单方向、前端首批入口定义。
 - **依赖**：全部 P1 模块。
 - **不做事项**：API 层不承载业务逻辑、API 层不得伪造 user_action、API 层不直接访问 Provider / Repository / ModelRouter。
 - **与 P0 的关系**：在 P0 `/api/v2/ai/` 路由体系上扩展 P1 路由分组。复用 P0 统一错误格式和 request_id/trace_id 贯穿机制。
@@ -1297,7 +1338,7 @@ Multi-round CandidateDraft API 最终路由命名以 P1-11 API 与前端集成�
 
 ### 12.4 前端最小集成边界
 
-P1 前端最小入口方向：
+P1 前端首批入口方向：
 
 | 入口 | 最小功能 |
 |---|---|
@@ -1575,3 +1616,4 @@ P1 总纲对应的需求规格编号（继承自 `docs/01_requirements/InkTrace-
 | R-AI-MEM-04 | Story Memory 版本与回滚 | StoryMemory Revision |
 | R-AI-CTX-03 | 四层剧情轨道保底 | ContextPack（增强） |
 | R-AI-BOUNDARY-01 ~ 05 | AI 边界与禁止行为 | 全部模块（继承） |
+

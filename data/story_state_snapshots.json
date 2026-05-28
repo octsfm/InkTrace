@@ -1,0 +1,44 @@
+{
+  "state_d395b60b266c": {
+    "story_state_id": "state_d395b60b266c",
+    "work_id": "d65bec51-5693-466b-a940-df5670609d6e",
+    "source_initialization_id": "init_dce146fe7e5f",
+    "source_job_id": "job_666485db997b",
+    "latest_chapter_id": "969e4a76-a83e-464a-a670-13a91b517c6a",
+    "latest_chapter_version": 7,
+    "current_position_summary": "第144已完成最小分析；原文长度:2字",
+    "active_characters": [
+      "孔凡圣",
+      "家法宝",
+      "宗法器",
+      "包裹起",
+      "于遥远",
+      "山的路",
+      "毕竟当",
+      "山一战",
+      "于孔凡"
+    ],
+    "active_locations": [
+      "他的脑海",
+      "一出山",
+      "苍茫山",
+      "了传说中的苍茫山",
+      "这苍茫山",
+      "他们前往苍茫山",
+      "毕竟当初昆仑山",
+      "前往苍茫山",
+      "在苍茫山"
+    ],
+    "unresolved_threads": [
+      "pending_follow_up"
+    ],
+    "continuity_notes": [
+      "baseline_source=confirmed_chapter_analysis",
+      "source_snapshot_id=memory_1c0b67b1cc38"
+    ],
+    "source_snapshot_id": "memory_1c0b67b1cc38",
+    "stale_status": "fresh",
+    "stale_reason": "",
+    "created_at": "2026-05-26T03:30:46.002266+00:00"
+  }
+}
