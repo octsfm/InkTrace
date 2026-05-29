@@ -34,6 +34,14 @@ def test_quick_trial_api_runs_and_hides_provider_secret(monkeypatch, tmp_path) -
                 }
             ],
             "model_role_mappings": {
+                "analysis": {
+                    "provider_name": "fake",
+                    "model_name": "fake-chat",
+                },
+                "writer": {
+                    "provider_name": "fake",
+                    "model_name": "fake-writer",
+                },
                 "quick_trial_writer": {
                     "provider_name": "fake",
                     "model_name": "fake-chat",

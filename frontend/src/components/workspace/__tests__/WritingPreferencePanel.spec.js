@@ -21,7 +21,7 @@ describe('WritingPreferencePanel', () => {
 
     expect(wrapper.emitted('update-preferences')).toEqual([
       [{ fontFamily: 'monospace' }],
-      [{ theme: 'dark' }]
+      [{ editorTheme: 'dark' }]
     ])
   })
 

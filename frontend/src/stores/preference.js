@@ -30,7 +30,12 @@ const normalizeState = (payload = {}) => {
     fontFamily: String(payload.fontFamily || DEFAULT_FONT_FAMILY).trim() || DEFAULT_FONT_FAMILY,
     fontSize: clampNumber(payload.fontSize, DEFAULT_FONT_SIZE, 12, 32),
     lineHeight: clampNumber(payload.lineHeight, DEFAULT_LINE_HEIGHT, 1.2, 2.4),
-    theme: ALLOWED_THEMES.has(String(payload.theme || '').trim()) ? String(payload.theme).trim() : DEFAULT_THEME,
+    appTheme: ALLOWED_THEMES.has(String(payload.appTheme || payload.theme || '').trim())
+      ? String(payload.appTheme || payload.theme).trim()
+      : DEFAULT_THEME,
+    editorTheme: ALLOWED_THEMES.has(String(payload.editorTheme || payload.theme || '').trim())
+      ? String(payload.editorTheme || payload.theme).trim()
+      : DEFAULT_THEME,
     todayWordDelta: Math.max(0, Math.floor(Number(payload.todayWordDelta) || 0)),
     todayKey
   }
@@ -58,7 +63,8 @@ const persistState = (state) => {
     fontFamily: String(state.fontFamily || DEFAULT_FONT_FAMILY),
     fontSize: Number(state.fontSize || DEFAULT_FONT_SIZE),
     lineHeight: Number(state.lineHeight || DEFAULT_LINE_HEIGHT),
-    theme: String(state.theme || DEFAULT_THEME),
+    appTheme: String(state.appTheme || DEFAULT_THEME),
+    editorTheme: String(state.editorTheme || DEFAULT_THEME),
     todayWordDelta: Math.max(0, Math.floor(Number(state.todayWordDelta) || 0)),
     todayKey: String(state.todayKey || buildTodayKey())
   }))
@@ -71,7 +77,7 @@ export const usePreferenceStore = defineStore('workbenchPreference', {
       fontFamily: state.fontFamily,
       fontSize: state.fontSize,
       lineHeight: state.lineHeight,
-      theme: state.theme
+      theme: state.editorTheme
     })
   },
   actions: {
@@ -103,9 +109,17 @@ export const usePreferenceStore = defineStore('workbenchPreference', {
       if (Object.prototype.hasOwnProperty.call(patch, 'lineHeight')) {
         this.lineHeight = clampNumber(patch.lineHeight, this.lineHeight, 1.2, 2.4)
       }
+      if (Object.prototype.hasOwnProperty.call(patch, 'appTheme')) {
+        const nextTheme = String(patch.appTheme || '').trim()
+        this.appTheme = ALLOWED_THEMES.has(nextTheme) ? nextTheme : DEFAULT_THEME
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'editorTheme')) {
+        const nextTheme = String(patch.editorTheme || '').trim()
+        this.editorTheme = ALLOWED_THEMES.has(nextTheme) ? nextTheme : DEFAULT_THEME
+      }
       if (Object.prototype.hasOwnProperty.call(patch, 'theme')) {
         const nextTheme = String(patch.theme || '').trim()
-        this.theme = ALLOWED_THEMES.has(nextTheme) ? nextTheme : DEFAULT_THEME
+        this.editorTheme = ALLOWED_THEMES.has(nextTheme) ? nextTheme : DEFAULT_THEME
       }
       this.persist()
     },

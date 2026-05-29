@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const routerPush = vi.fn()
 const getAISettings = vi.fn()
 const updateAISettings = vi.fn()
 const testProvider = vi.fn()
@@ -63,6 +64,12 @@ const getAgentTraceDetailView = vi.fn()
 const listPlotArcs = vi.fn()
 const getPlotArc = vi.fn()
 const getPlotArcStatus = vi.fn()
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({
+    push: routerPush
+  })
+}))
 
 vi.mock('@/api', () => ({
   aiApi: {
@@ -443,82 +450,32 @@ describe('AIPanel', () => {
     vi.restoreAllMocks()
   })
 
-  it('loads ai settings without exposing plaintext api key and supports provider test', async () => {
-    testProvider.mockResolvedValue({ data: { test_status: 'ok', message: 'ok' } })
+  it('shows ai settings status in workspace and routes to settings page', async () => {
     const wrapper = mount(AIPanel, {
       props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3 }
     })
 
     await vi.runAllTimersAsync()
-    expect(wrapper.text()).toContain('AI 设置')
+    expect(wrapper.text()).toContain('AI 设置状态')
+    expect(wrapper.text()).toContain('配置与模型服务商管理已迁移到“设置”页面')
     expect(wrapper.text()).not.toContain('fake-api-key')
 
-    await wrapper.get('[data-test="ai-test-provider"]').trigger('click')
-    expect(testProvider).toHaveBeenCalled()
+    await wrapper.get('[data-test="go-settings-page"]').trigger('click')
+    expect(routerPush).toHaveBeenCalledWith('/settings')
   })
 
-  it('supports editing saving and testing ai settings through the ai tab form', async () => {
-    updateAISettings.mockResolvedValue({
-      data: {
-        provider_configs: [{
-          provider_name: 'fake',
-          enabled: true,
-          default_model: 'fake-writer-v2',
-          key_configured: true,
-          api_key_masked: 'fak********90',
-          last_test_status: 'ok'
-        }],
-        model_role_mappings: {
-          analysis: { provider_name: 'fake', model_name: 'fake-analysis-v2' },
-          planning: { provider_name: 'fake', model_name: 'fake-plan-v2' },
-          writer: { provider_name: 'fake', model_name: 'fake-writer-v2' },
-          reviewer: { provider_name: 'fake', model_name: 'fake-review-v2' },
-          rewriter: { provider_name: 'fake', model_name: 'fake-rewrite-v2' }
-        }
-      }
-    })
-    testProvider.mockResolvedValue({ data: { test_status: 'ok', message: '连接成功' } })
-
+  it('removes settings-edit controls from ai workspace', async () => {
     const wrapper = mount(AIPanel, {
       props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3, mode: 'ai' }
     })
     await vi.runAllTimersAsync()
 
-    const keyInput = wrapper.get('[data-test="ai-settings-provider-key-fake"]')
-    expect(keyInput.attributes('type')).toBe('password')
-    expect(keyInput.element.value).toBe('')
-    expect(wrapper.text()).toContain('fak********90')
-
-    await wrapper.get('[data-test="ai-settings-provider-model-fake"]').setValue('fake-writer-v2')
-    await keyInput.setValue('new-secret-key')
-    await wrapper.get('[data-test="ai-settings-role-analysis"]').setValue('fake-analysis-v2')
-    await wrapper.get('[data-test="ai-settings-role-writer"]').setValue('fake-writer-v2')
-    await wrapper.get('[data-test="ai-settings-save"]').trigger('click')
-
-    expect(updateAISettings).toHaveBeenCalledWith(expect.objectContaining({
-      caller_type: 'user_action',
-      user_action: true,
-      idempotency_key: expect.any(String),
-      provider_configs: [expect.objectContaining({
-        provider_name: 'fake',
-        api_key: 'new-secret-key',
-        default_model: 'fake-writer-v2'
-      })],
-      model_role_mappings: expect.objectContaining({
-        analysis: { provider_name: 'fake', model_name: 'fake-analysis-v2' },
-        writer: { provider_name: 'fake', model_name: 'fake-writer-v2' }
-      })
-    }))
-
-    await wrapper.get('[data-test="ai-test-provider"]').trigger('click')
-    expect(testProvider).toHaveBeenCalledWith('fake', expect.objectContaining({
-      model_name: 'fake-writer-v2',
-      caller_type: 'user_action',
-      user_action: true,
-      idempotency_key: expect.any(String)
-    }))
-    expect(wrapper.text()).toContain('连接成功')
+    expect(wrapper.find('[data-test="ai-settings-save"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="ai-test-provider"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test^="ai-settings-provider-key-"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test^="ai-settings-role-provider-"]').exists()).toBe(false)
   })
+
 
   it('blocks generation actions when key or critical role mappings are not ready', async () => {
     getAISettings.mockResolvedValue({
@@ -547,7 +504,7 @@ describe('AIPanel', () => {
     await vi.runAllTimersAsync()
 
     expect(wrapper.text()).toContain('AI 设置未完成')
-    expect(wrapper.text()).toContain('请先配置可用 Provider Key 与 analysis/writer 角色映射。')
+    expect(wrapper.text()).toContain('请先配置可用模型服务 Key，并完成分析任务模型/写作任务模型配置。')
     expect(wrapper.get('[data-test="ai-generate-directions"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-test="ai-start-initialization"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-test="quick-trial-run"]').attributes('disabled')).toBeDefined()
@@ -757,8 +714,8 @@ describe('AIPanel', () => {
 
     expect(wrapper.text()).toContain('资产风险需确认')
     expect(wrapper.text()).toContain('检测结果可能不完整')
-    expect(wrapper.text()).toContain('warning 2')
-    expect(wrapper.text()).toContain('info 1')
+    expect(wrapper.text()).toContain('警告 2')
+    expect(wrapper.text()).toContain('提示 info 1')
     expect(wrapper.text()).toContain('当前版本未发现阻断性冲突，可继续人工判断。')
 
     await wrapper.get('[data-test="candidate-detail-cd_1"]').trigger('click')
@@ -867,7 +824,7 @@ describe('AIPanel', () => {
     await vi.runAllTimersAsync()
 
     expect(aiWrapper.text()).toContain('AI 设置')
-    expect(aiWrapper.text()).toContain('AgentSession')
+    expect(aiWrapper.text()).toContain('AI 写作任务')
     expect(aiWrapper.text()).toContain('剧情轨道详情')
     expect(aiWrapper.text()).not.toContain('AI 建议')
     expect(aiWrapper.text()).not.toContain('记忆审批')

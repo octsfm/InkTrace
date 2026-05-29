@@ -183,6 +183,7 @@ def test_candidate_draft_list_requires_detail_for_full_content_and_no_streaming_
                 }
             ],
             "model_role_mappings": {
+                "analysis": {"provider_name": "fake", "model_name": "fake-chat"},
                 "writer": {"provider_name": "fake", "model_name": "fake-writer"},
             },
             "caller_type": "user_action",

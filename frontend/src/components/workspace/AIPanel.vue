@@ -7,112 +7,23 @@
       </div>
     </header>
 
-    <div v-if="showAIMode" class="ai-section">
-      <h4>AI 设置</h4>
-      <div v-if="providerConfigs.length" class="ai-list ai-settings-list">
-        <div
-          v-for="provider in providerConfigs"
-          :key="provider.provider_name"
-          class="ai-settings-card"
-        >
-          <div class="candidate-summary">
-            <strong>{{ provider.provider_name }}</strong>
-            <span>{{ provider.enabled ? '已启用' : '已停用' }}</span>
-            <span>模型 {{ provider.default_model || '未设置' }}</span>
-            <span>Key {{ provider.key_configured ? '已配置' : '未配置' }}</span>
-            <span v-if="provider.api_key_masked">{{ provider.api_key_masked }}</span>
-          </div>
-          <div class="field-grid ai-settings-fields">
-            <label class="ai-field">
-              <span>启用 Provider</span>
-              <input
-                :data-test="`ai-settings-provider-enabled-${provider.provider_name}`"
-                v-model="provider.enabled"
-                type="checkbox"
-              />
-            </label>
-            <label class="ai-field">
-              <span>默认模型</span>
-              <input
-                :data-test="`ai-settings-provider-model-${provider.provider_name}`"
-                v-model="provider.default_model"
-                type="text"
-                placeholder="default model"
-              />
-            </label>
-            <label class="ai-field">
-              <span>API Key</span>
-              <input
-                :data-test="`ai-settings-provider-key-${provider.provider_name}`"
-                v-model="provider.api_key"
-                type="password"
-                autocomplete="new-password"
-                placeholder="输入新的 Provider Key"
-              />
-            </label>
-            <label class="ai-field">
-              <span>Base URL</span>
-              <input
-                :data-test="`ai-settings-provider-base-url-${provider.provider_name}`"
-                v-model="provider.base_url"
-                type="text"
-                placeholder="可选 base_url"
-              />
-            </label>
-            <label class="ai-field">
-              <span>超时秒数</span>
-              <input
-                :data-test="`ai-settings-provider-timeout-${provider.provider_name}`"
-                v-model.number="provider.timeout"
-                type="number"
-                min="1"
-              />
-            </label>
-          </div>
-          <div class="ai-meta">
-            <span v-if="provider.last_test_status">测试 {{ provider.last_test_status }}</span>
-            <span v-if="provider.last_test_error_message">{{ provider.last_test_error_message }}</span>
-          </div>
-        </div>
-      </div>
-      <div class="field-grid ai-settings-role-grid">
-        <label v-for="role in requiredSettingsRoles" :key="role" class="ai-field">
-          <span>{{ role }} 映射</span>
-          <select
-            :data-test="`ai-settings-role-provider-${role}`"
-            v-model="settingsForm.model_role_mappings[role].provider_name"
-          >
-            <option value="">请选择 Provider</option>
-            <option
-              v-for="provider in providerConfigs"
-              :key="`${role}-${provider.provider_name}`"
-              :value="provider.provider_name"
-            >
-              {{ provider.provider_name }}
-            </option>
-          </select>
-          <input
-            :data-test="`ai-settings-role-${role}`"
-            v-model="settingsForm.model_role_mappings[role].model_name"
-            type="text"
-            :placeholder="`${role} model`"
-          />
-        </label>
+        <div v-if="showAIMode" class="ai-section">
+      <h4>AI 设置状态</h4>
+      <div class="ai-meta">
+        <span v-if="aiSettingsBlocked">未完成</span>
+        <span v-else>已完成</span>
+        <span>配置与模型服务商管理已迁移到“设置”页面</span>
       </div>
       <div v-if="aiSettingsBlocked" class="settings-block-banner" data-test="ai-settings-blocked">
         <strong>AI 设置未完成</strong>
         <span>{{ aiSettingsBlockMessage }}</span>
       </div>
       <div class="ai-actions">
-        <button data-test="ai-settings-save" type="button" @click="handleSaveSettings">保存配置</button>
-        <button data-test="ai-test-provider" type="button" @click="handleTestProvider">测试 Provider</button>
+        <button data-test="go-settings-page" type="button" @click="goToSettingsPage">前往设置页面</button>
       </div>
-      <p v-if="settingsSaveMessage" class="ai-note">{{ settingsSaveMessage }}</p>
-      <p v-if="settingsErrorMessage" class="ai-error">{{ settingsErrorMessage }}</p>
-      <p v-if="providerTestMessage" class="ai-note">{{ providerTestMessage }}</p>
     </div>
 
-    <div v-if="showAIMode" class="ai-section">
+<div v-if="showAIMode" class="ai-section">
       <h4>初始化分析</h4>
       <div class="ai-actions">
         <button
@@ -133,21 +44,21 @@
         </button>
       </div>
       <div class="ai-meta">
-        <span v-if="initializationInfo.initialization_id">init {{ initializationInfo.initialization_id }}</span>
+        <span v-if="initializationInfo.initialization_id">初始化ID {{ initializationInfo.initialization_id }}</span>
         <span v-if="polling.jobId">job {{ polling.jobId }}</span>
-        <span v-if="jobStatusText">{{ jobStatusText }}</span>
+        <span v-if="jobStatusText">{{ displayStatus(jobStatusText) }}</span>
         <span>分析成功 {{ initializationSummary.analyzed }}</span>
         <span>空章节 {{ initializationSummary.empty }}</span>
         <span>失败章节 {{ initializationSummary.failed }}</span>
       </div>
       <ul v-if="jobSteps.length" class="ai-list">
-        <li v-for="step in jobSteps" :key="step.step_id">{{ step.step_name }} / {{ step.status }}</li>
+        <li v-for="step in jobSteps" :key="step.step_id">{{ step.step_name }} / {{ displayStatus(step.status) }}</li>
       </ul>
       <p v-if="polling.error" class="ai-error">{{ polling.error }}</p>
     </div>
 
     <div v-if="showAIMode" class="ai-section">
-      <h4>ContextPack</h4>
+      <h4>写作上下文</h4>
       <div class="ai-actions">
         <button
           data-test="ai-build-context-pack"
@@ -155,17 +66,17 @@
           :disabled="aiSettingsBlocked"
           @click="handleBuildContextPack"
         >
-          构建 ContextPack
+          构建写作上下文
         </button>
       </div>
       <div class="ai-meta">
-        <span>readiness {{ contextPackReadiness.status || 'unknown' }}</span>
-        <span v-if="contextPackReadiness.blocked_reason">blocked: {{ contextPackReadiness.blocked_reason }}</span>
-        <span v-if="contextPackReadiness.degraded_reason">degraded: {{ contextPackReadiness.degraded_reason }}</span>
+        <span>状态 {{ displayStatus(contextPackReadiness.status || 'unknown') }}</span>
+        <span v-if="contextPackReadiness.blocked_reason">阻塞原因: {{ contextPackReadiness.blocked_reason }}</span>
+        <span v-if="contextPackReadiness.degraded_reason">降级原因: {{ contextPackReadiness.degraded_reason }}</span>
       </div>
       <ul v-if="contextPackItems.length" class="ai-list">
         <li v-for="item in contextPackItems" :key="item.item_id || item.source_type">
-          {{ item.source_type || item.item_type }} / {{ item.content_text || item.summary || 'summary' }}
+          {{ displayContextItemType(item.source_type || item.item_type) }} / {{ item.content_text || item.summary || 'summary' }}
         </li>
       </ul>
     </div>
@@ -173,7 +84,7 @@
     <div v-if="showAIMode && plotArcVisible" class="ai-section">
       <h4>剧情轨道详情</h4>
       <div class="ai-meta">
-        <span>{{ contextPackReadiness.status || 'unknown' }}</span>
+        <span>{{ displayStatus(contextPackReadiness.status || 'unknown') }}</span>
         <span v-if="masterArcSummary.arc_title">{{ masterArcSummary.arc_title }}</span>
         <span v-if="volumeArcSummary.stage_goal">{{ volumeArcSummary.stage_goal }}</span>
       </div>
@@ -187,15 +98,15 @@
       </ul>
       <div class="ai-meta">
         <span v-for="(value, key) in plotArcStatuses" :key="key">
-          {{ key }}: {{ value.status || 'unknown' }}
+          {{ displayArcLevel(key) }}: {{ displayStatus(value.status || 'unknown') }}
         </span>
       </div>
       <ul v-if="plotArcs.length" class="ai-list">
         <li v-for="arc in plotArcs" :key="arc.arc_id" class="planning-item">
           <div class="candidate-summary">
             <strong>{{ arc.title || arc.arc_id }}</strong>
-            <span>{{ arc.arc_level }}</span>
-            <span>{{ arc.status }}</span>
+            <span>{{ displayArcLevel(arc.arc_level) }}</span>
+            <span>{{ displayStatus(arc.status) }}</span>
           </div>
           <p v-if="arc.summary" class="ai-note">{{ arc.summary }}</p>
           <div class="ai-actions">
@@ -215,15 +126,15 @@
     </div>
 
     <div v-if="showAIMode" class="ai-section">
-      <h4>AgentSession</h4>
+      <h4>AI 写作任务</h4>
       <ul v-if="agentSessions.length" class="ai-list">
         <li v-for="session in agentSessions" :key="session.session_id" class="planning-item">
           <div class="candidate-summary">
             <strong>{{ session.session_id }}</strong>
-            <span>{{ session.status }}</span>
-            <span>{{ session.workflow_type }}</span>
-            <span>{{ session.current_agent_type || session.current_stage || '-' }}</span>
-            <span v-if="session.progress_percent !== undefined">{{ session.progress_percent }}%</span>
+            <span>{{ displayStatus(session.status) }}</span>
+            <span>{{ displayWorkflowType(session.workflow_type) }}</span>
+            <span>{{ displayAgentType(session.current_agent_type || session.current_stage || '-') }}</span>
+              <span v-if="session.progress_percent !== undefined">进度 {{ session.progress_percent }}%</span>
           </div>
           <div class="ai-actions">
             <button
@@ -256,9 +167,9 @@
             </button>
           </div>
           <div v-if="agentSessionDetails[session.session_id]" class="ai-meta">
-            <span>{{ agentSessionDetails[session.session_id].status }}</span>
-            <span>{{ agentSessionDetails[session.session_id].current_stage || '-' }}</span>
-            <span>{{ agentSessionDetails[session.session_id].current_agent_type || '-' }}</span>
+            <span>{{ displayStatus(agentSessionDetails[session.session_id].status) }}</span>
+            <span>{{ displayWorkflowStage(agentSessionDetails[session.session_id].current_stage || '-') }}</span>
+            <span>{{ displayAgentType(agentSessionDetails[session.session_id].current_agent_type || '-') }}</span>
           </div>
         </li>
       </ul>
@@ -280,7 +191,7 @@
         <li v-for="proposal in directionProposals" :key="proposal.direction_proposal_id" class="planning-item">
           <div class="candidate-summary">
             <strong>{{ proposal.direction_proposal_id }}</strong>
-            <span>{{ proposal.status }}</span>
+            <span>{{ displayStatus(proposal.status) }}</span>
           </div>
           <ul class="ai-list">
             <li v-for="option in proposal.options || []" :key="option.option_id" class="planning-option">
@@ -320,7 +231,7 @@
         <li v-for="plan in chapterPlans" :key="plan.chapter_plan_id" class="planning-item">
           <div class="candidate-summary">
             <strong>{{ plan.chapter_plan_id }}</strong>
-            <span>{{ plan.status }}</span>
+            <span>{{ displayStatus(plan.status) }}</span>
             <span>{{ plan.plan_summary }}</span>
           </div>
           <ul class="ai-list">
@@ -354,7 +265,7 @@
         <li v-for="task in writingTasks" :key="task.writing_task_id">
           <div class="candidate-summary">
             <strong>{{ task.writing_task_id }}</strong>
-            <span>{{ task.status }}</span>
+            <span>{{ displayStatus(task.status) }}</span>
             <span>{{ task.writing_goal }}</span>
             <span>{{ task.plan_summary }}</span>
           </div>
@@ -378,9 +289,9 @@
           'conflict-banner-blocking': conflictSummary.blockingCount > 0
         }"
       >
-        <strong>{{ conflictSummary.blockingCount ? '资产冲突需处理' : '资产风险需确认' }}</strong>
-        <span v-if="conflictSummary.blockingCount">存在 blocking {{ conflictSummary.blockingCount }}，apply 前必须处理。</span>
-        <span v-else>存在 warning {{ conflictSummary.warningCount }}，继续 apply 代表已知风险。</span>
+        <strong>{{ conflictSummary.blockingCount ? '资产冲突待处理' : '资产风险需确认' }}</strong>
+          <span v-if="conflictSummary.blockingCount">存在阻断项 {{ conflictSummary.blockingCount }}，应用前必须处理。</span>
+          <span v-else>存在警告 {{ conflictSummary.warningCount }}，继续应用代表你已知晓风险。</span>
       </div>
       <div class="ai-actions">
         <button
@@ -401,11 +312,11 @@
           <div class="candidate-summary">
             <strong>{{ item.candidate_draft_id }}</strong>
             <span>{{ item.content_preview }}</span>
-            <span>{{ item.validation_status }}</span>
+            <span>{{ displayValidationStatus(item.validation_status) }}</span>
             <span>{{ item.source_context_pack_id }}</span>
-            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.warning">warning {{ conflictCountsByDraft[item.candidate_draft_id].warning }}</span>
-            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.blocking">blocking {{ conflictCountsByDraft[item.candidate_draft_id].blocking }}</span>
-            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.info">info {{ conflictCountsByDraft[item.candidate_draft_id].info }}</span>
+              <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.warning">警告 {{ conflictCountsByDraft[item.candidate_draft_id].warning }}</span>
+            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.blocking">阻断 blocking {{ conflictCountsByDraft[item.candidate_draft_id].blocking }}</span>
+            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.info">提示 info {{ conflictCountsByDraft[item.candidate_draft_id].info }}</span>
             <span v-if="item.selected_version_id">已选择版本 {{ item.selected_version_id }}</span>
             <span v-if="item.accepted_version_id">已接受版本 {{ item.accepted_version_id }}</span>
             <span v-if="item.applied_version_id">已应用版本 {{ item.applied_version_id }}</span>
@@ -414,14 +325,14 @@
             <button :data-test="`candidate-detail-${item.candidate_draft_id}`" type="button" @click="loadCandidateDetail(item.candidate_draft_id)">
               查看详情
             </button>
-            <button :data-test="`candidate-accept-${item.candidate_draft_id}`" type="button" @click="handleAcceptCandidate(item.candidate_draft_id)">
-              accept
+              <button :data-test="`candidate-accept-${item.candidate_draft_id}`" type="button" @click="handleAcceptCandidate(item.candidate_draft_id)">
+              接受候选稿
             </button>
-            <button :data-test="`candidate-reject-${item.candidate_draft_id}`" type="button" @click="handleRejectCandidate(item.candidate_draft_id)">
-              reject
+              <button :data-test="`candidate-reject-${item.candidate_draft_id}`" type="button" @click="handleRejectCandidate(item.candidate_draft_id)">
+              拒绝候选稿
             </button>
-            <button :data-test="`candidate-apply-${item.candidate_draft_id}`" type="button" @click="handleApplyCandidate(item.candidate_draft_id)">
-              apply
+              <button :data-test="`candidate-apply-${item.candidate_draft_id}`" type="button" @click="handleApplyCandidate(item.candidate_draft_id)">
+              应用到章节草稿
             </button>
             <button
               :data-test="`candidate-review-${item.candidate_draft_id}`"
@@ -429,7 +340,7 @@
               :disabled="aiSettingsBlocked"
               @click="handleReviewCandidate(item.candidate_draft_id)"
             >
-              AIReview
+              AI 审阅
             </button>
           </div>
           <pre v-if="candidateDetails[item.candidate_draft_id]" class="candidate-detail">{{ candidateDetails[item.candidate_draft_id].content }}</pre>
@@ -447,7 +358,7 @@
               <div class="candidate-summary">
                 <strong>{{ version.candidate_version_id }}</strong>
                 <span>v{{ version.version_no }}</span>
-                <span>{{ version.status }}</span>
+                <span>{{ displayStatus(version.status) }}</span>
                 <span>{{ version.content_summary }}</span>
               </div>
               <div class="ai-actions">
@@ -471,29 +382,26 @@
                   type="button"
                   @click="handleCandidateVersionDiff(item.candidate_draft_id, candidateVersions[item.candidate_draft_id][index - 1].candidate_version_id, version.candidate_version_id)"
                 >
-                  查看 diff
+                  查看版本差异
                 </button>
                 <button
                   :data-test="`candidate-version-rewrite-review-${item.candidate_draft_id}-${version.candidate_version_id}`"
                   type="button"
                   @click="handleRewriteCandidate(item.candidate_draft_id, version.candidate_version_id, 'review_based')"
                 >
-                  按审阅意见修订
-                </button>
+                  按审阅意见修订                </button>
                 <button
                   :data-test="`candidate-version-rewrite-user-${item.candidate_draft_id}-${version.candidate_version_id}`"
                   type="button"
                   @click="handleRewriteCandidate(item.candidate_draft_id, version.candidate_version_id, 'user_instruction')"
                 >
-                  输入要求后重写
-                </button>
+                  输入要求后重写                </button>
                 <button
                   :data-test="`candidate-version-reject-${item.candidate_draft_id}-${version.candidate_version_id}`"
                   type="button"
                   @click="handleRejectCandidateVersion(item.candidate_draft_id, version.candidate_version_id)"
                 >
-                  拒绝此版本
-                </button>
+                  拒绝此版本                </button>
               </div>
               <pre v-if="candidateVersionDetails[version.candidate_version_id]" class="candidate-detail">{{ candidateVersionDetails[version.candidate_version_id].content }}</pre>
             </li>
@@ -508,8 +416,8 @@
             <li v-for="conflict in conflictsByDraft[item.candidate_draft_id]" :key="conflict.record_id" class="planning-item">
               <div class="candidate-summary">
                 <strong>{{ conflict.title }}</strong>
-                <span>{{ conflict.conflict_type }}</span>
-                <span>{{ conflict.severity }}</span>
+                <span>{{ displayConflictType(conflict.conflict_type) }}</span>
+                <span>{{ displaySeverity(conflict.severity) }}</span>
                 <span>{{ conflict.summary }}</span>
               </div>
               <div class="ai-actions">
@@ -545,7 +453,7 @@
                   type="button"
                   @click="handleConflictDecision(conflict.record_id, 'dismissed', 'defer')"
                 >
-                  defer
+                  稍后处理
                 </button>
               </div>
               <div v-if="conflictDetails[conflict.record_id]" class="ai-note">
@@ -564,19 +472,19 @@
         <li v-for="item in aiSuggestions" :key="item.suggestion_id" class="planning-item">
           <div class="candidate-summary">
             <strong>{{ item.title }}</strong>
-            <span>{{ item.suggestion_type }}</span>
-            <span>{{ item.severity }}</span>
+            <span>{{ displaySuggestionType(item.suggestion_type) }}</span>
+            <span>{{ displaySeverity(item.severity) }}</span>
             <span>{{ item.summary }}</span>
           </div>
           <div class="ai-actions">
             <button :data-test="`suggestion-detail-${item.suggestion_id}`" type="button" @click="handleSuggestionDetail(item.suggestion_id)">
-              查看建议
+                  查看建议
             </button>
-            <button :data-test="`suggestion-accept-${item.suggestion_id}`" type="button" @click="handleAcceptSuggestion(item.suggestion_id)">
-              accept
+              <button :data-test="`suggestion-accept-${item.suggestion_id}`" type="button" @click="handleAcceptSuggestion(item.suggestion_id)">
+              采纳建议
             </button>
-            <button :data-test="`suggestion-dismiss-${item.suggestion_id}`" type="button" @click="handleDismissSuggestion(item.suggestion_id)">
-              dismiss
+              <button :data-test="`suggestion-dismiss-${item.suggestion_id}`" type="button" @click="handleDismissSuggestion(item.suggestion_id)">
+              忽略建议
             </button>
             <button
               v-if="item.suggestion_type !== 'risk_warning'"
@@ -584,7 +492,7 @@
               type="button"
               @click="handleConvertSuggestion(item.suggestion_id)"
             >
-              convert
+               转为执行动作
             </button>
           </div>
           <div v-if="aiSuggestionDetails[item.suggestion_id]" class="ai-note">
@@ -600,15 +508,15 @@
         <li v-for="gate in memoryGates" :key="gate.gate_id" class="planning-item">
           <div class="candidate-summary">
             <strong>{{ gate.gate_id }}</strong>
-            <span>{{ gate.state }}</span>
-            <span>suggestions {{ (gate.suggestions || []).length }}</span>
+            <span>{{ displayStatus(gate.state) }}</span>
+            <span>建议数 {{ (gate.suggestions || []).length }}</span>
           </div>
           <ul class="ai-list">
             <li v-for="suggestion in gate.suggestions || []" :key="suggestion.id" class="planning-item">
               <div class="candidate-summary">
-                <strong>{{ suggestion.target_memory_type }}</strong>
-                <span>{{ suggestion.revision_type }}</span>
-                <span>{{ suggestion.status }}</span>
+                <strong>{{ displayMemoryTargetType(suggestion.target_memory_type) }}</strong>
+                <span>{{ displayRevisionType(suggestion.revision_type) }}</span>
+                <span>{{ displayStatus(suggestion.status) }}</span>
                 <span>{{ suggestion.current_value_summary }}</span>
                 <span>{{ suggestion.proposed_value_summary }}</span>
               </div>
@@ -618,28 +526,28 @@
                   type="button"
                   @click="handleApproveMemorySuggestion(gate.gate_id, suggestion.id)"
                 >
-                  approve
+                  审批通过
                 </button>
                 <button
                   :data-test="`memory-edit-approve-${gate.gate_id}-${suggestion.id}`"
                   type="button"
                   @click="handleEditApproveMemorySuggestion(gate.gate_id, suggestion)"
                 >
-                  edit+approve
+                  编辑后通过
                 </button>
                 <button
                   :data-test="`memory-reject-${gate.gate_id}-${suggestion.id}`"
                   type="button"
                   @click="handleRejectMemorySuggestion(gate.gate_id, suggestion.id)"
                 >
-                  reject
+                  拒绝建议
                 </button>
                 <button
                   :data-test="`memory-defer-${gate.gate_id}-${suggestion.id}`"
                   type="button"
                   @click="handleDeferMemorySuggestion(gate.gate_id, suggestion.id)"
                 >
-                  defer
+                  稍后处理
                 </button>
               </div>
             </li>
@@ -650,14 +558,14 @@
               type="button"
               @click="handleApplyMemoryGate(gate.gate_id)"
             >
-              apply gate
+              应用本组修订
             </button>
           </div>
           <ul v-if="gate.revision_ids?.length" class="ai-list">
             <li v-for="revisionId in gate.revision_ids" :key="revisionId">
               <div class="candidate-summary">
                 <strong>{{ revisionId }}</strong>
-                <span>{{ memoryRevisionDetails[revisionId]?.status || 'revision' }}</span>
+                <span>{{ displayStatus(memoryRevisionDetails[revisionId]?.status || 'revision') }}</span>
               </div>
               <div class="ai-actions">
                 <button
@@ -665,7 +573,7 @@
                   type="button"
                   @click="handleMemoryRevisionDetail(revisionId)"
                 >
-                  查看 revision
+                  查看修订详情
                 </button>
                 <button
                   v-if="memoryRevisionDetails[revisionId]?.status === 'applied'"
@@ -673,7 +581,7 @@
                   type="button"
                   @click="handleRollbackMemoryRevision(revisionId)"
                 >
-                  rollback
+                   执行回滚
                 </button>
               </div>
               <div v-if="memoryRevisionDetails[revisionId]" class="ai-note">
@@ -687,15 +595,15 @@
     </div>
 
     <div v-if="showReviewMode" class="ai-section">
-      <h4>Agent Trace</h4>
+      <h4>任务追踪（Agent Trace）</h4>
       <ul v-if="agentTraces.length" class="ai-list">
         <li v-for="trace in agentTraces" :key="trace.trace_id" class="planning-item">
           <div class="candidate-summary">
             <strong>{{ trace.trace_id }}</strong>
-            <span>{{ trace.status }}</span>
-            <span>{{ trace.workflow_type }}</span>
-            <span>steps {{ trace.total_steps || 0 }}</span>
-            <span>tokens {{ trace.total_tokens || 0 }}</span>
+            <span>{{ displayStatus(trace.status) }}</span>
+            <span>{{ displayWorkflowType(trace.workflow_type) }}</span>
+            <span>步骤数 {{ trace.total_steps || 0 }}</span>
+            <span>Token {{ trace.total_tokens || 0 }}</span>
           </div>
           <div class="ai-actions">
             <button
@@ -711,34 +619,34 @@
               type="button"
               @click="handleTraceDetail(trace.trace_id)"
             >
-              查看 Detail
+              查看详细（Detail）
             </button>
           </div>
           <ul v-if="agentTraceSteps[trace.trace_id]?.length" class="ai-list">
             <li v-for="step in agentTraceSteps[trace.trace_id]" :key="step.step_id">
-              {{ step.agent_type }} / {{ step.action }} / {{ step.status }}
+              {{ displayAgentType(step.agent_type) }} / {{ displayStepAction(step.action) }} / {{ displayStatus(step.status) }}
             </li>
           </ul>
           <div v-if="agentTraceDetails[trace.trace_id]" class="ai-note">
             <div v-if="agentTraceDetails[trace.trace_id].tool_calls?.length">
-              tool {{ agentTraceDetails[trace.trace_id].tool_calls[0].tool_name }} / {{ agentTraceDetails[trace.trace_id].tool_calls[0].permission_result }}
+              工具调用 {{ displayToolName(agentTraceDetails[trace.trace_id].tool_calls[0].tool_name) }} / {{ displayPermissionResult(agentTraceDetails[trace.trace_id].tool_calls[0].permission_result) }}
             </div>
             <div v-if="agentTraceDetails[trace.trace_id].events?.length">
-              event {{ agentTraceDetails[trace.trace_id].events[0].event_type }}
+              事件 {{ displayEventType(agentTraceDetails[trace.trace_id].events[0].event_type) }}
             </div>
             <ul v-if="agentTraceDetails[trace.trace_id].metrics?.length" class="ai-list">
               <li v-for="metric in agentTraceDetails[trace.trace_id].metrics" :key="metric.metric_id">
-                {{ metric.metric_name }} / {{ metric.metric_value }}
+                {{ displayMetricName(metric.metric_name) }} / {{ metric.metric_value }}
               </li>
             </ul>
             <ul v-if="agentTraceDetails[trace.trace_id].alerts?.length" class="ai-list">
               <li v-for="alert in agentTraceDetails[trace.trace_id].alerts" :key="alert.alert_id">
-                {{ alert.alert_type }} / {{ alert.status }} / {{ alert.summary }}
+                {{ displayAlertType(alert.alert_type) }} / {{ displayStatus(alert.status) }} / {{ alert.summary }}
               </li>
             </ul>
             <ul v-if="agentTraceDetails[trace.trace_id].user_decisions?.length" class="ai-list">
               <li v-for="decision in agentTraceDetails[trace.trace_id].user_decisions" :key="decision.decision_trace_id">
-                {{ decision.decision_type }} / {{ decision.target_entity_type }} / {{ decision.target_entity_id }}
+                {{ displayDecisionType(decision.decision_type) }} / {{ displayEntityType(decision.target_entity_type) }} / {{ decision.target_entity_id }}
               </li>
             </ul>
           </div>
@@ -748,10 +656,10 @@
     </div>
 
     <div v-if="showAIMode" class="ai-section">
-      <h4>Quick Trial</h4>
+      <h4>快速试写</h4>
       <div class="field-grid">
-        <input v-model="quickTrialForm.input_text" type="text" placeholder="临时 prompt" />
-        <input v-model="quickTrialForm.model_role" type="text" placeholder="model_role" />
+        <input v-model="quickTrialForm.input_text" type="text" placeholder="输入试写内容或指令摘要" />
+        <input v-model="quickTrialForm.model_role" type="text" placeholder="试写角色" />
       </div>
       <div class="ai-actions">
         <button
@@ -764,8 +672,8 @@
         </button>
       </div>
       <div class="ai-meta">
-        <span v-if="quickTrialResult.status">{{ quickTrialResult.status }}</span>
-        <span v-if="quickTrialResult.validation_status">{{ quickTrialResult.validation_status }}</span>
+        <span v-if="quickTrialResult.status">{{ displayStatus(quickTrialResult.status) }}</span>
+        <span v-if="quickTrialResult.validation_status">{{ displayValidationStatus(quickTrialResult.validation_status) }}</span>
       </div>
       <pre v-if="quickTrialResult.output_text" class="quick-trial-output">{{ quickTrialResult.output_text }}</pre>
     </div>
@@ -774,6 +682,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { aiApi } from '@/api'
 import { useAIJobPolling } from '@/composables/useAIJobPolling'
@@ -801,6 +710,11 @@ const props = defineProps({
   }
 })
 
+const router = useRouter()
+const goToSettingsPage = () => {
+  router.push('/settings')
+}
+
 const REQUIRED_SETTINGS_ROLES = ['analysis', 'planning', 'writer', 'reviewer', 'rewriter']
 
 const settings = ref({ provider_configs: [], model_role_mappings: {} })
@@ -810,9 +724,6 @@ const settingsForm = reactive({
     REQUIRED_SETTINGS_ROLES.map((role) => [role, { provider_name: '', model_name: '' }])
   )
 })
-const settingsSaveMessage = ref('')
-const settingsErrorMessage = ref('')
-const providerTestMessage = ref('')
 const initializationInfo = ref({})
 const contextPackReadiness = ref({})
 const contextPackItems = ref([])
@@ -862,7 +773,6 @@ const quickTrialForm = reactive({
   model_role: 'quick_trial_writer'
 })
 
-const requiredSettingsRoles = REQUIRED_SETTINGS_ROLES
 const providerConfigs = computed(() => settingsForm.provider_configs || [])
 const showAIMode = computed(() => props.mode !== 'review')
 const showReviewMode = computed(() => props.mode !== 'ai')
@@ -871,10 +781,10 @@ const panelTitle = computed(() => (
 ))
 const panelDescription = computed(() => (
   props.mode === 'review'
-    ? '候选稿、审阅、冲突、记忆门控与 Trace 在此集中处理。'
+    ? '候选稿、审阅、冲突、记忆门控与任务追踪在此集中处理。'
     : props.mode === 'ai'
-      ? '设置、初始化、ContextPack、剧情轨道、方向计划、会话进度与 Quick Trial。'
-      : '最小集成入口：设置、初始化、ContextPack、续写、Quick Trial、AIReview。'
+    ? '设置、初始化、写作上下文、剧情轨道、方向计划、会话进度与快速试写。'
+    : '最小集成入口：设置、初始化、写作上下文、续写、快速试写、AI审阅。'
 ))
 const jobSteps = computed(() => polling.job.value?.steps || [])
 const jobStatusText = computed(() => String(polling.job.value?.status || ''))
@@ -942,7 +852,7 @@ const providerNameOptions = computed(() => providerConfigs.value.map((item) => i
 const aiSettingsBlockMessage = computed(() => {
   const enabledProviders = providerConfigs.value.filter((provider) => provider.enabled)
   if (!enabledProviders.some((provider) => provider.key_configured || String(provider.api_key || '').trim())) {
-    return '请先配置可用 Provider Key 与 analysis/writer 角色映射。'
+    return '请先配置可用模型服务 Key，并完成分析任务模型/写作任务模型配置。'
   }
   const requiredRoles = ['analysis', 'writer']
   const missingCriticalRole = requiredRoles.some((role) => {
@@ -954,13 +864,229 @@ const aiSettingsBlockMessage = computed(() => {
     return !(provider.key_configured || String(provider.api_key || '').trim())
   })
   if (missingCriticalRole) {
-    return '请先配置可用 Provider Key 与 analysis/writer 角色映射。'
+    return '请先配置可用模型服务 Key，并完成分析任务模型/写作任务模型配置。'
   }
   return ''
 })
 const aiSettingsBlocked = computed(() => Boolean(aiSettingsBlockMessage.value))
 
 const unwrapData = (payload) => payload?.data ?? payload ?? {}
+
+const statusLabelMap = {
+  pending: '待处理（pending）',
+  running: '进行中（running）',
+  completed: '已完成（completed）',
+  failed: '失败（failed）',
+  cancelled: '已取消（cancelled）',
+  waiting_for_user: '等待你确认（waiting_for_user）',
+  paused: '已暂停（paused）',
+  ready: '可继续（ready）',
+  degraded: '信息可能不足（degraded）',
+  blocked: '无法继续（blocked）',
+  generated: '已生成（generated）',
+  shown: '已展示（shown）',
+  accepted: '已接受（accepted）',
+  rejected: '已拒绝（rejected）',
+  applied: '已应用（applied）',
+  stale: '可能已过期（stale）',
+  superseded: '已有新版本（superseded）',
+  converted: '已转化（converted）',
+  revision_requested: '待修订（revision_requested）',
+  review_completed: '审阅完成（review_completed）',
+  waiting_for_selection: '待选择方向（waiting_for_selection）',
+  waiting_for_confirmation: '待确认计划（waiting_for_confirmation）',
+  open: '已开启（open）',
+  partially_approved: '部分通过（partially_approved）'
+}
+
+const agentTypeLabelMap = {
+  memory: '理解故事（Memory Agent）',
+  planner: '规划方向（Planner Agent）',
+  writer: '生成候选稿（Writer Agent）',
+  reviewer: '审阅稿件（Reviewer Agent）',
+  rewriter: '修订稿件（Rewriter Agent）'
+}
+
+const workflowTypeLabelMap = {
+  continuation: '续写流程（continuation）',
+  planning: '规划流程（planning）',
+  review: '审阅流程（review）',
+  revision: '修订流程（revision）',
+  memory: '记忆流程（memory）'
+}
+
+const workflowStageLabelMap = {
+  memory_context_prepare: '理解故事',
+  planning_prepare: '准备规划',
+  direction_selection_waiting: '等待方向选择',
+  chapter_plan_generation: '生成章节计划',
+  chapter_plan_confirm_waiting: '等待计划确认',
+  writing_prepare: '写作准备',
+  drafting: '生成候选稿',
+  reviewing: '审阅候选稿',
+  rewriting: '修订候选稿',
+  conflict_checking: '冲突检查',
+  memory_review_waiting: '等待记忆审批'
+}
+
+const suggestionTypeLabelMap = {
+  rewrite_suggestion: '改写建议（rewrite_suggestion）',
+  style_suggestion: '风格建议（style_suggestion）',
+  plot_suggestion: '剧情建议（plot_suggestion）',
+  continuity_suggestion: '连续性建议（continuity_suggestion）',
+  conflict_resolution_suggestion: '冲突处理建议（conflict_resolution_suggestion）',
+  memory_update_suggestion_ref: '记忆更新建议引用（memory_update_suggestion_ref）',
+  risk_warning: '风险提示（risk_warning）'
+}
+
+const revisionTypeLabelMap = {
+  character_update: '人物更新（character_update）',
+  setting_update: '设定更新（setting_update）',
+  timeline_event_add: '时间线新增（timeline_event_add）',
+  timeline_event_update: '时间线更新（timeline_event_update）',
+  foreshadow_add: '伏笔新增（foreshadow_add）',
+  foreshadow_update: '伏笔推进（foreshadow_update）',
+  foreshadow_resolve: '伏笔回收（foreshadow_resolve）',
+  plot_thread_update: '剧情线索更新（plot_thread_update）',
+  story_state_update: '故事状态更新（story_state_update）',
+  arc_note_update: '轨道备注更新（arc_note_update）',
+  continuity_note_add: '连续性备注（continuity_note_add）',
+  unknown_memory_update: '待确认记忆更新（unknown_memory_update）'
+}
+
+const severityLabelMap = {
+  high: '高（high）',
+  medium: '中（medium）',
+  low: '低（low）',
+  warning: '警告（warning）',
+  blocking: '阻断（blocking）',
+  info: '提示（info）'
+}
+
+const validationStatusLabelMap = {
+  passed: '已通过（passed）',
+  failed: '未通过（failed）',
+  blocked: '已阻断（blocked）',
+  degraded: '降级通过（degraded）'
+}
+
+const arcLevelLabelMap = {
+  master_arc: '主线轨道（master_arc）',
+  volume_arc: '卷轨道（volume_arc）',
+  sequence_arc: '章节序列轨道（sequence_arc）',
+  immediate_window: '临近章节窗口（immediate_window）'
+}
+
+const contextItemTypeLabelMap = {
+  chapter_text: '章节正文片段（chapter_text）',
+  story_memory: '故事记忆（story_memory）',
+  story_state: '故事状态（story_state）',
+  plot_arc: '剧情轨道（plot_arc）',
+  direction_plan: '方向与计划（direction_plan）',
+  continuity_note: '连续性提示（continuity_note）'
+}
+
+const conflictTypeLabelMap = {
+  character_conflict: '人物冲突（character_conflict）',
+  setting_conflict: '设定冲突（setting_conflict）',
+  timeline_conflict: '时间线冲突（timeline_conflict）',
+  arc_conflict: '轨道冲突（arc_conflict）',
+  direction_plan_conflict: '方向计划冲突（direction_plan_conflict）',
+  memory_conflict: '记忆冲突（memory_conflict）',
+  foreshadow_conflict: '伏笔冲突（foreshadow_conflict）',
+  candidate_version_conflict: '候选版本冲突（candidate_version_conflict）',
+  user_draft_conflict: '用户草稿冲突（user_draft_conflict）',
+  apply_version_conflict: '应用版本冲突（apply_version_conflict）',
+  unknown_conflict: '待确认冲突（unknown_conflict）'
+}
+
+const permissionResultLabelMap = {
+  allow: '允许（allow）',
+  deny: '拒绝（deny）',
+  conditional: '条件允许（conditional）'
+}
+
+const eventTypeLabelMap = {
+  tool_call_denied: '工具调用被拒绝（tool_call_denied）',
+  ignored_late_result: '迟到结果已忽略（ignored_late_result）',
+  user_decision_recorded: '用户决策已记录（user_decision_recorded）',
+  agent_session_started: '任务已启动（agent_session_started）',
+  agent_session_completed: '任务已完成（agent_session_completed）',
+  agent_session_failed: '任务失败（agent_session_failed）'
+}
+
+const metricNameLabelMap = {
+  tool_call_latency_ms: '工具调用耗时（tool_call_latency_ms）',
+  llm_token_count: '模型Token用量（llm_token_count）',
+  step_elapsed_ms: '步骤耗时（step_elapsed_ms）'
+}
+
+const alertTypeLabelMap = {
+  audit_write_failed: '审计写入失败（audit_write_failed）',
+  trace_write_failed: '追踪写入失败（trace_write_failed）',
+  conflict_blocking_detected: '检测到阻断冲突（conflict_blocking_detected）'
+}
+
+const decisionTypeLabelMap = {
+  accept_candidate: '接受候选稿（accept_candidate）',
+  reject_candidate: '拒绝候选稿（reject_candidate）',
+  apply_candidate: '应用候选稿（apply_candidate）',
+  accept_suggestion: '采纳建议（accept_suggestion）',
+  dismiss_suggestion: '忽略建议（dismiss_suggestion）',
+  convert_suggestion: '转化建议（convert_suggestion）',
+  resolve_conflict: '处理冲突（resolve_conflict）',
+  override_conflict: '强制覆盖冲突（override_conflict）',
+  approve_memory: '审批记忆更新（approve_memory）',
+  reject_memory: '拒绝记忆更新（reject_memory）',
+  apply_memory: '应用记忆修订（apply_memory）'
+}
+
+const entityTypeLabelMap = {
+  candidate_draft: '候选稿（candidate_draft）',
+  candidate_version: '候选版本（candidate_version）',
+  suggestion: 'AI建议（suggestion）',
+  conflict_record: '冲突记录（conflict_record）',
+  memory_gate: '记忆审批组（memory_gate）',
+  memory_revision: '记忆修订（memory_revision）'
+}
+
+const memoryTargetTypeLabelMap = {
+  character: '人物记忆（character）',
+  setting: '设定记忆（setting）',
+  timeline: '时间线记忆（timeline）',
+  foreshadow: '伏笔记忆（foreshadow）',
+  plot_thread: '剧情线索记忆（plot_thread）',
+  story_state: '故事状态（story_state）'
+}
+
+const stepActionLabelMap = {
+  prepare: '准备（prepare）',
+  execute: '执行（execute）',
+  observe: '观察（observe）',
+  decide: '决策（decide）',
+  tool_call: '工具调用（tool_call）'
+}
+
+const displayStatus = (value) => statusLabelMap[value] || String(value || '-')
+const displayAgentType = (value) => agentTypeLabelMap[value] || String(value || '-')
+const displayWorkflowType = (value) => workflowTypeLabelMap[value] || String(value || '-')
+const displayWorkflowStage = (value) => workflowStageLabelMap[value] || String(value || '-')
+const displaySuggestionType = (value) => suggestionTypeLabelMap[value] || String(value || '-')
+const displayRevisionType = (value) => revisionTypeLabelMap[value] || String(value || '-')
+const displaySeverity = (value) => severityLabelMap[value] || String(value || '-')
+const displayValidationStatus = (value) => validationStatusLabelMap[value] || String(value || '-')
+const displayArcLevel = (value) => arcLevelLabelMap[value] || String(value || '-')
+const displayContextItemType = (value) => contextItemTypeLabelMap[value] || String(value || '-')
+const displayConflictType = (value) => conflictTypeLabelMap[value] || String(value || '-')
+const displayPermissionResult = (value) => permissionResultLabelMap[value] || String(value || '-')
+const displayEventType = (value) => eventTypeLabelMap[value] || String(value || '-')
+const displayMetricName = (value) => metricNameLabelMap[value] || String(value || '-')
+const displayAlertType = (value) => alertTypeLabelMap[value] || String(value || '-')
+const displayDecisionType = (value) => decisionTypeLabelMap[value] || String(value || '-')
+const displayEntityType = (value) => entityTypeLabelMap[value] || String(value || '-')
+const displayToolName = (value) => String(value || '-')
+const displayStepAction = (value) => stepActionLabelMap[value] || String(value || '-')
+const displayMemoryTargetType = (value) => memoryTargetTypeLabelMap[value] || String(value || '-')
 
 const buildIdempotencyKey = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
@@ -1150,70 +1276,8 @@ const ensureAISettingsReady = (targetRef) => {
   const message = aiSettingsBlockMessage.value
   if (targetRef) {
     targetRef.value = message
-  } else {
-    providerTestMessage.value = message
   }
   return false
-}
-
-const buildSettingsPayload = () => ({
-  caller_type: 'user_action',
-  user_action: true,
-  idempotency_key: buildIdempotencyKey('settings_update'),
-  provider_configs: providerConfigs.value.map((provider) => ({
-    provider_name: provider.provider_name,
-    enabled: provider.enabled,
-    api_key: String(provider.api_key || '').trim(),
-    default_model: String(provider.default_model || '').trim(),
-    timeout: Number(provider.timeout || 30),
-    base_url: String(provider.base_url || '').trim() || null
-  })),
-  model_role_mappings: Object.fromEntries(
-    Object.entries(settingsForm.model_role_mappings).map(([role, mapping]) => [role, {
-      provider_name: String(mapping.provider_name || '').trim(),
-      model_name: String(mapping.model_name || '').trim()
-    }])
-  )
-})
-
-const handleSaveSettings = async () => {
-  settingsSaveMessage.value = ''
-  settingsErrorMessage.value = ''
-  providerTestMessage.value = ''
-  if (!providerConfigs.value.length) {
-    settingsErrorMessage.value = '当前没有可配置的 Provider。'
-    return
-  }
-  try {
-    const payload = unwrapData(await aiApi.updateAISettings(buildSettingsPayload()))
-    settings.value = payload
-    resetSettingsForm(payload)
-    settingsSaveMessage.value = 'AI Settings 已保存。'
-  } catch (error) {
-    settingsErrorMessage.value = String(error?.userMessage || error?.message || 'settings save failed')
-  }
-}
-
-const handleTestProvider = async () => {
-  providerTestMessage.value = ''
-  settingsErrorMessage.value = ''
-  const provider = providerConfigs.value[0]
-  if (!provider) {
-    settingsErrorMessage.value = '当前没有可测试的 Provider。'
-    return
-  }
-  try {
-    const payload = unwrapData(await aiApi.testProvider(provider.provider_name, {
-      model_name: provider.default_model || 'fake-chat',
-      caller_type: 'user_action',
-      user_action: true,
-      idempotency_key: buildIdempotencyKey('provider_test')
-    }))
-    provider.key_configured = true
-    providerTestMessage.value = payload.message || payload.test_status || 'ok'
-  } catch (error) {
-    providerTestMessage.value = String(error?.userMessage || error?.message || 'provider test failed')
-  }
 }
 
 const handleStartInitialization = async () => {
@@ -1305,7 +1369,7 @@ const handleGenerateDirections = async () => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || 'direction generate failed')
+    planningActionError.value = String(error?.userMessage || error?.message || '??????')
   }
 }
 
@@ -1321,7 +1385,7 @@ const handleSelectDirection = async (proposalId, optionId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || 'direction select failed')
+    planningActionError.value = String(error?.userMessage || error?.message || '??????')
   }
 }
 
@@ -1338,7 +1402,7 @@ const handleGeneratePlan = async (proposalId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || 'chapter plan generate failed')
+    planningActionError.value = String(error?.userMessage || error?.message || '????????')
   }
 }
 
@@ -1353,7 +1417,7 @@ const handleConfirmPlan = async (planId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || 'chapter plan confirm failed')
+    planningActionError.value = String(error?.userMessage || error?.message || '????????')
   }
 }
 
@@ -1369,7 +1433,7 @@ const handleRejectPlan = async (planId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || 'chapter plan reject failed')
+    planningActionError.value = String(error?.userMessage || error?.message || '????????')
   }
 }
 
@@ -1407,7 +1471,7 @@ const handleAcceptCandidate = async (candidateDraftId) => {
     await loadCandidateDetail(candidateDraftId)
     await loadAISuggestions()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || 'accept failed')
+    candidateActionError.value = String(error?.userMessage || error?.message || '????')
   }
 }
 
@@ -1426,7 +1490,7 @@ const handleRejectCandidate = async (candidateDraftId) => {
     await loadCandidateDetail(candidateDraftId)
     await loadAISuggestions()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || 'reject failed')
+    candidateActionError.value = String(error?.userMessage || error?.message || '????')
   }
 }
 
@@ -1442,7 +1506,7 @@ const handleApplyCandidate = async (candidateDraftId) => {
     }
     if (warningItems.length) {
       const confirmed = window.confirm(
-        `存在 ${warningItems.length} 条 warning。继续 apply 代表已知风险，是否继续？`
+        `存在 ${warningItems.length} 条警告。继续应用代表你已知晓风险，是否继续？`
       )
       if (!confirmed) return
     }
@@ -1454,13 +1518,13 @@ const handleApplyCandidate = async (candidateDraftId) => {
       expected_chapter_version: props.chapterVersion,
       idempotency_key: buildIdempotencyKey('candidate_apply')
     })
-    ElMessage.success('apply 成功')
+    ElMessage.success('应用成功')
     await loadCandidateDrafts()
     await loadCandidateDetail(candidateDraftId)
     await loadAISuggestions()
     await loadConflicts()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || 'apply failed')
+    candidateActionError.value = String(error?.userMessage || error?.message || '应用失败')
   }
 }
 
@@ -1519,7 +1583,7 @@ const handleSelectCandidateVersion = async (candidateDraftId, candidateVersionId
     await loadCandidateDrafts()
     await loadConflicts()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || 'select version failed')
+    candidateActionError.value = String(error?.userMessage || error?.message || '??????')
   }
 }
 
@@ -1552,7 +1616,7 @@ const handleRewriteCandidate = async (candidateDraftId, candidateVersionId, trig
     await loadAISuggestions()
     await loadConflicts()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || 'rewrite failed')
+    candidateActionError.value = String(error?.userMessage || error?.message || '????')
   }
 }
 
@@ -1571,7 +1635,7 @@ const handleRejectCandidateVersion = async (candidateDraftId, candidateVersionId
     await loadAISuggestions()
     await loadConflicts()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || 'reject version failed')
+    candidateActionError.value = String(error?.userMessage || error?.message || '??????')
   }
 }
 
@@ -1680,7 +1744,7 @@ const handleApproveMemorySuggestion = async (gateId, suggestionId) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || 'memory approve failed')
+    memoryActionError.value = String(error?.userMessage || error?.message || '??????')
   }
 }
 
@@ -1699,7 +1763,7 @@ const handleEditApproveMemorySuggestion = async (gateId, suggestion) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || 'memory edit approve failed')
+    memoryActionError.value = String(error?.userMessage || error?.message || '?????????')
   }
 }
 
@@ -1715,7 +1779,7 @@ const handleRejectMemorySuggestion = async (gateId, suggestionId) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || 'memory reject failed')
+    memoryActionError.value = String(error?.userMessage || error?.message || 'memory ????')
   }
 }
 
@@ -1731,7 +1795,7 @@ const handleDeferMemorySuggestion = async (gateId, suggestionId) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || 'memory defer failed')
+    memoryActionError.value = String(error?.userMessage || error?.message || '????????')
   }
 }
 
@@ -1748,9 +1812,9 @@ const handleApplyMemoryGate = async (gateId) => {
       await handleMemoryRevisionDetail(revisionId)
     }
     await loadMemoryGates()
-    ElMessage.success('记忆修订 apply 成功')
+    ElMessage.success('记忆修订应用成功')
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || 'memory apply failed')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆修订应用失败')
   }
 }
 
@@ -1779,7 +1843,7 @@ const handleRollbackMemoryRevision = async (revisionId) => {
     await loadMemoryGates()
     ElMessage.success('rollback 成功')
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || 'memory rollback failed')
+    memoryActionError.value = String(error?.userMessage || error?.message || '??????')
   }
 }
 
@@ -1793,7 +1857,7 @@ const handleTraceSteps = async (traceId) => {
       [traceId]: payload.items || []
     }
   } catch (error) {
-    traceActionError.value = String(error?.userMessage || error?.message || 'trace steps load failed')
+    traceActionError.value = String(error?.userMessage || error?.message || '追踪步骤加载失败')
   }
 }
 
@@ -1809,7 +1873,7 @@ const handleTraceDetail = async (traceId) => {
       [traceId]: payload
     }
   } catch (error) {
-    traceActionError.value = String(error?.userMessage || error?.message || 'trace detail load failed')
+    traceActionError.value = String(error?.userMessage || error?.message || '追踪详情加载失败')
   }
 }
 
@@ -1844,6 +1908,8 @@ onMounted(async () => {
   border-radius: 20px;
   background: #ffffff;
   padding: 16px;
+  min-width: 0;
+  min-height: 0;
 }
 
 .ai-panel-header h3,
@@ -1858,6 +1924,8 @@ onMounted(async () => {
   margin: 6px 0 0;
   color: #6b7280;
   font-size: 13px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ai-error {
@@ -1909,6 +1977,8 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ai-actions button,
@@ -1957,6 +2027,8 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 8px;
   font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .candidate-detail,
@@ -1996,3 +2068,4 @@ onMounted(async () => {
   color: #374151;
 }
 </style>
+

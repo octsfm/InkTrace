@@ -11,6 +11,12 @@ const routes = [
         name: 'WorksList',
         component: () => import('@/views/works/WorksList.vue'),
         meta: { title: 'Bookshelf' }
+      },
+      {
+        path: 'settings',
+        name: 'SettingsCenter',
+        component: () => import('@/views/settings/SettingsCenter.vue'),
+        meta: { title: 'Settings' }
       }
     ]
   },

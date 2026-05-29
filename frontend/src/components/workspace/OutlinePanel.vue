@@ -42,17 +42,17 @@
       </header>
       <div class="plot-arc-grid">
         <article class="plot-arc-card">
-          <h5>Master Arc</h5>
+          <h5>主线轨道（Master Arc）</h5>
           <p v-if="masterArcSummary.arc_title">{{ masterArcSummary.arc_title }}</p>
           <p v-if="masterArcSummary.current_stage">当前阶段：{{ masterArcSummary.current_stage }}</p>
           <p v-if="masterArcSummary.ultimate_goal">终局目标：{{ masterArcSummary.ultimate_goal }}</p>
         </article>
         <article class="plot-arc-card">
-          <h5>Volume Arc</h5>
+          <h5>卷轨道（Volume Arc）</h5>
           <p v-if="volumeArcSummary.stage_goal">{{ volumeArcSummary.stage_goal }}</p>
         </article>
         <article class="plot-arc-card">
-          <h5>Sequence Arc</h5>
+          <h5>章节序列轨道（Sequence Arc）</h5>
           <p v-if="sequenceArcSummary.sequence_goal">{{ sequenceArcSummary.sequence_goal }}</p>
           <ul v-if="sequenceKeyEvents.length" class="plot-arc-list">
             <li v-for="event in sequenceKeyEvents" :key="event">{{ event }}</li>
@@ -183,7 +183,17 @@ const plotArcVisible = computed(() => Boolean(
   Object.keys(assetStore.plotArcSummary || {}).length ||
   Object.keys(assetStore.plotArcStatuses || {}).length
 ))
-const plotArcStatusLabel = computed(() => String(assetStore.contextPackReadiness?.status || 'unknown'))
+const plotArcStatusMap = {
+  ready: '可继续（ready）',
+  degraded: '信息可能不足（degraded）',
+  blocked: '无法继续（blocked）',
+  pending: '待处理（pending）',
+  unknown: '未知（unknown）'
+}
+const plotArcStatusLabel = computed(() => {
+  const status = String(assetStore.contextPackReadiness?.status || 'unknown')
+  return plotArcStatusMap[status] || status
+})
 const masterArcSummary = computed(() => assetStore.plotArcSummary?.master_arc || {})
 const volumeArcSummary = computed(() => assetStore.plotArcSummary?.volume_arc || {})
 const sequenceArcSummary = computed(() => assetStore.plotArcSummary?.sequence_arc || {})

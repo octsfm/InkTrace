@@ -252,7 +252,17 @@ const chapterOptions = computed(() => (
     }
   }).filter((chapter) => chapter.id)
 ))
-const plotArcStatusLabel = computed(() => String(assetStore.contextPackReadiness?.status || 'unknown'))
+const plotArcStatusMap = {
+  ready: '可继续（ready）',
+  degraded: '信息可能不足（degraded）',
+  blocked: '无法继续（blocked）',
+  pending: '待处理（pending）',
+  unknown: '未知（unknown）'
+}
+const plotArcStatusLabel = computed(() => {
+  const status = String(assetStore.contextPackReadiness?.status || 'unknown')
+  return plotArcStatusMap[status] || status
+})
 const volumeSummary = computed(() => assetStore.plotArcSummary?.volume_arc || {})
 const volumeOpenLoops = computed(() => {
   const items = volumeSummary.value?.stage_open_loops

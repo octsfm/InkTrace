@@ -22,6 +22,8 @@ class AISettingsValidationError(RuntimeError):
 
 
 class AISettingsService:
+    _CRITICAL_ROLES = ("analysis", "writer")
+
     def __init__(
         self,
         settings_repository: AISettingsRepository,
@@ -34,10 +36,11 @@ class AISettingsService:
 
     def get_public_settings(self) -> dict[str, object]:
         settings = self._settings_repository.load()
+        merged_provider_configs = self._merge_provider_configs(settings.provider_configs)
         merged_mappings = build_default_model_role_mappings()
         merged_mappings.update(settings.model_role_mappings)
         return {
-            "provider_configs": [self._serialize_provider_config(config) for _, config in sorted(settings.provider_configs.items())],
+            "provider_configs": [self._serialize_provider_config(config) for _, config in sorted(merged_provider_configs.items())],
             "model_role_mappings": {
                 role: selection.model_dump(mode="json") for role, selection in sorted(merged_mappings.items())
             },
@@ -49,7 +52,7 @@ class AISettingsService:
         model_role_mappings: dict[str, dict[str, str]],
     ) -> dict[str, object]:
         current = self._settings_repository.load()
-        updated_provider_configs = dict(current.provider_configs)
+        updated_provider_configs = self._merge_provider_configs(current.provider_configs)
         for payload in provider_configs:
             provider_name = str(payload["provider_name"])
             existing = updated_provider_configs.get(provider_name)
@@ -77,10 +80,7 @@ class AISettingsService:
                 model_name=str(payload["model_name"]),
             )
 
-        self._validate_settings(
-            provider_configs=updated_provider_configs,
-            model_role_mappings=model_role_mappings,
-        )
+        self._validate_settings(provider_configs=updated_provider_configs, model_role_mappings=merged_model_role_mappings)
 
         saved = self._settings_repository.save(
             AISettings(
@@ -154,7 +154,7 @@ class AISettingsService:
         self,
         *,
         provider_configs: dict[str, AIProviderConfig],
-        model_role_mappings: dict[str, dict[str, str]],
+        model_role_mappings: dict[str, ModelSelection],
     ) -> None:
         for provider_name, config in provider_configs.items():
             try:
@@ -167,8 +167,8 @@ class AISettingsService:
                     raise AISettingsValidationError("model_not_available")
 
         for payload in model_role_mappings.values():
-            provider_name = str(payload.get("provider_name") or "").strip()
-            model_name = str(payload.get("model_name") or "").strip()
+            provider_name = str(payload.provider_name or "").strip()
+            model_name = str(payload.model_name or "").strip()
             if not provider_name or not model_name:
                 raise AISettingsValidationError("model_role_mapping_invalid")
             provider_config = provider_configs.get(provider_name)
@@ -182,3 +182,26 @@ class AISettingsService:
                 raise AISettingsValidationError("provider_not_supported") from exc
             if not provider.supports_model(model_name):
                 raise AISettingsValidationError("model_not_available")
+
+        for role in self._CRITICAL_ROLES:
+            selection = model_role_mappings.get(role)
+            if selection is None:
+                raise AISettingsValidationError("critical_role_mapping_missing")
+            provider_name = str(selection.provider_name or "").strip()
+            model_name = str(selection.model_name or "").strip()
+            if not provider_name or not model_name:
+                raise AISettingsValidationError("critical_role_mapping_missing")
+            provider_config = provider_configs.get(provider_name)
+            if provider_config is None or not provider_config.enabled or not provider_config.encrypted_api_key:
+                raise AISettingsValidationError("critical_role_mapping_invalid")
+
+    def _merge_provider_configs(
+        self,
+        existing: dict[str, AIProviderConfig],
+    ) -> dict[str, AIProviderConfig]:
+        merged = dict(existing)
+        for provider_name in self._model_router._provider_registry.list_provider_names():
+            if provider_name in merged:
+                continue
+            merged[provider_name] = AIProviderConfig(provider_name=provider_name, enabled=False)
+        return merged

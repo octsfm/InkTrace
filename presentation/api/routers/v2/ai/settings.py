@@ -43,7 +43,7 @@ def update_ai_settings(payload: AISettingsUpdateRequest, request: Request):
         )
     except Exception as exc:
         error_code = getattr(exc, "error_code", str(exc) or "invalid_input")
-        return error_response(request, error_code=error_code, safe_message="invalid_input")
+        return error_response(request, error_code=error_code, safe_message=error_code)
     return success_response(request, data=data)
 
 

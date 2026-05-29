@@ -757,7 +757,7 @@ const syncWorkspaceViewport = () => {
 const handleWorkspacePanelWidthChange = (nextWidth) => {
   const numericWidth = Number(nextWidth)
   if (!Number.isFinite(numericWidth)) return
-  rightWorkspacePanelWidth.value = Math.min(480, Math.max(320, numericWidth))
+  rightWorkspacePanelWidth.value = Math.min(760, Math.max(320, numericWidth))
 }
 
 const saveFocusedAssetDraft = async () => {
@@ -1295,22 +1295,44 @@ const handleManualSync = async () => {
 
 <style scoped>
 .writing-studio {
+  --studio-bg: #f8fafc;
+  --studio-bg-focus: #f3f4f6;
+  --studio-card-bg: #ffffff;
+  --studio-border: #e5e7eb;
+  --studio-title: #111827;
+  --studio-text: #4b5563;
+  --studio-muted: #9ca3af;
+  --studio-input-bg: #ffffff;
+  --studio-button-bg: #ffffff;
+
   display: flex;
   flex-direction: column;
   height: 100vh;
   padding: 20px 20px 24px;
   gap: 16px;
-  background: #f8fafc;
+  background: var(--studio-bg);
 }
 
 .writing-studio--focus {
-  background: #f3f4f6;
+  background: var(--studio-bg-focus);
+}
+
+:global(.main-layout--theme-dark) .writing-studio {
+  --studio-bg: #0f172a;
+  --studio-bg-focus: #111827;
+  --studio-card-bg: #111827;
+  --studio-border: #253246;
+  --studio-title: #e5e7eb;
+  --studio-text: #cbd5e1;
+  --studio-muted: #94a3b8;
+  --studio-input-bg: #0f172a;
+  --studio-button-bg: #0f172a;
 }
 
 .studio-header {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--studio-border);
   border-radius: 24px;
-  background: #ffffff;
+  background: var(--studio-card-bg);
   padding: 20px 24px;
 }
 
@@ -1329,7 +1351,7 @@ const handleManualSync = async () => {
   margin: 0;
   font-size: 28px;
   font-weight: 700;
-  color: #111827;
+  color: var(--studio-title);
 }
 
 .work-title-button {
@@ -1344,20 +1366,20 @@ const handleManualSync = async () => {
   margin: 0;
   font-size: 28px;
   font-weight: 700;
-  color: #111827;
+  color: var(--studio-title);
   cursor: pointer;
   text-align: left;
 }
 
 .work-title-input {
   width: min(520px, 100%);
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--studio-border);
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--studio-input-bg);
   padding: 10px 14px;
   font-size: 20px;
   font-weight: 600;
-  color: #111827;
+  color: var(--studio-title);
   outline: none;
 }
 
@@ -1368,11 +1390,11 @@ const handleManualSync = async () => {
 
 .header-copy p {
   margin-top: 8px;
-  color: #4b5563;
+  color: var(--studio-text);
 }
 
 .header-copy--muted p {
-  color: #9ca3af;
+  color: var(--studio-muted);
 }
 
 .header-actions {
@@ -1382,13 +1404,13 @@ const handleManualSync = async () => {
 }
 
 .preference-toggle {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--studio-border);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--studio-button-bg);
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--studio-text);
   cursor: pointer;
 }
 
@@ -1415,6 +1437,8 @@ const handleManualSync = async () => {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr) 48px;
   gap: 16px;
+  width: 100%;
+  overflow: hidden;
 }
 
 .studio-shell--drawer-open {
@@ -1428,6 +1452,7 @@ const handleManualSync = async () => {
 .sidebar-column,
 .editor-column,
 .right-workspace-column {
+  min-width: 0;
   min-height: 0;
 }
 
@@ -1439,9 +1464,9 @@ const handleManualSync = async () => {
 
 .panel-card {
   height: 100%;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--studio-border);
   border-radius: 24px;
-  background: #ffffff;
+  background: var(--studio-card-bg);
 }
 
 .panel-card {
@@ -1462,24 +1487,25 @@ const handleManualSync = async () => {
 .panel-title-row h2 {
   font-size: 18px;
   font-weight: 600;
-  color: #111827;
+  color: var(--studio-title);
 }
 
 .panel-title-row span {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--studio-muted);
 }
 
 .panel-description {
   margin-top: 10px;
   font-size: 13px;
   line-height: 1.7;
-  color: #6b7280;
+  color: var(--studio-muted);
 }
 
 .editor-card {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .editor-card--focus {
@@ -1493,14 +1519,16 @@ const handleManualSync = async () => {
   align-content: start;
   gap: 8px;
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 
 .editor-surface {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   border-radius: 20px;
-  background: #ffffff;
+  background: var(--studio-card-bg);
   padding: 0;
   display: flex;
 }

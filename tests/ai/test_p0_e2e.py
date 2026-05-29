@@ -69,6 +69,7 @@ def _save_ai_settings(client: TestClient) -> None:
                 }
             ],
             "model_role_mappings": {
+                "analysis": {"provider_name": "fake", "model_name": "fake-chat"},
                 "writer": {"provider_name": "fake", "model_name": "fake-writer"},
                 "quick_trial_writer": {"provider_name": "fake", "model_name": "fake-chat"},
             },
@@ -110,7 +111,8 @@ def test_ai_settings_provider_test_reports_success_and_failure(monkeypatch, tmp_
 
     settings = client.get("/api/v2/ai/settings")
     assert settings.status_code == 200
-    provider = settings.json()["data"]["provider_configs"][0]
+    provider_map = {item["provider_name"]: item for item in settings.json()["data"]["provider_configs"]}
+    provider = provider_map["fake"]
     assert provider["last_test_status"] == "failed"
     assert provider["last_test_error_code"] == "model_not_supported"
     assert provider["last_test_error_message"] == "model_not_supported"

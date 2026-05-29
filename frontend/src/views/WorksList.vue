@@ -233,9 +233,33 @@ onMounted(() => {
 
 <style scoped>
 .works-page {
+  --page-card-bg: #ffffff;
+  --page-card-bg-soft: #f8fafc;
+  --page-border: #e5e7eb;
+  --page-title: #111827;
+  --page-text: #4b5563;
+  --page-muted: #6b7280;
+  --page-danger-bg: #fff7f7;
+  --page-danger-border: #fecaca;
+  --page-danger-title: #991b1b;
+  --page-danger-text: #7f1d1d;
+
   max-width: 1360px;
   margin: 0 auto;
   padding: 32px 24px 48px;
+}
+
+:global(.main-layout--theme-dark) .works-page {
+  --page-card-bg: #111827;
+  --page-card-bg-soft: #0f172a;
+  --page-border: #233044;
+  --page-title: #e5e7eb;
+  --page-text: #cbd5e1;
+  --page-muted: #94a3b8;
+  --page-danger-bg: #2a1a1a;
+  --page-danger-border: #7f1d1d;
+  --page-danger-title: #fecaca;
+  --page-danger-text: #fca5a5;
 }
 
 .hero-panel {
@@ -244,9 +268,9 @@ onMounted(() => {
   justify-content: space-between;
   gap: 24px;
   padding: 28px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--page-border);
   border-radius: 24px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  background: linear-gradient(180deg, var(--page-card-bg) 0%, var(--page-card-bg-soft) 100%);
 }
 
 .hero-copy {
@@ -258,7 +282,7 @@ onMounted(() => {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--page-muted);
 }
 
 .hero-title {
@@ -266,14 +290,14 @@ onMounted(() => {
   font-size: 34px;
   line-height: 1.2;
   font-weight: 700;
-  color: #111827;
+  color: var(--page-title);
 }
 
 .hero-description {
   margin-top: 12px;
   font-size: 15px;
   line-height: 1.8;
-  color: #4b5563;
+  color: var(--page-text);
 }
 
 .hero-actions {
@@ -294,20 +318,20 @@ onMounted(() => {
   flex-direction: column;
   gap: 8px;
   padding: 20px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--page-border);
   border-radius: 20px;
-  background-color: #ffffff;
+  background-color: var(--page-card-bg);
 }
 
 .summary-label {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--page-muted);
 }
 
 .summary-value {
   font-size: 24px;
   font-weight: 700;
-  color: #111827;
+  color: var(--page-title);
 }
 
 .loading-container,
@@ -319,21 +343,21 @@ onMounted(() => {
 .error-panel {
   margin-top: 28px;
   padding: 28px;
-  border: 1px solid #fecaca;
+  border: 1px solid var(--page-danger-border);
   border-radius: 24px;
-  background: #fff7f7;
+  background: var(--page-danger-bg);
 }
 
 .error-panel h2 {
   font-size: 20px;
   font-weight: 600;
-  color: #991b1b;
+  color: var(--page-danger-title);
 }
 
 .error-panel p {
   margin-top: 10px;
   font-size: 14px;
-  color: #7f1d1d;
+  color: var(--page-danger-text);
 }
 
 .error-actions {
@@ -345,7 +369,7 @@ onMounted(() => {
 .empty-hint {
   margin-bottom: 14px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--page-muted);
 }
 
 .empty-actions {
@@ -365,13 +389,13 @@ onMounted(() => {
 .section-heading h2 {
   font-size: 20px;
   font-weight: 600;
-  color: #111827;
+  color: var(--page-title);
 }
 
 .section-heading p {
   margin-top: 6px;
   font-size: 14px;
-  color: #6b7280;
+  color: var(--page-muted);
 }
 
 .works-grid {

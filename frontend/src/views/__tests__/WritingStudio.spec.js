@@ -671,7 +671,7 @@ describe('WritingStudio focus mode', () => {
     expect(preferenceStore.fontFamily).toBe('monospace')
     expect(preferenceStore.fontSize).toBe(24)
     expect(preferenceStore.lineHeight).toBe(2)
-    expect(preferenceStore.theme).toBe('dark')
+    expect(preferenceStore.editorTheme).toBe('dark')
     expect(wrapper.get('.pure-text-editor').attributes('data-theme')).toBe('dark')
     expect(wrapper.get('textarea').attributes('style')).toContain('font-family: monospace;')
     expect(wrapper.get('textarea').attributes('style')).toContain('font-size: 24px;')

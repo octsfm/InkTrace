@@ -1,5 +1,5 @@
 <template>
-  <div class="main-layout">
+  <div class="main-layout" :class="themeClass">
     <header class="header">
       <div class="header-shell">
         <div class="header-left">
@@ -20,6 +20,14 @@
             @click="$router.push('/works')"
           >
             书架
+          </button>
+          <button
+            type="button"
+            class="nav-link"
+            :class="{ active: $route.path === '/settings' }"
+            @click="$router.push('/settings')"
+          >
+            设置
           </button>
         </nav>
 
@@ -43,21 +51,67 @@
 
 <script setup>
 import { Edit } from '@element-plus/icons-vue'
+import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
+import { usePreferenceStore } from '@/stores/preference'
+
+const preferenceStore = usePreferenceStore()
+const { appTheme } = storeToRefs(preferenceStore)
+const themeClass = computed(() => `main-layout--theme-${String(appTheme.value || 'light')}`)
 </script>
 
 <style scoped>
 .main-layout {
+  --layout-bg: #F8FAFC;
+  --layout-header-bg: rgba(248, 250, 252, 0.92);
+  --layout-header-border: #E5E7EB;
+  --layout-nav-bg: #FFFFFF;
+  --layout-nav-hover-bg: #F3F4F6;
+  --layout-nav-text: #6B7280;
+  --layout-nav-active-text: #111827;
+  --layout-brand-bg: #111827;
+  --layout-brand-icon: #FFFFFF;
+  --layout-brand-text: #111827;
+  --layout-brand-subtitle: #6B7280;
   height: 100vh;
   overflow: hidden;
-  background-color: #F8FAFC;
+  background-color: var(--layout-bg);
+}
+
+.main-layout--theme-warm {
+  --layout-bg: #FCF8F3;
+  --layout-header-bg: rgba(252, 248, 243, 0.92);
+  --layout-header-border: #E9DDCF;
+  --layout-nav-bg: #FFFDF9;
+  --layout-nav-hover-bg: #F7EFE4;
+  --layout-nav-text: #7A5C3E;
+  --layout-nav-active-text: #4A3420;
+  --layout-brand-bg: #6B4226;
+  --layout-brand-icon: #FFFFFF;
+  --layout-brand-text: #4A3420;
+  --layout-brand-subtitle: #8B6E54;
+}
+
+.main-layout--theme-dark {
+  --layout-bg: #0F172A;
+  --layout-header-bg: rgba(15, 23, 42, 0.94);
+  --layout-header-border: #1E293B;
+  --layout-nav-bg: #111827;
+  --layout-nav-hover-bg: #1F2937;
+  --layout-nav-text: #9CA3AF;
+  --layout-nav-active-text: #F3F4F6;
+  --layout-brand-bg: #EFF6FF;
+  --layout-brand-icon: #1E293B;
+  --layout-brand-text: #E5E7EB;
+  --layout-brand-subtitle: #94A3B8;
 }
 
 .header {
   position: sticky;
   top: 0;
   z-index: 20;
-  border-bottom: 1px solid #E5E7EB;
-  background-color: rgba(248, 250, 252, 0.92);
+  border-bottom: 1px solid var(--layout-header-border);
+  background-color: var(--layout-header-bg);
   backdrop-filter: blur(12px);
 }
 
@@ -84,8 +138,8 @@ import { Edit } from '@element-plus/icons-vue'
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #111827;
-  color: #ffffff;
+  background-color: var(--layout-brand-bg);
+  color: var(--layout-brand-icon);
 }
 
 .logo-icon {
@@ -102,12 +156,12 @@ import { Edit } from '@element-plus/icons-vue'
   font-size: 18px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: #111827;
+  color: var(--layout-brand-text);
 }
 
 .logo-subtitle {
   font-size: 12px;
-  color: #6B7280;
+  color: var(--layout-brand-subtitle);
 }
 
 .header-nav {
@@ -115,15 +169,15 @@ import { Edit } from '@element-plus/icons-vue'
   align-items: center;
   gap: 8px;
   padding: 4px;
-  border: 1px solid #E5E7EB;
+  border: 1px solid var(--layout-header-border);
   border-radius: 999px;
-  background-color: #FFFFFF;
+  background-color: var(--layout-nav-bg);
 }
 
 .nav-link {
   border: none;
   background: transparent;
-  color: #6B7280;
+  color: var(--layout-nav-text);
   font-size: 13px;
   font-weight: 500;
   padding: 8px 14px;
@@ -133,13 +187,13 @@ import { Edit } from '@element-plus/icons-vue'
 }
 
 .nav-link:hover {
-  color: #111827;
-  background-color: #F3F4F6;
+  color: var(--layout-nav-active-text);
+  background-color: var(--layout-nav-hover-bg);
 }
 
 .nav-link.active {
-  color: #111827;
-  background-color: #F3F4F6;
+  color: var(--layout-nav-active-text);
+  background-color: var(--layout-nav-hover-bg);
 }
 
 .header-right {
@@ -151,9 +205,8 @@ import { Edit } from '@element-plus/icons-vue'
 .main-content {
   height: calc(100vh - 69px);
   overflow-y: auto;
-  background-color: #F8FAFC;
+  background-color: var(--layout-bg);
   padding: 0;
-  overflow-y: auto;
 }
 
 .fade-leave-active {

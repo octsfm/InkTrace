@@ -22,7 +22,8 @@ describe('usePreferenceStore', () => {
       fontFamily: 'Serif',
       fontSize: 22,
       lineHeight: 2,
-      theme: 'dark'
+      appTheme: 'dark',
+      editorTheme: 'dark'
     })
 
     const persisted = JSON.parse(window.localStorage.getItem(PREFERENCE_STORAGE_KEY) || '{}')
@@ -31,7 +32,8 @@ describe('usePreferenceStore', () => {
       fontFamily: 'Serif',
       fontSize: 22,
       lineHeight: 2,
-      theme: 'dark'
+      appTheme: 'dark',
+      editorTheme: 'dark'
     })
   })
 
@@ -41,7 +43,8 @@ describe('usePreferenceStore', () => {
       fontFamily: 'Monospace',
       fontSize: 20,
       lineHeight: 1.9,
-      theme: 'warm',
+      appTheme: 'warm',
+      editorTheme: 'warm',
       todayWordDelta: 128,
       todayKey: '2026-05-06'
     }))
@@ -52,7 +55,8 @@ describe('usePreferenceStore', () => {
     expect(store.fontFamily).toBe('Monospace')
     expect(store.fontSize).toBe(20)
     expect(store.lineHeight).toBe(1.9)
-    expect(store.theme).toBe('warm')
+    expect(store.appTheme).toBe('warm')
+    expect(store.editorTheme).toBe('warm')
     expect(store.todayWordDelta).toBe(128)
     expect(store.todayKey).toBe('2026-05-06')
   })
@@ -64,7 +68,8 @@ describe('usePreferenceStore', () => {
       fontFamily: 'Serif',
       fontSize: 24,
       lineHeight: 2.1,
-      theme: 'dark'
+      appTheme: 'dark',
+      editorTheme: 'dark'
     })
     store.setTodayWordDelta(300, new Date('2026-05-06T08:00:00'))
 
@@ -74,7 +79,8 @@ describe('usePreferenceStore', () => {
     expect(store.fontFamily).toBe('system-ui')
     expect(store.fontSize).toBe(18)
     expect(store.lineHeight).toBe(1.8)
-    expect(store.theme).toBe('light')
+    expect(store.appTheme).toBe('light')
+    expect(store.editorTheme).toBe('light')
     expect(store.todayWordDelta).toBe(0)
     expect(store.todayKey).toBe(buildPreferenceTodayKey())
   })
@@ -95,14 +101,15 @@ describe('usePreferenceStore', () => {
     const store = usePreferenceStore()
 
     store.setTodayWordDelta(256, new Date('2026-05-06T08:00:00'))
-    store.updateWritingPreferences({ theme: 'dark' })
+    store.updateWritingPreferences({ appTheme: 'dark', editorTheme: 'dark' })
 
     setActivePinia(createPinia())
     const refreshedStore = usePreferenceStore()
 
     expect(refreshedStore.todayKey).toBe('2026-05-06')
     expect(refreshedStore.todayWordDelta).toBe(256)
-    expect(refreshedStore.theme).toBe('dark')
+    expect(refreshedStore.appTheme).toBe('dark')
+    expect(refreshedStore.editorTheme).toBe('dark')
   })
 
   it('does not import backend api modules', () => {

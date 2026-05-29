@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { describe, expect, it } from 'vitest'
 import RightWorkspacePanel from '../RightWorkspacePanel.vue'
 
@@ -51,5 +52,38 @@ describe('RightWorkspacePanel', () => {
     await wrapper.find('[data-test="workspace-dirty-save"]').trigger('click')
     expect(wrapper.emitted('save-dirty')?.[0]).toEqual(['outline'])
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['timeline'])
+  })
+
+  it('resizes within viewport-safe bounds and emits width changes', async () => {
+    const wrapper = mount(RightWorkspacePanel, {
+      props: {
+        modelValue: 'ai'
+      }
+    })
+
+    const resizer = wrapper.find('.right-workspace-panel__resizer')
+    await resizer.trigger('mousedown', { clientX: 500 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: -500 }))
+    window.dispatchEvent(new MouseEvent('mouseup'))
+    await nextTick()
+
+    const widthEvents = wrapper.emitted('width-change') || []
+    expect(widthEvents.length).toBeGreaterThanOrEqual(1)
+    const lastWidth = Number(widthEvents.at(-1)?.[0] || 0)
+    expect(lastWidth).toBeGreaterThanOrEqual(320)
+    expect(lastWidth).toBeLessThanOrEqual(Math.floor(window.innerWidth * 0.6))
+    expect(wrapper.attributes('style')).toContain(`--workspace-panel-width: ${lastWidth}px`)
+  })
+
+  it('collapses on Escape when expanded', async () => {
+    const wrapper = mount(RightWorkspacePanel, {
+      props: {
+        modelValue: 'ai'
+      }
+    })
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await nextTick()
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([''])
   })
 })

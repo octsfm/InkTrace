@@ -63,7 +63,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const MIN_WIDTH = 320
-const MAX_WIDTH = 480
+const ABSOLUTE_MAX_WIDTH = 760
 const DEFAULT_WIDTH = 360
 
 const props = defineProps({
@@ -95,6 +95,22 @@ const items = [
 const pendingAction = ref(null)
 const panelWidth = ref(DEFAULT_WIDTH)
 let teardownResize = null
+let teardownKeyboard = null
+let teardownWindowResize = null
+
+const resolveMaxWidth = () => {
+  if (typeof window === 'undefined') {
+    return ABSOLUTE_MAX_WIDTH
+  }
+  const viewportBound = Math.max(MIN_WIDTH, Math.floor(window.innerWidth * 0.6))
+  return Math.min(ABSOLUTE_MAX_WIDTH, viewportBound)
+}
+
+const clampWidth = (value) => {
+  const numeric = Number(value || DEFAULT_WIDTH)
+  const maxWidth = resolveMaxWidth()
+  return Math.min(maxWidth, Math.max(MIN_WIDTH, numeric))
+}
 
 const isExpanded = computed(() => Boolean(props.modelValue))
 const activeItem = computed(() => (
@@ -150,7 +166,7 @@ const handleResizeStart = (event) => {
   const originWidth = panelWidth.value
   const handleMove = (moveEvent) => {
     const delta = originX - Number(moveEvent.clientX || 0)
-    panelWidth.value = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, originWidth + delta))
+    panelWidth.value = clampWidth(originWidth + delta)
   }
   const handleUp = () => {
     window.removeEventListener('mousemove', handleMove)
@@ -162,16 +178,48 @@ const handleResizeStart = (event) => {
   window.addEventListener('mouseup', handleUp)
 }
 
+const handleKeydown = (event) => {
+  if (event?.key !== 'Escape') return
+  if (!props.modelValue) return
+  if (pendingAction.value) {
+    pendingAction.value = null
+    return
+  }
+  emit('update:modelValue', '')
+}
+
+const handleWindowResize = () => {
+  const nextWidth = clampWidth(panelWidth.value)
+  if (nextWidth === panelWidth.value) return
+  panelWidth.value = nextWidth
+}
+
 watch(panelWidth, (nextWidth) => {
   emit('width-change', nextWidth)
 })
 
 onMounted(() => {
+  panelWidth.value = clampWidth(panelWidth.value)
   emit('width-change', panelWidth.value)
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', handleKeydown)
+    window.addEventListener('resize', handleWindowResize)
+    teardownKeyboard = () => window.removeEventListener('keydown', handleKeydown)
+    teardownWindowResize = () => window.removeEventListener('resize', handleWindowResize)
+  }
 })
+
+watch(
+  () => props.modelValue,
+  () => {
+    panelWidth.value = clampWidth(panelWidth.value)
+  }
+)
 
 onBeforeUnmount(() => {
   teardownResize?.()
+  teardownKeyboard?.()
+  teardownWindowResize?.()
 })
 </script>
 
@@ -188,6 +236,7 @@ onBeforeUnmount(() => {
   background: var(--color-panel-background);
   overflow: hidden;
   transition: width 180ms ease;
+  contain: layout paint;
 }
 
 .right-workspace-panel--expanded {
@@ -308,8 +357,10 @@ onBeforeUnmount(() => {
 .right-workspace-panel__body {
   height: 100%;
   min-height: 0;
+  max-height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: var(--space-4);
 }
 

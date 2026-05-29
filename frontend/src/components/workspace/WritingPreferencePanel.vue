@@ -2,8 +2,8 @@
   <section class="writing-preference-panel" data-test="writing-preference-panel">
     <div class="panel-header">
       <div>
-        <h3>写作偏好</h3>
-        <p>只影响当前设备上的编辑展示，不会修改正文内容。</p>
+        <h3>写作阅读偏好</h3>
+        <p>这里只调整编辑器阅读体验，不改变全局界面主题，也不会修改正文内容。</p>
       </div>
       <button type="button" class="close-button" @click="$emit('close')">关闭</button>
     </div>
@@ -56,7 +56,7 @@
     </div>
 
     <div class="option-group">
-      <span class="option-label">主题</span>
+      <span class="option-label">编辑器配色</span>
       <div class="chip-row">
         <button
           v-for="item in themeOptions"
@@ -65,7 +65,7 @@
           class="option-chip"
           :class="{ 'option-chip--active': preferences.theme === item.value }"
           :data-test="`theme-${item.value}`"
-          @click="updatePreference({ theme: item.value })"
+          @click="updatePreference({ editorTheme: item.value })"
         >
           {{ item.label }}
         </button>
