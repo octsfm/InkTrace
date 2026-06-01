@@ -426,7 +426,7 @@ describe('WritingStudio layout contract', () => {
     expect(source).toContain(':font-family="editorPreferences.fontFamily"')
     expect(source).toContain(':font-size="editorPreferences.fontSize"')
     expect(source).toContain(':line-height="editorPreferences.lineHeight"')
-    expect(source).toContain(':theme="editorPreferences.theme"')
+    expect(source).toContain(':theme="preferenceStore.appTheme"')
   })
 
   it('tracks today word delta from正文有效字符变化 only', () => {
@@ -665,14 +665,12 @@ describe('WritingStudio focus mode', () => {
     await wrapper.get('[data-test="font-monospace"]').trigger('click')
     await wrapper.get('[data-test="font-size-select"]').setValue('24')
     await wrapper.get('[data-test="line-height-select"]').setValue('2')
-    await wrapper.get('[data-test="theme-dark"]').trigger('click')
     await flushStudio()
 
     expect(preferenceStore.fontFamily).toBe('monospace')
     expect(preferenceStore.fontSize).toBe(24)
     expect(preferenceStore.lineHeight).toBe(2)
-    expect(preferenceStore.editorTheme).toBe('dark')
-    expect(wrapper.get('.pure-text-editor').attributes('data-theme')).toBe('dark')
+    expect(preferenceStore.editorTheme).toBe(preferenceStore.appTheme)
     expect(wrapper.get('textarea').attributes('style')).toContain('font-family: monospace;')
     expect(wrapper.get('textarea').attributes('style')).toContain('font-size: 24px;')
     expect(wrapper.get('textarea').attributes('style')).toContain('line-height: 2;')

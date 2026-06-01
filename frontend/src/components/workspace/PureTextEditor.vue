@@ -1,5 +1,5 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
-  <div class="pure-text-editor" :data-theme="editorTheme">
+<template>
+  <div class="pure-text-editor">
     <div v-if="showSoftLimitWarning" class="soft-limit-banner">
       当前章节已超过 20 万有效字符，建议尽快拆分章节以保持流畅编辑。
     </div>
@@ -66,7 +66,6 @@ const textareaRef = ref(null)
 const effectiveWordCount = computed(() => countEffectiveCharacters(props.modelValue))
 const formattedWordCount = computed(() => effectiveWordCount.value.toLocaleString('zh-CN'))
 const showSoftLimitWarning = computed(() => exceedsSoftLimit(props.modelValue))
-const editorTheme = computed(() => String(props.theme || 'light'))
 const textareaStyle = computed(() => ({
   fontFamily: String(props.fontFamily || 'system-ui'),
   fontSize: `${Number(props.fontSize || 18)}px`,
@@ -164,6 +163,15 @@ defineExpose({ restoreViewport, getViewport, focusEditor })
 
 <style scoped>
 .pure-text-editor {
+  --editor-border: var(--studio-border, var(--ink-border-strong, #d1d5db));
+  --editor-bg: var(--studio-card-bg, var(--ink-surface-1, #ffffff));
+  --editor-text: var(--studio-title, var(--ink-text-primary, #111827));
+  --editor-muted: var(--studio-muted, var(--ink-text-muted, #6b7280));
+  --editor-warning-border: var(--ink-warning-text, #fdba74);
+  --editor-warning-bg: var(--ink-warning-bg, #fff7ed);
+  --editor-warning-text: var(--ink-warning-text, #c2410c);
+  --editor-focus: var(--ink-accent, #2563eb);
+
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -177,17 +185,17 @@ defineExpose({ restoreViewport, getViewport, focusEditor })
   justify-content: flex-end;
   gap: 12px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--editor-muted);
 }
 
 .soft-limit-banner {
-  border: 1px solid #fdba74;
+  border: 1px solid var(--editor-warning-border);
   border-radius: 16px;
-  background: #fff7ed;
+  background: var(--editor-warning-bg);
   padding: 12px 16px;
   font-size: 13px;
   line-height: 1.6;
-  color: #c2410c;
+  color: var(--editor-warning-text);
 }
 
 .pure-textarea {
@@ -195,61 +203,28 @@ defineExpose({ restoreViewport, getViewport, focusEditor })
   flex: 1;
   min-height: 420px;
   resize: none;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--editor-border);
   border-radius: 20px;
-  background: #ffffff;
+  background: var(--editor-bg);
   padding: 28px;
   font-size: 16px;
   line-height: 1.9;
-  color: #111827;
+  color: var(--editor-text);
   outline: none;
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
+.pure-textarea::placeholder {
+  color: color-mix(in srgb, var(--editor-text) 45%, transparent);
+}
+
 .pure-textarea:focus {
-  border-color: #93c5fd;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: var(--editor-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--editor-focus) 24%, transparent);
 }
 
 .word-count {
   font-weight: 600;
-  color: #111827;
-}
-
-.pure-text-editor[data-theme='warm'] .soft-limit-banner {
-  border-color: #f59e0b;
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.pure-text-editor[data-theme='warm'] .pure-textarea {
-  border-color: #e7d7b1;
-  background: #fffaf0;
-  color: #3f2f1f;
-}
-
-.pure-text-editor[data-theme='warm'] .word-count {
-  color: #5b4636;
-}
-
-.pure-text-editor[data-theme='dark'] .soft-limit-banner {
-  border-color: #f59e0b;
-  background: #3f2a12;
-  color: #fde68a;
-}
-
-.pure-text-editor[data-theme='dark'] .pure-textarea {
-  border-color: #374151;
-  background: #111827;
-  color: #f3f4f6;
-}
-
-.pure-text-editor[data-theme='dark'] .pure-textarea::placeholder {
-  color: #9ca3af;
-}
-
-.pure-text-editor[data-theme='dark'] .editor-footer,
-.pure-text-editor[data-theme='dark'] .word-count {
-  color: #d1d5db;
+  color: var(--editor-text);
 }
 </style>

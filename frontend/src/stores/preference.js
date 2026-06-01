@@ -7,6 +7,14 @@ const DEFAULT_LINE_HEIGHT = 1.8
 const DEFAULT_THEME = 'light'
 const ALLOWED_THEMES = new Set(['light', 'warm', 'dark'])
 
+const applyGlobalTheme = (theme) => {
+  if (typeof document === 'undefined') return
+  const normalized = ALLOWED_THEMES.has(String(theme || '').trim())
+    ? String(theme).trim()
+    : DEFAULT_THEME
+  document.documentElement.setAttribute('data-app-theme', normalized)
+}
+
 const buildTodayKey = (date = new Date()) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -25,17 +33,18 @@ const normalizeState = (payload = {}) => {
     ? payload.todayKey.trim()
     : buildTodayKey()
 
+  const normalizedAppTheme = ALLOWED_THEMES.has(String(payload.appTheme || payload.theme || '').trim())
+    ? String(payload.appTheme || payload.theme).trim()
+    : DEFAULT_THEME
+
   return {
     focusMode: Boolean(payload.focusMode),
     fontFamily: String(payload.fontFamily || DEFAULT_FONT_FAMILY).trim() || DEFAULT_FONT_FAMILY,
     fontSize: clampNumber(payload.fontSize, DEFAULT_FONT_SIZE, 12, 32),
     lineHeight: clampNumber(payload.lineHeight, DEFAULT_LINE_HEIGHT, 1.2, 2.4),
-    appTheme: ALLOWED_THEMES.has(String(payload.appTheme || payload.theme || '').trim())
-      ? String(payload.appTheme || payload.theme).trim()
-      : DEFAULT_THEME,
-    editorTheme: ALLOWED_THEMES.has(String(payload.editorTheme || payload.theme || '').trim())
-      ? String(payload.editorTheme || payload.theme).trim()
-      : DEFAULT_THEME,
+    appTheme: normalizedAppTheme,
+    // Editor theme follows app theme to keep a single visible theme concept.
+    editorTheme: normalizedAppTheme,
     todayWordDelta: Math.max(0, Math.floor(Number(payload.todayWordDelta) || 0)),
     todayKey
   }
@@ -68,6 +77,7 @@ const persistState = (state) => {
     todayWordDelta: Math.max(0, Math.floor(Number(state.todayWordDelta) || 0)),
     todayKey: String(state.todayKey || buildTodayKey())
   }))
+  applyGlobalTheme(state.appTheme)
 }
 
 export const usePreferenceStore = defineStore('workbenchPreference', {
@@ -100,6 +110,7 @@ export const usePreferenceStore = defineStore('workbenchPreference', {
       this.setFocusMode(!this.focusMode)
     },
     updateWritingPreferences(patch = {}) {
+      let appThemeChanged = false
       if (Object.prototype.hasOwnProperty.call(patch, 'fontFamily')) {
         this.fontFamily = String(patch.fontFamily || DEFAULT_FONT_FAMILY).trim() || DEFAULT_FONT_FAMILY
       }
@@ -112,14 +123,21 @@ export const usePreferenceStore = defineStore('workbenchPreference', {
       if (Object.prototype.hasOwnProperty.call(patch, 'appTheme')) {
         const nextTheme = String(patch.appTheme || '').trim()
         this.appTheme = ALLOWED_THEMES.has(nextTheme) ? nextTheme : DEFAULT_THEME
+        appThemeChanged = true
       }
-      if (Object.prototype.hasOwnProperty.call(patch, 'editorTheme')) {
+      // editorTheme is no longer user-facing; keep backward compatibility for old calls.
+      if (Object.prototype.hasOwnProperty.call(patch, 'editorTheme') && !appThemeChanged) {
         const nextTheme = String(patch.editorTheme || '').trim()
-        this.editorTheme = ALLOWED_THEMES.has(nextTheme) ? nextTheme : DEFAULT_THEME
+        this.appTheme = ALLOWED_THEMES.has(nextTheme) ? nextTheme : DEFAULT_THEME
+        appThemeChanged = true
       }
       if (Object.prototype.hasOwnProperty.call(patch, 'theme')) {
         const nextTheme = String(patch.theme || '').trim()
-        this.editorTheme = ALLOWED_THEMES.has(nextTheme) ? nextTheme : DEFAULT_THEME
+        this.appTheme = ALLOWED_THEMES.has(nextTheme) ? nextTheme : DEFAULT_THEME
+        appThemeChanged = true
+      }
+      if (appThemeChanged) {
+        this.editorTheme = this.appTheme
       }
       this.persist()
     },
@@ -135,6 +153,7 @@ export const usePreferenceStore = defineStore('workbenchPreference', {
     },
     hydrate() {
       this.$patch(readPersistedState())
+      applyGlobalTheme(this.appTheme)
       this.syncTodayKey()
     },
     reset() {
@@ -148,3 +167,6 @@ export {
   STORAGE_KEY as PREFERENCE_STORAGE_KEY,
   buildTodayKey as buildPreferenceTodayKey
 }
+
+// Ensure theme is applied even before store instance hydrate is called in a view.
+applyGlobalTheme(readPersistedState().appTheme)

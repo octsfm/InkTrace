@@ -1,5 +1,5 @@
 <template>
-  <div class="writing-studio" :class="{ 'writing-studio--focus': isFocusMode }">
+  <div class="writing-studio" :class="[themeClass, { 'writing-studio--focus': isFocusMode }]">
     <VersionConflictModal
       :model-value="conflictModalVisible"
       :description="conflictDescription"
@@ -134,7 +134,7 @@
                 :font-family="editorPreferences.fontFamily"
                 :font-size="editorPreferences.fontSize"
                 :line-height="editorPreferences.lineHeight"
-                :theme="editorPreferences.theme"
+                :theme="preferenceStore.appTheme"
                 @update:model-value="handleDraftChange"
                 @cursor-change="handleCursorChange"
                 @scroll-change="handleScrollChange"
@@ -262,6 +262,12 @@ let isDraftSyncing = false
 const DRAFT_SYNC_DELAY_MS = 2500
 const RETRY_DELAYS_MS = [1000, 2000, 4000]
 const MOBILE_ASSET_BREAKPOINT = 760
+const RIGHT_PANEL_MIN_WIDTH = 320
+const RIGHT_PANEL_MAX_WIDTH = 760
+const EDITOR_MIN_WIDTH = 620
+const LEFT_COLUMN_WIDTH = 280
+const SHELL_HORIZONTAL_PADDING = 40
+const SHELL_GAP_WIDTH = 32
 const activeWorkspaceTab = ref('')
 const activeAssetFocusArea = ref('outline')
 const isMobileWorkspacePanel = ref(false)
@@ -273,6 +279,7 @@ const suppressDraftCaching = ref(false)
 const workId = computed(() => String(route.params.id || ''))
 const isFocusMode = computed(() => preferenceStore.focusMode)
 const editorPreferences = computed(() => preferenceStore.editorPreferences)
+const themeClass = computed(() => `writing-studio--${String(preferenceStore.appTheme || 'light')}`)
 const activeWordCount = computed(() => countEffectiveCharacters(chapterDataStore.activeChapterContent))
 const assetDirtyTabs = computed(() => {
   const tabs = new Set()
@@ -752,12 +759,27 @@ const handleCachePruned = () => {
 
 const syncWorkspaceViewport = () => {
   isMobileWorkspacePanel.value = typeof window !== 'undefined' && window.innerWidth <= MOBILE_ASSET_BREAKPOINT
+  if (isMobileWorkspacePanel.value) {
+    rightWorkspacePanelWidth.value = RIGHT_PANEL_MIN_WIDTH
+    return
+  }
+  rightWorkspacePanelWidth.value = clampRightWorkspacePanelWidth(rightWorkspacePanelWidth.value)
+}
+
+const clampRightWorkspacePanelWidth = (width) => {
+  if (typeof window === 'undefined') {
+    return Math.min(RIGHT_PANEL_MAX_WIDTH, Math.max(RIGHT_PANEL_MIN_WIDTH, Number(width || RIGHT_PANEL_MIN_WIDTH)))
+  }
+  const viewport = Number(window.innerWidth || 0)
+  const maxByViewport = viewport - LEFT_COLUMN_WIDTH - EDITOR_MIN_WIDTH - SHELL_HORIZONTAL_PADDING - SHELL_GAP_WIDTH
+  const dynamicMax = Math.min(RIGHT_PANEL_MAX_WIDTH, Math.max(RIGHT_PANEL_MIN_WIDTH, maxByViewport))
+  return Math.min(dynamicMax, Math.max(RIGHT_PANEL_MIN_WIDTH, Number(width || RIGHT_PANEL_MIN_WIDTH)))
 }
 
 const handleWorkspacePanelWidthChange = (nextWidth) => {
   const numericWidth = Number(nextWidth)
   if (!Number.isFinite(numericWidth)) return
-  rightWorkspacePanelWidth.value = Math.min(760, Math.max(320, numericWidth))
+  rightWorkspacePanelWidth.value = clampRightWorkspacePanelWidth(numericWidth)
 }
 
 const saveFocusedAssetDraft = async () => {
@@ -1296,12 +1318,12 @@ const handleManualSync = async () => {
 <style scoped>
 .writing-studio {
   --studio-bg: #f8fafc;
-  --studio-bg-focus: #f3f4f6;
+  --studio-bg-focus: #f8fafc;
   --studio-card-bg: #ffffff;
   --studio-border: #e5e7eb;
   --studio-title: #111827;
   --studio-text: #4b5563;
-  --studio-muted: #9ca3af;
+  --studio-muted: #6b7280;
   --studio-input-bg: #ffffff;
   --studio-button-bg: #ffffff;
 
@@ -1317,16 +1339,28 @@ const handleManualSync = async () => {
   background: var(--studio-bg-focus);
 }
 
-:global(.main-layout--theme-dark) .writing-studio {
+.writing-studio--dark {
   --studio-bg: #0f172a;
-  --studio-bg-focus: #111827;
+  --studio-bg-focus: #0f172a;
   --studio-card-bg: #111827;
-  --studio-border: #253246;
+  --studio-border: #233044;
   --studio-title: #e5e7eb;
   --studio-text: #cbd5e1;
   --studio-muted: #94a3b8;
-  --studio-input-bg: #0f172a;
-  --studio-button-bg: #0f172a;
+  --studio-input-bg: #111827;
+  --studio-button-bg: #111827;
+}
+
+.writing-studio--warm {
+  --studio-bg: #fcf8f3;
+  --studio-bg-focus: #f7efe4;
+  --studio-card-bg: #fffdf9;
+  --studio-border: #e9ddcf;
+  --studio-title: #4a3420;
+  --studio-text: #6f4f33;
+  --studio-muted: #8b6e54;
+  --studio-input-bg: #fffdf9;
+  --studio-button-bg: #fffdf9;
 }
 
 .studio-header {
@@ -1384,8 +1418,8 @@ const handleManualSync = async () => {
 }
 
 .work-title-input:focus {
-  border-color: #93c5fd;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: var(--ink-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink-accent) 24%, transparent);
 }
 
 .header-copy p {
@@ -1415,8 +1449,8 @@ const handleManualSync = async () => {
 }
 
 .preference-toggle:hover {
-  border-color: #93c5fd;
-  color: #1d4ed8;
+  border-color: var(--ink-accent);
+  color: var(--ink-accent);
 }
 
 .preference-panel-anchor {
@@ -1509,7 +1543,7 @@ const handleManualSync = async () => {
 }
 
 .editor-card--focus {
-  border-color: #dbeafe;
+  border-color: var(--ink-accent-soft);
   box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
 }
 

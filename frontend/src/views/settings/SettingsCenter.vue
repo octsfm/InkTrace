@@ -1,5 +1,5 @@
 <template>
-  <section class="settings-center" data-testid="settings-center">
+  <section class="settings-center" :class="themeClass" data-testid="settings-center">
     <header class="settings-header">
       <div>
         <h1>设置中心</h1>
@@ -10,21 +10,13 @@
     <div class="settings-grid">
       <article class="settings-card">
         <h2>界面与阅读设置</h2>
-        <p class="settings-tip">界面主题作用于整个应用；编辑器配色只作用于正文编辑区。</p>
+        <p class="settings-tip">界面主题作用于整个应用，所有主功能区保持一致，不再单独设置编辑器主题。</p>
 
         <div class="field-grid">
           <label class="field">
             <span>界面主题（全局）</span>
             <select v-model="generalForm.appTheme" @change="saveGeneralSettings">
               <option value="light">浅色</option>
-              <option value="warm">暖色</option>
-              <option value="dark">深色</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>编辑器配色</span>
-            <select v-model="generalForm.editorTheme" @change="saveGeneralSettings">
-              <option value="light">明亮</option>
               <option value="warm">暖色</option>
               <option value="dark">深色</option>
             </select>
@@ -143,7 +135,6 @@ const preferenceStore = usePreferenceStore()
 
 const generalForm = reactive({
   appTheme: preferenceStore.appTheme || 'light',
-  editorTheme: preferenceStore.editorTheme || 'light',
   fontFamily: preferenceStore.fontFamily,
   fontSize: preferenceStore.fontSize,
   lineHeight: preferenceStore.lineHeight
@@ -161,6 +152,7 @@ const aiSaveMessage = ref('')
 const aiErrorMessage = ref('')
 
 const requiredSettingsRoles = REQUIRED_SETTINGS_ROLES
+const themeClass = computed(() => `settings-center--${String(preferenceStore.appTheme || 'light')}`)
 const providerConfigs = computed(() => settingsForm.provider_configs || [])
 const roleLabelMap = {
   analysis: '分析任务模型',
@@ -193,7 +185,6 @@ const displayProviderName = (providerName) => {
 const saveGeneralSettings = () => {
   preferenceStore.updateWritingPreferences({
     appTheme: generalForm.appTheme,
-    editorTheme: generalForm.editorTheme,
     fontFamily: generalForm.fontFamily,
     fontSize: generalForm.fontSize,
     lineHeight: generalForm.lineHeight
@@ -328,19 +319,19 @@ onMounted(async () => {
 
 <style scoped>
 .settings-center {
-  --settings-page-bg: #f8fafc;
-  --settings-card-bg: #ffffff;
-  --settings-border: #e5e7eb;
-  --settings-border-strong: #d1d5db;
-  --settings-title: #111827;
-  --settings-text: #374151;
-  --settings-muted: #6b7280;
-  --settings-input-bg: #ffffff;
-  --settings-success: #166534;
-  --settings-error: #b91c1c;
-  --settings-warning-bg: #fff7ed;
-  --settings-warning-border: #f59e0b;
-  --settings-warning-text: #92400e;
+  --settings-page-bg: var(--ink-bg-app);
+  --settings-card-bg: var(--ink-surface-1);
+  --settings-border: var(--ink-border);
+  --settings-border-strong: var(--ink-border-strong);
+  --settings-title: var(--ink-text-primary);
+  --settings-text: var(--ink-text-secondary);
+  --settings-muted: var(--ink-text-muted);
+  --settings-input-bg: var(--ink-surface-1);
+  --settings-success: var(--ink-success-text);
+  --settings-error: var(--ink-danger-text);
+  --settings-warning-bg: var(--ink-warning-bg);
+  --settings-warning-border: var(--ink-border-strong);
+  --settings-warning-text: var(--ink-warning-text);
 
   max-width: 1280px;
   margin: 0 auto;
@@ -349,29 +340,31 @@ onMounted(async () => {
   background: transparent;
 }
 
-:global(.main-layout--theme-dark) .settings-center {
-  --settings-card-bg: #111827;
-  --settings-border: #243244;
-  --settings-border-strong: #334155;
-  --settings-title: #e5e7eb;
-  --settings-text: #d1d5db;
-  --settings-muted: #94a3b8;
-  --settings-input-bg: #0f172a;
-  --settings-success: #34d399;
-  --settings-error: #fca5a5;
-  --settings-warning-bg: #3b2f17;
-  --settings-warning-border: #f59e0b;
-  --settings-warning-text: #fcd34d;
+.settings-center--dark {
+  --settings-page-bg: var(--ink-bg-app);
+  --settings-card-bg: var(--ink-surface-1);
+  --settings-border: var(--ink-border);
+  --settings-border-strong: var(--ink-border-strong);
+  --settings-title: var(--ink-text-primary);
+  --settings-text: var(--ink-text-secondary);
+  --settings-muted: var(--ink-text-muted);
+  --settings-input-bg: var(--ink-surface-1);
+  --settings-success: var(--ink-success-text);
+  --settings-error: var(--ink-danger-text);
+  --settings-warning-bg: var(--ink-warning-bg);
+  --settings-warning-border: var(--ink-border-strong);
+  --settings-warning-text: var(--ink-warning-text);
 }
 
-:global(.main-layout--theme-warm) .settings-center {
-  --settings-card-bg: #fffdf9;
-  --settings-border: #eadfce;
-  --settings-border-strong: #d9c7af;
-  --settings-title: #4a3420;
-  --settings-text: #6f4f33;
-  --settings-muted: #8b6e54;
-  --settings-input-bg: #fffcf7;
+.settings-center--warm {
+  --settings-page-bg: var(--ink-bg-app);
+  --settings-card-bg: var(--ink-surface-1);
+  --settings-border: var(--ink-border);
+  --settings-border-strong: var(--ink-border-strong);
+  --settings-title: var(--ink-text-primary);
+  --settings-text: var(--ink-text-secondary);
+  --settings-muted: var(--ink-text-muted);
+  --settings-input-bg: var(--ink-surface-1);
 }
 
 .settings-header h1 {

@@ -225,15 +225,24 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .right-workspace-panel {
+  --workspace-panel-bg: var(--studio-card-bg, var(--ink-surface-1, #ffffff));
+  --workspace-panel-bg-soft: var(--studio-bg-focus, var(--ink-surface-2, #f8fafc));
+  --workspace-panel-border: var(--studio-border, var(--ink-border, #e5e7eb));
+  --workspace-panel-title: var(--studio-title, var(--ink-text-primary, #111827));
+  --workspace-panel-text: var(--studio-text, var(--ink-text-secondary, #4b5563));
+  --workspace-panel-muted: var(--studio-muted, var(--ink-text-muted, #6b7280));
+  --workspace-panel-accent: var(--ink-accent, #2563eb);
+  --workspace-panel-accent-soft: var(--ink-accent-soft, #dbeafe);
+
   --workspace-panel-width: 48px;
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr);
   width: var(--workspace-panel-width);
   min-width: 48px;
   height: 100%;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--workspace-panel-border);
   border-radius: var(--radius-lg);
-  background: var(--color-panel-background);
+  background: var(--workspace-panel-bg-soft);
   overflow: hidden;
   transition: width 180ms ease;
   contain: layout paint;
@@ -256,8 +265,8 @@ onBeforeUnmount(() => {
   align-content: start;
   gap: var(--space-2);
   padding: var(--space-2);
-  border-right: 1px solid var(--color-border);
-  background: var(--color-panel-background);
+  border-right: 1px solid var(--workspace-panel-border);
+  background: var(--workspace-panel-bg-soft);
 }
 
 .right-workspace-panel__tab-button {
@@ -268,14 +277,14 @@ onBeforeUnmount(() => {
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--workspace-panel-muted);
   cursor: pointer;
 }
 
 .right-workspace-panel__tab-button.is-active {
-  border-color: var(--color-primary);
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  border-color: var(--workspace-panel-accent);
+  background: var(--workspace-panel-accent-soft);
+  color: var(--workspace-panel-accent);
 }
 
 .right-workspace-panel__tab-icon {
@@ -295,7 +304,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   height: 100%;
-  background: var(--color-background);
+  background: var(--workspace-panel-bg);
 }
 
 .right-workspace-panel__resizer {
@@ -307,9 +316,9 @@ onBeforeUnmount(() => {
   border: none;
   background: linear-gradient(
     90deg,
-    rgba(79, 124, 255, 0.28) 0,
-    rgba(79, 124, 255, 0.12) 30%,
-    rgba(79, 124, 255, 0) 100%
+      color-mix(in srgb, var(--workspace-panel-accent) 28%, transparent) 0,
+      color-mix(in srgb, var(--workspace-panel-accent) 12%, transparent) 30%,
+      color-mix(in srgb, var(--workspace-panel-accent) 0%, transparent) 100%
   );
   opacity: 0;
   cursor: ew-resize;
@@ -326,29 +335,29 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-4);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--workspace-panel-border);
 }
 
 .right-workspace-panel__header h3 {
   margin: 0;
-  color: var(--color-text-primary);
+  color: var(--workspace-panel-title);
   font-size: var(--text-lg);
 }
 
 .right-workspace-panel__header p {
   margin-top: var(--space-2);
-  color: var(--color-text-secondary);
+  color: var(--workspace-panel-text);
   font-size: var(--text-sm);
   line-height: 1.6;
 }
 
 .right-workspace-panel__close,
 .right-workspace-panel__dirty-actions button {
-  border: 1px solid var(--color-border-strong);
+  border: 1px solid var(--workspace-panel-border);
   border-radius: var(--radius-pill);
-  background: var(--color-background);
+  background: var(--workspace-panel-bg);
   padding: var(--space-2) var(--space-3);
-  color: var(--color-text-primary);
+  color: var(--workspace-panel-title);
   font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
@@ -369,26 +378,26 @@ onBeforeUnmount(() => {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(31, 41, 51, 0.24);
+  background: color-mix(in srgb, var(--workspace-panel-title) 24%, transparent);
 }
 
 .right-workspace-panel__dirty-card {
   width: min(320px, calc(100% - var(--space-8)));
   border-radius: var(--radius-md);
-  background: var(--color-background);
+  background: var(--workspace-panel-bg);
   padding: var(--space-4);
   box-shadow: var(--shadow-dialog);
 }
 
 .right-workspace-panel__dirty-card h4 {
   margin: 0;
-  color: var(--color-text-primary);
+  color: var(--workspace-panel-title);
   font-size: var(--text-md);
 }
 
 .right-workspace-panel__dirty-card p {
   margin-top: var(--space-2);
-  color: var(--color-text-secondary);
+  color: var(--workspace-panel-text);
   font-size: var(--text-sm);
   line-height: 1.6;
 }

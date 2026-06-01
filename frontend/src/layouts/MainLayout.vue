@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="main-layout" :class="themeClass">
     <header class="header">
       <div class="header-shell">
@@ -19,22 +19,19 @@
             :class="{ active: $route.path === '/works' }"
             @click="$router.push('/works')"
           >
-            书架
-          </button>
+            书架</button>
           <button
             type="button"
             class="nav-link"
             :class="{ active: $route.path === '/settings' }"
             @click="$router.push('/settings')"
           >
-            设置
-          </button>
+            设置</button>
         </nav>
 
         <div class="header-right">
           <el-button type="primary" @click="$router.push('/works')">
-            返回书架
-          </el-button>
+            返回书架</el-button>
         </div>
       </div>
     </header>
@@ -73,6 +70,26 @@ const themeClass = computed(() => `main-layout--theme-${String(appTheme.value ||
   --layout-brand-icon: #FFFFFF;
   --layout-brand-text: #111827;
   --layout-brand-subtitle: #6B7280;
+
+  /* Unified app theme tokens (single source for all pages/components) */
+  --ink-bg-app: #F8FAFC;
+  --ink-surface-1: #FFFFFF;
+  --ink-surface-2: #F8FAFC;
+  --ink-surface-3: #F3F4F6;
+  --ink-border: #E5E7EB;
+  --ink-border-strong: #D1D5DB;
+  --ink-text-primary: #111827;
+  --ink-text-secondary: #4B5563;
+  --ink-text-muted: #6B7280;
+  --ink-accent: #2563EB;
+  --ink-accent-soft: #DBEAFE;
+  --ink-success-bg: #F0FDF4;
+  --ink-success-text: #15803D;
+  --ink-warning-bg: #FFF7ED;
+  --ink-warning-text: #C2410C;
+  --ink-danger-bg: #FFF7F7;
+  --ink-danger-text: #991B1B;
+
   height: 100vh;
   overflow: hidden;
   background-color: var(--layout-bg);
@@ -90,6 +107,24 @@ const themeClass = computed(() => `main-layout--theme-${String(appTheme.value ||
   --layout-brand-icon: #FFFFFF;
   --layout-brand-text: #4A3420;
   --layout-brand-subtitle: #8B6E54;
+
+  --ink-bg-app: #FCF8F3;
+  --ink-surface-1: #FFFDF9;
+  --ink-surface-2: #F7EFE4;
+  --ink-surface-3: #F2E7D8;
+  --ink-border: #E9DDCF;
+  --ink-border-strong: #D9C7AF;
+  --ink-text-primary: #4A3420;
+  --ink-text-secondary: #6F4F33;
+  --ink-text-muted: #8B6E54;
+  --ink-accent: #A46B2A;
+  --ink-accent-soft: #F5E6D3;
+  --ink-success-bg: #ECF8F1;
+  --ink-success-text: #1F6F4A;
+  --ink-warning-bg: #FFF3E4;
+  --ink-warning-text: #A55A17;
+  --ink-danger-bg: #FFF1F1;
+  --ink-danger-text: #A62A2A;
 }
 
 .main-layout--theme-dark {
@@ -104,6 +139,24 @@ const themeClass = computed(() => `main-layout--theme-${String(appTheme.value ||
   --layout-brand-icon: #1E293B;
   --layout-brand-text: #E5E7EB;
   --layout-brand-subtitle: #94A3B8;
+
+  --ink-bg-app: #0F172A;
+  --ink-surface-1: #111827;
+  --ink-surface-2: #0F172A;
+  --ink-surface-3: #1F2937;
+  --ink-border: #233044;
+  --ink-border-strong: #334155;
+  --ink-text-primary: #E5E7EB;
+  --ink-text-secondary: #CBD5E1;
+  --ink-text-muted: #94A3B8;
+  --ink-accent: #60A5FA;
+  --ink-accent-soft: #1E3A5F;
+  --ink-success-bg: #113B2B;
+  --ink-success-text: #8CE3BA;
+  --ink-warning-bg: #3D2F16;
+  --ink-warning-text: #FCD34D;
+  --ink-danger-bg: #3A1E1E;
+  --ink-danger-text: #FCA5A5;
 }
 
 .header {
@@ -230,3 +283,4 @@ const themeClass = computed(() => `main-layout--theme-${String(appTheme.value ||
   }
 }
 </style>
+

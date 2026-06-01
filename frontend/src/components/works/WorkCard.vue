@@ -115,16 +115,16 @@ const formatDate = (value) => {
   flex-direction: column;
   gap: 16px;
   padding: 20px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ink-border, #e5e7eb);
   border-radius: 22px;
-  background-color: #ffffff;
+  background-color: var(--ink-surface-1, #ffffff);
   cursor: pointer;
   transition: all 0.22s ease;
 }
 
 .work-card-shell:hover {
   transform: translateY(-2px);
-  border-color: #d1d5db;
+  border-color: var(--ink-border-strong, #d1d5db);
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
 }
 
@@ -138,10 +138,10 @@ const formatDate = (value) => {
 .more-button {
   width: 34px;
   height: 34px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ink-border, #e5e7eb);
   border-radius: 999px;
-  background: #ffffff;
-  color: #4b5563;
+  background: var(--ink-surface-1, #ffffff);
+  color: var(--ink-text-secondary, #4b5563);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
@@ -153,9 +153,9 @@ const formatDate = (value) => {
   right: 0;
   min-width: 132px;
   padding: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ink-border, #e5e7eb);
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--ink-surface-1, #ffffff);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
 }
 
@@ -171,11 +171,11 @@ const formatDate = (value) => {
 }
 
 .menu-item:hover {
-  background: #f9fafb;
+  background: var(--ink-surface-2, #f9fafb);
 }
 
 .menu-item.danger {
-  color: #b91c1c;
+  color: var(--ink-danger-text, #b91c1c);
 }
 
 .work-card-top {
@@ -188,7 +188,7 @@ const formatDate = (value) => {
   width: 52px;
   height: 52px;
   border-radius: 16px;
-  background: linear-gradient(180deg, #111827 0%, #374151 100%);
+  background: linear-gradient(180deg, var(--ink-text-primary, #111827) 0%, var(--ink-text-secondary, #374151) 100%);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -204,14 +204,14 @@ const formatDate = (value) => {
 .work-title {
   font-size: 20px;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink-text-primary, #111827);
   line-height: 1.35;
 }
 
 .work-meta {
   margin-top: 8px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--ink-text-muted, #6b7280);
 }
 
 .work-stats {
@@ -226,18 +226,18 @@ const formatDate = (value) => {
   gap: 6px;
   padding: 12px;
   border-radius: 14px;
-  background-color: #f9fafb;
+  background-color: var(--ink-surface-2, #f9fafb);
 }
 
 .stat-chip-label {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--ink-text-muted, #9ca3af);
 }
 
 .stat-chip-value {
   font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink-text-primary, #111827);
 }
 
 .work-footer {
@@ -248,7 +248,7 @@ const formatDate = (value) => {
 .work-enter {
   font-size: 13px;
   font-weight: 600;
-  color: #2563eb;
+  color: var(--ink-accent, #2563eb);
 }
 
 .confirm-mask {
@@ -266,7 +266,7 @@ const formatDate = (value) => {
   width: 100%;
   max-width: 280px;
   border-radius: 18px;
-  background: #ffffff;
+  background: var(--ink-surface-1, #ffffff);
   padding: 18px;
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
 }
@@ -274,14 +274,14 @@ const formatDate = (value) => {
 .confirm-panel h4 {
   font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink-text-primary, #111827);
 }
 
 .confirm-panel p {
   margin-top: 8px;
   font-size: 13px;
   line-height: 1.6;
-  color: #6b7280;
+  color: var(--ink-text-muted, #6b7280);
 }
 
 .confirm-actions {
@@ -293,14 +293,14 @@ const formatDate = (value) => {
 
 .ghost-button,
 .danger-button {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ink-border-strong, #d1d5db);
   border-radius: 999px;
   padding: 8px 14px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  background: #ffffff;
-  color: #374151;
+  background: var(--ink-surface-1, #ffffff);
+  color: var(--ink-text-secondary, #374151);
 }
 
 .danger-button {

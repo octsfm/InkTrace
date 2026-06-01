@@ -108,19 +108,22 @@ const formattedNextRetryAt = computed(() => {
 
 <style scoped>
 .status-bar {
+  --status-border: var(--studio-border, var(--ink-border, #e5e7eb));
+  --status-text: var(--studio-text, var(--ink-text-secondary, #6b7280));
+
   display: grid;
   gap: 8px;
   min-width: 280px;
 }
 
 .offline-banner {
-  border: 1px solid #fcd34d;
+  border: 1px solid var(--ink-warning-text, #fcd34d);
   border-radius: 999px;
-  background: #fef3c7;
+  background: var(--ink-warning-bg, #fef3c7);
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
-  color: #92400e;
+  color: var(--ink-warning-text, #92400e);
 }
 
 .status-main {
@@ -133,38 +136,38 @@ const formattedNextRetryAt = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid #bbf7d0;
+  border: 1px solid color-mix(in srgb, var(--ink-success-text, #15803d) 30%, transparent);
   border-radius: 999px;
-  background: #f0fdf4;
+  background: var(--ink-success-bg, #f0fdf4);
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 600;
-  color: #15803d;
+  color: var(--ink-success-text, #15803d);
   white-space: nowrap;
 }
 
 .status-pill[data-status='saving'] {
-  border-color: #dbeafe;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border-color: var(--ink-accent-soft, #dbeafe);
+  background: color-mix(in srgb, var(--ink-accent-soft, #eff6ff) 72%, var(--studio-card-bg, #fff));
+  color: var(--ink-accent, #1d4ed8);
 }
 
 .status-pill[data-status='error'] {
-  border-color: #fed7aa;
-  background: #fff7ed;
-  color: #c2410c;
+  border-color: color-mix(in srgb, var(--ink-warning-text, #c2410c) 35%, transparent);
+  background: var(--ink-warning-bg, #fff7ed);
+  color: var(--ink-warning-text, #c2410c);
 }
 
 .status-pill[data-status='conflict'] {
-  border-color: #fbcfe8;
-  background: #fdf2f8;
-  color: #be185d;
+  border-color: color-mix(in srgb, var(--ink-danger-text, #be185d) 30%, transparent);
+  background: var(--ink-danger-bg, #fdf2f8);
+  color: var(--ink-danger-text, #be185d);
 }
 
 .status-pill[data-status='offline'] {
-  border-color: #fde68a;
-  background: #fffbeb;
-  color: #b45309;
+  border-color: color-mix(in srgb, var(--ink-warning-text, #b45309) 30%, transparent);
+  background: var(--ink-warning-bg, #fffbeb);
+  color: var(--ink-warning-text, #b45309);
 }
 
 .status-icon {
@@ -187,14 +190,14 @@ const formattedNextRetryAt = computed(() => {
   flex-wrap: wrap;
   gap: 10px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--status-text);
 }
 
 .retry-button {
-  border: 1px solid #fdba74;
+  border: 1px solid color-mix(in srgb, var(--ink-warning-text, #c2410c) 35%, transparent);
   border-radius: 999px;
-  background: #fff7ed;
-  color: #c2410c;
+  background: var(--ink-warning-bg, #fff7ed);
+  color: var(--ink-warning-text, #c2410c);
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;

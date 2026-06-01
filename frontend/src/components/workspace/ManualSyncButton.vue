@@ -31,20 +31,20 @@ const label = computed(() => (props.saving ? '同步中...' : '立即同步'))
 
 <style scoped>
 .manual-sync-button {
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--ink-accent-soft, #bfdbfe);
   border-radius: 999px;
-  background: #eff6ff;
+  background: color-mix(in srgb, var(--ink-accent-soft, #eff6ff) 72%, var(--studio-card-bg, #ffffff));
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 600;
-  color: #1d4ed8;
+  color: var(--ink-accent, #1d4ed8);
   cursor: pointer;
 }
 
 .manual-sync-button:disabled {
-  border-color: #e5e7eb;
-  background: #f9fafb;
-  color: #9ca3af;
+  border-color: var(--studio-border, var(--ink-border, #e5e7eb));
+  background: var(--studio-bg-focus, var(--ink-surface-2, #f9fafb));
+  color: var(--studio-muted, var(--ink-text-muted, #9ca3af));
   cursor: not-allowed;
 }
 </style>

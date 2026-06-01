@@ -1,5 +1,5 @@
 <template>
-  <div class="works-page">
+  <div class="works-page" :class="themeClass">
     <section class="hero-panel">
       <div class="hero-copy">
         <div class="hero-eyebrow">书架</div>
@@ -102,12 +102,14 @@ import { ElMessage } from 'element-plus'
 import { Plus, Upload } from '@element-plus/icons-vue'
 import { v1WorksApi } from '@/api'
 import { useRouter } from 'vue-router'
+import { usePreferenceStore } from '@/stores/preference'
 import WorkCard from '@/components/works/WorkCard.vue'
 import ImportModal from '@/components/works/ImportModal.vue'
 import ExportTxtModal from '@/components/works/ExportTxtModal.vue'
 import CreateWorkModal from '@/components/works/CreateWorkModal.vue'
 
 const router = useRouter()
+const preferenceStore = usePreferenceStore()
 const works = ref([])
 const loading = ref(true)
 const showImportModal = ref(false)
@@ -225,6 +227,7 @@ const totalWords = computed(() => works.value.reduce((sum, item) => {
   return sum + Number(item.word_count ?? item.current_word_count ?? 0)
 }, 0))
 const latestWork = computed(() => works.value[0] || null)
+const themeClass = computed(() => `works-page--${String(preferenceStore.appTheme || 'light')}`)
 
 onMounted(() => {
   loadWorks()
@@ -233,33 +236,42 @@ onMounted(() => {
 
 <style scoped>
 .works-page {
-  --page-card-bg: #ffffff;
-  --page-card-bg-soft: #f8fafc;
-  --page-border: #e5e7eb;
-  --page-title: #111827;
-  --page-text: #4b5563;
-  --page-muted: #6b7280;
-  --page-danger-bg: #fff7f7;
-  --page-danger-border: #fecaca;
-  --page-danger-title: #991b1b;
-  --page-danger-text: #7f1d1d;
+  --page-card-bg: var(--ink-surface-1);
+  --page-card-bg-soft: var(--ink-surface-2);
+  --page-border: var(--ink-border);
+  --page-title: var(--ink-text-primary);
+  --page-text: var(--ink-text-secondary);
+  --page-muted: var(--ink-text-muted);
+  --page-danger-bg: var(--ink-danger-bg);
+  --page-danger-border: var(--ink-border-strong);
+  --page-danger-title: var(--ink-danger-text);
+  --page-danger-text: var(--ink-danger-text);
 
   max-width: 1360px;
   margin: 0 auto;
   padding: 32px 24px 48px;
 }
 
-:global(.main-layout--theme-dark) .works-page {
-  --page-card-bg: #111827;
-  --page-card-bg-soft: #0f172a;
-  --page-border: #233044;
-  --page-title: #e5e7eb;
-  --page-text: #cbd5e1;
-  --page-muted: #94a3b8;
-  --page-danger-bg: #2a1a1a;
-  --page-danger-border: #7f1d1d;
-  --page-danger-title: #fecaca;
-  --page-danger-text: #fca5a5;
+.works-page--dark {
+  --page-card-bg: var(--ink-surface-1);
+  --page-card-bg-soft: var(--ink-surface-2);
+  --page-border: var(--ink-border);
+  --page-title: var(--ink-text-primary);
+  --page-text: var(--ink-text-secondary);
+  --page-muted: var(--ink-text-muted);
+  --page-danger-bg: var(--ink-danger-bg);
+  --page-danger-border: var(--ink-border-strong);
+  --page-danger-title: var(--ink-danger-text);
+  --page-danger-text: var(--ink-danger-text);
+}
+
+.works-page--warm {
+  --page-card-bg: var(--ink-surface-1);
+  --page-card-bg-soft: var(--ink-surface-2);
+  --page-border: var(--ink-border);
+  --page-title: var(--ink-text-primary);
+  --page-text: var(--ink-text-secondary);
+  --page-muted: var(--ink-text-muted);
 }
 
 .hero-panel {

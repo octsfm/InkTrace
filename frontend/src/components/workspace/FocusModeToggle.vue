@@ -26,25 +26,25 @@ defineEmits(['toggle'])
 
 <style scoped>
 .focus-mode-toggle {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--studio-border, var(--ink-border, #d1d5db));
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--studio-card-bg, var(--ink-surface-1, #ffffff));
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--studio-text, var(--ink-text-secondary, #374151));
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .focus-mode-toggle:hover {
-  border-color: #93c5fd;
-  color: #1d4ed8;
+  border-color: var(--ink-accent, #2563eb);
+  color: var(--ink-accent, #2563eb);
 }
 
 .focus-mode-toggle--active {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border-color: var(--ink-accent-soft, #bfdbfe);
+  background: color-mix(in srgb, var(--ink-accent-soft, #eff6ff) 72%, var(--studio-card-bg, #ffffff));
+  color: var(--ink-accent, #2563eb);
 }
 </style>

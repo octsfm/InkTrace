@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElMessage } from 'element-plus'
+import { createPinia } from 'pinia'
 
 import WorksList from '../WorksList.vue'
 
@@ -30,6 +31,7 @@ const slotStub = { template: '<div><slot /></div>' }
 const mountPage = async () => {
   const wrapper = mount(WorksList, {
     global: {
+      plugins: [createPinia()],
       stubs: {
         CreateWorkModal: {
           props: ['modelValue', 'defaultTitle'],

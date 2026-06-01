@@ -3,7 +3,7 @@
     <div class="panel-header">
       <div>
         <h3>写作阅读偏好</h3>
-        <p>这里只调整编辑器阅读体验，不改变全局界面主题，也不会修改正文内容。</p>
+        <p>这里只调整正文阅读体验（字体、字号、行距），不修改全局界面主题和正文内容。</p>
       </div>
       <button type="button" class="close-button" @click="$emit('close')">关闭</button>
     </div>
@@ -54,23 +54,6 @@
         </select>
       </label>
     </div>
-
-    <div class="option-group">
-      <span class="option-label">编辑器配色</span>
-      <div class="chip-row">
-        <button
-          v-for="item in themeOptions"
-          :key="item.value"
-          type="button"
-          class="option-chip"
-          :class="{ 'option-chip--active': preferences.theme === item.value }"
-          :data-test="`theme-${item.value}`"
-          @click="updatePreference({ editorTheme: item.value })"
-        >
-          {{ item.label }}
-        </button>
-      </div>
-    </div>
   </section>
 </template>
 
@@ -83,8 +66,7 @@ const props = defineProps({
     default: () => ({
       fontFamily: 'system-ui',
       fontSize: 18,
-      lineHeight: 1.8,
-      theme: 'light'
+      lineHeight: 1.8
     })
   }
 })
@@ -99,17 +81,11 @@ const fontFamilyOptions = [
 
 const fontSizeOptions = [14, 16, 18, 20, 22, 24, 28]
 const lineHeightOptions = [1.4, 1.6, 1.8, 2, 2.2]
-const themeOptions = [
-  { label: '明亮', value: 'light' },
-  { label: '暖色', value: 'warm' },
-  { label: '深色', value: 'dark' }
-]
 
 const preferences = computed(() => ({
   fontFamily: String(props.preferences?.fontFamily || 'system-ui'),
   fontSize: Number(props.preferences?.fontSize || 18),
-  lineHeight: Number(props.preferences?.lineHeight || 1.8),
-  theme: String(props.preferences?.theme || 'light')
+  lineHeight: Number(props.preferences?.lineHeight || 1.8)
 }))
 
 const updatePreference = (patch) => {
@@ -119,9 +95,9 @@ const updatePreference = (patch) => {
 
 <style scoped>
 .writing-preference-panel {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ink-border, #e5e7eb);
   border-radius: 20px;
-  background: #ffffff;
+  background: var(--ink-surface-1, #ffffff);
   padding: 18px 20px;
   display: grid;
   gap: 16px;
@@ -140,20 +116,20 @@ const updatePreference = (patch) => {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink-text-primary, #111827);
 }
 
 .panel-header p {
   margin: 6px 0 0;
   font-size: 12px;
   line-height: 1.6;
-  color: #6b7280;
+  color: var(--ink-text-muted, #6b7280);
 }
 
 .close-button {
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: var(--ink-text-muted, #6b7280);
   font-size: 13px;
   cursor: pointer;
 }
@@ -171,7 +147,7 @@ const updatePreference = (patch) => {
 .option-label {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--ink-text-secondary, #374151);
 }
 
 .chip-row {
@@ -181,28 +157,28 @@ const updatePreference = (patch) => {
 }
 
 .option-chip {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ink-border-strong, #d1d5db);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--ink-surface-1, #ffffff);
   padding: 8px 12px;
   font-size: 13px;
-  color: #374151;
+  color: var(--ink-text-secondary, #374151);
   cursor: pointer;
 }
 
 .option-chip--active {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border-color: var(--ink-accent, #2563eb);
+  background: var(--ink-accent-soft, #eff6ff);
+  color: var(--ink-accent, #1d4ed8);
 }
 
 .option-select {
   width: 100%;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ink-border-strong, #d1d5db);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--ink-surface-1, #ffffff);
   padding: 10px 12px;
   font-size: 14px;
-  color: #111827;
+  color: var(--ink-text-primary, #111827);
 }
 </style>

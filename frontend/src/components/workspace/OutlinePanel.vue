@@ -454,6 +454,16 @@ defineExpose({
 
 <style scoped>
 .outline-panel {
+  --outline-bg-soft: var(--studio-bg-focus, var(--ink-surface-2, #f8fafc));
+  --outline-bg: var(--studio-card-bg, var(--ink-surface-1, #ffffff));
+  --outline-border: var(--studio-border, var(--ink-border, #e5e7eb));
+  --outline-border-strong: var(--ink-border-strong, #d1d5db);
+  --outline-title: var(--studio-title, var(--ink-text-primary, #111827));
+  --outline-text: var(--studio-text, var(--ink-text-secondary, #4b5563));
+  --outline-muted: var(--studio-muted, var(--ink-text-muted, #6b7280));
+  --outline-accent: var(--ink-accent, #2563eb);
+  --outline-accent-soft: var(--ink-accent-soft, #dbeafe);
+
   display: grid;
   gap: 14px;
 }
@@ -461,9 +471,9 @@ defineExpose({
 .plot-arc-section {
   display: grid;
   gap: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--outline-border);
   border-radius: 16px;
-  background: #f8fafc;
+  background: var(--outline-bg-soft);
   padding: 14px;
 }
 
@@ -477,13 +487,13 @@ defineExpose({
 .plot-arc-header h4,
 .plot-arc-card h5 {
   margin: 0;
-  color: #111827;
+  color: var(--outline-title);
 }
 
 .plot-arc-status {
   border-radius: 999px;
-  background: #e0f2fe;
-  color: #0369a1;
+  background: var(--outline-accent-soft);
+  color: var(--outline-accent);
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
@@ -498,14 +508,14 @@ defineExpose({
   display: grid;
   gap: 6px;
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--outline-bg);
   padding: 12px;
 }
 
 .plot-arc-card p,
 .plot-arc-list {
   margin: 0;
-  color: #4b5563;
+  color: var(--outline-text);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -540,17 +550,17 @@ defineExpose({
 
 .outline-mode-tab,
 .ghost-button {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--outline-bg-soft);
+  color: var(--outline-title);
 }
 
 .outline-mode-tab.active {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--outline-accent-soft);
+  color: var(--outline-accent);
 }
 
 .save-button {
-  background: #111827;
+  background: var(--outline-accent);
   color: #ffffff;
 }
 
@@ -576,22 +586,22 @@ defineExpose({
 .save-status,
 .mode-switch-guard p {
   margin: 0;
-  color: #6b7280;
+  color: var(--outline-muted);
   font-size: 13px;
   line-height: 1.6;
 }
 
 .outline-empty-state {
-  border: 1px dashed #d1d5db;
+  border: 1px dashed var(--outline-border-strong);
   border-radius: 16px;
-  background: #f8fafc;
+  background: var(--outline-bg-soft);
   padding: 16px;
 }
 
 .dirty-indicator {
   border-radius: 999px;
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--ink-warning-bg, #fef3c7);
+  color: var(--ink-warning-text, #92400e);
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
@@ -600,10 +610,11 @@ defineExpose({
 .outline-textarea {
   min-height: 320px;
   resize: vertical;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--outline-border-strong);
   border-radius: 16px;
   padding: 14px;
-  color: #111827;
+  color: var(--outline-title);
+  background: var(--outline-bg);
   font: inherit;
   line-height: 1.7;
 }
@@ -615,9 +626,9 @@ defineExpose({
 .mode-switch-guard {
   display: grid;
   gap: 12px;
-  border: 1px solid #fde68a;
+  border: 1px solid var(--ink-warning-text, #fde68a);
   border-radius: 16px;
-  background: #fffbeb;
+  background: var(--ink-warning-bg, #fffbeb);
   padding: 14px;
 }
 

@@ -4,24 +4,21 @@ import { describe, expect, it } from 'vitest'
 import WritingPreferencePanel from '../WritingPreferencePanel.vue'
 
 describe('WritingPreferencePanel', () => {
-  it('emits font family and theme updates from chip actions', async () => {
+  it('emits font family updates from chip actions', async () => {
     const wrapper = mount(WritingPreferencePanel, {
       props: {
         preferences: {
           fontFamily: 'system-ui',
           fontSize: 18,
-          lineHeight: 1.8,
-          theme: 'light'
+          lineHeight: 1.8
         }
       }
     })
 
     await wrapper.get('[data-test="font-monospace"]').trigger('click')
-    await wrapper.get('[data-test="theme-dark"]').trigger('click')
 
     expect(wrapper.emitted('update-preferences')).toEqual([
-      [{ fontFamily: 'monospace' }],
-      [{ editorTheme: 'dark' }]
+      [{ fontFamily: 'monospace' }]
     ])
   })
 
@@ -31,8 +28,7 @@ describe('WritingPreferencePanel', () => {
         preferences: {
           fontFamily: 'serif',
           fontSize: 20,
-          lineHeight: 1.6,
-          theme: 'warm'
+          lineHeight: 1.6
         }
       }
     })

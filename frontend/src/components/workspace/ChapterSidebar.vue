@@ -280,6 +280,16 @@ defineExpose({ scrollToChapter })
 
 <style scoped>
 .chapter-sidebar {
+  --sidebar-bg: var(--studio-card-bg, var(--ink-surface-1, #ffffff));
+  --sidebar-bg-soft: var(--studio-bg-focus, var(--ink-surface-2, #f8fafc));
+  --sidebar-border: var(--studio-border, var(--ink-border, #e5e7eb));
+  --sidebar-border-strong: var(--ink-border-strong, #d1d5db);
+  --sidebar-title: var(--studio-title, var(--ink-text-primary, #111827));
+  --sidebar-text: var(--studio-text, var(--ink-text-secondary, #4b5563));
+  --sidebar-muted: var(--studio-muted, var(--ink-text-muted, #6b7280));
+  --sidebar-accent: var(--ink-accent, #2563eb);
+  --sidebar-accent-soft: var(--ink-accent-soft, #dbeafe);
+
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -295,20 +305,20 @@ defineExpose({ scrollToChapter })
 .sidebar-header h2 {
   font-size: 18px;
   font-weight: 600;
-  color: #111827;
+  color: var(--sidebar-title);
 }
 
 .sidebar-header p {
   margin-top: 6px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--sidebar-muted);
 }
 
 .add-button {
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--sidebar-accent-soft);
   border-radius: 999px;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: color-mix(in srgb, var(--sidebar-accent-soft) 72%, var(--sidebar-bg));
+  color: var(--sidebar-accent);
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
@@ -329,38 +339,38 @@ defineExpose({ scrollToChapter })
 
 .sidebar-tool-input {
   width: 100%;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--sidebar-border-strong);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--sidebar-bg);
   padding: 10px 12px;
   font-size: 13px;
-  color: #111827;
+  color: var(--sidebar-title);
   outline: none;
 }
 
 .sidebar-tool-input:focus {
-  border-color: #93c5fd;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: var(--sidebar-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sidebar-accent) 18%, transparent);
 }
 
 .jump-button {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--sidebar-border-strong);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--sidebar-bg);
   padding: 0 12px;
   font-size: 12px;
   font-weight: 600;
-  color: #374151;
+  color: var(--sidebar-text);
   cursor: pointer;
 }
 
 .sidebar-state {
   margin-top: 18px;
   border-radius: 16px;
-  background: #f9fafb;
+  background: var(--sidebar-bg-soft);
   padding: 14px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--sidebar-muted);
 }
 
 .chapter-list {
@@ -375,9 +385,9 @@ defineExpose({ scrollToChapter })
 }
 
 .chapter-item {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--sidebar-border);
   border-radius: 16px;
-  background: #ffffff;
+  background: var(--sidebar-bg);
   padding: 12px 14px;
   display: flex;
   align-items: center;
@@ -386,13 +396,13 @@ defineExpose({ scrollToChapter })
 }
 
 .chapter-item:hover {
-  border-color: #cbd5e1;
-  background: #f8fafc;
+  border-color: var(--sidebar-border-strong);
+  background: var(--sidebar-bg-soft);
 }
 
 .chapter-item.active {
-  border-color: #bfdbfe;
-  background: #eff6ff;
+  border-color: var(--sidebar-accent-soft);
+  background: color-mix(in srgb, var(--sidebar-accent-soft) 62%, var(--sidebar-bg));
 }
 
 .chapter-item.dragging {
@@ -400,8 +410,8 @@ defineExpose({ scrollToChapter })
 }
 
 .chapter-item.drag-target {
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.12);
+  border-color: var(--sidebar-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sidebar-accent) 16%, transparent);
 }
 
 .chapter-item-main {
@@ -424,7 +434,7 @@ defineExpose({ scrollToChapter })
 .chapter-title {
   font-size: 14px;
   font-weight: 600;
-  color: #111827;
+  color: var(--sidebar-title);
 }
 
 .chapter-title-row {
@@ -451,7 +461,7 @@ defineExpose({ scrollToChapter })
 
 .chapter-meta {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--sidebar-muted);
 }
 
 .chapter-actions {
@@ -471,10 +481,10 @@ defineExpose({ scrollToChapter })
 }
 
 .chapter-action-button {
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--sidebar-accent-soft);
   border-radius: 999px;
-  background: #ffffff;
-  color: #1d4ed8;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-accent);
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
@@ -483,8 +493,8 @@ defineExpose({ scrollToChapter })
 }
 
 .chapter-action-button.danger {
-  border-color: #fecaca;
-  color: #dc2626;
+  border-color: var(--ink-danger-text, #dc2626);
+  color: var(--ink-danger-text, #dc2626);
 }
 
 .chapter-rename-form {
@@ -493,12 +503,12 @@ defineExpose({ scrollToChapter })
 
 .chapter-rename-input {
   width: 100%;
-  border: 1px solid #93c5fd;
+  border: 1px solid var(--sidebar-accent);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--sidebar-bg);
   padding: 8px 10px;
   font-size: 14px;
-  color: #111827;
+  color: var(--sidebar-title);
   outline: none;
 }
 </style>

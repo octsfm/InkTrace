@@ -47,6 +47,13 @@ const handleInput = (event) => {
 
 <style scoped>
 .chapter-title-input {
+  --chapter-title-bg: var(--studio-card-bg, var(--ink-surface-1, #ffffff));
+  --chapter-title-bg-disabled: var(--studio-bg-focus, var(--ink-surface-2, #f9fafb));
+  --chapter-title-border: var(--studio-border, var(--ink-border, #e5e7eb));
+  --chapter-title-text: var(--studio-title, var(--ink-text-primary, #111827));
+  --chapter-title-muted: var(--studio-muted, var(--ink-text-muted, #9ca3af));
+  --chapter-title-accent: var(--ink-accent, #2563eb);
+
   display: flex;
   align-items: center;
   gap: 10px;
@@ -55,9 +62,9 @@ const handleInput = (event) => {
   box-sizing: border-box;
   min-height: 44px;
   max-height: 44px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--chapter-title-border);
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--chapter-title-bg);
   padding: 0 14px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -66,7 +73,7 @@ const handleInput = (event) => {
   flex: 0 0 auto;
   font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: var(--chapter-title-text);
   white-space: nowrap;
 }
 
@@ -80,26 +87,26 @@ const handleInput = (event) => {
   font-size: 16px;
   line-height: 44px;
   font-weight: 600;
-  color: #111827;
+  color: var(--chapter-title-text);
   outline: none;
   appearance: none;
 }
 
 .chapter-title-field::placeholder {
-  color: #9ca3af;
+  color: var(--chapter-title-muted);
 }
 
 .chapter-title-input:focus-within {
-  border-color: #dbeafe;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+  border-color: var(--chapter-title-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chapter-title-accent) 18%, transparent);
 }
 
 .chapter-title-input--disabled {
-  background: #f9fafb;
+  background: var(--chapter-title-bg-disabled);
 }
 
 .chapter-title-input--disabled .chapter-title-prefix,
 .chapter-title-field:disabled {
-  color: #9ca3af;
+  color: var(--chapter-title-muted);
 }
 </style>
