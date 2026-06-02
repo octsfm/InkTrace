@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="works-page" :class="themeClass">
     <section class="hero-panel">
       <div class="hero-copy">
@@ -7,11 +7,11 @@
         <p class="hero-description">支持新建作品或导入 TXT，进入后即可继续创作。</p>
       </div>
       <div class="hero-actions">
-        <el-button type="primary" @click="showCreateModal = true">
+        <el-button class="hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">
           <el-icon><Plus /></el-icon>
           新建作品
         </el-button>
-        <el-button plain @click="showImportModal = true">
+        <el-button class="hero-btn hero-btn--secondary" plain @click="showImportModal = true">
           <el-icon><Upload /></el-icon>
           导入 TXT
         </el-button>
@@ -41,17 +41,17 @@
       <h2>书架加载失败</h2>
       <p>{{ errorMessage }}</p>
       <div class="error-actions">
-        <el-button type="primary" @click="loadWorks">重新加载</el-button>
-        <el-button plain @click="showCreateModal = true">先新建作品</el-button>
+        <el-button class="hero-btn hero-btn--primary" type="primary" @click="loadWorks">重新加载</el-button>
+        <el-button class="hero-btn hero-btn--secondary" plain @click="showCreateModal = true">先新建作品</el-button>
       </div>
     </section>
 
     <div v-else-if="works.length === 0" class="empty-container">
-      <el-empty description="书架还是空的，先创建一个作品开始写作。">
-        <div class="empty-hint">你可以先新建空白作品，也可以直接导入现有 TXT 稿件。</div>
+      <el-empty description="还没有作品，先创建一本吧。">
+        <p class="empty-hint">支持新建空作品，也可以直接导入 TXT。</p>
         <div class="empty-actions">
-          <el-button type="primary" @click="showCreateModal = true">新建作品</el-button>
-          <el-button plain @click="showImportModal = true">导入 TXT</el-button>
+          <el-button class="hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">新建作品</el-button>
+          <el-button class="hero-btn hero-btn--secondary" plain @click="showImportModal = true">导入 TXT</el-button>
         </div>
       </el-empty>
     </div>
@@ -79,20 +79,9 @@
       </div>
     </section>
 
-    <ImportModal
-      v-model="showImportModal"
-      @imported="handleImported"
-    />
-    <ExportTxtModal
-      v-model="showExportModal"
-      :work="exportTargetWork"
-      @exported="handleExported"
-    />
-    <CreateWorkModal
-      v-model="showCreateModal"
-      :default-title="buildDraftTitle()"
-      @created="handleCreated"
-    />
+    <ImportModal v-model="showImportModal" @imported="handleImported" />
+    <ExportTxtModal v-model="showExportModal" :work="exportTargetWork" @exported="handleExported" />
+    <CreateWorkModal v-model="showCreateModal" :default-title="buildDraftTitle()" @created="handleCreated" />
   </div>
 </template>
 
@@ -110,6 +99,7 @@ import CreateWorkModal from '@/components/works/CreateWorkModal.vue'
 
 const router = useRouter()
 const preferenceStore = usePreferenceStore()
+
 const works = ref([])
 const loading = ref(true)
 const showImportModal = ref(false)
@@ -136,16 +126,12 @@ const loadWorks = async () => {
 
 const handleImported = async (work) => {
   await loadWorks()
-  if (work?.id) {
-    openWorkspace(work.id)
-  }
+  if (work?.id) openWorkspace(work.id)
 }
 
 const handleCreated = async (work) => {
   await loadWorks()
-  if (work?.id) {
-    openWorkspace(work.id)
-  }
+  if (work?.id) openWorkspace(work.id)
 }
 
 const handleDeleteWork = async (workId) => {
@@ -209,23 +195,19 @@ const handleExported = () => {
 }
 
 const openWorkspace = (workId) => {
-  router.push({
-    path: `/works/${workId}`
-  })
+  router.push({ path: `/works/${workId}` })
 }
 
 const buildDraftTitle = () => {
   const date = new Date()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
-  return `未命名作品 ${month}${day}`
+  return `未命名作品${month}${day}`
 }
 
 const formatNumber = (num) => Number(num || 0).toLocaleString('zh-CN')
 
-const totalWords = computed(() => works.value.reduce((sum, item) => {
-  return sum + Number(item.word_count ?? item.current_word_count ?? 0)
-}, 0))
+const totalWords = computed(() => works.value.reduce((sum, item) => sum + Number(item.word_count ?? item.current_word_count ?? 0), 0))
 const latestWork = computed(() => works.value[0] || null)
 const themeClass = computed(() => `works-page--${String(preferenceStore.appTheme || 'light')}`)
 
@@ -252,19 +234,7 @@ onMounted(() => {
   padding: 32px 24px 48px;
 }
 
-.works-page--dark {
-  --page-card-bg: var(--ink-surface-1);
-  --page-card-bg-soft: var(--ink-surface-2);
-  --page-border: var(--ink-border);
-  --page-title: var(--ink-text-primary);
-  --page-text: var(--ink-text-secondary);
-  --page-muted: var(--ink-text-muted);
-  --page-danger-bg: var(--ink-danger-bg);
-  --page-danger-border: var(--ink-border-strong);
-  --page-danger-title: var(--ink-danger-text);
-  --page-danger-text: var(--ink-danger-text);
-}
-
+.works-page--dark,
 .works-page--warm {
   --page-card-bg: var(--ink-surface-1);
   --page-card-bg-soft: var(--ink-surface-2);
@@ -272,6 +242,13 @@ onMounted(() => {
   --page-title: var(--ink-text-primary);
   --page-text: var(--ink-text-secondary);
   --page-muted: var(--ink-text-muted);
+}
+
+.works-page--dark {
+  --page-danger-bg: var(--ink-danger-bg);
+  --page-danger-border: var(--ink-border-strong);
+  --page-danger-title: var(--ink-danger-text);
+  --page-danger-text: var(--ink-danger-text);
 }
 
 .hero-panel {
@@ -285,9 +262,7 @@ onMounted(() => {
   background: linear-gradient(180deg, var(--page-card-bg) 0%, var(--page-card-bg-soft) 100%);
 }
 
-.hero-copy {
-  max-width: 720px;
-}
+.hero-copy { max-width: 720px; }
 
 .hero-eyebrow {
   font-size: 12px;
@@ -318,6 +293,26 @@ onMounted(() => {
   gap: 12px;
 }
 
+:deep(.hero-btn.el-button) {
+  min-height: 42px;
+  border-radius: 999px;
+  font-weight: 600;
+  padding: 10px 16px;
+  transition: all 0.2s ease;
+}
+
+:deep(.hero-btn--primary.el-button) {
+  --el-button-bg-color: var(--ink-accent);
+  --el-button-border-color: var(--ink-accent);
+  --el-button-text-color: #fff;
+}
+
+:deep(.hero-btn--secondary.el-button) {
+  --el-button-bg-color: var(--page-card-bg);
+  --el-button-border-color: var(--page-border);
+  --el-button-text-color: var(--page-title);
+}
+
 .summary-panel {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -335,16 +330,8 @@ onMounted(() => {
   background-color: var(--page-card-bg);
 }
 
-.summary-label {
-  font-size: 12px;
-  color: var(--page-muted);
-}
-
-.summary-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--page-title);
-}
+.summary-label { font-size: 12px; color: var(--page-muted); }
+.summary-value { font-size: 24px; font-weight: 700; color: var(--page-title); }
 
 .loading-container,
 .empty-container {
@@ -360,55 +347,17 @@ onMounted(() => {
   background: var(--page-danger-bg);
 }
 
-.error-panel h2 {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--page-danger-title);
-}
+.error-panel h2 { font-size: 20px; font-weight: 600; color: var(--page-danger-title); }
+.error-panel p { margin-top: 10px; font-size: 14px; color: var(--page-danger-text); }
 
-.error-panel p {
-  margin-top: 10px;
-  font-size: 14px;
-  color: var(--page-danger-text);
-}
+.error-actions { display: flex; gap: 12px; margin-top: 18px; }
+.empty-hint { margin-bottom: 14px; font-size: 13px; color: var(--page-muted); }
+.empty-actions { display: flex; justify-content: center; gap: 12px; }
 
-.error-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 18px;
-}
-
-.empty-hint {
-  margin-bottom: 14px;
-  font-size: 13px;
-  color: var(--page-muted);
-}
-
-.empty-actions {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-}
-
-.works-section {
-  margin-top: 28px;
-}
-
-.section-heading {
-  margin-bottom: 16px;
-}
-
-.section-heading h2 {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--page-title);
-}
-
-.section-heading p {
-  margin-top: 6px;
-  font-size: 14px;
-  color: var(--page-muted);
-}
+.works-section { margin-top: 28px; }
+.section-heading { margin-bottom: 16px; }
+.section-heading h2 { font-size: 20px; font-weight: 600; color: var(--page-title); }
+.section-heading p { margin-top: 6px; font-size: 14px; color: var(--page-muted); }
 
 .works-grid {
   display: grid;
@@ -417,12 +366,8 @@ onMounted(() => {
 }
 
 @media (max-width: 960px) {
-  .hero-panel,
-  .summary-panel {
-    grid-template-columns: 1fr;
-    flex-direction: column;
-    align-items: flex-start;
-  }
+  .hero-panel { flex-direction: column; align-items: flex-start; }
+  .summary-panel { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
@@ -431,10 +376,6 @@ onMounted(() => {
   .error-actions {
     width: 100%;
     flex-direction: column;
-  }
-
-  .summary-panel {
-    grid-template-columns: 1fr;
   }
 }
 </style>

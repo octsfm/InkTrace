@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section class="ai-panel" data-test="ai-panel">
     <header class="ai-panel-header">
       <div>
@@ -1369,7 +1369,7 @@ const handleGenerateDirections = async () => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '??????')
+    planningActionError.value = String(error?.userMessage || error?.message || '方向推演生成失败，请稍后重试')
   }
 }
 
@@ -1385,7 +1385,7 @@ const handleSelectDirection = async (proposalId, optionId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '??????')
+    planningActionError.value = String(error?.userMessage || error?.message || '方向选择失败，请稍后重试')
   }
 }
 
@@ -1402,7 +1402,7 @@ const handleGeneratePlan = async (proposalId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '????????')
+    planningActionError.value = String(error?.userMessage || error?.message || '章节计划生成失败，请稍后重试')
   }
 }
 
@@ -1417,7 +1417,7 @@ const handleConfirmPlan = async (planId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '????????')
+    planningActionError.value = String(error?.userMessage || error?.message || '章节计划确认失败，请稍后重试')
   }
 }
 
@@ -1433,7 +1433,7 @@ const handleRejectPlan = async (planId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '????????')
+    planningActionError.value = String(error?.userMessage || error?.message || '章节计划拒绝失败，请稍后重试')
   }
 }
 
@@ -1471,7 +1471,7 @@ const handleAcceptCandidate = async (candidateDraftId) => {
     await loadCandidateDetail(candidateDraftId)
     await loadAISuggestions()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || '????')
+    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿接受失败，请稍后重试')
   }
 }
 
@@ -1490,7 +1490,7 @@ const handleRejectCandidate = async (candidateDraftId) => {
     await loadCandidateDetail(candidateDraftId)
     await loadAISuggestions()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || '????')
+    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿拒绝失败，请稍后重试')
   }
 }
 
@@ -1583,7 +1583,7 @@ const handleSelectCandidateVersion = async (candidateDraftId, candidateVersionId
     await loadCandidateDrafts()
     await loadConflicts()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || '??????')
+    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿应用失败，请稍后重试')
   }
 }
 
@@ -1616,7 +1616,7 @@ const handleRewriteCandidate = async (candidateDraftId, candidateVersionId, trig
     await loadAISuggestions()
     await loadConflicts()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || '????')
+    candidateActionError.value = String(error?.userMessage || error?.message || '候选版本切换失败，请稍后重试')
   }
 }
 
@@ -1635,7 +1635,7 @@ const handleRejectCandidateVersion = async (candidateDraftId, candidateVersionId
     await loadAISuggestions()
     await loadConflicts()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || '??????')
+    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿重写失败，请稍后重试')
   }
 }
 
@@ -1744,7 +1744,7 @@ const handleApproveMemorySuggestion = async (gateId, suggestionId) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || '??????')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议审批失败，请稍后重试')
   }
 }
 
@@ -1763,7 +1763,7 @@ const handleEditApproveMemorySuggestion = async (gateId, suggestion) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || '?????????')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议编辑审批失败，请稍后重试')
   }
 }
 
@@ -1779,7 +1779,7 @@ const handleRejectMemorySuggestion = async (gateId, suggestionId) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || 'memory ????')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议拒绝失败，请稍后重试')
   }
 }
 
@@ -1795,7 +1795,7 @@ const handleDeferMemorySuggestion = async (gateId, suggestionId) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || '????????')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议暂缓失败，请稍后重试')
   }
 }
 
@@ -1843,7 +1843,7 @@ const handleRollbackMemoryRevision = async (revisionId) => {
     await loadMemoryGates()
     ElMessage.success('rollback 成功')
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || '??????')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆修订回滚失败，请稍后重试')
   }
 }
 
@@ -1902,11 +1902,22 @@ onMounted(async () => {
 
 <style scoped>
 .ai-panel {
+  --ai-bg: var(--studio-card-bg, var(--ink-surface-1));
+  --ai-bg-soft: var(--studio-bg-focus, var(--ink-surface-2));
+  --ai-border: var(--studio-border, var(--ink-border));
+  --ai-title: var(--studio-title, var(--ink-text-primary));
+  --ai-text: var(--studio-text, var(--ink-text-secondary));
+  --ai-muted: var(--studio-muted, var(--ink-text-muted));
+  --ai-danger: var(--ink-danger-text);
+  --ai-warning-bg: var(--ink-warning-bg);
+  --ai-warning-text: var(--ink-warning-text);
+  --ai-danger-bg: var(--ink-danger-bg);
+
   display: grid;
   gap: 14px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ai-border);
   border-radius: 20px;
-  background: #ffffff;
+  background: var(--ai-bg);
   padding: 16px;
   min-width: 0;
   min-height: 0;
@@ -1915,28 +1926,28 @@ onMounted(async () => {
 .ai-panel-header h3,
 .ai-section h4 {
   margin: 0;
-  color: #111827;
+  color: var(--ai-title);
 }
 
 .ai-panel-header p,
 .ai-note,
 .ai-error {
   margin: 6px 0 0;
-  color: #6b7280;
+  color: var(--ai-text);
   font-size: 13px;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
 .ai-error {
-  color: #b91c1c;
+  color: var(--ai-danger);
 }
 
 .ai-section {
   display: grid;
   gap: 10px;
   padding-top: 8px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid color-mix(in srgb, var(--ai-border) 62%, transparent);
 }
 
 .conflict-banner {
@@ -1949,24 +1960,24 @@ onMounted(async () => {
 }
 
 .conflict-banner-warning {
-  border: 1px solid #f59e0b;
-  background: #fff7ed;
-  color: #9a3412;
+  border: 1px solid color-mix(in srgb, var(--ai-warning-text) 45%, transparent);
+  background: var(--ai-warning-bg);
+  color: var(--ai-warning-text);
 }
 
 .conflict-banner-blocking {
-  border: 1px solid #ef4444;
-  background: #fef2f2;
-  color: #991b1b;
+  border: 1px solid color-mix(in srgb, var(--ai-danger) 45%, transparent);
+  background: var(--ai-danger-bg);
+  color: var(--ai-danger);
 }
 
 .settings-block-banner {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  border: 1px solid #f59e0b;
-  background: #fffbeb;
-  color: #92400e;
+  border: 1px solid color-mix(in srgb, var(--ai-warning-text) 45%, transparent);
+  background: var(--ai-warning-bg);
+  color: var(--ai-warning-text);
   border-radius: 12px;
   padding: 10px 12px;
   font-size: 12px;
@@ -1984,21 +1995,25 @@ onMounted(async () => {
 .ai-actions button,
 .field-grid input,
 .field-grid select {
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
+  border: 1px solid var(--ai-border);
+  border-radius: 999px;
   padding: 8px 10px;
   font-size: 12px;
+  color: var(--ai-title);
+  background: var(--ai-bg-soft);
 }
 
 .ai-actions button {
-  background: #f8fafc;
   cursor: pointer;
+}
+.ai-actions button:disabled {
+  opacity: 0.4;
 }
 
 .tag {
-  border: 1px solid #dbeafe;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border: 1px solid var(--ink-accent-soft);
+  background: color-mix(in srgb, var(--ink-accent-soft) 72%, var(--ai-bg));
+  color: var(--ink-accent);
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 12px;
@@ -2035,7 +2050,7 @@ onMounted(async () => {
 .quick-trial-output {
   white-space: pre-wrap;
   border-radius: 12px;
-  background: #f8fafc;
+  background: var(--ai-bg-soft);
   padding: 10px;
   margin: 0;
   font-size: 12px;
@@ -2055,17 +2070,17 @@ onMounted(async () => {
 .ai-settings-card {
   display: grid;
   gap: 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ai-border);
   border-radius: 14px;
   padding: 12px;
-  background: #f8fafc;
+  background: var(--ai-bg-soft);
 }
 
 .ai-field {
   display: grid;
   gap: 6px;
   font-size: 12px;
-  color: #374151;
+  color: var(--ai-text);
 }
 </style>
 

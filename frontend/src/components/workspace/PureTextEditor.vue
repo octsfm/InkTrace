@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="pure-text-editor">
     <div v-if="showSoftLimitWarning" class="soft-limit-banner">
       当前章节已超过 20 万有效字符，建议尽快拆分章节以保持流畅编辑。
@@ -228,3 +228,4 @@ defineExpose({ restoreViewport, getViewport, focusEditor })
   color: var(--editor-text);
 }
 </style>
+

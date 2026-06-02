@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section class="timeline-panel" data-panel="timeline">
     <header class="timeline-header">
       <div>
@@ -512,6 +512,15 @@ defineExpose({
 
 <style scoped>
 .timeline-panel {
+  --panel-surface: var(--studio-card-bg, var(--ink-surface-1));
+  --panel-surface-soft: var(--studio-bg-focus, var(--ink-surface-2));
+  --panel-border: var(--studio-border, var(--ink-border));
+  --panel-border-strong: var(--ink-border-strong);
+  --panel-title: var(--studio-title, var(--ink-text-primary));
+  --panel-text: var(--studio-text, var(--ink-text-secondary));
+  --panel-muted: var(--studio-muted, var(--ink-text-muted));
+  --panel-input-bg: var(--studio-input-bg, var(--ink-surface-1));
+  --panel-button-bg: var(--studio-button-bg, var(--ink-surface-2));
   display: grid;
   gap: 14px;
 }
@@ -519,9 +528,9 @@ defineExpose({
 .plot-arc-section {
   display: grid;
   gap: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--panel-border);
   border-radius: 16px;
-  background: #f8fafc;
+  background: var(--panel-surface-soft);
   padding: 12px;
 }
 
@@ -534,13 +543,13 @@ defineExpose({
 
 .plot-arc-header h4 {
   margin: 0;
-  color: #111827;
+  color: var(--panel-title);
 }
 
 .plot-arc-status {
   border-radius: 999px;
-  background: #e0f2fe;
-  color: #0369a1;
+  background: var(--ink-accent-soft);
+  color: var(--ink-accent);
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
@@ -549,7 +558,7 @@ defineExpose({
 .plot-arc-text,
 .plot-arc-list {
   margin: 0;
-  color: #4b5563;
+  color: var(--panel-text);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -570,7 +579,7 @@ defineExpose({
 .timeline-header h3,
 .editor-header h4 {
   margin: 0;
-  color: #111827;
+  color: var(--panel-title);
 }
 
 .timeline-header p,
@@ -578,7 +587,7 @@ defineExpose({
 .save-status,
 .timeline-empty {
   margin: 6px 0 0;
-  color: #6b7280;
+  color: var(--panel-muted);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -595,13 +604,14 @@ defineExpose({
 
 .create-button,
 .save-button {
-  background: #111827;
-  color: #ffffff;
+  background: var(--panel-title);
+  color: var(--panel-surface);
 }
 
 .ghost-button {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--panel-button-bg);
+  color: var(--panel-title);
+  border: 1px solid var(--panel-border);
 }
 
 .timeline-layout {
@@ -621,9 +631,9 @@ defineExpose({
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--panel-border);
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--panel-surface);
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;
@@ -637,18 +647,18 @@ defineExpose({
 }
 
 .timeline-item.active {
-  border-color: #93c5fd;
-  background: #eff6ff;
+  border-color: var(--ink-accent);
+  background: var(--ink-accent-soft);
 }
 
 .timeline-item-title {
-  color: #111827;
+  color: var(--panel-title);
   font-size: 14px;
   font-weight: 600;
 }
 
 .timeline-item-meta {
-  color: #6b7280;
+  color: var(--panel-muted);
   font-size: 12px;
 }
 
@@ -669,7 +679,7 @@ defineExpose({
 }
 
 .field span {
-  color: #374151;
+  color: var(--panel-text);
   font-size: 13px;
   font-weight: 600;
 }
@@ -678,11 +688,23 @@ defineExpose({
 .field textarea,
 .field select {
   width: 100%;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--panel-border-strong);
   border-radius: 14px;
   padding: 12px 14px;
-  color: #111827;
+  background: var(--panel-input-bg);
+  color: var(--panel-title);
   font: inherit;
+}
+
+.field select,
+.field option {
+  background: var(--panel-input-bg);
+  color: var(--panel-title);
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--panel-muted);
 }
 
 .field textarea {
@@ -697,8 +719,8 @@ defineExpose({
 .dirty-indicator {
   align-self: start;
   border-radius: 999px;
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--ink-warning-bg);
+  color: var(--ink-warning-text);
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
@@ -714,3 +736,4 @@ defineExpose({
   }
 }
 </style>
+

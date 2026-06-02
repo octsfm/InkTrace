@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div v-if="modelValue" class="modal-mask" @click.self="close">
     <div class="modal-panel">
       <div class="modal-header">
@@ -119,7 +119,7 @@ watch(
 .modal-panel {
   width: min(560px, 100%);
   border-radius: 24px;
-  background: #ffffff;
+  background: var(--ink-surface-1);
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
 }
 
@@ -133,20 +133,20 @@ watch(
 }
 
 .modal-header {
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--ink-border);
 }
 
 .modal-header h3 {
   font-size: 20px;
   font-weight: 600;
-  color: #111827;
+  color: var(--ink-text-primary);
 }
 
 .modal-header p {
   margin-top: 6px;
   font-size: 13px;
   line-height: 1.6;
-  color: #6b7280;
+  color: var(--ink-text-muted);
 }
 
 .modal-body {
@@ -163,44 +163,44 @@ watch(
 .field-label {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--ink-text-secondary);
 }
 
 .field-input {
   width: 100%;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ink-border-strong);
   border-radius: 14px;
   padding: 12px 14px;
   font-size: 14px;
-  color: #111827;
+  color: var(--ink-text-primary);
   outline: none;
 }
 
 .field-input:focus {
-  border-color: #2563eb;
+  border-color: var(--ink-accent);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
 .modal-footer {
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--ink-border);
 }
 
 .ghost-button,
 .primary-button {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ink-border-strong);
   border-radius: 999px;
   padding: 10px 16px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  background: #ffffff;
-  color: #374151;
+  background: var(--ink-surface-1);
+  color: var(--ink-text-secondary);
 }
 
 .primary-button {
-  border-color: #2563eb;
-  background: #2563eb;
-  color: #ffffff;
+  border-color: var(--ink-accent);
+  background: var(--ink-accent);
+  color: var(--ink-surface-1);
 }
 
 .primary-button:disabled {

@@ -1,16 +1,16 @@
-<template>
+﻿<template>
   <section class="settings-center" :class="themeClass" data-testid="settings-center">
     <header class="settings-header">
       <div>
         <h1>设置中心</h1>
-        <p>在这里统一配置全局界面与 AI 能力，写作台不再承载全局设置。</p>
+        <p>在这里统一管理全局界面和 AI 配置，写作台不再承载全局设置。</p>
       </div>
     </header>
 
     <div class="settings-grid">
       <article class="settings-card">
         <h2>界面与阅读设置</h2>
-        <p class="settings-tip">界面主题作用于整个应用，所有主功能区保持一致，不再单独设置编辑器主题。</p>
+        <p class="settings-tip">界面主题作用于整个应用，所有主功能区保持一致。</p>
 
         <div class="field-grid">
           <label class="field">
@@ -39,21 +39,15 @@
 
       <article class="settings-card">
         <h2>AI 设置</h2>
-        <p class="settings-tip">先配置可用模型服务商 Key，再完成任务模型配置。分析任务和写作任务是必填项。</p>
-        <p class="settings-tip">
-          说明：模型服务商是“大模型提供商或接入服务”，例如你接入的 DeepSeek、Kimi、OpenAI 等通道。
-        </p>
+        <p class="settings-tip">先配置可用模型服务 Key，再配置任务模型。分析任务和写作任务是必填项。</p>
+        <p class="settings-tip">说明：模型服务商就是“大模型提供方或接入服务”，例如 DeepSeek、Kimi、OpenAI。</p>
 
         <div v-if="loading" class="settings-tip">正在加载 AI 设置...</div>
 
         <template v-else>
           <section class="provider-list">
             <h3>模型服务商列表</h3>
-            <div
-              v-for="provider in providerConfigs"
-              :key="provider.provider_name"
-              class="provider-card"
-            >
+            <div v-for="provider in providerConfigs" :key="provider.provider_name" class="provider-card">
               <div class="provider-header">
                 <strong>{{ displayProviderName(provider.provider_name) }}</strong>
                 <span>{{ provider.enabled ? '已启用' : '已停用' }}</span>
@@ -71,7 +65,7 @@
                 </label>
                 <label class="field">
                   <span>模型服务商 Key</span>
-                  <input v-model="provider.api_key" type="password" autocomplete="new-password" placeholder="输入新 Key（不回显旧值）" />
+                  <input v-model="provider.api_key" type="password" autocomplete="new-password" placeholder="输入新 Key（不会回显旧值）" />
                 </label>
                 <label class="field">
                   <span>服务地址（可选）</span>
@@ -125,7 +119,6 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-
 import { aiApi } from '@/api'
 import { usePreferenceStore } from '@/stores/preference'
 
@@ -144,9 +137,7 @@ const generalMessage = ref('通用设置已加载。')
 const loading = ref(false)
 const settingsForm = reactive({
   provider_configs: [],
-  model_role_mappings: Object.fromEntries(
-    REQUIRED_SETTINGS_ROLES.map((role) => [role, { provider_name: '', model_name: '' }])
-  )
+  model_role_mappings: Object.fromEntries(REQUIRED_SETTINGS_ROLES.map((role) => [role, { provider_name: '', model_name: '' }]))
 })
 const aiSaveMessage = ref('')
 const aiErrorMessage = ref('')
@@ -261,58 +252,68 @@ const buildSettingsPayload = () => ({
   idempotency_key: buildIdempotencyKey('settings_update'),
   provider_configs: providerConfigs.value.map((provider) => ({
     provider_name: provider.provider_name,
-    enabled: provider.enabled,
-    api_key: String(provider.api_key || '').trim(),
+    enabled: Boolean(provider.enabled),
     default_model: String(provider.default_model || '').trim(),
+    api_key: String(provider.api_key || '').trim() || undefined,
     timeout: Number(provider.timeout || 30),
-    base_url: String(provider.base_url || '').trim() || null
+    base_url: String(provider.base_url || '').trim() || undefined
   })),
-  model_role_mappings: Object.fromEntries(
-    Object.entries(settingsForm.model_role_mappings).map(([role, mapping]) => [role, {
-      provider_name: String(mapping.provider_name || '').trim(),
-      model_name: String(mapping.model_name || '').trim()
-    }])
-  )
+  model_role_mappings: Object.fromEntries(REQUIRED_SETTINGS_ROLES.map((role) => {
+    const item = settingsForm.model_role_mappings[role] || {}
+    return [role, {
+      provider_name: String(item.provider_name || '').trim(),
+      model_name: String(item.model_name || '').trim()
+    }]
+  }))
 })
 
 const saveAISettings = async () => {
   aiSaveMessage.value = ''
   aiErrorMessage.value = ''
   try {
-    const payload = unwrapData(await aiApi.updateAISettings(buildSettingsPayload()))
-    resetSettingsForm(payload)
-    aiSaveMessage.value = 'AI 设置已保存。'
+    const payload = buildSettingsPayload()
+    const response = unwrapData(await aiApi.updateAISettings(payload))
+    resetSettingsForm(response)
+    aiSaveMessage.value = 'AI 配置已保存。'
   } catch (error) {
-    aiErrorMessage.value = String(error?.userMessage || error?.message || '保存 AI 设置失败')
+    aiErrorMessage.value = String(error?.safe_message || error?.userMessage || error?.message || '保存 AI 配置失败')
   }
 }
 
 const testProvider = async (providerName) => {
   aiSaveMessage.value = ''
   aiErrorMessage.value = ''
+  const provider = providerConfigs.value.find((item) => item.provider_name === providerName)
+  if (!provider) return
   try {
-    const payload = unwrapData(await aiApi.testProvider(providerName, {
+    const payload = {
       caller_type: 'user_action',
       user_action: true,
       idempotency_key: buildIdempotencyKey('provider_test'),
-      provider_name: providerName
-    }))
-    const index = settingsForm.provider_configs.findIndex((item) => item.provider_name === providerName)
-    if (index >= 0) {
-      const current = settingsForm.provider_configs[index]
-      settingsForm.provider_configs[index] = {
-        ...current,
-        last_test_status: payload.test_status || payload.status || 'unknown',
-        last_test_error_message: payload.error_message || ''
-      }
+      provider_name: provider.provider_name,
+      api_key: String(provider.api_key || '').trim() || undefined,
+      timeout: Number(provider.timeout || 30),
+      base_url: String(provider.base_url || '').trim() || undefined,
+      default_model: String(provider.default_model || '').trim() || undefined
     }
-    aiSaveMessage.value = `${displayProviderName(providerName)} 测试完成。`
+    const result = unwrapData(await aiApi.testProvider(payload))
+    provider.last_test_status = result.status || 'unknown'
+    provider.last_test_error_message = result.error_message || ''
+    if (result.status === 'ok' || result.status === 'passed') {
+      aiSaveMessage.value = `${displayProviderName(provider.provider_name)} 测试成功。`
+    }
   } catch (error) {
-    aiErrorMessage.value = String(error?.userMessage || error?.message || `${displayProviderName(providerName)} 测试失败`)
+    provider.last_test_status = 'failed'
+    provider.last_test_error_message = String(error?.safe_message || error?.userMessage || error?.message || '测试失败')
   }
 }
 
 onMounted(async () => {
+  preferenceStore.hydrate()
+  generalForm.appTheme = preferenceStore.appTheme
+  generalForm.fontFamily = preferenceStore.fontFamily
+  generalForm.fontSize = preferenceStore.fontSize
+  generalForm.lineHeight = preferenceStore.lineHeight
   await reloadAISettings()
 })
 </script>
@@ -340,22 +341,7 @@ onMounted(async () => {
   background: transparent;
 }
 
-.settings-center--dark {
-  --settings-page-bg: var(--ink-bg-app);
-  --settings-card-bg: var(--ink-surface-1);
-  --settings-border: var(--ink-border);
-  --settings-border-strong: var(--ink-border-strong);
-  --settings-title: var(--ink-text-primary);
-  --settings-text: var(--ink-text-secondary);
-  --settings-muted: var(--ink-text-muted);
-  --settings-input-bg: var(--ink-surface-1);
-  --settings-success: var(--ink-success-text);
-  --settings-error: var(--ink-danger-text);
-  --settings-warning-bg: var(--ink-warning-bg);
-  --settings-warning-border: var(--ink-border-strong);
-  --settings-warning-text: var(--ink-warning-text);
-}
-
+.settings-center--dark,
 .settings-center--warm {
   --settings-page-bg: var(--ink-bg-app);
   --settings-card-bg: var(--ink-surface-1);
@@ -367,16 +353,8 @@ onMounted(async () => {
   --settings-input-bg: var(--ink-surface-1);
 }
 
-.settings-header h1 {
-  margin: 0;
-  font-size: 28px;
-  color: var(--settings-title);
-}
-
-.settings-header p {
-  margin: 8px 0 0;
-  color: var(--settings-muted);
-}
+.settings-header h1 { margin: 0; font-size: 28px; color: var(--settings-title); }
+.settings-header p { margin: 8px 0 0; color: var(--settings-muted); }
 
 .settings-grid {
   margin-top: 20px;
@@ -394,9 +372,7 @@ onMounted(async () => {
 
 .settings-card h2,
 .provider-list h3,
-.role-mappings h3 {
-  color: var(--settings-title);
-}
+.role-mappings h3 { color: var(--settings-title); }
 
 .settings-tip {
   margin: 0 0 12px;
@@ -434,9 +410,7 @@ onMounted(async () => {
 }
 
 .provider-list,
-.role-mappings {
-  margin-top: 14px;
-}
+.role-mappings { margin-top: 14px; }
 
 .provider-card {
   border: 1px solid var(--settings-border);
@@ -466,10 +440,10 @@ onMounted(async () => {
 .provider-actions button,
 .settings-actions button {
   border: 1px solid var(--settings-border-strong);
-  border-radius: 10px;
+  border-radius: 999px;
   background: var(--settings-input-bg);
   color: var(--settings-title);
-  padding: 8px 12px;
+  padding: 8px 14px;
   cursor: pointer;
 }
 

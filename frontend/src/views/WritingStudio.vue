@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="writing-studio" :class="[themeClass, { 'writing-studio--focus': isFocusMode }]">
     <VersionConflictModal
       :model-value="conflictModalVisible"
@@ -83,7 +83,7 @@
             :enabled="isFocusMode"
             @toggle="toggleFocusMode"
           />
-          <el-button v-show="!isFocusMode" type="primary" @click="goBack">返回书架</el-button>
+          <el-button class="studio-header-btn" v-show="!isFocusMode" type="primary" @click="goBack">返回书架</el-button>
         </div>
       </div>
     </header>
@@ -309,10 +309,10 @@ const draftChapterIds = computed(() => {
   return Array.from(ids)
 })
 const editorPlaceholder = computed(() => (
-  chapterDataStore.activeChapterId ? '开始创作...' : '请先选择一个章节开始创作'
+  chapterDataStore.activeChapterId ? '开始输入正文...' : '请先选择章节后编辑'
 ))
 const chapterTitlePlaceholder = computed(() => (
-  chapterDataStore.activeChapterId ? '输入章节标题' : '请先选择一个章节'
+  chapterDataStore.activeChapterId ? '请输入章节标题' : '请选择章节'
 ))
 const resolveChapterOrderIndex = (chapter) => {
   const explicitOrder = Number(chapter?.order_index)
@@ -323,7 +323,7 @@ const resolveChapterOrderIndex = (chapter) => {
   return index >= 0 ? index + 1 : 1
 }
 const buildChapterLabel = (chapter, title) => {
-  const prefix = `第${resolveChapterOrderIndex(chapter)}章`
+  const prefix = `?${resolveChapterOrderIndex(chapter)}?`
   const trimmedTitle = String(title || '').trim()
   return trimmedTitle ? `${prefix} ${trimmedTitle}` : prefix
 }
@@ -339,25 +339,25 @@ const displaySaveStatus = computed(() => {
 const offlineBannerVisible = computed(() => isOfflineMode.value)
 const offlineBannerText = computed(() => {
   if (saveStateStore.hasPendingDrafts) {
-    return '离线模式：修改已写入本地缓存，恢复联网后会自动同步。'
+    return '当前离线：内容已暂存本地，网络恢复后自动同步。'
   }
-  return '离线模式：当前网络离线，编辑仍可继续。'
+  return '当前离线：本章内容仅保存在本地。'
 })
 const statusDetail = computed(() => {
   if (conflictModalVisible.value) {
-    return '检测到版本冲突，等待处理'
+    return '检测到版本冲突，请先处理冲突。'
   }
   if (isOfflineMode.value && saveStateStore.hasPendingDrafts) {
-    return `离线积压 ${saveStateStore.pendingQueue.length} 条草稿`
+    return `正在同步 ${saveStateStore.pendingQueue.length} 条草稿`
   }
   if (saveStateStore.saveStatus === 'saving' && saveStateStore.pendingQueue.length > 1) {
     return `正在同步 ${saveStateStore.pendingQueue.length} 条草稿`
   }
   if (saveStateStore.saveStatus === 'error' && saveStateStore.nextRetryAt) {
-    return '后台重试中'
+    return '同步失败，等待重试。'
   }
   if (showManualRetry.value) {
-    return '自动重试已停止'
+    return '同步失败，等待重试。'
   }
   return ''
 })
@@ -377,7 +377,7 @@ const conflictDescription = computed(() => {
     buildChapterLabel(chapterDataStore.activeChapter, '') ||
     '当前章节'
   )
-  return `${chapterTitle} 在云端已存在更新版本，请先决定是否覆盖。`
+  return `${chapterTitle} 存在服务器新版本，请选择冲突处理方式。`
 })
 const conflictLocalContent = computed(() => String(conflictPayload.value?.content || ''))
 const conflictServerContent = computed(() => String(
@@ -486,7 +486,7 @@ const primeTodayWordBaselines = () => {
 
 const blockSidebarMutation = () => {
   if (saveStateStore.saveStatus === 'saving') {
-    ElMessage.warning('正在同步数据，请稍后再试。')
+    ElMessage.warning('正在保存中，请稍后再操作章节。')
     return true
   }
   return false
@@ -530,7 +530,7 @@ const loadChapters = async () => {
     return await v1ChaptersApi.list(workId.value)
   } catch (error) {
     console.error('加载章节列表失败:', error)
-    ElMessage.error('章节列表加载失败，请稍后重试。')
+    ElMessage.error('加载章节失败，请稍后重试。')
     return []
   } finally {
     chaptersLoading.value = false
@@ -682,7 +682,7 @@ const flushDraftQueue = async ({ retryAttempt = 0, manual = false } = {}) => {
         ...currentDraft,
         title: String(currentDraft.title || ''),
         chapterTitle: String(currentDraft.title || chapter?.title || '')
-      }, String(error.userMessage || '检测到版本冲突，请先决定是否覆盖。'))
+      }, String(error.userMessage || '草稿与服务器版本冲突，请处理后再继续。'))
       saveStateStore.setRetrySchedule({ retryCount: retryAttempt, nextRetryAt: '' })
     } else {
       if (currentDraft) {
@@ -754,7 +754,7 @@ const handleBrowserOnline = async () => {
 }
 
 const handleCachePruned = () => {
-  ElMessage.warning('本地缓存空间不足，已自动清理较旧的暂存内容。')
+  ElMessage.warning('检测到本地缓存过多，已自动清理旧缓存。')
 }
 
 const syncWorkspaceViewport = () => {
@@ -1021,12 +1021,12 @@ const submitWorkTitleEditing = async () => {
     workTitle.value = String(updated?.title || nextTitle)
     workAuthor.value = String(updated?.author || workAuthor.value || '').trim()
     workTitleEditing.value = false
-    ElMessage.success('作品标题已更新。')
+    ElMessage.success('作品标题已更新')
   } catch (error) {
     console.error('更新作品标题失败:', error)
     workTitleEditing.value = false
     workTitleDraft.value = currentTitle
-    ElMessage.error('作品标题更新失败，请稍后重试。')
+    ElMessage.error('更新作品标题失败，请稍后重试。')
   } finally {
     await focusEditor()
   }
@@ -1044,7 +1044,7 @@ const handleSelectChapter = async (chapterId) => {
 }
 
 const handleJumpInvalid = () => {
-  ElMessage.warning('请输入有效章节编号。')
+  ElMessage.warning('请输入有效章节序号。')
 }
 
 const handleDraftChange = (content) => {
@@ -1147,7 +1147,7 @@ const handleCreateChapter = async () => {
       await activateChapter(nextChapterId)
       await focusEditor()
     }
-    ElMessage.success('已新建章节。')
+    ElMessage.success('章节已创建')
   } catch (error) {
     console.error('新建章节失败:', error)
   }
@@ -1166,9 +1166,9 @@ const handleRenameChapter = async ({ chapterId = '', title = '' } = {}) => {
     })
     chapterDataStore.upsertChapter(savedChapter)
     chapterDataStore.clearChapterTitleDraft(id)
-    ElMessage.success('章节标题已更新。')
+    ElMessage.success('章节标题已更新')
   } catch (error) {
-    console.error('重命名章节失败:', error)
+    console.error('閲嶅懡鍚嶇珷鑺傚け璐?', error)
   }
 }
 
@@ -1197,7 +1197,7 @@ const handleDeleteChapter = async (chapterId) => {
       chapterDataStore.setActiveChapter('')
       workspaceStore.setLastOpenChapter('')
     }
-    ElMessage.success('章节已删除。')
+    ElMessage.success('章节已删除')
   } catch (error) {
     console.error('删除章节失败:', error)
   }
@@ -1209,9 +1209,9 @@ const handleReorderChapters = async (chapterIds) => {
   try {
     const response = await v1ChaptersApi.reorder(workId.value, orderedIds)
     chapterDataStore.setChapters(response?.items || [])
-    ElMessage.success('章节顺序已更新。')
+    ElMessage.success('章节顺序已更新')
   } catch (error) {
-    console.error('调序章节失败:', error)
+    console.error('调整章节顺序失败:', error)
   }
 }
 
@@ -1239,7 +1239,7 @@ const handleConflictDiscard = async () => {
   } else {
     saveStateStore.markSynced()
   }
-  ElMessage.success('已放弃本地修改，并重新加载云端内容。')
+  ElMessage.success('已应用服务器版本并清除本地冲突。')
   if (saveStateStore.pendingQueue.length) {
     scheduleDraftSync()
   }
@@ -1278,12 +1278,12 @@ const handleConflictOverride = async () => {
     clearConflictState()
     await activateChapter(chapterId)
     saveStateStore.markSynced(String(savedChapter?.updated_at || new Date().toISOString()))
-    ElMessage.success('已使用本地内容覆盖云端版本。')
+    ElMessage.success('已覆盖服务器版本并完成同步。')
     if (saveStateStore.pendingQueue.length) {
       scheduleDraftSync()
     }
   } catch (error) {
-    const message = String(error?.userMessage || error?.message || '强制覆盖失败')
+    const message = String(error?.userMessage || error?.message || '覆盖保存失败')
     saveStateStore.markError(message)
   }
 }
@@ -1352,6 +1352,32 @@ const handleManualSync = async () => {
 }
 
 .writing-studio--warm {
+  --studio-bg: #fcf8f3;
+  --studio-bg-focus: #f7efe4;
+  --studio-card-bg: #fffdf9;
+  --studio-border: #e9ddcf;
+  --studio-title: #4a3420;
+  --studio-text: #6f4f33;
+  --studio-muted: #8b6e54;
+  --studio-input-bg: #fffdf9;
+  --studio-button-bg: #fffdf9;
+}
+
+
+/* Theme fallback: if route-level class is stale, inherit from global app theme */
+:global(html[data-app-theme='dark']) .writing-studio {
+  --studio-bg: #0f172a;
+  --studio-bg-focus: #0f172a;
+  --studio-card-bg: #111827;
+  --studio-border: #233044;
+  --studio-title: #e5e7eb;
+  --studio-text: #cbd5e1;
+  --studio-muted: #94a3b8;
+  --studio-input-bg: #111827;
+  --studio-button-bg: #111827;
+}
+
+:global(html[data-app-theme='warm']) .writing-studio {
   --studio-bg: #fcf8f3;
   --studio-bg-focus: #f7efe4;
   --studio-card-bg: #fffdf9;
@@ -1435,6 +1461,20 @@ const handleManualSync = async () => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.header-actions :deep(.studio-header-btn.el-button) {
+  min-height: 42px;
+  border-radius: 999px;
+  font-weight: 600;
+  padding: 10px 16px;
+  --el-button-bg-color: var(--ink-accent);
+  --el-button-border-color: var(--ink-accent);
+  --el-button-text-color: #ffffff;
+  --el-button-hover-bg-color: color-mix(in srgb, var(--ink-accent) 88%, #ffffff 12%);
+  --el-button-hover-border-color: color-mix(in srgb, var(--ink-accent) 88%, #ffffff 12%);
+  --el-button-active-bg-color: color-mix(in srgb, var(--ink-accent) 78%, #000000 22%);
+  --el-button-active-border-color: color-mix(in srgb, var(--ink-accent) 78%, #000000 22%);
 }
 
 .preference-toggle {
@@ -1606,4 +1646,5 @@ const handleManualSync = async () => {
   }
 }
 </style>
+
 

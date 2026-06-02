@@ -118,6 +118,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Global button consistency: all primary action buttons keep pill shape */
+.el-button {
+  --el-button-border-radius: 999px;
+  border-radius: 999px;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

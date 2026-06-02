@@ -1,9 +1,9 @@
-<template>
+﻿<template>
   <aside
     v-if="visible"
     class="asset-drawer"
     :class="{ 'mobile-overlay': mobile }"
-    aria-label="写作资产面板"
+    aria-label="写作资料面板"
   >
     <div class="asset-drawer-header">
       <div>
@@ -71,9 +71,7 @@ const items = [
 
 const pendingAction = ref(null)
 
-const activeLabel = computed(() => (
-  items.find((item) => item.key === props.activeTab)?.label || '写作资料'
-))
+const activeLabel = computed(() => items.find((item) => item.key === props.activeTab)?.label || '写作资料')
 
 const isCurrentDirty = computed(() => props.dirtyTabs.includes(props.activeTab))
 
@@ -132,9 +130,9 @@ defineExpose({
 .asset-drawer {
   position: relative;
   height: 100%;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ink-border);
   border-radius: 24px;
-  background: #ffffff;
+  background: var(--ink-surface-1);
   padding: 18px;
   overflow: hidden;
   display: grid;
@@ -161,7 +159,7 @@ defineExpose({
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink-text-primary);
 }
 
 .asset-drawer-header p,
@@ -169,14 +167,14 @@ defineExpose({
   margin-top: 8px;
   font-size: 13px;
   line-height: 1.7;
-  color: #6b7280;
+  color: var(--ink-text-muted);
 }
 
 .close-button,
 .dirty-guard-actions button {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ink-border-strong);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--ink-surface-1);
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
@@ -189,7 +187,7 @@ defineExpose({
 }
 
 .asset-drawer-footer {
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--ink-border);
   padding-top: 14px;
 }
 
@@ -205,7 +203,7 @@ defineExpose({
 .dirty-guard-card {
   width: min(320px, calc(100% - 32px));
   border-radius: 18px;
-  background: #ffffff;
+  background: var(--ink-surface-1);
   padding: 18px;
   box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
 }
@@ -213,13 +211,13 @@ defineExpose({
 .dirty-guard-card h4 {
   margin: 0;
   font-size: 16px;
-  color: #111827;
+  color: var(--ink-text-primary);
 }
 
 .dirty-guard-card p {
   margin: 8px 0 0;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--ink-text-muted);
 }
 
 .dirty-guard-actions {
