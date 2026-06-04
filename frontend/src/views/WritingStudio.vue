@@ -754,7 +754,7 @@ const handleBrowserOnline = async () => {
 }
 
 const handleCachePruned = () => {
-  ElMessage.warning('检测到本地缓存过多，已自动清理旧缓存。')
+  ElMessage.warning('本地缓存空间不足，已自动清理较旧的暂存内容。')
 }
 
 const syncWorkspaceViewport = () => {

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <aside
     class="right-workspace-panel"
     :class="{
@@ -316,61 +316,53 @@ onBeforeUnmount(() => {
   border: none;
   background: linear-gradient(
     90deg,
-      color-mix(in srgb, var(--workspace-panel-accent) 28%, transparent) 0,
-      color-mix(in srgb, var(--workspace-panel-accent) 12%, transparent) 30%,
-      color-mix(in srgb, var(--workspace-panel-accent) 0%, transparent) 100%
+    color-mix(in srgb, var(--workspace-panel-accent) 28%, transparent) 0,
+    color-mix(in srgb, var(--workspace-panel-accent) 12%, transparent) 30%,
+    transparent 100%
   );
-  opacity: 0;
-  cursor: ew-resize;
-  z-index: 3;
-  transition: opacity 140ms ease;
-}
-
-.right-workspace-panel__surface:hover .right-workspace-panel__resizer {
-  opacity: 1;
+  cursor: col-resize;
 }
 
 .right-workspace-panel__header {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-4);
+  gap: 16px;
+  padding: 20px 18px 16px 18px;
   border-bottom: 1px solid var(--workspace-panel-border);
 }
 
 .right-workspace-panel__header h3 {
   margin: 0;
+  font-size: 18px;
+  font-weight: 700;
   color: var(--workspace-panel-title);
-  font-size: var(--text-lg);
 }
 
 .right-workspace-panel__header p {
-  margin-top: var(--space-2);
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
   color: var(--workspace-panel-text);
-  font-size: var(--text-sm);
-  line-height: 1.6;
 }
 
 .right-workspace-panel__close,
 .right-workspace-panel__dirty-actions button {
   border: 1px solid var(--workspace-panel-border);
-  border-radius: var(--radius-pill);
+  border-radius: 999px;
   background: var(--workspace-panel-bg);
-  padding: var(--space-2) var(--space-3);
-  color: var(--workspace-panel-title);
-  font-size: var(--text-sm);
+  padding: 8px 12px;
+  font-size: 12px;
   font-weight: 600;
+  color: var(--workspace-panel-title);
   cursor: pointer;
 }
 
 .right-workspace-panel__body {
-  height: 100%;
+  min-width: 0;
   min-height: 0;
-  max-height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  padding: var(--space-4);
+  overflow: auto;
+  padding: 18px;
 }
 
 .right-workspace-panel__dirty-guard {
@@ -378,33 +370,34 @@ onBeforeUnmount(() => {
   inset: 0;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--workspace-panel-title) 24%, transparent);
+  border-radius: inherit;
+  background: rgba(17, 24, 39, 0.24);
 }
 
 .right-workspace-panel__dirty-card {
-  width: min(320px, calc(100% - var(--space-8)));
-  border-radius: var(--radius-md);
+  width: min(320px, calc(100% - 32px));
+  border-radius: 18px;
   background: var(--workspace-panel-bg);
-  padding: var(--space-4);
-  box-shadow: var(--shadow-dialog);
+  padding: 18px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
 }
 
 .right-workspace-panel__dirty-card h4 {
   margin: 0;
+  font-size: 16px;
   color: var(--workspace-panel-title);
-  font-size: var(--text-md);
 }
 
 .right-workspace-panel__dirty-card p {
-  margin-top: var(--space-2);
+  margin: 8px 0 0;
+  font-size: 13px;
   color: var(--workspace-panel-text);
-  font-size: var(--text-sm);
-  line-height: 1.6;
 }
 
 .right-workspace-panel__dirty-actions {
   display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-4);
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
 }
 </style>

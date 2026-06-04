@@ -7,7 +7,16 @@
       </div>
     </header>
 
-        <div v-if="showAIMode" class="ai-section">
+    <ReviewTab
+      v-if="isReviewMode"
+      :work-id="workId"
+      :chapter-id="chapterId"
+      :chapter-version="chapterVersion"
+      :developer-mode="developerMode"
+    />
+
+    <template v-else>
+      <div v-if="showAIMode" class="ai-section">
       <h4>AI 设置状态</h4>
       <div class="ai-meta">
         <span v-if="aiSettingsBlocked">未完成</span>
@@ -274,7 +283,7 @@
       <p v-if="planningActionError" class="ai-error">{{ planningActionError }}</p>
     </div>
 
-    <div v-if="showReviewMode" class="ai-section">
+    <div v-if="false" class="ai-section">
       <h4>续写与候选稿</h4>
       <div v-if="aiSettingsBlocked" class="settings-block-banner">
         <strong>AI 设置未完成</strong>
@@ -466,7 +475,7 @@
       <p v-if="candidateActionError" class="ai-error">{{ candidateActionError }}</p>
     </div>
 
-    <div v-if="showReviewMode" class="ai-section">
+    <div v-if="false" class="ai-section">
       <h4>AI 建议</h4>
       <ul v-if="aiSuggestions.length" class="ai-list">
         <li v-for="item in aiSuggestions" :key="item.suggestion_id" class="planning-item">
@@ -502,7 +511,7 @@
       </ul>
     </div>
 
-    <div v-if="showReviewMode" class="ai-section">
+    <div v-if="false" class="ai-section">
       <h4>记忆审批</h4>
       <ul v-if="memoryGates.length" class="ai-list">
         <li v-for="gate in memoryGates" :key="gate.gate_id" class="planning-item">
@@ -594,7 +603,7 @@
       <p v-if="memoryActionError" class="ai-error">{{ memoryActionError }}</p>
     </div>
 
-    <div v-if="showReviewMode" class="ai-section">
+    <div v-if="false" class="ai-section">
       <h4>任务追踪（Agent Trace）</h4>
       <ul v-if="agentTraces.length" class="ai-list">
         <li v-for="trace in agentTraces" :key="trace.trace_id" class="planning-item">
@@ -677,15 +686,17 @@
       </div>
       <pre v-if="quickTrialResult.output_text" class="quick-trial-output">{{ quickTrialResult.output_text }}</pre>
     </div>
+    </template>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { aiApi } from '@/api'
 import { useAIJobPolling } from '@/composables/useAIJobPolling'
+import ReviewTab from './ReviewTab.vue'
 
 const props = defineProps({
   workId: {
@@ -774,6 +785,7 @@ const quickTrialForm = reactive({
 })
 
 const providerConfigs = computed(() => settingsForm.provider_configs || [])
+const isReviewMode = computed(() => props.mode === 'review')
 const showAIMode = computed(() => props.mode !== 'review')
 const showReviewMode = computed(() => props.mode !== 'ai')
 const panelTitle = computed(() => (
@@ -1255,20 +1267,32 @@ const loadAgentTraces = async () => {
   agentTraces.value = payload.items || []
 }
 
-const refreshPanel = async () => {
+const refreshAIPanel = async () => {
   await Promise.all([
     loadSettings(),
     loadInitialization(),
     loadContextReadiness(),
     loadAgentSessions(),
     loadPlotArcs(),
+    loadPlanningData()
+  ])
+}
+
+const refreshReviewPanel = async () => {
+  await Promise.all([
     loadCandidateDrafts(),
-    loadPlanningData(),
     loadAISuggestions(),
     loadMemoryGates(),
     loadConflicts(),
     loadAgentTraces()
   ])
+}
+
+const refreshPanel = async () => {
+  if (isReviewMode.value) {
+    return refreshReviewPanel()
+  }
+  return refreshAIPanel()
 }
 
 const ensureAISettingsReady = (targetRef) => {
@@ -1882,22 +1906,17 @@ watch(() => props.workId, async () => {
 }, { immediate: true })
 
 watch(() => props.chapterId, async () => {
+  if (isReviewMode.value) {
+    await refreshReviewPanel()
+    return
+  }
   await Promise.all([
     loadContextReadiness(),
     loadAgentSessions(),
     loadPlotArcs(),
-    loadCandidateDrafts(),
-    loadPlanningData(),
-    loadAISuggestions(),
-    loadMemoryGates(),
-    loadConflicts(),
-    loadAgentTraces()
+    loadPlanningData()
   ])
 }, { immediate: true })
-
-onMounted(async () => {
-  await refreshPanel()
-})
 </script>
 
 <style scoped>

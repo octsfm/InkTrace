@@ -47,8 +47,8 @@
     </section>
 
     <div v-else-if="works.length === 0" class="empty-container">
-      <el-empty description="还没有作品，先创建一本吧。">
-        <p class="empty-hint">支持新建空作品，也可以直接导入 TXT。</p>
+      <el-empty description="你可以先新建空白作品，也可以直接导入 TXT。">
+        <p class="empty-hint">先创建一本空白作品开始写作，或者直接导入现有 TXT 稿件。</p>
         <div class="empty-actions">
           <el-button class="hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">新建作品</el-button>
           <el-button class="hero-btn hero-btn--secondary" plain @click="showImportModal = true">导入 TXT</el-button>

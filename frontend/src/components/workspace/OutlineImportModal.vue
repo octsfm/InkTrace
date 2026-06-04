@@ -207,7 +207,7 @@ watch(
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 16px;
   border-radius: 24px;
-  background: #ffffff;
+  background: var(--ink-surface-1);
   padding: 20px;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
 }
@@ -222,13 +222,13 @@ watch(
 
 .outline-import-modal__header h3 {
   margin: 0;
-  color: #111827;
+  color: var(--ink-text-primary);
   font-size: 20px;
 }
 
 .outline-import-modal__header p {
   margin: 6px 0 0;
-  color: #6b7280;
+  color: var(--ink-text-muted);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -247,7 +247,7 @@ watch(
 }
 
 .outline-import-modal__label {
-  color: #111827;
+  color: var(--ink-text-primary);
   font-size: 14px;
   font-weight: 700;
 }
@@ -258,11 +258,11 @@ watch(
   justify-content: center;
   gap: 8px;
   width: fit-content;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ink-border-strong);
   border-radius: 999px;
-  background: #f8fafc;
+  background: var(--ink-surface-2);
   padding: 10px 16px;
-  color: #111827;
+  color: var(--ink-text-primary);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -275,7 +275,7 @@ watch(
 .outline-import-modal__helper,
 .outline-import-modal__metrics,
 .outline-import-modal__hint {
-  color: #6b7280;
+  color: var(--ink-text-muted);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -294,11 +294,11 @@ watch(
 .outline-import-modal__preview {
   width: 100%;
   min-height: 160px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ink-border-strong);
   border-radius: 16px;
-  background: #ffffff;
+  background: var(--ink-surface-1);
   padding: 14px;
-  color: #111827;
+  color: var(--ink-text-primary);
   font: inherit;
   line-height: 1.7;
 }
@@ -330,13 +330,13 @@ watch(
 
 .outline-import-modal__close,
 .ghost-button {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--ink-surface-3);
+  color: var(--ink-text-primary);
 }
 
 .save-button {
-  background: #111827;
-  color: #ffffff;
+  background: var(--ink-text-primary);
+  color: var(--ink-surface-1);
 }
 
 .save-button:disabled {

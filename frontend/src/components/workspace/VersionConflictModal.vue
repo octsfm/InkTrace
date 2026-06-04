@@ -99,7 +99,7 @@ defineEmits(['cancel', 'discard', 'override'])
   margin: 8px 0 0;
   font-size: 14px;
   line-height: 1.7;
-  color: #4b5563;
+  color: var(--ink-text-secondary);
 }
 
 .modal-body {
@@ -180,7 +180,7 @@ defineEmits(['cancel', 'discard', 'override'])
 }
 
 .ghost-button {
-  background: #f3f4f6;
+  background: var(--ink-surface-3);
   color: var(--ink-text-primary);
 }
 

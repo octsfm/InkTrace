@@ -105,7 +105,7 @@ describe('WorksList 页面', () => {
 
   it('renders hero actions and work list', async () => {
     const wrapper = await mountPage()
-    expect(wrapper.text()).toContain('书架')
+    expect(wrapper.text()).toContain('选择作品，开始写作')
     expect(wrapper.text()).toContain('新建作品')
     expect(wrapper.text()).toContain('导入 TXT')
     expect(wrapper.text()).toContain('我的作品')
@@ -207,7 +207,7 @@ describe('WorksList 页面', () => {
     mockList.mockResolvedValueOnce({ items: [], total: 0 })
     const wrapper = await mountPage()
 
-    expect(wrapper.text()).toContain('你可以先新建空白作品')
+    expect(wrapper.text()).toContain('先创建一本空白作品开始写作')
   })
 
   it('shows error state and retries loading', async () => {

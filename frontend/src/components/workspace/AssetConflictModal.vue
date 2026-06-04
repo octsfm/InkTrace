@@ -73,9 +73,9 @@ defineEmits(['cancel', 'discard', 'override'])
 
 .modal-panel {
   width: min(760px, 100%);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ink-border);
   border-radius: 24px;
-  background: #ffffff;
+  background: var(--ink-surface-1);
   box-shadow: 0 32px 80px rgba(15, 23, 42, 0.18);
 }
 
@@ -85,19 +85,19 @@ defineEmits(['cancel', 'discard', 'override'])
 }
 
 .modal-header {
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--ink-border);
 }
 
 .modal-header h3 {
   margin: 0;
   font-size: 20px;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink-text-primary);
 }
 
 .modal-header p {
   margin: 8px 0 0;
-  color: #4b5563;
+  color: var(--ink-text-secondary);
   font-size: 14px;
   line-height: 1.7;
 }
@@ -116,16 +116,16 @@ defineEmits(['cancel', 'discard', 'override'])
 }
 
 .compare-panel {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ink-border);
   border-radius: 16px;
   padding: 12px 14px;
-  background: #f9fafb;
+  background: var(--ink-surface-2);
 }
 
 .compare-panel summary {
   cursor: pointer;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink-text-primary);
 }
 
 .compare-grid {
@@ -150,9 +150,9 @@ defineEmits(['cancel', 'discard', 'override'])
   max-height: 220px;
   overflow: auto;
   margin: 0;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--ink-border);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--ink-surface-1);
   padding: 10px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -166,7 +166,7 @@ defineEmits(['cancel', 'discard', 'override'])
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 12px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--ink-border);
 }
 
 .ghost-button,
@@ -180,13 +180,13 @@ defineEmits(['cancel', 'discard', 'override'])
 }
 
 .ghost-button {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--ink-surface-3);
+  color: var(--ink-text-primary);
 }
 
 .danger-button {
   background: #dc2626;
-  color: #ffffff;
+  color: var(--ink-surface-1);
 }
 
 @media (max-width: 760px) {

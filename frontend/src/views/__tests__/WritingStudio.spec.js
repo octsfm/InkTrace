@@ -341,7 +341,7 @@ describe('WritingStudio layout contract', () => {
   it('keeps offline writing visible and replays drafts automatically after network recovery', () => {
     expect(source).toContain(':offline="offlineBannerVisible"')
     expect(source).toContain(':offline-message="offlineBannerText"')
-    expect(source).toContain("return '离线模式：修改已写入本地缓存，恢复联网后会自动同步。'")
+    expect(source).toContain("return '当前离线：内容已暂存本地，网络恢复后自动同步。'")
     expect(source).toContain('const handleBrowserOffline = () =>')
     expect(source).toContain('const handleBrowserOnline = async () =>')
     expect(source).toContain('await replayOfflineDrafts()')
