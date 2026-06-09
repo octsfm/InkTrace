@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <section class="ai-panel" data-test="ai-panel">
     <header class="ai-panel-header">
       <div>

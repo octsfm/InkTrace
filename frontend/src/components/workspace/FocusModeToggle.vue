@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <button
     type="button"
     class="focus-mode-toggle"

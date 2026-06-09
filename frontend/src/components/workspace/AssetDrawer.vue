@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <aside
     v-if="visible"
     class="asset-drawer"

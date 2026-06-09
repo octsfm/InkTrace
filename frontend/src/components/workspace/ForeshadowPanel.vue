@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <section class="foreshadow-panel" data-panel="foreshadow">
     <header class="panel-header">
       <div>

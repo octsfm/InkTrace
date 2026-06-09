@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <section class="writing-preference-panel" data-test="writing-preference-panel">
     <div class="panel-header">
       <div>

@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <div class="writing-studio" :class="[themeClass, { 'writing-studio--focus': isFocusMode }]">
     <VersionConflictModal
       :model-value="conflictModalVisible"

@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <aside
     class="right-workspace-panel"
     :class="{

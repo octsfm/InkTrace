@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿﻿﻿﻿﻿<template>
   <section class="timeline-panel" data-panel="timeline">
     <header class="timeline-header">
       <div>
