@@ -29,6 +29,7 @@ class MinimalContinuationWorkflow:
         chapter_service: ChapterService,
         tool_facade,
         candidate_draft_repository: CandidateDraftRepository,
+        citation_link_service=None,
         direction_plan_repository: DirectionPlanRepository | None = None,
         conflict_guard_service=None,
         job_repository: AIJobRepository,
@@ -39,6 +40,7 @@ class MinimalContinuationWorkflow:
         self._chapter_service = chapter_service
         self._tool_facade = tool_facade
         self._candidate_draft_repository = candidate_draft_repository
+        self._citation_link_service = citation_link_service
         self._direction_plan_repository = direction_plan_repository
         self._conflict_guard_service = conflict_guard_service
         self._job_service = AIJobService(
@@ -221,6 +223,7 @@ class MinimalContinuationWorkflow:
                 error_message=writer_result.safe_message or writer_result.error_code,
             )
         writer_output = writer_result.payload["writer_output"]
+        raw_citations = list(writer_output.get("citations", []) or [])
         self._call_job_tool(
             "mark_job_step_completed",
             context=tool_context,
@@ -307,6 +310,10 @@ class MinimalContinuationWorkflow:
                     "degraded_reason": context_pack.degraded_reason,
                     "warnings": list(context_pack.warnings),
                     "chapter_version": chapter.version,
+                    "citation_status": "processing" if raw_citations else "none",
+                    "citation_count": 0,
+                    "citation_verified_count": 0,
+                    "citation_updated_at": self._now(),
                 },
             },
         )
@@ -340,6 +347,8 @@ class MinimalContinuationWorkflow:
                 error_message="candidate_save_failed",
             )
         draft = save_result.payload["candidate_draft"]
+        if self._citation_link_service is not None and getattr(draft, "selected_version_id", ""):
+            draft = self._process_candidate_citations(draft=draft, raw_citations=raw_citations)
         if self._conflict_guard_service is not None and getattr(draft, "selected_version_id", ""):
             self._conflict_guard_service.detect_candidate_version_async(
                 candidate_draft_id=draft.candidate_draft_id,
@@ -416,6 +425,32 @@ class MinimalContinuationWorkflow:
         if not writing_task.agent_session_id or not writing_task.chapter_plan_id:
             return ""
         return f"dps_{writing_task.agent_session_id}_{writing_task.chapter_plan_id}"
+
+    def _process_candidate_citations(self, *, draft: CandidateDraft, raw_citations: list[dict[str, object]]) -> CandidateDraft:
+        if not raw_citations:
+            return draft
+        try:
+            self._citation_link_service.process_candidate_citations(
+                candidate_version_id=draft.selected_version_id,
+                raw_citations=raw_citations,
+            )
+        except Exception:  # noqa: BLE001
+            metadata = dict(draft.metadata)
+            metadata.update(
+                {
+                    "citation_status": "failed",
+                    "citation_updated_at": self._now(),
+                }
+            )
+            self._candidate_draft_repository.save(
+                draft.model_copy(
+                    update={
+                        "metadata": metadata,
+                        "updated_at": self._now(),
+                    }
+                )
+            )
+        return self._candidate_draft_repository.get(draft.candidate_draft_id)
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()

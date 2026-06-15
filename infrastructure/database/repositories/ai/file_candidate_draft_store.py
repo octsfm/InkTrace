@@ -5,17 +5,26 @@ from pathlib import Path
 
 from domain.entities.ai.models import CandidateDraft, CandidateDraftVersion, RewriteInstruction, RewriteRequest, RevisionRound
 from domain.repositories.ai.candidate_draft_repository import CandidateDraftRepository
+from infrastructure.database.models import initialize_schema
 from infrastructure.database.session import get_database_path
+from infrastructure.database.v1 import connect
 
 
 class FileCandidateDraftStore(CandidateDraftRepository):
-    def __init__(self, file_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        file_path: Path | str | None = None,
+        *,
+        database_path: Path | str | None = None,
+    ) -> None:
         self._file_path = Path(file_path) if file_path else get_database_path().with_name("candidate_drafts.json")
+        self._database_path = Path(database_path).resolve() if database_path else get_database_path()
 
     def save(self, draft: CandidateDraft) -> CandidateDraft:
         payload = self._load_payload()
         payload["drafts"][draft.candidate_draft_id] = draft.model_dump(mode="json")
         self._save_payload(payload)
+        self._project_draft_to_sqlite(draft)
         return draft
 
     def get(self, candidate_draft_id: str) -> CandidateDraft:
@@ -142,3 +151,37 @@ class FileCandidateDraftStore(CandidateDraftRepository):
     def _save_payload(self, payload: dict[str, dict[str, dict[str, object]]]) -> None:
         self._file_path.parent.mkdir(parents=True, exist_ok=True)
         self._file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _project_draft_to_sqlite(self, draft: CandidateDraft) -> None:
+        conn = connect(self._database_path)
+        try:
+            initialize_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO candidate_drafts (
+                    candidate_draft_id, work_id, chapter_id, status,
+                    applied_at, revision_count, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(candidate_draft_id) DO UPDATE SET
+                    work_id = excluded.work_id,
+                    chapter_id = excluded.chapter_id,
+                    status = excluded.status,
+                    applied_at = excluded.applied_at,
+                    revision_count = excluded.revision_count,
+                    created_at = excluded.created_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    draft.candidate_draft_id,
+                    draft.work_id,
+                    draft.chapter_id,
+                    draft.status.value,
+                    draft.applied_at or None,
+                    draft.revision_count,
+                    draft.created_at,
+                    draft.updated_at,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()

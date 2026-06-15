@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from domain.entities.ai.models import AIProviderConfig, LLMRequest, LLMResponse, LLMUsage
 from domain.services.ai.provider import LLMProvider, ProviderConfigurationError
 
@@ -23,6 +25,25 @@ class FakeLLMProvider(LLMProvider):
             if message.get("role") == "user":
                 user_message = message.get("content", "")
         content = user_message.strip() or f"fake provider response for {request.model_role}"
+        if request.output_schema_key == "candidate_with_citations":
+            citations: list[dict[str, object]] = []
+            if any(token in user_message for token in ("引用", "前文", "线索")):
+                citations.append(
+                    {
+                        "source_type": "chapter",
+                        "source_name": "第一章",
+                        "source_id_hint": "",
+                        "context_in_draft": "顾迟发现海图的线索",
+                        "confidence": 0.88,
+                    }
+                )
+            content = json.dumps(
+                {
+                    "text": content,
+                    "citations": citations,
+                },
+                ensure_ascii=False,
+            )
         return LLMResponse(
             provider_name=self.provider_name,
             model_name=model_name,

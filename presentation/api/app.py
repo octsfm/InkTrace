@@ -28,6 +28,7 @@ from application.services.runtime_metrics_service import (
 from application.services.v1.logging import build_v1_log_context, get_v1_logger
 from infrastructure.persistence.sqlite_utils import get_sqlite_metrics_snapshot
 from presentation.api.dependencies import warmup_singletons_for_startup
+from presentation.api.middleware.p2_feature_flag import p2_feature_flag_middleware
 from presentation.api.routers.v1 import chapters as chapters_v1
 from presentation.api.routers.v1 import characters as characters_v1
 from presentation.api.routers.v1 import foreshadows as foreshadows_v1
@@ -46,6 +47,8 @@ from presentation.api.routers.v2.ai import plot_arcs as ai_plot_arcs_v2
 from presentation.api.routers.v2.ai import sessions as ai_sessions_v2
 from presentation.api.routers.v2.ai import traces as ai_traces_v2
 from presentation.api.routers.v2.ai import jobs as ai_jobs_v2
+from presentation.api.routers.v2.ai import citations as ai_citations_v2
+from presentation.api.routers.v2.ai import multi_chapter as ai_multi_chapter_v2
 from presentation.api.routers.v2.ai import planning as ai_planning_v2
 from presentation.api.routers.v2.ai import quick_trial as ai_quick_trial_v2
 from presentation.api.routers.v2.ai import review as ai_review_v2
@@ -89,6 +92,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     logger.info("middleware registered", extra=build_log_context(event="app_middleware_registered", module="app", version=APP_VERSION))
+
+    @app.middleware("http")
+    async def p2_feature_guard_middleware(request: Request, call_next):
+        return await p2_feature_flag_middleware(request, call_next)
 
     @app.middleware("http")
     async def request_log_middleware(request: Request, call_next):
@@ -193,6 +200,8 @@ def create_app() -> FastAPI:
     app.include_router(ai_jobs_v2.router)
     app.include_router(ai_initialization_v2.router)
     app.include_router(ai_context_pack_v2.router)
+    app.include_router(ai_citations_v2.router)
+    app.include_router(ai_multi_chapter_v2.router)
     app.include_router(ai_continuation_v2.router)
     app.include_router(ai_conflicts_v2.router)
     app.include_router(ai_planning_v2.router)

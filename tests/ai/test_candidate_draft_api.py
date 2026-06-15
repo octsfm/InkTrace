@@ -4,13 +4,33 @@ from fastapi.testclient import TestClient
 
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
-from domain.entities.ai.models import CandidateDraftVersion, CandidateDraftVersionStatus, WritingTask, WritingTaskStatus
+from domain.entities.ai.models import AIProviderConfig, AISettings, CandidateDraftVersion, CandidateDraftVersionStatus, ModelSelection, WritingTask, WritingTaskStatus
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from presentation.api import dependencies
 from presentation.api.app import app
 
 
+def _seed_writer_model_settings() -> None:
+    cipher = dependencies.get_settings_cipher()
+    dependencies.get_ai_settings_repository().save(
+        AISettings(
+            provider_configs={
+                "fake": AIProviderConfig(
+                    provider_name="fake",
+                    enabled=True,
+                    encrypted_api_key=cipher.encrypt("fake-api-key"),
+                    default_model="fake-chat",
+                )
+            },
+            model_role_mappings={
+                "writer": ModelSelection(provider_name="fake", model_name="fake-chat"),
+            },
+        )
+    )
+
+
 def _seed_initialized_work() -> tuple[str, str]:
+    _seed_writer_model_settings()
     work_repo = WorkRepo()
     chapter_repo = ChapterRepo()
     work_service = WorkService(work_repo=work_repo, chapter_repo=chapter_repo)
@@ -56,6 +76,34 @@ def test_continuation_api_creates_candidate_and_candidate_api_controls_content_v
     get_payload = get_response.json()
     assert get_payload["data"]["candidate_draft_id"] == candidate_draft_id
     assert get_payload["data"]["content"]
+
+
+def test_continuation_api_generates_citations_and_exposes_batch_query(monkeypatch) -> None:
+    monkeypatch.setenv("INKTRACE_P2_ENABLE_CITATION_LINK", "1")
+    work_id, chapter_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    start_response = client.post(
+        "/api/v2/ai/continuations",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "请引用第一章中顾迟发现海图的线索继续写作",
+        },
+    )
+    assert start_response.status_code == 200
+    candidate_draft_id = start_response.json()["data"]["candidate_draft_id"]
+
+    draft_response = client.get(f"/api/v2/ai/candidate-drafts/{candidate_draft_id}")
+    assert draft_response.status_code == 200
+    selected_version_id = draft_response.json()["data"]["selected_version_id"]
+    assert draft_response.json()["data"]["metadata"]["citation_status"] == "ready"
+    assert draft_response.json()["data"]["metadata"]["citation_count"] >= 1
+
+    citation_response = client.get(f"/api/v2/ai/citations/candidate-version/{selected_version_id}")
+    assert citation_response.status_code == 200
+    assert citation_response.json()["data"]["batch"]["candidate_version_id"] == selected_version_id
+    assert citation_response.json()["data"]["batch"]["total_count"] >= 1
 
 
 def test_continuation_api_returns_blocked_when_context_pack_is_blocked() -> None:

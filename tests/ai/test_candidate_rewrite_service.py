@@ -135,6 +135,7 @@ def test_candidate_rewrite_service_creates_rewrite_request_instruction_round_and
 
     assert draft.latest_version_no == 2
     assert draft.revision_round == 1
+    assert draft.revision_count == 1
     assert draft.selected_version_id == "ver_2"
     assert draft.accepted_version_id == ""
     assert len(versions) == 2

@@ -151,6 +151,7 @@ class CandidateRewriteService:
                     "selected_version_id": target_version.candidate_version_id,
                     "latest_version_no": target_version.version_no,
                     "revision_round": round_no,
+                    "revision_count": round_no,
                     "content": target_version.content,
                     "content_preview": target_version.content_summary,
                     "word_count": target_version.word_count,

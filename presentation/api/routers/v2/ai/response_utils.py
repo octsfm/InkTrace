@@ -32,6 +32,13 @@ SAFE_MESSAGE_MAP = {
     "idempotency_key_required": "缺少幂等键，请刷新后重试。",
     "idempotency_key_conflict": "当前操作已提交，请勿重复执行。",
     "internal_error": "服务暂时不可用，请稍后重试。",
+    "P2_CALLER_FORBIDDEN": "当前请求来源不被允许。",
+    "multi_chapter_session_not_found": "未找到对应多章续写任务。",
+    "invalid_target_chapters": "目标章节数不合法。",
+    "not_waiting_user_decision": "当前状态下不能继续下一章。",
+    "citation_not_found": "未找到对应引用记录。",
+    "P2_CITATION_SOURCE_HASH_MISMATCH": "引用来源内容已变更，请刷新后重试。",
+    "P2_CITATION_UNVERIFIED": "当前引用尚未通过校验。",
 }
 
 

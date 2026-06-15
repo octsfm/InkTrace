@@ -14,6 +14,7 @@ from domain.entities.ai.models import (
 )
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
+from infrastructure.database.v1 import connect
 
 
 def _build_services(tmp_path: Path):
@@ -117,6 +118,8 @@ def test_candidate_draft_store_persists_versions_and_lists_chain(tmp_path: Path)
 
     assert draft.selected_version_id == "ver_1"
     assert draft.latest_version_no == 2
+    assert draft.revision_count == 0
+    assert draft.applied_at == ""
     assert [item.candidate_version_id for item in versions] == ["ver_1", "ver_2"]
     assert stored_v2.parent_version_id == "ver_1"
     assert stored_v2.status == CandidateDraftVersionStatus.GENERATED
@@ -159,5 +162,65 @@ def test_candidate_review_service_select_accept_apply_specific_version_preserves
     assert draft.selected_version_id == "ver_2"
     assert draft.accepted_version_id == "ver_2"
     assert draft.applied_version_id == "ver_2"
+    assert draft.applied_at
     assert applied_version.status == CandidateDraftVersionStatus.APPLIED
     assert chapter_after.content.endswith("v2 修订稿")
+
+
+def test_candidate_draft_store_projects_latest_snapshot_to_sqlite(tmp_path: Path) -> None:
+    db_path = tmp_path / "runtime.db"
+    store = FileCandidateDraftStore(
+        tmp_path / "candidate_drafts_versions.json",
+        database_path=db_path,
+    )
+    draft = CandidateDraft(
+        candidate_draft_id="cd_sqlite",
+        work_id="work-1",
+        chapter_id="chapter-1",
+        agent_session_id="agent-session-1",
+        writing_task_id="wt-1",
+        direction_plan_snapshot_id="snap-1",
+        source_context_pack_id="cp-1",
+        source_job_id="job-1",
+        status=CandidateDraftStatus.GENERATED,
+        content="初稿",
+        content_preview="初稿",
+        word_count=2,
+        char_count=2,
+        validation_status=CandidateDraftValidationStatus.PASSED,
+        latest_version_no=1,
+        revision_count=0,
+        created_by="workflow",
+        created_at="2026-06-09T00:00:00+00:00",
+        updated_at="2026-06-09T00:00:00+00:00",
+    )
+    store.save(draft)
+    store.save(
+        draft.model_copy(
+            update={
+                "status": CandidateDraftStatus.APPLIED,
+                "revision_count": 2,
+                "applied_at": "2026-06-09T01:00:00+00:00",
+                "updated_at": "2026-06-09T01:00:00+00:00",
+            }
+        )
+    )
+
+    conn = connect(db_path)
+    row = conn.execute(
+        "SELECT candidate_draft_id, work_id, chapter_id, status, applied_at, revision_count, updated_at "
+        "FROM candidate_drafts WHERE candidate_draft_id = ?",
+        ("cd_sqlite",),
+    ).fetchone()
+    count_row = conn.execute("SELECT COUNT(*) AS total FROM candidate_drafts WHERE candidate_draft_id = ?", ("cd_sqlite",)).fetchone()
+    conn.close()
+
+    assert row is not None
+    assert row["candidate_draft_id"] == "cd_sqlite"
+    assert row["work_id"] == "work-1"
+    assert row["chapter_id"] == "chapter-1"
+    assert row["status"] == CandidateDraftStatus.APPLIED.value
+    assert row["applied_at"] == "2026-06-09T01:00:00+00:00"
+    assert row["revision_count"] == 2
+    assert row["updated_at"] == "2026-06-09T01:00:00+00:00"
+    assert count_row["total"] == 1

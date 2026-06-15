@@ -23,6 +23,8 @@ from application.services.ai.ai_review_service import AIReviewApplicationService
 from application.services.ai.ai_suggestion_service import AISuggestionService
 from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.ai.candidate_rewrite_service import CandidateRewriteService
+from application.services.ai.citation_link_service import CitationLinkService
+from application.services.ai.multi_chapter_service import MultiChapterContinuationService
 from application.services.ai.memory_review_gate_service import MemoryReviewGateService
 from application.services.ai.planning_api_service import PlanningAPIService
 from application.services.ai.plot_arc_service import PlotArcQueryService
@@ -40,6 +42,7 @@ from infrastructure.ai.providers.fake_provider import FakeLLMProvider
 from infrastructure.ai.providers.openai_compatible_provider import OpenAICompatibleProvider
 from infrastructure.ai.providers.fake_reviewer import FakeReviewer
 from infrastructure.ai.providers.fake_writer import FakeWriter
+from infrastructure.ai.providers.model_router_writer import ModelRouterWriter
 from infrastructure.database.repositories.ai.file_ai_review_store import FileAIReviewStore
 from infrastructure.database.repositories.ai.file_ai_suggestion_store import FileAISuggestionStore
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
@@ -57,8 +60,11 @@ from infrastructure.database.repositories.ai.file_memory_review_store import Fil
 from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlotArcStore
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
+from infrastructure.persistence.sqlite_citation_link_repo import SQLiteCitationLinkRepository
+from infrastructure.persistence.sqlite_multi_chapter_session_repo import SQLiteMultiChapterSessionRepository
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
+from application.services.v1.service_factory import build_writing_asset_service
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 
 
@@ -135,6 +141,16 @@ def get_llm_call_log_repository() -> FileLLMCallLogStore:
 @lru_cache(maxsize=1)
 def get_memory_review_repository() -> FileMemoryReviewStore:
     return FileMemoryReviewStore()
+
+
+@lru_cache(maxsize=1)
+def get_multi_chapter_repository() -> SQLiteMultiChapterSessionRepository:
+    return SQLiteMultiChapterSessionRepository()
+
+
+@lru_cache(maxsize=1)
+def get_citation_link_repository() -> SQLiteCitationLinkRepository:
+    return SQLiteCitationLinkRepository()
 
 
 @lru_cache(maxsize=1)
@@ -289,7 +305,11 @@ def get_core_tool_facade() -> CoreToolFacade:
         ai_suggestion_repository=get_ai_suggestion_repository(),
         chapter_plan_repository=get_chapter_plan_repository(),
         direction_plan_repository=get_direction_plan_repository(),
-        writer=FakeWriter(),
+        writer=ModelRouterWriter(
+            model_router=get_model_router(),
+            llm_call_log_repository=get_llm_call_log_repository(),
+            trace_service=get_agent_trace_service(),
+        ),
         job_service=get_ai_job_service(),
         trace_service=get_agent_trace_service(),
     )
@@ -303,6 +323,7 @@ def get_continuation_workflow() -> MinimalContinuationWorkflow:
         chapter_service=get_chapter_service(),
         tool_facade=get_core_tool_facade(),
         candidate_draft_repository=get_candidate_draft_repository(),
+        citation_link_service=get_citation_link_service(),
         direction_plan_repository=get_direction_plan_repository(),
         conflict_guard_service=get_conflict_guard_service(),
         job_repository=store,
@@ -400,4 +421,27 @@ def get_plot_arc_query_service() -> PlotArcQueryService:
     return PlotArcQueryService(
         plot_arc_repository=get_plot_arc_repository(),
         chapter_service=get_chapter_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_multi_chapter_service() -> MultiChapterContinuationService:
+    return MultiChapterContinuationService(
+        chapter_service=get_chapter_service(),
+        continuation_workflow=get_continuation_workflow(),
+        candidate_draft_repository=get_candidate_draft_repository(),
+        multi_chapter_repository=get_multi_chapter_repository(),
+        job_service=get_ai_job_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_citation_link_service() -> CitationLinkService:
+    return CitationLinkService(
+        citation_repository=get_citation_link_repository(),
+        candidate_draft_repository=get_candidate_draft_repository(),
+        work_service=get_work_service(),
+        chapter_service=get_chapter_service(),
+        writing_asset_service=build_writing_asset_service(),
+        story_state_repository=get_story_state_repository(),
     )

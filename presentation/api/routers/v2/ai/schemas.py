@@ -63,6 +63,18 @@ class StartContinuationRequest(V2AIOperationRequest):
     user_instruction: str = ""
 
 
+class StartMultiChapterRequest(V2AIOperationRequest):
+    work_id: str
+    start_chapter_id: str
+    target_chapters: int = 1
+    user_instruction: str = ""
+
+
+class AdvanceMultiChapterRequest(V2AIOperationRequest):
+    decision: str
+    user_action: bool = False
+
+
 class QuickTrialRunRequest(V2AIOperationRequest):
     model_role: str = ""
     provider_name: str = ""

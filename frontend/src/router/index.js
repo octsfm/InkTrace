@@ -1,5 +1,7 @@
 import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
 
+import { isP2FeatureEnabled } from '@/config/p2FeatureFlags'
+
 const routes = [
   {
     path: '/',
@@ -36,6 +38,10 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
+  if (to.meta?.p2FeatureFlag && !isP2FeatureEnabled(to.meta.p2FeatureFlag)) {
+    next('/works')
+    return
+  }
   document.title = `${to.meta.title || 'Home'} - InkTrace`
   next()
 })

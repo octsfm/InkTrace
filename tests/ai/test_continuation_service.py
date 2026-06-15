@@ -4,6 +4,7 @@ from pathlib import Path
 
 from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.initialization_service import InitializationApplicationService
+from application.services.ai.citation_link_service import CitationLinkService
 from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
 from application.services.ai.tool_facade import CoreToolFacade
 from application.services.v1.chapter_service import ChapterService
@@ -16,17 +17,24 @@ from infrastructure.database.repositories.ai.file_context_pack_store import File
 from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
+from infrastructure.persistence.sqlite_citation_link_repo import SQLiteCitationLinkRepository
 
 
 class _StubWriter:
-    def __init__(self, output: str = "暮色沉下来后，顾迟沿着灯塔台阶继续向上走去。") -> None:
+    def __init__(
+        self,
+        output: str = "暮色沉下来后，顾迟沿着灯塔台阶继续向上走去。",
+        citations: list[dict[str, object]] | None = None,
+    ) -> None:
         self.output = output
+        self.citations = list(citations or [])
         self.calls = 0
 
     def generate_candidate_text(self, *, context_pack, writing_task):
         self.calls += 1
         return {
             "content": self.output,
+            "citations": list(self.citations),
             "provider_name": "fake",
             "model_name": "fake-writer",
             "model_role": "writer",
@@ -143,6 +151,7 @@ def test_start_continuation_saves_candidate_draft_when_context_pack_ready(tmp_pa
     assert chapter_after.content == chapter.content
     assert init_service.get_latest_story_memory(work.id).snapshot_id == memory_before.snapshot_id
     assert init_service.get_latest_story_state(work.id).story_state_id == state_before.story_state_id
+    assert draft.metadata["citation_status"] == "none"
 
 
 def test_start_continuation_allows_degraded_context_pack_and_records_warning(tmp_path: Path) -> None:
@@ -277,3 +286,50 @@ def test_start_continuation_reports_candidate_save_failed_without_writing_chapte
     assert result.candidate_draft_id == ""
     assert result.error_code == "candidate_save_failed"
     assert chapter_after.content == original_content
+
+
+def test_start_continuation_processes_citations_after_candidate_saved(tmp_path: Path) -> None:
+    work_service, chapter_service, _, context_pack_service, job_store, work, chapter = _create_initialized_work(tmp_path)
+    writer = _StubWriter(
+        citations=[
+            {
+                "source_type": "chapter",
+                "source_name": "第一章",
+                "source_id_hint": chapter.id.value,
+                "context_in_draft": "灯塔台阶",
+                "confidence": 0.91,
+            }
+        ]
+    )
+    candidate_store = FileCandidateDraftStore(tmp_path / "candidate_drafts.json")
+    citation_service = CitationLinkService(
+        citation_repository=SQLiteCitationLinkRepository(tmp_path / "runtime.db"),
+        candidate_draft_repository=candidate_store,
+        work_service=work_service,
+        chapter_service=chapter_service,
+    )
+    tool_facade = CoreToolFacade(
+        context_pack_service=context_pack_service,
+        candidate_draft_repository=candidate_store,
+        writer=writer,
+    )
+    workflow = MinimalContinuationWorkflow(
+        work_service=work_service,
+        chapter_service=chapter_service,
+        tool_facade=tool_facade,
+        candidate_draft_repository=candidate_store,
+        citation_link_service=citation_service,
+        job_repository=job_store,
+        step_repository=job_store,
+        attempt_repository=job_store,
+    )
+
+    result = workflow.start_continuation(work.id, chapter.id.value, user_instruction="继续")
+    draft = workflow.get_candidate_draft(result.candidate_draft_id)
+    batch = citation_service.get_by_candidate_version(draft.selected_version_id)
+
+    assert result.status == "pending_review"
+    assert draft.metadata["citation_status"] == "ready"
+    assert draft.metadata["citation_count"] == 1
+    assert batch.total_count == 1
+    assert batch.citations[0].source_id == chapter.id.value

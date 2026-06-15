@@ -14,4 +14,22 @@ describe('router', () => {
     expect(paths).not.toContain('/novel/:id/write')
     expect(paths).not.toContain('/novel/:id/chapters/:chapterId/edit')
   })
+
+  it('redirects disabled p2 routes back to works', async () => {
+    if (!router.hasRoute('P2GuardProbe')) {
+      router.addRoute({
+        path: '/__p2_guard__',
+        name: 'P2GuardProbe',
+        component: { template: '<div>probe</div>' },
+        meta: {
+          title: 'P2 Guard Probe',
+          p2FeatureFlag: 'enable_multi_chapter'
+        }
+      })
+    }
+
+    await router.push('/__p2_guard__')
+
+    expect(router.currentRoute.value.path).toBe('/works')
+  })
 })

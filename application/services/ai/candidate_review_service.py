@@ -255,6 +255,7 @@ class CandidateReviewService:
                 "selected_version_id": target_version_id or draft.selected_version_id,
                 "accepted_version_id": draft.accepted_version_id or target_version_id,
                 "applied_version_id": target_version_id or draft.applied_version_id,
+                "applied_at": applied_at,
                 "review_decision": draft.metadata.get("review_decision", "apply"),
                 "applied_by": user_id,
                 "applied_at": applied_at,

@@ -1390,6 +1390,8 @@ class LLMUsage(AIBaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+    estimated_cost: float | None = None
+    price_snapshot_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class LLMCallStatus(StrEnum):
@@ -1440,11 +1442,14 @@ class OutputValidationResult(AIBaseModel):
 class LLMCallLog(AIBaseModel):
     prompt_key: str = ""
     prompt_version: str = ""
+    work_id: str = ""
     model_role: str
     provider_name: str
     model_name: str
     request_id: str
     trace_id: str
+    session_id: str = ""
+    step_id: str = ""
     status: LLMCallStatus
     error_code: str = ""
     error_message: str = ""
@@ -1452,6 +1457,8 @@ class LLMCallLog(AIBaseModel):
     started_at: datetime
     finished_at: datetime
     usage: LLMUsage | None = None
+    estimated_cost: float = 0.0
+    price_snapshot_json: dict[str, Any] = Field(default_factory=dict)
     context_pack_snapshot_id: str = ""
     output_schema_key: str = ""
 
@@ -2071,6 +2078,7 @@ class CandidateDraft(AIBaseModel):
     applied_version_id: str = ""
     latest_version_no: int = 0
     revision_round: int = 0
+    revision_count: int = 0
     max_revision_rounds: int = 1
     warning_codes: list[str] = Field(default_factory=list)
     stale_status: str = "fresh"
@@ -2086,6 +2094,7 @@ class CandidateDraft(AIBaseModel):
     created_by: str = "user_action"
     created_at: str = ""
     updated_at: str = ""
+    applied_at: str = ""
     request_id: str = ""
     trace_id: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -2187,6 +2196,141 @@ class ContinuationResult(AIBaseModel):
     warnings: list[str] = Field(default_factory=list)
     error_code: str = ""
     error_message: str = ""
+
+
+class MultiChapterStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    PAUSED = "paused"
+    WAITING_USER_DECISION = "waiting_user_decision"
+    BLOCKED = "blocked"
+    COMPLETED = "completed"
+    PARTIAL_SUCCESS = "partial_success"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ChapterAdvanceDecision(StrEnum):
+    APPLIED = "applied"
+    SKIPPED = "skipped"
+    CONTINUE_WITHOUT_APPLY = "continue_without_apply"
+    REGENERATE = "regenerate"
+
+
+class PerChapterStatus(StrEnum):
+    PENDING = "pending"
+    GENERATING = "generating"
+    REVIEWING = "reviewing"
+    READY = "ready"
+    BLOCKED = "blocked"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+    APPLIED = "applied"
+
+
+class ChapterStatusEntry(AIBaseModel):
+    chapter_index: int
+    chapter_id: str = ""
+    agent_session_id: str = ""
+    candidate_draft_id: str = ""
+    status: PerChapterStatus = PerChapterStatus.PENDING
+    error_code: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+
+
+class ChapterProgressEntry(AIBaseModel):
+    chapter_index: int
+    status: PerChapterStatus = PerChapterStatus.PENDING
+    candidate_draft_id: str = ""
+    candidate_draft_status: str = ""
+    word_count: int = 0
+    review_summary: str = ""
+
+
+class CitationSourceType(StrEnum):
+    CHAPTER = "chapter"
+    CHARACTER = "character"
+    FORESHADOW = "foreshadow"
+    SETTING = "setting"
+    EVENT = "event"
+    LOCATION = "location"
+
+
+class CitationVerificationStatus(StrEnum):
+    VERIFIED = "verified"
+    UNKNOWN_SOURCE = "unknown_source"
+    LOW_CONFIDENCE = "low_confidence"
+    VERIFICATION_FAILED = "verification_failed"
+
+
+class CitationLink(AIBaseModel):
+    citation_id: str
+    candidate_version_id: str
+    candidate_draft_id: str
+    work_id: str = ""
+    source_type: CitationSourceType
+    source_id: str = ""
+    source_hash: str = ""
+    source_name_snapshot: str = ""
+    source_span: str = ""
+    source_excerpt: str = ""
+    context_in_draft: str = ""
+    verification_status: CitationVerificationStatus = CitationVerificationStatus.UNKNOWN_SOURCE
+    verification_detail: str = ""
+    confidence: float = 0.0
+    verified_at: str = ""
+    created_at: str = ""
+
+
+class CitationBatch(AIBaseModel):
+    batch_id: str
+    candidate_version_id: str
+    candidate_draft_id: str = ""
+    total_count: int = 0
+    verified_count: int = 0
+    unknown_count: int = 0
+    citations: list[CitationLink] = Field(default_factory=list)
+
+
+class MultiChapterSession(AIBaseModel):
+    session_id: str
+    work_id: str
+    start_chapter_id: str
+    target_chapters: int
+    current_index: int = 0
+    status: MultiChapterStatus = MultiChapterStatus.PENDING
+    per_chapter_status: list[ChapterStatusEntry] = Field(default_factory=list)
+    agent_session_ids: list[str] = Field(default_factory=list)
+    candidate_draft_ids: list[str] = Field(default_factory=list)
+    candidate_story_state: dict[str, Any] = Field(default_factory=dict)
+    queue_state_snapshots: list[dict[str, Any]] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    error_code: str = ""
+    error_message: str = ""
+    paused_reason: str = ""
+    blocked_source: str = ""
+    blocked_reason_code: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    created_by: str = "user_action"
+    created_at: str = ""
+    updated_at: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+    auto_mode: str = "safe"
+    pending_pause: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class MultiChapterProgress(AIBaseModel):
+    session_id: str
+    status: MultiChapterStatus
+    current_index: int = 0
+    target_chapters: int = 0
+    completed_count: int = 0
+    blocked_count: int = 0
+    per_chapter: list[ChapterProgressEntry] = Field(default_factory=list)
 
 
 class QuickTrialRequest(AIBaseModel):
