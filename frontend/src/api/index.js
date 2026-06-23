@@ -84,7 +84,14 @@ const formatValidationErrors = (detail) => {
 }
 
 const resolveErrorMessage = (error) => {
+  const payloadError = error.response?.data?.error
   const detail = error.response?.data?.detail
+  if (payloadError && typeof payloadError === 'object') {
+    return payloadError.safe_message || payloadError.user_message || payloadError.message || error.message || '请求失败'
+  }
+  if (payloadError) {
+    return String(payloadError)
+  }
   if (Array.isArray(detail)) {
     const formatted = formatValidationErrors(detail)
     if (formatted) {
@@ -217,6 +224,7 @@ export const aiApi = {
   getAIJob: (jobId) => api.get(`/v2/ai/jobs/${encodeURIComponent(jobId)}`),
   listAIJobs: (params = {}) => api.get('/v2/ai/jobs', { params }),
   cancelAIJob: (jobId, payload) => api.post(`/v2/ai/jobs/${encodeURIComponent(jobId)}/cancel`, payload),
+  startVectorIndexReindex: (payload) => api.post('/v2/ai/vector-index/reindex', payload),
 
   // Initialization
   startInitialization: (payload) => api.post('/v2/ai/initializations', payload),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import time
 
 from fastapi.testclient import TestClient
@@ -32,6 +33,12 @@ def _reset_dependencies() -> None:
         dependencies.get_multi_chapter_repository.cache_clear()
     if hasattr(dependencies, "get_multi_chapter_service"):
         dependencies.get_multi_chapter_service.cache_clear()
+    if hasattr(dependencies, "get_citation_link_repository"):
+        dependencies.get_citation_link_repository.cache_clear()
+    if hasattr(dependencies, "get_citation_link_service"):
+        dependencies.get_citation_link_service.cache_clear()
+    if hasattr(dependencies, "get_citation_vector_recall_service"):
+        dependencies.get_citation_vector_recall_service.cache_clear()
 
 
 def _seed_writer_model_settings() -> None:
@@ -142,3 +149,129 @@ def test_multi_chapter_advance_api_rejects_non_user_action_caller(monkeypatch, t
 
     assert response.status_code == 403
     assert response.json()["error"]["error_code"] == "P2_CALLER_FORBIDDEN"
+
+
+def test_multi_chapter_advance_api_accepts_user_action_and_moves_to_next_chapter(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
+    monkeypatch.setenv("INKTRACE_P2_ENABLE_MULTI_CHAPTER", "1")
+    _reset_dependencies()
+    work_id, chapter_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    start_response = client.post(
+        "/api/v2/ai/multi-chapter/start",
+        json={
+            "work_id": work_id,
+            "start_chapter_id": chapter_id,
+            "target_chapters": 2,
+            "caller_type": "user_action",
+            "idempotency_key": "mc-start-advance-allow-1",
+        },
+    )
+    session_id = start_response.json()["data"]["session_id"]
+    _wait_until_ready(client, session_id)
+
+    response = client.post(
+        f"/api/v2/ai/multi-chapter/{session_id}/advance",
+        json={
+            "decision": "continue_without_apply",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "mc-advance-allow-1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["session_id"] == session_id
+    assert response.json()["data"]["current_index"] == 2
+    assert response.json()["data"]["next_chapter_available"] is False
+
+
+def test_multi_chapter_cancel_api_cancels_session_for_user_action(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
+    monkeypatch.setenv("INKTRACE_P2_ENABLE_MULTI_CHAPTER", "1")
+    _reset_dependencies()
+    work_id, chapter_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    start_response = client.post(
+        "/api/v2/ai/multi-chapter/start",
+        json={
+            "work_id": work_id,
+            "start_chapter_id": chapter_id,
+            "target_chapters": 2,
+            "caller_type": "user_action",
+            "idempotency_key": "mc-start-cancel-allow-1",
+        },
+    )
+    session_id = start_response.json()["data"]["session_id"]
+
+    response = client.post(
+        f"/api/v2/ai/multi-chapter/{session_id}/cancel",
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "mc-cancel-allow-1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["session_id"] == session_id
+    assert response.json()["data"]["status"] == "cancelled"
+    assert response.json()["data"]["cancelled_at"]
+
+
+def test_multi_chapter_generated_citations_can_be_verified_without_monkeypatch_service(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
+    monkeypatch.setenv("INKTRACE_P2_ENABLE_MULTI_CHAPTER", "1")
+    monkeypatch.setenv("INKTRACE_P2_ENABLE_CITATION_LINK", "1")
+    _reset_dependencies()
+    work_id, chapter_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    start_response = client.post(
+        "/api/v2/ai/multi-chapter/start",
+        json={
+            "work_id": work_id,
+            "start_chapter_id": chapter_id,
+            "target_chapters": 1,
+            "user_instruction": "请引用第一章前文线索继续推进灯塔谜团。",
+            "caller_type": "user_action",
+            "idempotency_key": "mc-start-citation-verify-1",
+        },
+    )
+
+    assert start_response.status_code == 202
+    session_id = start_response.json()["data"]["session_id"]
+    progress = _wait_until_ready(client, session_id)
+    candidate_draft_id = progress["per_chapter"][0]["candidate_draft_id"]
+
+    draft_response = client.get(f"/api/v2/ai/candidate-drafts/{candidate_draft_id}")
+    assert draft_response.status_code == 200
+    selected_version_id = draft_response.json()["data"]["selected_version_id"]
+    assert draft_response.json()["data"]["metadata"]["citation_status"] == "ready"
+    assert draft_response.json()["data"]["metadata"]["citation_count"] >= 1
+
+    citation_response = client.get(f"/api/v2/ai/citations/candidate-version/{selected_version_id}")
+    assert citation_response.status_code == 200
+    assert citation_response.json()["data"]["batch"]["total_count"] >= 1
+
+    source_hash = f"sha256:{hashlib.sha256('顾迟在灯塔里找到被海风侵蚀的航海图残页。'.encode('utf-8')).hexdigest()}"
+    verify_response = client.post(
+        "/api/v2/ai/citations/verify",
+        json={
+            "candidate_version_id": selected_version_id,
+            "citations": [
+                {
+                    "source_type": "chapter",
+                    "source_name": "第一章",
+                    "source_hash": source_hash,
+                    "context_in_draft": "顾迟发现海图的线索",
+                    "confidence": 0.88,
+                }
+            ],
+        },
+    )
+
+    assert verify_response.status_code == 200
+    assert verify_response.json()["data"]["batch"]["citations"][0]["verification_status"] == "verified"

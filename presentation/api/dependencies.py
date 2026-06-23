@@ -24,6 +24,7 @@ from application.services.ai.ai_suggestion_service import AISuggestionService
 from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.ai.candidate_rewrite_service import CandidateRewriteService
 from application.services.ai.citation_link_service import CitationLinkService
+from application.services.ai.citation_vector_recall_service import CitationVectorRecallService
 from application.services.ai.multi_chapter_service import MultiChapterContinuationService
 from application.services.ai.memory_review_gate_service import MemoryReviewGateService
 from application.services.ai.planning_api_service import PlanningAPIService
@@ -32,16 +33,20 @@ from application.services.ai.ai_settings_service import AISettingsService
 from application.services.ai.candidate_review_service import CandidateReviewService
 from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
 from application.services.ai.context_pack_service import ContextPackService
+from application.services.ai.context_vector_recall_service import ContextVectorRecallService
 from application.services.ai.initialization_service import InitializationApplicationService
 from application.services.ai.model_router import ModelRouter
 from application.services.ai.provider_registry import ProviderRegistry
 from application.services.ai.quick_trial_service import QuickTrialApplicationService
 from application.services.ai.security import SettingsCipher
 from application.services.ai.tool_facade import CoreToolFacade
+from application.services.ai.vector_index_service import VectorIndexService
+from application.services.ai.vector_reindex_service import VectorReindexApplicationService
 from infrastructure.ai.providers.fake_provider import FakeLLMProvider
 from infrastructure.ai.providers.openai_compatible_provider import OpenAICompatibleProvider
 from infrastructure.ai.providers.fake_reviewer import FakeReviewer
 from infrastructure.ai.providers.fake_writer import FakeWriter
+from infrastructure.ai.providers.local_embedding_provider import LocalEmbeddingProvider
 from infrastructure.ai.providers.model_router_writer import ModelRouterWriter
 from infrastructure.database.repositories.ai.file_ai_review_store import FileAIReviewStore
 from infrastructure.database.repositories.ai.file_ai_suggestion_store import FileAISuggestionStore
@@ -61,7 +66,9 @@ from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlot
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 from infrastructure.persistence.sqlite_citation_link_repo import SQLiteCitationLinkRepository
+from infrastructure.persistence.chroma_vector_store import ChromaVectorStore
 from infrastructure.persistence.sqlite_multi_chapter_session_repo import SQLiteMultiChapterSessionRepository
+from infrastructure.persistence.sqlite_vector_index_repo import SQLiteVectorIndexRepository
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
 from application.services.v1.service_factory import build_writing_asset_service
@@ -271,6 +278,7 @@ def get_initialization_service() -> InitializationApplicationService:
         story_memory_repository=get_story_memory_repository(),
         story_state_repository=get_story_state_repository(),
         plot_arc_repository=get_plot_arc_repository(),
+        vector_index_service=get_vector_index_service(),
     )
 
 
@@ -283,7 +291,56 @@ def get_context_pack_service() -> ContextPackService:
         story_state_repository=get_story_state_repository(),
         context_pack_repository=get_context_pack_repository(),
         plot_arc_repository=get_plot_arc_repository(),
+        vector_recall_service=get_context_vector_recall_service(),
+        vector_index_repository=get_vector_index_repository(),
     )
+
+
+@lru_cache(maxsize=1)
+def get_context_vector_recall_service() -> ContextVectorRecallService:
+    return ContextVectorRecallService(
+        chapter_service=get_chapter_service(),
+        embedding_provider=get_embedding_provider(),
+        vector_store=get_vector_store(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_vector_index_repository() -> SQLiteVectorIndexRepository:
+    return SQLiteVectorIndexRepository(DB_PATH)
+
+
+@lru_cache(maxsize=1)
+def get_vector_index_service() -> VectorIndexService:
+    return VectorIndexService(
+        chapter_service=get_chapter_service(),
+        embedding_provider=get_embedding_provider(),
+        vector_store=get_vector_store(),
+        vector_index_repository=get_vector_index_repository(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_vector_reindex_service() -> VectorReindexApplicationService:
+    store = get_ai_job_store()
+    return VectorReindexApplicationService(
+        work_service=get_work_service(),
+        chapter_service=get_chapter_service(),
+        job_repository=store,
+        step_repository=store,
+        attempt_repository=store,
+        vector_index_service=get_vector_index_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_embedding_provider() -> LocalEmbeddingProvider:
+    return LocalEmbeddingProvider()
+
+
+@lru_cache(maxsize=1)
+def get_vector_store() -> ChromaVectorStore:
+    return ChromaVectorStore(persist_directory=CHROMA_DIR)
 
 
 @lru_cache(maxsize=1)
@@ -444,4 +501,14 @@ def get_citation_link_service() -> CitationLinkService:
         chapter_service=get_chapter_service(),
         writing_asset_service=build_writing_asset_service(),
         story_state_repository=get_story_state_repository(),
+        vector_recall_service=get_citation_vector_recall_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_citation_vector_recall_service() -> CitationVectorRecallService:
+    return CitationVectorRecallService(
+        work_service=get_work_service(),
+        chapter_service=get_chapter_service(),
+        writing_asset_service=build_writing_asset_service(),
     )

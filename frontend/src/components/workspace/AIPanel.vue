@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿<template>
   <section class="ai-panel" data-test="ai-panel">
     <header class="ai-panel-header">
       <div>
@@ -88,6 +88,57 @@
           {{ displayContextItemType(item.source_type || item.item_type) }} / {{ item.content_text || item.summary || 'summary' }}
         </li>
       </ul>
+    </div>
+
+    <div v-if="showAIMode" class="ai-section">
+      <h4>向量索引</h4>
+      <div v-if="vectorIndexNeedsAttention" class="settings-block-banner" data-test="vector-index-stale-banner">
+        <strong>索引已过期，点击重建</strong>
+        <span>{{ vectorIndexBannerMessage }}</span>
+      </div>
+      <div class="ai-actions">
+        <button
+          data-test="vector-index-reindex-full-work"
+          type="button"
+          :disabled="aiSettingsBlocked || reindexSubmitting"
+          @click="handleStartVectorReindex('full_work')"
+        >
+          重建整部作品索引
+        </button>
+        <button
+          data-test="vector-index-reindex-current-chapter"
+          type="button"
+          :disabled="aiSettingsBlocked || reindexSubmitting || !chapterId"
+          @click="handleStartVectorReindex('chapter')"
+        >
+          重建当前章节索引
+        </button>
+        <button
+          v-if="vectorIndexJobActive"
+          data-test="vector-index-cancel"
+          type="button"
+          @click="handleCancelVectorReindex"
+        >
+          取消重建
+        </button>
+        <button
+          v-if="vectorIndexRetryVisible"
+          data-test="vector-index-retry"
+          type="button"
+          :disabled="reindexSubmitting"
+          @click="handleRetryVectorReindex"
+        >
+          重试
+        </button>
+      </div>
+      <div class="ai-meta">
+        <span>状态 {{ displayStatus(vectorIndexDisplayStatus) }}</span>
+        <span v-if="reindexPolling.jobId.value">job {{ reindexPolling.jobId.value }}</span>
+        <span v-if="vectorIndexStatusHint">{{ vectorIndexStatusHint }}</span>
+        <span v-if="vectorIndexProgressPercent > 0">进度 {{ vectorIndexProgressPercent }}%</span>
+        <span v-if="vectorIndexStepLabel">{{ vectorIndexStepLabel }}</span>
+      </div>
+      <p v-if="reindexActionError" class="ai-error">{{ reindexActionError }}</p>
     </div>
 
     <div v-if="showAIMode && plotArcVisible" class="ai-section">
@@ -722,6 +773,7 @@ const props = defineProps({
 })
 
 const router = useRouter()
+let reindexStartTimer = null
 const goToSettingsPage = () => {
   router.push('/settings')
 }
@@ -738,6 +790,9 @@ const settingsForm = reactive({
 const initializationInfo = ref({})
 const contextPackReadiness = ref({})
 const contextPackItems = ref([])
+const reindexActionError = ref('')
+const reindexSubmitting = ref(false)
+const lastReindexRequest = ref(null)
 const continuationResult = ref({})
 const candidateDrafts = ref([])
 const candidateDetails = ref({})
@@ -768,6 +823,7 @@ const writingTasks = ref([])
 const planningActionError = ref('')
 const quickTrialResult = ref({})
 const polling = useAIJobPolling({ intervalMs: 1000 })
+const reindexPolling = useAIJobPolling({ intervalMs: 3000, maxIntervalMs: 10000 })
 const sessionPolling = useAIJobPolling({
   intervalMs: 2000,
   maxIntervalMs: 5000,
@@ -832,6 +888,38 @@ const initializationSummary = computed(() => ({
   empty: Number(initializationInfo.value?.empty_chapter_count || initializationInfo.value?.data?.empty_chapter_count || 0),
   failed: Number(initializationInfo.value?.failed_chapter_count || initializationInfo.value?.data?.failed_chapter_count || 0)
 }))
+const vectorIndexWarnings = computed(() => (
+  Array.isArray(contextPackReadiness.value?.warnings) ? contextPackReadiness.value.warnings.filter(Boolean) : []
+))
+const vectorIndexNeedsAttention = computed(() => (
+  String(contextPackReadiness.value?.degraded_reason || '') === 'vector_index_stale_warning' ||
+  vectorIndexWarnings.value.includes('vector_index_stale_warning') ||
+  String(contextPackReadiness.value?.vector_index_status || '') === 'stale'
+))
+const vectorIndexBannerMessage = computed(() => (
+  vectorIndexNeedsAttention.value
+    ? '当前索引可能已过期，建议尽快重建。重建期间续写仍可使用现有索引。'
+    : '当前索引可用于上下文召回。'
+))
+const vectorIndexDisplayStatus = computed(() => (
+  String(reindexPolling.job.value?.status || contextPackReadiness.value?.vector_index_status || contextPackReadiness.value?.status || 'unknown')
+))
+const vectorIndexProgressPercent = computed(() => Number(reindexPolling.job.value?.progress?.percent || 0))
+const vectorIndexStepLabel = computed(() => String(reindexPolling.job.value?.progress?.current_step_label || ''))
+const vectorIndexJobActive = computed(() => Boolean(reindexPolling.jobId.value) && !reindexPolling.isTerminal.value)
+const vectorIndexRetryVisible = computed(() => TERMINAL_JOB_STATUSES.has(String(reindexPolling.job.value?.status || '')) &&
+  ['failed', 'cancelled'].includes(String(reindexPolling.job.value?.status || '')))
+const vectorIndexStatusHint = computed(() => {
+  const status = String(reindexPolling.job.value?.status || '')
+  if (status === 'queued' || status === 'running') return '正在重建索引'
+  if (status === 'completed') return '索引重建完成。'
+  if (status === 'partial_success') {
+    return '索引部分重建成功，部分章节的索引可能不完整。可以针对失败章节单独重建。'
+  }
+  if (status === 'failed') return '索引重建失败，可以重试。'
+  if (status === 'cancelled') return '索引重建已取消。'
+  return ''
+})
 const conflictCountsByDraft = computed(() => {
   const grouped = {}
   for (const item of conflicts.value) {
@@ -888,6 +976,7 @@ const statusLabelMap = {
   pending: '待处理（pending）',
   running: '进行中（running）',
   completed: '已完成（completed）',
+  partial_success: '部分成功（partial_success）',
   failed: '失败（failed）',
   cancelled: '已取消（cancelled）',
   waiting_for_user: '等待你确认（waiting_for_user）',
@@ -1101,6 +1190,173 @@ const displayStepAction = (value) => stepActionLabelMap[value] || String(value |
 const displayMemoryTargetType = (value) => memoryTargetTypeLabelMap[value] || String(value || '-')
 
 const buildIdempotencyKey = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+const REINDEX_SESSION_KEY_PREFIX = 'inktrace.vector-reindex.pending'
+const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'partial_success'])
+
+const buildReindexStorageKey = () => `${REINDEX_SESSION_KEY_PREFIX}:${props.workId || 'unknown'}`
+const savePendingReindexRequest = (payload) => {
+  if (typeof window === 'undefined' || !window.sessionStorage || !props.workId) return
+  window.sessionStorage.setItem(buildReindexStorageKey(), JSON.stringify({ request: payload }))
+}
+const loadPendingReindexRequest = () => {
+  if (typeof window === 'undefined' || !window.sessionStorage || !props.workId) return null
+  try {
+    return JSON.parse(window.sessionStorage.getItem(buildReindexStorageKey()) || 'null')
+  } catch {
+    return null
+  }
+}
+
+const handleStartVectorReindex = async (indexScope) => {
+  const payload = buildVectorReindexRequest(indexScope)
+  lastReindexRequest.value = payload
+  await startVectorReindexFlow(payload)
+}
+
+const handleCancelVectorReindex = async () => {
+  if (!reindexPolling.jobId.value) return
+  try {
+    const payload = unwrapData(await aiApi.cancelAIJob(reindexPolling.jobId.value, { reason: 'user_cancelled' }))
+    clearReindexStartTimer()
+    syncReindexJobState(payload)
+    reindexPolling.stop()
+    clearPendingReindexRequest()
+    reindexActionError.value = '索引重建已取消。'
+  } catch (error) {
+    reindexActionError.value = String(error?.userMessage || error?.message || '索引取消失败，请稍后重试')
+  }
+}
+
+const handleRetryVectorReindex = async () => {
+  const baseRequest = lastReindexRequest.value || loadPendingReindexRequest()?.request
+  if (!baseRequest) {
+    reindexActionError.value = '缺少可重试的索引请求，请重新发起重建。'
+    return
+  }
+  const retryPayload = buildVectorReindexRequest(baseRequest.index_scope, {
+    ...baseRequest,
+    idempotency_key: buildIdempotencyKey(`vector_reindex_retry_${baseRequest.index_scope}`)
+  })
+  lastReindexRequest.value = retryPayload
+  await startVectorReindexFlow(retryPayload, { skipConfirm: true })
+}
+const clearPendingReindexRequest = () => {
+  if (typeof window === 'undefined' || !window.sessionStorage || !props.workId) return
+  window.sessionStorage.removeItem(buildReindexStorageKey())
+}
+
+const buildVectorReindexRequest = (indexScope, overrides = {}) => {
+  const payload = {
+    work_id: props.workId,
+    index_scope: indexScope,
+    caller_type: 'user_action',
+    force_rebuild: false,
+    reason: indexScope === 'chapter'
+      ? '用户在 AI 面板中手动触发当前章节索引重建'
+      : '用户在 AI 面板中手动触发整部作品索引重建',
+    idempotency_key: overrides.idempotency_key || buildIdempotencyKey(`vector_reindex_${indexScope}`)
+  }
+  if (indexScope === 'chapter') {
+    payload.target_chapter_ids = [props.chapterId].filter(Boolean)
+  }
+  return {
+    ...payload,
+    ...overrides
+  }
+}
+
+const buildReindexConfirmMessage = (payload) => {
+  if (payload.index_scope === 'chapter') {
+    const targetCount = Array.isArray(payload.target_chapter_ids) ? payload.target_chapter_ids.filter(Boolean).length : 0
+    return `将对已选的 ${targetCount} 个章节重建向量索引。确认开始？`
+  }
+  return '将重建全部已确认章节的向量索引。重建期间续写仍可使用现有索引。确认开始？'
+}
+
+const syncReindexJobState = (payload) => {
+  reindexPolling.job.value = {
+    ...(reindexPolling.job.value || {}),
+    ...payload
+  }
+}
+
+const clearReindexStartTimer = () => {
+  if (!reindexStartTimer) return
+  clearTimeout(reindexStartTimer)
+  reindexStartTimer = null
+}
+
+const seedReindexPolling = (payload, options = {}) => {
+  const { autoPoll = true } = options
+  clearReindexStartTimer()
+  reindexPolling.stop()
+  reindexPolling.jobId.value = String(payload.job_id || '')
+  reindexPolling.pollingHint.value = payload.polling_hint && typeof payload.polling_hint === 'object'
+    ? payload.polling_hint
+    : {}
+  syncReindexJobState(payload)
+  if (!autoPoll || !reindexPolling.jobId.value || TERMINAL_JOB_STATUSES.has(String(payload.status || ''))) {
+    return
+  }
+  const delayMs = Number(reindexPolling.pollingHint.value?.next_poll_after_ms || 3000)
+  reindexStartTimer = setTimeout(() => {
+    reindexStartTimer = null
+    void reindexPolling.fetchOnce()
+  }, Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 3000)
+}
+
+const startVectorReindexFlow = async (payload, options = {}) => {
+  const {
+    skipConfirm = false,
+    autoPoll = true,
+    successMessage = '索引重建已加入队列，即将开始。'
+  } = options
+  reindexActionError.value = ''
+  if (!ensureAISettingsReady(reindexActionError)) return
+  if (!props.workId) return
+  if (payload.index_scope === 'chapter' && !(payload.target_chapter_ids || []).length) {
+    reindexActionError.value = '请选择至少一个章节。'
+    return
+  }
+  if (!skipConfirm) {
+    const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
+      ? true
+      : window.confirm(buildReindexConfirmMessage(payload))
+    if (!confirmed) return
+  }
+  reindexSubmitting.value = true
+  try {
+    const response = unwrapData(await aiApi.startVectorIndexReindex(payload))
+    lastReindexRequest.value = payload
+    savePendingReindexRequest(payload)
+    if (response.job_id) {
+      seedReindexPolling(response, { autoPoll })
+    } else {
+      syncReindexJobState(response)
+    }
+    if (response.reused_existing_job) {
+      ElMessage.success('已恢复索引重建任务。')
+    } else {
+      ElMessage.success(successMessage)
+    }
+  } catch (error) {
+    reindexActionError.value = String(error?.userMessage || error?.message || '索引重建失败，可以重试。')
+  } finally {
+    reindexSubmitting.value = false
+  }
+}
+
+const restorePendingVectorReindex = async () => {
+  if (!showAIMode.value || !props.workId || reindexSubmitting.value || reindexPolling.jobId.value) return
+  const pending = loadPendingReindexRequest()
+  const request = pending?.request
+  if (!request || String(request.work_id || '') !== String(props.workId || '')) return
+  await startVectorReindexFlow(request, {
+    skipConfirm: true,
+    autoPoll: false,
+    successMessage: '已恢复索引重建任务。'
+  })
+}
 
 const resetSettingsForm = (payload) => {
   const nextSettings = payload || { provider_configs: [], model_role_mappings: {} }
@@ -1902,7 +2158,15 @@ const handleTraceDetail = async (traceId) => {
 }
 
 watch(() => props.workId, async () => {
+  reindexActionError.value = ''
+  clearReindexStartTimer()
+  reindexPolling.stop()
+  reindexPolling.jobId.value = ''
+  reindexPolling.job.value = null
+  reindexPolling.pollingHint.value = {}
+  lastReindexRequest.value = null
   await refreshPanel()
+  await restorePendingVectorReindex()
 }, { immediate: true })
 
 watch(() => props.chapterId, async () => {
@@ -1917,6 +2181,23 @@ watch(() => props.chapterId, async () => {
     loadPlanningData()
   ])
 }, { immediate: true })
+
+watch(() => String(reindexPolling.job.value?.status || ''), async (status) => {
+  if (!status || !TERMINAL_JOB_STATUSES.has(status)) return
+  clearReindexStartTimer()
+  clearPendingReindexRequest()
+  if (status === 'completed' || status === 'partial_success') {
+    reindexActionError.value = ''
+    await loadContextReadiness()
+    return
+  }
+  if (status === 'failed' && !reindexActionError.value) {
+    reindexActionError.value = '索引重建失败，可以重试。'
+  }
+  if (status === 'cancelled' && !reindexActionError.value) {
+    reindexActionError.value = '索引重建已取消。'
+  }
+})
 </script>
 
 <style scoped>

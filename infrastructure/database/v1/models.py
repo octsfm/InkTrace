@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS chapters (
     work_id TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft',
     word_count INTEGER NOT NULL DEFAULT 0,
     order_index INTEGER NOT NULL,
     version INTEGER NOT NULL DEFAULT 1,
@@ -181,6 +182,7 @@ def _ensure_chapters_columns(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "chapters", "work_id", "TEXT")
     _add_column_if_missing(conn, "chapters", "title", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "chapters", "content", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "chapters", "status", "TEXT NOT NULL DEFAULT 'draft'")
     _add_column_if_missing(conn, "chapters", "word_count", "INTEGER NOT NULL DEFAULT 0")
     _add_column_if_missing(conn, "chapters", "order_index", "INTEGER")
     _add_column_if_missing(conn, "chapters", "version", "INTEGER NOT NULL DEFAULT 1")
@@ -195,6 +197,7 @@ def _ensure_chapters_columns(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE chapters SET order_index = number WHERE order_index IS NULL")
     conn.execute("UPDATE chapters SET title = '' WHERE title IS NULL")
     conn.execute("UPDATE chapters SET content = '' WHERE content IS NULL")
+    conn.execute("UPDATE chapters SET status = 'draft' WHERE status IS NULL OR status = ''")
     conn.execute("UPDATE chapters SET word_count = 0 WHERE word_count IS NULL")
     conn.execute("UPDATE chapters SET order_index = 1 WHERE order_index IS NULL")
     conn.execute("UPDATE chapters SET version = 1 WHERE version IS NULL")

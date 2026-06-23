@@ -1,11 +1,27 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
 
 from presentation.api import dependencies
 from presentation.api.routers.v2.ai.response_utils import error_response, success_response
 
 router = APIRouter(tags=["v2-ai-citations"])
+
+
+class CitationVerifyItemPayload(BaseModel):
+    source_type: str
+    source_id_hint: str = ""
+    source_name: str = ""
+    source_span: str = ""
+    context_in_draft: str = ""
+    confidence: float = 0.0
+    source_hash: str = ""
+
+
+class CitationVerifyRequestPayload(BaseModel):
+    candidate_version_id: str
+    citations: list[CitationVerifyItemPayload] = Field(default_factory=list)
 
 
 def _serialize_citation(item) -> dict[str, object]:
@@ -39,6 +55,24 @@ def _serialize_batch(batch) -> dict[str, object]:
         "unknown_count": batch.unknown_count,
         "citations": [_serialize_citation(item) for item in batch.citations],
     }
+
+
+@router.post("/api/v2/ai/citations/verify")
+def verify_citations(payload: CitationVerifyRequestPayload, request: Request):
+    service = dependencies.get_citation_link_service()
+    try:
+        batch = service.process_candidate_citations(
+            candidate_version_id=payload.candidate_version_id,
+            raw_citations=[item.model_dump() for item in payload.citations],
+        )
+    except ValueError as exc:
+        error_code = str(exc)
+        if error_code == "candidate_version_not_found":
+            return error_response(request, error_code=error_code, status_code=404)
+        return error_response(request, error_code=error_code, status_code=400)
+    if any(item.verification_status.value != "verified" for item in batch.citations):
+        return error_response(request, error_code="P2_CITATION_UNVERIFIED", status_code=400)
+    return success_response(request, data={"batch": _serialize_batch(batch)})
 
 
 @router.get("/api/v2/ai/citations/candidate-version/{candidate_version_id}")
@@ -79,4 +113,3 @@ def get_citation_source_detail(citation_id: str, request: Request):
     except ValueError as exc:
         return error_response(request, error_code=str(exc), status_code=404)
     return success_response(request, data=payload)
-

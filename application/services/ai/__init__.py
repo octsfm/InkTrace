@@ -19,6 +19,8 @@ from application.services.ai.quick_trial_service import QuickTrialApplicationSer
 from application.services.ai.security import SettingsCipher
 from application.services.ai.story_memory_service import StoryMemoryService
 from application.services.ai.story_state_service import StoryStateService
+from application.services.ai.vector_index_service import VectorIndexService
+from application.services.ai.vector_reindex_service import VectorReindexApplicationService
 from application.services.ai.writer_service import WriterService
 
 __all__ = [
@@ -44,5 +46,7 @@ __all__ = [
     "SettingsCipher",
     "StoryMemoryService",
     "StoryStateService",
+    "VectorIndexService",
+    "VectorReindexApplicationService",
     "WriterService",
 ]

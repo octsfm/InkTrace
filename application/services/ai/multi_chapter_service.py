@@ -354,7 +354,10 @@ class MultiChapterContinuationService:
             if step_id:
                 self._job_service.mark_step_completed(job_id, step_id, summary=f"candidate:{draft.candidate_draft_id}")
             if job_id:
-                self._job_service.pause_job(job_id, reason="waiting_user_decision")
+                try:
+                    self._job_service.pause_job(job_id, reason="waiting_user_decision")
+                except ValueError:
+                    pass
             return
 
         blocked_status = MultiChapterStatus.BLOCKED if result.status == "blocked" else MultiChapterStatus.FAILED
@@ -432,4 +435,3 @@ class MultiChapterContinuationService:
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()
-

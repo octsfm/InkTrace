@@ -28,6 +28,7 @@ from domain.repositories.ai.initialization_repository import InitializationRepos
 from domain.repositories.ai.plot_arc_repository import PlotArcRepository
 from domain.repositories.ai.story_memory_repository import StoryMemoryRepository
 from domain.repositories.ai.story_state_repository import StoryStateRepository
+from domain.repositories.ai.vector_index_repository import VectorIndexRepositoryPort
 
 
 class ContextPackService:
@@ -56,6 +57,7 @@ class ContextPackService:
         context_pack_repository: ContextPackRepository,
         plot_arc_repository: PlotArcRepository | None = None,
         vector_recall_service=None,
+        vector_index_repository: VectorIndexRepositoryPort | None = None,
     ) -> None:
         self._chapter_service = chapter_service
         self._initialization_repository = initialization_repository
@@ -64,6 +66,7 @@ class ContextPackService:
         self._context_pack_repository = context_pack_repository
         self._plot_arc_repository = plot_arc_repository
         self._vector_recall_service = vector_recall_service
+        self._vector_index_repository = vector_index_repository
 
     def build(self, request: ContextPackBuildRequest) -> ContextPackSnapshot:
         now = self._now()
@@ -130,6 +133,7 @@ class ContextPackService:
             source_chapter_versions = dict(initialization.source_chapter_versions)
 
         chapters = self._chapter_service.list_chapters(request.work_id)
+        vector_index_status = self._get_vector_index_status(request.work_id)
         current_chapter = next(
             (
                 ch
@@ -342,6 +346,7 @@ class ContextPackService:
             chapter_text=chapter_text,
             story_memory=story_memory,
             story_state=story_state,
+            vector_index_status=vector_index_status,
         )
         items.extend(vector_recall_items)
         degraded_reason_parts.extend(vector_recall_warnings)
@@ -941,25 +946,54 @@ class ContextPackService:
         chapter_text: str,
         story_memory,
         story_state,
+        vector_index_status: dict[str, object] | None,
     ) -> tuple[list[ContextItem], str, list[str]]:
+        warnings: list[str] = []
+        index_status = str((vector_index_status or {}).get("index_status", "") or "").strip()
+        index_stale_status = str((vector_index_status or {}).get("stale_status", "fresh") or "fresh").strip()
+        if index_status in {"missing", "not_built", "failed", "degraded"}:
+            return [], "degraded", ["vector_index_unavailable"]
+        if index_status == "stale" or index_stale_status in {"stale", "partial_stale"}:
+            warnings.append("vector_index_stale_warning")
+            if not request.allow_stale_vector:
+                return [], "degraded", warnings
+
         if self._vector_recall_service is None:
-            return [], "degraded", ["vector_recall_unavailable"]
+            return [], "degraded", self._dedupe_warnings(warnings + ["vector_recall_unavailable"])
 
         try:
             query_text = self._build_vector_query_text(request, chapter_text, story_memory, story_state)
         except Exception:
-            return [], "skipped", ["query_text_build_failed", "rag_skipped"]
+            return [], "skipped", self._dedupe_warnings(warnings + ["query_text_build_failed", "rag_skipped"])
 
-        recall_query = _RecallQuery(query_text=query_text, allow_stale=request.allow_stale_vector)
+        recall_query = _RecallQuery(
+            work_id=request.work_id,
+            target_chapter_id=request.chapter_id,
+            target_chapter_order=0,
+            query_text=query_text,
+            top_k=3,
+            score_threshold=0.6,
+            recall_scope="confirmed_chapters",
+            allow_stale=request.allow_stale_vector,
+            request_id=request.request_id,
+            trace_id=request.trace_id,
+        )
         try:
             raw_items = self._vector_recall_service.recall(recall_query)
         except Exception:
-            return [], "degraded", ["vector_recall_unavailable"]
+            return [], "failed", self._dedupe_warnings(warnings + ["vector_recall_failed"])
 
-        recall_items = self._normalize_vector_recall_items(pack_id, raw_items)
+        recall_items, filter_warnings = self._normalize_vector_recall_items(
+            pack_id,
+            raw_items,
+            allow_stale=request.allow_stale_vector,
+        )
+        warnings.extend(filter_warnings)
         if not recall_items:
-            return [], "degraded", ["vector_recall_unavailable"]
-        return recall_items, "ready", []
+            empty_reason = "recall_result_empty_after_filter" if filter_warnings else "vector_recall_empty"
+            return [], "degraded", self._dedupe_warnings(warnings + [empty_reason])
+        recall_status = "degraded" if warnings else "ready"
+        return recall_items, recall_status, self._dedupe_warnings(warnings)
 
     def _build_vector_query_text(self, request: ContextPackBuildRequest, chapter_text: str, story_memory, story_state) -> str:
         parts = [
@@ -973,16 +1007,47 @@ class ContextPackService:
             raise ValueError("query_text_build_failed")
         return query_text[:500]
 
-    def _normalize_vector_recall_items(self, pack_id: str, raw_items: object) -> list[ContextItem]:
+    def _normalize_vector_recall_items(
+        self,
+        pack_id: str,
+        raw_items: object,
+        *,
+        allow_stale: bool,
+    ) -> tuple[list[ContextItem], list[str]]:
         normalized: list[ContextItem] = []
+        warnings: list[str] = []
         for index, raw_item in enumerate(raw_items or []):
             if isinstance(raw_item, ContextItem):
+                if raw_item.stale_status in {"stale", "partial_stale"} and not allow_stale:
+                    warnings.append("stale_content")
+                    continue
                 normalized.append(raw_item.model_copy(update={"priority": self.PRIORITY_VECTOR_RECALL}))
                 continue
             if not isinstance(raw_item, dict):
                 continue
             content_text = str(raw_item.get("content_text", "") or "").strip()
             if not content_text:
+                continue
+            metadata = dict(raw_item.get("metadata", {}) or {})
+            source_value = str(
+                metadata.get("source", metadata.get("source_type", raw_item.get("source", raw_item.get("source_type", "")))) or ""
+            ).strip()
+            if source_value and source_value != "confirmed_chapter":
+                warnings.append("illegal_recall_source")
+                continue
+            stale_status = str(raw_item.get("stale_status", "fresh") or "fresh")
+            chunk_status = str(metadata.get("status", metadata.get("index_status", "")) or "").strip()
+            if chunk_status in {"deleted", "invalid"}:
+                warnings.append("deleted_content")
+                continue
+            if chunk_status == "failed":
+                warnings.append("failed_chunk")
+                continue
+            if chunk_status == "skipped":
+                warnings.append("skipped_chunk")
+                continue
+            if stale_status in {"stale", "partial_stale"} and not allow_stale:
+                warnings.append("stale_content")
                 continue
             normalized.append(
                 ContextItem(
@@ -994,12 +1059,21 @@ class ContextPackService:
                     token_estimate=int(raw_item.get("token_estimate", self._estimate_tokens(content_text))),
                     required=False,
                     included=True,
-                    stale_status=str(raw_item.get("stale_status", "fresh")),
+                    stale_status=stale_status,
                     warning=str(raw_item.get("warning", "")),
                     filter_reason=str(raw_item.get("filter_reason", "")),
+                    metadata=metadata,
                 )
             )
-        return normalized
+        return normalized, self._dedupe_warnings(warnings)
+
+    def _get_vector_index_status(self, work_id: str) -> dict[str, object] | None:
+        if self._vector_index_repository is None:
+            return None
+        try:
+            return self._vector_index_repository.get_index_status_by_work(work_id)
+        except Exception:
+            return None
 
     def _truncate_text(self, text: str, max_chars: int) -> str:
         cleaned = re.sub(r"\s+", " ", text or "").strip()
@@ -1012,4 +1086,12 @@ class ContextPackService:
 @dataclass(slots=True)
 class _RecallQuery:
     query_text: str
+    work_id: str = ""
+    target_chapter_id: str = ""
+    target_chapter_order: int = 0
+    top_k: int = 3
+    score_threshold: float = 0.6
+    recall_scope: str = "confirmed_chapters"
     allow_stale: bool = False
+    request_id: str = ""
+    trace_id: str = ""

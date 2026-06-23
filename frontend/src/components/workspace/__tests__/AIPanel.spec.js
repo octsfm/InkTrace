@@ -4,9 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const routerPush = vi.fn()
 const getAISettings = vi.fn()
 const startInitialization = vi.fn()
+const startVectorIndexReindex = vi.fn()
 const getAIJob = vi.fn()
 const getLatestInitialization = vi.fn()
 const getContextPackReadiness = vi.fn()
+const cancelAIJob = vi.fn()
 const listAgentSessions = vi.fn()
 const getAgentSession = vi.fn()
 const pauseAgentSession = vi.fn()
@@ -52,9 +54,11 @@ vi.mock('@/api', () => ({
   aiApi: {
     getAISettings,
     startInitialization,
+    startVectorIndexReindex,
     getAIJob,
     getLatestInitialization,
     getContextPackReadiness,
+    cancelAIJob,
     listAgentSessions,
     getAgentSession,
     pauseAgentSession,
@@ -240,6 +244,15 @@ describe('AIPanel', () => {
     listAgentTraces.mockResolvedValue({ data: { items: [] } })
 
     startInitialization.mockResolvedValue({ data: { initialization_id: 'init_1', job_id: 'job_1' } })
+    startVectorIndexReindex.mockResolvedValue({
+      data: {
+        job_id: 'job_reindex_1',
+        status: 'queued',
+        reused_existing_job: false,
+        polling_hint: { next_poll_after_ms: 3000, max_poll_interval_ms: 10000, timeout_hint_ms: 300000 }
+      }
+    })
+    cancelAIJob.mockResolvedValue({ data: { job_id: 'job_reindex_1', status: 'cancelled' } })
     getAIJob
       .mockResolvedValueOnce({ data: { job_id: 'job_1', status: 'running', steps: [] } })
       .mockResolvedValueOnce({ data: { job_id: 'job_1', status: 'completed', steps: [] } })
@@ -393,5 +406,148 @@ describe('AIPanel', () => {
     expect(wrapper.text()).not.toContain('AI 设置状态')
     expect(wrapper.text()).not.toContain('快速试写')
     expect(wrapper.text()).not.toContain('AI 写作任务')
+  })
+
+  it('starts vector reindex from ai panel and polls progress after confirmation', async () => {
+    getContextPackReadiness.mockResolvedValue({
+      data: {
+        status: 'degraded',
+        degraded_reason: 'vector_index_stale_warning',
+        warnings: ['vector_index_stale_warning']
+      }
+    })
+    getAIJob.mockReset()
+    getAIJob
+      .mockResolvedValueOnce({
+        data: {
+          job_id: 'job_reindex_1',
+          status: 'running',
+          progress: { percent: 42, current_step_label: '正在处理第 2/4 章' }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          job_id: 'job_reindex_1',
+          status: 'completed',
+          progress: { percent: 100, current_step_label: '构建完成' },
+          result_summary: { index_status: 'ready' }
+        }
+      })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mount(AIPanel, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3, mode: 'ai' }
+    })
+
+    await vi.runAllTimersAsync()
+    await wrapper.get('[data-test="vector-index-reindex-full-work"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(3100)
+
+    expect(startVectorIndexReindex).toHaveBeenCalledWith(expect.objectContaining({
+      work_id: 'work-1',
+      index_scope: 'full_work',
+      caller_type: 'user_action'
+    }))
+    expect(wrapper.text()).toContain('向量索引')
+    expect(wrapper.text()).toContain('索引已过期，点击重建')
+    expect(wrapper.text()).toContain('正在重建索引')
+  })
+
+  it('restores pending vector reindex job from sessionStorage on mount', async () => {
+    window.sessionStorage.setItem(
+      'inktrace.vector-reindex.pending:work-1',
+      JSON.stringify({
+        request: {
+          work_id: 'work-1',
+          index_scope: 'full_work',
+          caller_type: 'user_action',
+          idempotency_key: 'idem_restore_reindex'
+        }
+      })
+    )
+    startVectorIndexReindex.mockResolvedValueOnce({
+      data: {
+        job_id: 'job_restore_1',
+        status: 'running',
+        reused_existing_job: true,
+        polling_hint: { next_poll_after_ms: 3000, max_poll_interval_ms: 10000, timeout_hint_ms: 300000 }
+      }
+    })
+    getAIJob.mockReset()
+    getAIJob.mockResolvedValue({
+      data: {
+        job_id: 'job_restore_1',
+        status: 'running',
+        progress: { percent: 20, current_step_label: '正在生成向量' }
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3, mode: 'ai' }
+    })
+
+    await vi.runAllTimersAsync()
+
+    expect(startVectorIndexReindex).toHaveBeenCalledWith(expect.objectContaining({
+      work_id: 'work-1',
+      idempotency_key: 'idem_restore_reindex'
+    }))
+    expect(wrapper.text()).toContain('job job_restore_1')
+  })
+
+  it('cancels active vector reindex job from ai panel', async () => {
+    getAIJob.mockReset()
+    getAIJob.mockResolvedValue({
+      data: {
+        job_id: 'job_reindex_1',
+        status: 'running',
+        progress: { percent: 35, current_step_label: '正在处理第 1/3 章' }
+      }
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mount(AIPanel, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3, mode: 'ai' }
+    })
+
+    await vi.runAllTimersAsync()
+    await wrapper.get('[data-test="vector-index-reindex-full-work"]').trigger('click')
+    await wrapper.get('[data-test="vector-index-cancel"]').trigger('click')
+
+    expect(cancelAIJob).toHaveBeenCalledWith('job_reindex_1', { reason: 'user_cancelled' })
+  })
+
+  it('shows partial success copy when vector reindex finishes with degraded result', async () => {
+    getAIJob.mockReset()
+    getAIJob
+      .mockResolvedValueOnce({
+        data: {
+          job_id: 'job_reindex_partial_1',
+          status: 'running',
+          progress: { percent: 78, current_step_label: '正在生成向量' }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          job_id: 'job_reindex_partial_1',
+          status: 'partial_success',
+          progress: { percent: 100, current_step_label: '构建完成' },
+          result_summary: {
+            completion_mode: 'partial_success',
+            index_status: 'degraded'
+          }
+        }
+      })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mount(AIPanel, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3, mode: 'ai' }
+    })
+
+    await vi.runAllTimersAsync()
+    await wrapper.get('[data-test="vector-index-reindex-full-work"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(6200)
+
+    expect(wrapper.text()).toContain('索引部分重建成功，部分章节的索引可能不完整。可以针对失败章节单独重建。')
   })
 })

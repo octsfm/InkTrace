@@ -557,6 +557,24 @@ GET  /api/v2/ai/citations/{citation_id}/source-detail
     source_type, source_id, source_name_snapshot, source_full_summary,
     is_active  # 来源是否仍然有效（实体未被删除）
   }
+
+POST /api/v2/ai/citations/verify
+  Request: {
+    candidate_version_id,
+    citations: [{
+      source_type, source_id_hint?, source_name?, source_span?,
+      context_in_draft?, confidence?, source_hash?
+    }]
+  }
+  Response: {
+    batch: {
+      batch_id, candidate_version_id, candidate_draft_id,
+      total_count, verified_count, unknown_count, citations: [...]
+    }
+  }
+  Error:
+    400 P2_CITATION_SOURCE_HASH_MISMATCH  # source_hash 与当前来源正文哈希不一致
+    400 P2_CITATION_UNVERIFIED            # 存在未通过校验的 citation
 ```
 
 ---
@@ -609,6 +627,7 @@ GET  /api/v2/ai/citations/{citation_id}/source-detail
 | T1 | Writer 输出包含 citations | 候选稿生成后 citations 字段非空 |
 | T2 | 校验通过 | source_id 存在 + Vector Recall 反查匹配 → verified |
 | T3 | 按候选稿版本查询 | get_by_candidate_version 返回正确列表 |
+| T3a | verify 端点校验通过 | 返回 batch，全部 citation.status=verified |
 
 ### 8.2 边界测试
 
@@ -628,6 +647,8 @@ GET  /api/v2/ai/citations/{citation_id}/source-detail
 | T10 | 单条校验超时 | `_validate_single` 超过 5s → `verification_status=VERIFICATION_FAILED`，其他 citation 不受影响 |
 | T11 | 整批校验超时 | `process_candidate_citations` 超过 30s → 已完成条目保留，未完成标记 `VERIFICATION_FAILED` |
 | T12 | 校验超时不阻断候选稿 | 所有异常路径下，候选稿状态不变，CitationBatch 正常返回 |
+| T13 | verify 端点存在未通过项 | 返回 `400 P2_CITATION_UNVERIFIED` |
+| T14 | verify 端点 source_hash 不匹配 | 返回 `400 P2_CITATION_SOURCE_HASH_MISMATCH` |
 
 ---
 

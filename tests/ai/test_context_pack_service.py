@@ -18,7 +18,35 @@ from infrastructure.database.repositories.ai.file_story_memory_store import File
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 
 
-def _build_services() -> tuple[ContextPackService, InitializationApplicationService, WorkService, ChapterService, FilePlotArcStore]:
+class _StubVectorIndexRepository:
+    def __init__(self, status: dict[str, object] | None = None) -> None:
+        self._status = dict(status or {})
+
+    def get_index_status_by_work(self, work_id: str) -> dict[str, object] | None:
+        _ = work_id
+        return dict(self._status) if self._status else None
+
+
+class _SpyVectorRecallService:
+    def __init__(self, items: list[dict[str, object]] | None = None) -> None:
+        self._items = list(items or [])
+        self.calls: list[dict[str, object]] = []
+
+    def recall(self, query):  # noqa: ANN001
+        self.calls.append(
+            {
+                "allow_stale": getattr(query, "allow_stale", None),
+                "query_text": getattr(query, "query_text", ""),
+            }
+        )
+        return list(self._items)
+
+
+def _build_services(
+    *,
+    vector_recall_service=None,
+    vector_index_repository=None,
+) -> tuple[ContextPackService, InitializationApplicationService, WorkService, ChapterService, FilePlotArcStore]:
     work_repo = WorkRepo()
     chapter_repo = ChapterRepo()
     work_service = WorkService(work_repo=work_repo, chapter_repo=chapter_repo)
@@ -43,6 +71,8 @@ def _build_services() -> tuple[ContextPackService, InitializationApplicationServ
         story_state_repository=FileStoryStateStore(),
         context_pack_repository=FileContextPackStore(),
         plot_arc_repository=plot_arc_store,
+        vector_recall_service=vector_recall_service,
+        vector_index_repository=vector_index_repository,
     )
     return cp_service, init_service, work_service, chapter_service, plot_arc_store
 
@@ -413,3 +443,148 @@ def test_context_pack_forwards_allow_stale_vector_to_vector_recall_service() -> 
     assert snapshot.status == ContextPackStatus.DEGRADED
     assert snapshot.vector_recall_status == "degraded"
     assert calls and calls[0]["allow_stale"] is True
+
+
+def test_context_pack_degrades_when_vector_index_failed_without_calling_recall() -> None:
+    vector_recall = _SpyVectorRecallService(
+        items=[
+            {
+                "item_id": "recall_1",
+                "source_id": "chapter_1",
+                "content_text": "召回片段: 海雾背后另有真相。",
+            }
+        ]
+    )
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services(
+        vector_recall_service=vector_recall,
+        vector_index_repository=_StubVectorIndexRepository(
+            {
+                "work_id": "unused",
+                "index_status": "failed",
+                "stale_status": "fresh",
+            }
+        ),
+    )
+    work = work_service.create_work("索引失败作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(chapter.id.value, title="第一章", content="顾迟在旧灯塔里翻出残缺海图。", expected_version=1)
+    init_service.start_initialization(work.id, created_by="user_action")
+
+    snapshot = cp_service.build_and_save(ContextPackBuildRequest(work_id=work.id, chapter_id=chapter.id.value))
+
+    assert snapshot.status == ContextPackStatus.DEGRADED
+    assert snapshot.vector_recall_status == "degraded"
+    assert "vector_index_unavailable" in snapshot.warnings
+    assert not any(item.source_type == "vector_recall" for item in snapshot.context_items)
+    assert vector_recall.calls == []
+
+
+def test_context_pack_degrades_when_vector_index_is_partial_stale_by_default() -> None:
+    vector_recall = _SpyVectorRecallService(
+        items=[
+            {
+                "item_id": "recall_1",
+                "source_id": "chapter_1",
+                "content_text": "召回片段: 海雾背后另有真相。",
+                "stale_status": "stale",
+                "metadata": {"source": "confirmed_chapter"},
+            }
+        ]
+    )
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services(
+        vector_recall_service=vector_recall,
+        vector_index_repository=_StubVectorIndexRepository(
+            {
+                "work_id": "unused",
+                "index_status": "stale",
+                "stale_status": "partial_stale",
+            }
+        ),
+    )
+    work = work_service.create_work("索引过期作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(chapter.id.value, title="第一章", content="顾迟在旧灯塔里翻出残缺海图。", expected_version=1)
+    init_service.start_initialization(work.id, created_by="user_action")
+
+    snapshot = cp_service.build_and_save(ContextPackBuildRequest(work_id=work.id, chapter_id=chapter.id.value))
+
+    assert snapshot.status == ContextPackStatus.DEGRADED
+    assert snapshot.vector_recall_status == "degraded"
+    assert "vector_index_stale_warning" in snapshot.warnings
+    assert not any(item.source_type == "vector_recall" for item in snapshot.context_items)
+    assert vector_recall.calls == []
+
+
+def test_context_pack_allows_stale_vector_only_when_explicitly_enabled() -> None:
+    vector_recall = _SpyVectorRecallService(
+        items=[
+            {
+                "item_id": "recall_1",
+                "source_id": "chapter_1",
+                "content_text": "召回片段: 海雾背后另有真相。",
+                "stale_status": "stale",
+                "metadata": {"source": "confirmed_chapter"},
+            }
+        ]
+    )
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services(
+        vector_recall_service=vector_recall,
+        vector_index_repository=_StubVectorIndexRepository(
+            {
+                "work_id": "unused",
+                "index_status": "stale",
+                "stale_status": "partial_stale",
+            }
+        ),
+    )
+    work = work_service.create_work("允许陈旧召回作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(chapter.id.value, title="第一章", content="顾迟在旧灯塔里翻出残缺海图。", expected_version=1)
+    init_service.start_initialization(work.id, created_by="user_action")
+
+    snapshot = cp_service.build_and_save(
+        ContextPackBuildRequest(
+            work_id=work.id,
+            chapter_id=chapter.id.value,
+            allow_stale_vector=True,
+        )
+    )
+
+    assert snapshot.status == ContextPackStatus.DEGRADED
+    assert any(item.source_type == "vector_recall" for item in snapshot.context_items)
+    assert "vector_index_stale_warning" in snapshot.warnings
+    assert vector_recall.calls and vector_recall.calls[0]["allow_stale"] is True
+
+
+def test_context_pack_filters_illegal_recall_source_and_degrades() -> None:
+    vector_recall = _SpyVectorRecallService(
+        items=[
+            {
+                "item_id": "recall_1",
+                "source_id": "draft_1",
+                "content_text": "召回片段: 未确认候选稿内容。",
+                "metadata": {"source": "candidate_draft"},
+            }
+        ]
+    )
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services(
+        vector_recall_service=vector_recall,
+        vector_index_repository=_StubVectorIndexRepository(
+            {
+                "work_id": "unused",
+                "index_status": "ready",
+                "stale_status": "fresh",
+            }
+        ),
+    )
+    work = work_service.create_work("非法来源作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(chapter.id.value, title="第一章", content="顾迟在旧灯塔里翻出残缺海图。", expected_version=1)
+    init_service.start_initialization(work.id, created_by="user_action")
+
+    snapshot = cp_service.build_and_save(ContextPackBuildRequest(work_id=work.id, chapter_id=chapter.id.value))
+
+    assert snapshot.status == ContextPackStatus.DEGRADED
+    assert not any(item.source_type == "vector_recall" for item in snapshot.context_items)
+    assert "illegal_recall_source" in snapshot.warnings
+    assert "recall_result_empty_after_filter" in snapshot.warnings

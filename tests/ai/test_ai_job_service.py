@@ -141,6 +141,26 @@ def test_ai_job_service_can_pause_and_restart_job(tmp_path) -> None:
     assert resumed.status == AIJobStatus.RUNNING
 
 
+def test_ai_job_service_resume_job_from_paused_state(tmp_path) -> None:
+    service = _build_service(tmp_path)
+    job = service.create_job(
+        job_type="vector_indexing",
+        work_id="work-1",
+        steps=[{"step_type": "build_vector_index", "step_name": "Build Vector Index"}],
+    )
+    step = service.get_job_steps(job.job_id)[0]
+
+    service.start_job(job.job_id)
+    service.mark_step_running(job.job_id, step.step_id)
+    service.pause_job(job.job_id, reason="user_requested_pause")
+    resumed = service.resume_job(job.job_id, reason="user_requested_resume")
+    refreshed_step = service.get_job_steps(job.job_id)[0]
+
+    assert resumed.status == AIJobStatus.RUNNING
+    assert resumed.status_reason == "user_requested_resume"
+    assert refreshed_step.status == AIJobStepStatus.PAUSED
+
+
 def test_ai_job_service_rejects_invalid_terminal_transition(tmp_path) -> None:
     service = _build_service(tmp_path)
     job = service.create_job(

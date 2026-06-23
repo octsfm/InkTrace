@@ -9,6 +9,17 @@ from presentation.api import dependencies
 from presentation.api.app import app
 
 
+def _reset_dependencies() -> None:
+    dependencies.get_initialization_repository.cache_clear()
+    dependencies.get_story_memory_repository.cache_clear()
+    dependencies.get_story_state_repository.cache_clear()
+    dependencies.get_context_pack_repository.cache_clear()
+    dependencies.get_plot_arc_repository.cache_clear()
+    dependencies.get_context_pack_service.cache_clear()
+    if hasattr(dependencies, "get_context_vector_recall_service"):
+        dependencies.get_context_vector_recall_service.cache_clear()
+
+
 def _seed_initialized_work() -> str:
     work_repo = WorkRepo()
     chapter_repo = ChapterRepo()
@@ -142,3 +153,28 @@ def test_context_pack_api_rejects_non_user_action_caller_type() -> None:
 
     assert response.status_code == 403
     assert response.json()["error"]["error_code"] == "caller_type_forbidden"
+
+
+def test_context_pack_api_runtime_binding_returns_ready_vector_recall_items(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
+    _reset_dependencies()
+    work_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    build_response = client.post(
+        "/api/v2/ai/context-packs",
+        json={
+            "work_id": work_id,
+            "user_instruction": "继续写作，回收灯塔与海图的前文线索。",
+            "chapter_id": "",
+            "max_context_tokens": 2000,
+        },
+    )
+
+    assert build_response.status_code == 200
+
+    context_pack_id = build_response.json()["data"]["context_pack_id"]
+    detail_response = client.get(f"/api/v2/ai/context-packs/{context_pack_id}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["data"]["vector_recall_status"] == "ready"
+    assert any(item["source_type"] == "vector_recall" for item in detail_response.json()["data"]["context_items"])

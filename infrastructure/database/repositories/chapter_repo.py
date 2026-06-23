@@ -20,10 +20,11 @@ class ChapterRepo:
         return {str(row["name"]) for row in rows}
 
     def list_by_work(self, work_id: str) -> List[Chapter]:
+        select_columns = self._select_columns_sql()
         with get_connection() as conn:
             rows = conn.execute(
-                """
-                SELECT id, work_id, title, content, word_count, order_index, version, created_at, updated_at
+                f"""
+                SELECT {select_columns}
                 FROM chapters
                 WHERE work_id = ?
                 ORDER BY order_index ASC
@@ -33,16 +34,33 @@ class ChapterRepo:
         return [self._row_to_entity(row) for row in rows]
 
     def find_by_id(self, chapter_id: str) -> Optional[Chapter]:
+        select_columns = self._select_columns_sql()
         with get_connection() as conn:
             row = conn.execute(
-                """
-                SELECT id, work_id, title, content, word_count, order_index, version, created_at, updated_at
+                f"""
+                SELECT {select_columns}
                 FROM chapters
                 WHERE id = ?
                 """,
                 (str(chapter_id),),
             ).fetchone()
         return self._row_to_entity(row) if row else None
+
+    def _select_columns_sql(self) -> str:
+        columns = [
+            "id",
+            "work_id",
+            "title",
+            "content",
+            "word_count",
+            "order_index",
+            "version",
+            "created_at",
+            "updated_at",
+        ]
+        if "status" in self._columns:
+            columns.append("status")
+        return ", ".join(columns)
 
     def _build_save_payload(self, chapter: Chapter) -> tuple[str, tuple]:
         insert_columns = [
@@ -156,12 +174,13 @@ class ChapterRepo:
 
     @staticmethod
     def _row_to_entity(row) -> Chapter:
+        raw_status = str(row["status"]) if "status" in row.keys() and row["status"] else ChapterStatus.DRAFT.value
         return Chapter(
             id=ChapterId(str(row["id"])),
             work_id=NovelId(str(row["work_id"])),
             title=str(row["title"]),
             content=str(row["content"]),
-            status=ChapterStatus.DRAFT,
+            status=ChapterStatus(raw_status),
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             order_index=int(row["order_index"]),

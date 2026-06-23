@@ -21,6 +21,9 @@ def test_runtime_schema_creates_p2_s0_ai_tables_and_columns(tmp_path):
     assert "candidate_drafts" in table_names
     assert "citation_links" in table_names
     assert "multi_chapter_sessions" in table_names
+    assert "chapter_chunks" in table_names
+    assert "chunk_embeddings" in table_names
+    assert "vector_index_status" in table_names
     assert {
         "request_id",
         "work_id",
@@ -88,4 +91,43 @@ def test_runtime_schema_creates_p2_s0_ai_tables_and_columns(tmp_path):
         "pending_pause",
         "metadata_json",
     }.issubset(_table_columns(conn, "multi_chapter_sessions"))
+    assert {
+        "chunk_id",
+        "work_id",
+        "chapter_id",
+        "chapter_order",
+        "chunk_index",
+        "text_excerpt",
+        "content_hash",
+        "token_count",
+        "start_offset",
+        "end_offset",
+        "source",
+        "index_status",
+        "stale_status",
+        "created_at",
+        "updated_at",
+    }.issubset(_table_columns(conn, "chapter_chunks"))
+    assert {
+        "embedding_id",
+        "chunk_id",
+        "work_id",
+        "chapter_id",
+        "embedding_model",
+        "embedding_provider",
+        "embedding_version",
+        "vector_id",
+        "content_hash",
+        "status",
+        "created_at",
+        "updated_at",
+    }.issubset(_table_columns(conn, "chunk_embeddings"))
+    assert {
+        "work_id",
+        "index_status",
+        "stale_status",
+        "chunk_count",
+        "active_embedding_count",
+        "updated_at",
+    }.issubset(_table_columns(conn, "vector_index_status"))
     conn.close()

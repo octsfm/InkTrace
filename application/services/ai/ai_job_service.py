@@ -36,6 +36,7 @@ class AIJobService:
         chapter_id: str | None = None,
         steps: list[dict[str, object]] | None = None,
         created_by: str = "user_action",
+        idempotency_key: str = "",
         payload: dict[str, object] | None = None,
     ) -> AIJob:
         now = self._now()
@@ -47,6 +48,7 @@ class AIJobService:
             status=AIJobStatus.QUEUED,
             progress=AIJobProgress(total_steps=len(steps or []), status=AIJobStatus.QUEUED.value, updated_at=now),
             created_by=created_by,
+            idempotency_key=str(idempotency_key or ""),
             payload=self._sanitize_mapping(payload or {}),
             created_at=now,
             updated_at=now,
@@ -144,6 +146,20 @@ class AIJobService:
                 )
         return saved
 
+    def resume_job(self, job_id: str, *, reason: str) -> AIJob:
+        job = self._job_repository.get_job(job_id)
+        if job.status != AIJobStatus.PAUSED:
+            raise ValueError("job_not_resumable")
+        now = self._now()
+        updated = job.model_copy(
+            update={
+                "status": AIJobStatus.RUNNING,
+                "updated_at": now,
+                "status_reason": reason,
+            }
+        )
+        return self._job_repository.save_job(self._sync_progress(updated))
+
     def mark_step_running(self, job_id: str, step_id: str) -> AIJobStep:
         step = self._get_step(job_id, step_id)
         now = self._now()
@@ -161,7 +177,15 @@ class AIJobService:
         self._job_repository.save_job(self._sync_progress(self._job_repository.get_job(job_id)))
         return saved
 
-    def mark_step_completed(self, job_id: str, step_id: str, summary: str = "") -> AIJobStep:
+    def mark_step_completed(
+        self,
+        job_id: str,
+        step_id: str,
+        summary: str = "",
+        *,
+        warning_count: int = 0,
+        status_reason: str = "",
+    ) -> AIJobStep:
         step = self._get_step(job_id, step_id)
         if self._job_repository.get_job(job_id).status == AIJobStatus.CANCELLED:
             return step
@@ -171,21 +195,31 @@ class AIJobService:
                 "progress": 100,
                 "finished_at": self._now(),
                 "summary": summary,
+                "warning_count": max(int(warning_count or 0), 0),
                 "error_code": "",
                 "error_message": "",
-                "status_reason": "",
+                "status_reason": status_reason,
             }
         )
         saved = self._step_repository.save_step(updated)
         self._job_repository.save_job(self._sync_progress(self._job_repository.get_job(job_id)))
         return saved
 
-    def mark_step_failed(self, job_id: str, step_id: str, *, error_code: str, error_message: str) -> AIJobStep:
+    def mark_step_failed(
+        self,
+        job_id: str,
+        step_id: str,
+        *,
+        error_code: str,
+        error_message: str,
+        warning_count: int = 0,
+    ) -> AIJobStep:
         step = self._get_step(job_id, step_id)
         updated = step.model_copy(
             update={
                 "status": AIJobStepStatus.FAILED,
                 "finished_at": self._now(),
+                "warning_count": max(int(warning_count or 0), 0),
                 "error_code": error_code,
                 "error_message": self._sanitize_text(error_message),
                 "attempt_count": step.attempt_count + 1,
@@ -370,6 +404,7 @@ class AIJobService:
         completed_steps = sum(1 for step in steps if step.status in {AIJobStepStatus.COMPLETED, AIJobStepStatus.SKIPPED})
         failed_steps = sum(1 for step in steps if step.status == AIJobStepStatus.FAILED)
         skipped_steps = sum(1 for step in steps if step.status == AIJobStepStatus.SKIPPED)
+        warning_count = sum(max(int(step.warning_count or 0), 0) for step in steps)
         current_step = next((step for step in steps if step.status in {AIJobStepStatus.RUNNING, AIJobStepStatus.PENDING, AIJobStepStatus.PAUSED}), None)
         total_steps = len(steps)
         percent = 100 if total_steps == 0 and job.status == AIJobStatus.COMPLETED else int((completed_steps / total_steps) * 100) if total_steps else 0
@@ -382,6 +417,7 @@ class AIJobService:
             status=job.status.value,
             error_code=job.error_code,
             error_message=job.error_message,
+            warning_count=warning_count,
             failed_step_count=failed_steps,
             skipped_step_count=skipped_steps,
             updated_at=self._now(),

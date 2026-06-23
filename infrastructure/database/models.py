@@ -105,6 +105,54 @@ CREATE TABLE IF NOT EXISTS citation_links (
 )
 """
 
+CHAPTER_CHUNKS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS chapter_chunks (
+    chunk_id TEXT PRIMARY KEY,
+    work_id TEXT NOT NULL,
+    chapter_id TEXT NOT NULL,
+    chapter_order INTEGER NOT NULL DEFAULT 0,
+    chunk_index INTEGER NOT NULL DEFAULT 0,
+    text_excerpt TEXT NOT NULL DEFAULT '',
+    content_hash TEXT NOT NULL DEFAULT '',
+    token_count INTEGER NOT NULL DEFAULT 0,
+    start_offset INTEGER NOT NULL DEFAULT 0,
+    end_offset INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'confirmed_chapter',
+    index_status TEXT NOT NULL DEFAULT 'active',
+    stale_status TEXT NOT NULL DEFAULT 'fresh',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+)
+"""
+
+CHUNK_EMBEDDINGS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS chunk_embeddings (
+    embedding_id TEXT PRIMARY KEY,
+    chunk_id TEXT NOT NULL,
+    work_id TEXT NOT NULL,
+    chapter_id TEXT NOT NULL,
+    embedding_model TEXT NOT NULL DEFAULT '',
+    embedding_provider TEXT NOT NULL DEFAULT '',
+    embedding_version TEXT NOT NULL DEFAULT '',
+    vector_id TEXT NOT NULL DEFAULT '',
+    content_hash TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+)
+"""
+
+VECTOR_INDEX_STATUS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS vector_index_status (
+    work_id TEXT PRIMARY KEY,
+    index_status TEXT NOT NULL DEFAULT 'missing',
+    stale_status TEXT NOT NULL DEFAULT 'fresh',
+    chunk_count INTEGER NOT NULL DEFAULT 0,
+    active_embedding_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT ''
+)
+"""
+
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
     rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
@@ -121,11 +169,19 @@ def migrate_ai_schema(conn: sqlite3.Connection) -> None:
     conn.execute(CANDIDATE_DRAFTS_TABLE_SQL)
     conn.execute(MULTI_CHAPTER_SESSIONS_TABLE_SQL)
     conn.execute(CITATION_LINKS_TABLE_SQL)
+    conn.execute(CHAPTER_CHUNKS_TABLE_SQL)
+    conn.execute(CHUNK_EMBEDDINGS_TABLE_SQL)
+    conn.execute(VECTOR_INDEX_STATUS_TABLE_SQL)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_multi_chapter_work_id ON multi_chapter_sessions(work_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_multi_chapter_status ON multi_chapter_sessions(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_citations_candidate_version ON citation_links(candidate_version_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_citations_candidate_draft ON citation_links(candidate_draft_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_citations_source ON citation_links(source_type, source_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_chunks_work_id ON chapter_chunks(work_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_chunks_chapter_id ON chapter_chunks(work_id, chapter_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_chunks_stale_status ON chapter_chunks(work_id, stale_status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_chunk_id ON chunk_embeddings(chunk_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_work_id ON chunk_embeddings(work_id)")
 
     _add_column_if_missing(conn, "llm_call_logs", "work_id", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "llm_call_logs", "trace_id", "TEXT NOT NULL DEFAULT ''")

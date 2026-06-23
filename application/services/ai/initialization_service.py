@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from application.services.ai.ai_job_service import AIJobService
 from application.services.ai.story_memory_service import StoryMemoryService
 from application.services.ai.story_state_service import StoryStateService
+from application.services.ai.vector_index_service import VectorIndexService
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
 from domain.entities.ai.models import (
@@ -21,6 +22,7 @@ from domain.entities.ai.models import (
     InitializationStatus,
     MasterArc,
     OutlineAnalysisResult,
+    VectorIndexBuildResult,
     VolumeArc,
 )
 from domain.repositories.ai.ai_job_attempt_repository import AIJobAttemptRepository
@@ -45,6 +47,7 @@ class InitializationApplicationService:
         story_memory_repository: StoryMemoryRepository,
         story_state_repository: StoryStateRepository,
         plot_arc_repository: PlotArcRepository | None = None,
+        vector_index_service: VectorIndexService | None = None,
     ) -> None:
         self._work_service = work_service
         self._chapter_service = chapter_service
@@ -57,6 +60,7 @@ class InitializationApplicationService:
         self._story_memory_service = StoryMemoryService(story_memory_repository)
         self._story_state_service = StoryStateService(story_state_repository)
         self._plot_arc_repository = plot_arc_repository
+        self._vector_index_service = vector_index_service
 
     def start_initialization(self, work_id: str, *, created_by: str, auto_run: bool = True) -> InitializationRecord:
         self._work_service.get_work(work_id)
@@ -66,6 +70,7 @@ class InitializationApplicationService:
             InitializationStatus.MANUSCRIPT_ANALYZING,
             InitializationStatus.MEMORY_BUILDING,
             InitializationStatus.STATE_BUILDING,
+            InitializationStatus.VECTOR_INDEXING,
         }:
             raise ValueError("initialization_in_progress")
 
@@ -76,9 +81,10 @@ class InitializationApplicationService:
             work_id=work_id,
             steps=[
                 {"step_type": "outline_analysis", "step_name": "Outline Analysis"},
-                {"step_type": "manuscript_analysis", "step_name": "Manuscript Analysis"},
+                {"step_type": "manuscript_chapter_analysis", "step_name": "Manuscript Analysis"},
                 {"step_type": "build_story_memory", "step_name": "Build Story Memory"},
                 {"step_type": "build_story_state", "step_name": "Build Story State"},
+                {"step_type": "build_vector_index", "step_name": "Build Vector Index"},
                 {"step_type": "finalize_initialization", "step_name": "Finalize Initialization"},
             ],
             created_by=created_by,
@@ -131,9 +137,9 @@ class InitializationApplicationService:
             )
         )
 
-        self._job_service.mark_step_running(initialization.job_id, step_ids["manuscript_analysis"])
+        self._job_service.mark_step_running(initialization.job_id, step_ids["manuscript_chapter_analysis"])
         chapter_results = [self._analyze_chapter(chapter.id.value, chapter.title, chapter.content, chapter.version) for chapter in chapters]
-        self._job_service.mark_step_completed(initialization.job_id, step_ids["manuscript_analysis"], summary="chapters analyzed")
+        self._job_service.mark_step_completed(initialization.job_id, step_ids["manuscript_chapter_analysis"], summary="chapters analyzed")
 
         return self.finalize_initialization(initialization_id, chapter_results=chapter_results)
 
@@ -192,6 +198,9 @@ class InitializationApplicationService:
                 )
             )
 
+        initialization = self._save_initialization(
+            initialization.model_copy(update={**update_base, "status": InitializationStatus.MEMORY_BUILDING, "updated_at": self._now()})
+        )
         self._job_service.mark_step_running(initialization.job_id, step_ids["build_story_memory"])
         story_memory = self._story_memory_service.build_snapshot(
             initialization=initialization.model_copy(update=update_base),
@@ -200,6 +209,9 @@ class InitializationApplicationService:
         )
         self._job_service.mark_step_completed(initialization.job_id, step_ids["build_story_memory"], summary="story memory built")
 
+        initialization = self._save_initialization(
+            initialization.model_copy(update={**update_base, "status": InitializationStatus.STATE_BUILDING, "updated_at": self._now()})
+        )
         self._job_service.mark_step_running(initialization.job_id, step_ids["build_story_state"])
         story_state = self._story_state_service.build_analysis_baseline(
             initialization=initialization.model_copy(update=update_base),
@@ -213,18 +225,42 @@ class InitializationApplicationService:
             story_state=story_state,
             chapter_results=results,
         )
+        vector_index_result = self._build_vector_index(
+            initialization=initialization.model_copy(update={**update_base, "status": InitializationStatus.VECTOR_INDEXING, "updated_at": self._now()}),
+            step_id=step_ids["build_vector_index"],
+        )
+        if self._job_service.get_job(initialization.job_id).status.value == "cancelled":
+            return self._save_initialization(
+                initialization.model_copy(
+                    update={
+                        **update_base,
+                        "status": InitializationStatus.CANCELLED,
+                        "completion_status": InitializationCompletionStatus.IGNORED,
+                        "updated_at": self._now(),
+                    }
+                )
+            )
 
+        result_summary = {
+            "analyzed_chapter_count": len(successful),
+            "vector_index_status": vector_index_result.index_status,
+        }
         if empty_count > 0 or failed_count > 0:
             self._job_service.mark_job_partial_success(
                 initialization.job_id,
-                result_summary={"analyzed_chapter_count": len(successful), "empty_chapter_count": empty_count, "failed_chapter_count": failed_count},
+                result_summary={
+                    **result_summary,
+                    "empty_chapter_count": empty_count,
+                    "failed_chapter_count": failed_count,
+                    **self._vector_index_summary_payload(vector_index_result),
+                },
             )
             completion_status = InitializationCompletionStatus.PARTIAL_SUCCESS
             partial_reason = "chapter_empty_or_failed_detected"
         else:
             self._job_service.mark_job_completed(
                 initialization.job_id,
-                result_summary={"analyzed_chapter_count": len(successful)},
+                result_summary={**result_summary, **self._vector_index_summary_payload(vector_index_result)},
                 result_ref=story_memory.snapshot_id,
             )
             completion_status = InitializationCompletionStatus.SUCCEEDED
@@ -513,6 +549,70 @@ class InitializationApplicationService:
 
     def _get_step_ids(self, job_id: str) -> dict[str, str]:
         return {step.step_type: step.step_id for step in self._job_service.get_job_steps(job_id)}
+
+    def _build_vector_index(self, *, initialization: InitializationRecord, step_id: str) -> VectorIndexBuildResult:
+        if self._vector_index_service is None:
+            result = VectorIndexBuildResult(
+                index_status="degraded",
+                warning_count=1,
+                degraded_reason="vector_index_service_missing",
+                warnings=["vector_index_service_missing"],
+            )
+            self._job_service.mark_step_completed(
+                initialization.job_id,
+                step_id,
+                summary="vector index skipped",
+                warning_count=result.warning_count,
+                status_reason="vector_index_degraded",
+            )
+            return result
+
+        self._save_initialization(
+            initialization.model_copy(update={"status": InitializationStatus.VECTOR_INDEXING, "updated_at": self._now()})
+        )
+        self._job_service.mark_step_running(initialization.job_id, step_id)
+        try:
+            result = self._vector_index_service.build_initial_index(
+                initialization.work_id,
+                should_continue=lambda: self._job_service.get_job(initialization.job_id).status.value != "cancelled",
+            )
+        except Exception as exc:
+            self._job_service.mark_step_failed(
+                initialization.job_id,
+                step_id,
+                error_code="vector_index_build_failed",
+                error_message=str(exc),
+                warning_count=1,
+            )
+            return VectorIndexBuildResult(
+                index_status="failed",
+                warning_count=1,
+                degraded_reason=str(exc),
+                warnings=[str(exc)],
+            )
+
+        summary = f"indexed_chapters={result.indexed_chapter_count}; indexed_chunks={result.indexed_chunk_count}"
+        if result.index_status in {"degraded", "failed"} or result.warning_count > 0:
+            self._job_service.mark_step_completed(
+                initialization.job_id,
+                step_id,
+                summary=summary,
+                warning_count=max(int(result.warning_count or 0), 1 if result.index_status in {"degraded", "failed"} else 0),
+                status_reason="vector_index_degraded",
+            )
+        else:
+            self._job_service.mark_step_completed(initialization.job_id, step_id, summary=summary)
+        return result
+
+    def _vector_index_summary_payload(self, result: VectorIndexBuildResult) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "vector_index_status": result.index_status,
+            "vector_index_warning_count": int(result.warning_count or 0),
+        }
+        warning_value = result.degraded_reason or (result.warnings[0] if result.warnings else "")
+        if warning_value:
+            payload["vector_index_warning"] = warning_value
+        return payload
 
     def _persist_initial_plot_arcs(self, *, initialization: InitializationRecord, story_memory, story_state, chapter_results: list[ChapterAnalysisResult]) -> None:
         if self._plot_arc_repository is None:

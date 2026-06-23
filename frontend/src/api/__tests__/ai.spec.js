@@ -46,6 +46,12 @@ describe('P0 AI API client', () => {
     await api.aiApi.getAIJob('job-1')
     await api.aiApi.listAIJobs({ work_id: 'work-1', status: 'running' })
     await api.aiApi.cancelAIJob('job-1', { reason: 'user_cancelled' })
+    await api.aiApi.startVectorIndexReindex({
+      work_id: 'work-1',
+      index_scope: 'full_work',
+      caller_type: 'user_action',
+      idempotency_key: 'idem-reindex-1'
+    })
     await api.aiApi.getLatestInitialization('work-1')
     await api.aiApi.buildContextPack({ work_id: 'work-1', chapter_id: 'chapter-1' })
     await api.aiApi.getLatestContextPack('work-1', 'chapter-1')
@@ -80,6 +86,12 @@ describe('P0 AI API client', () => {
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/jobs/job-1')
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/jobs', { params: { work_id: 'work-1', status: 'running' } })
     expect(mockPost).toHaveBeenCalledWith('/v2/ai/jobs/job-1/cancel', { reason: 'user_cancelled' })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/vector-index/reindex', {
+      work_id: 'work-1',
+      index_scope: 'full_work',
+      caller_type: 'user_action',
+      idempotency_key: 'idem-reindex-1'
+    })
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/works/work-1/initialization/latest')
     expect(mockPost).toHaveBeenCalledWith('/v2/ai/context-packs', { work_id: 'work-1', chapter_id: 'chapter-1' })
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/context-packs/works/work-1/latest', { params: { chapter_id: 'chapter-1' } })
@@ -106,5 +118,67 @@ describe('P0 AI API client', () => {
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/traces/trace-1')
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/traces/trace-1/steps')
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/traces/trace-1/detail-view', { params: { detail: true, developer_mode: true } })
+  })
+
+  it('uses v2 safe_message for conflict responses without triggering global toast', async () => {
+    const { ElMessage } = await import('element-plus')
+    const errorHandler = responseUse.mock.calls[0][1]
+    const error = {
+      message: 'Request failed with status code 409',
+      response: {
+        status: 409,
+        data: {
+          status: 'error',
+          error: {
+            error_code: 'P2_VECTOR_INDEXING_IN_PROGRESS',
+            safe_message: '这个作品已有索引任务正在运行，请等待完成后再试。',
+            retryable: true
+          }
+        },
+        headers: {
+          'x-request-id': 'req_conflict_1'
+        }
+      },
+      config: {
+        metadata: {
+          requestId: 'req_conflict_1'
+        }
+      }
+    }
+
+    await expect(errorHandler(error)).rejects.toMatchObject({
+      userMessage: '这个作品已有索引任务正在运行，请等待完成后再试。'
+    })
+    expect(ElMessage.error).not.toHaveBeenCalled()
+  })
+
+  it('uses v2 safe_message for service unavailable responses', async () => {
+    const { ElMessage } = await import('element-plus')
+    const errorHandler = responseUse.mock.calls[0][1]
+    const error = {
+      message: 'Request failed with status code 503',
+      response: {
+        status: 503,
+        data: {
+          status: 'error',
+          error: {
+            error_code: 'P2_VECTOR_EMBEDDING_UNAVAILABLE',
+            safe_message: 'AI 嵌入服务暂时不可用，请稍后重试或检查 AI 设置。',
+            retryable: true
+          }
+        },
+        headers: {
+          'x-request-id': 'req_service_unavailable_1'
+        }
+      },
+      config: {
+        metadata: {
+          requestId: 'req_service_unavailable_1'
+        }
+      }
+    }
+
+    await expect(errorHandler(error)).rejects.toBe(error)
+    expect(ElMessage.error).toHaveBeenCalledWith('AI 嵌入服务暂时不可用，请稍后重试或检查 AI 设置。')
   })
 })

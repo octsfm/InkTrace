@@ -142,7 +142,7 @@ S1 的交付物被 S2（自动续写队列）直接依赖，必须先完成。
 | S1-8 | CitationLinkService（extract/verify/batch） | `application/services/ai/citation_link_service.py` | 单元测试 + 集成测试 |
 | **表现层** ||||
 | S1-9 | API 路由 `/api/v2/ai/multi-chapter/*`（6 端点） | `presentation/api/routers/v2/ai/multi_chapter.py` | API 集成测试 |
-| S1-10 | API 路由 `/api/v2/ai/citations/*`（4 端点） | `presentation/api/routers/v2/ai/citations.py` | API 集成测试 |
+| S1-10 | API 路由 `/api/v2/ai/citations/*`（5 端点，含 verify） | `presentation/api/routers/v2/ai/citations.py` | API 集成测试 |
 | S1-11 | `app.py` 注册路由 | `presentation/api/app.py` | 启动验证 |
 
 #### 强制验收

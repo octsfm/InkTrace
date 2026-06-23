@@ -49,6 +49,7 @@ from presentation.api.routers.v2.ai import traces as ai_traces_v2
 from presentation.api.routers.v2.ai import jobs as ai_jobs_v2
 from presentation.api.routers.v2.ai import citations as ai_citations_v2
 from presentation.api.routers.v2.ai import multi_chapter as ai_multi_chapter_v2
+from presentation.api.routers.v2.ai import vector_index as ai_vector_index_v2
 from presentation.api.routers.v2.ai import planning as ai_planning_v2
 from presentation.api.routers.v2.ai import quick_trial as ai_quick_trial_v2
 from presentation.api.routers.v2.ai import review as ai_review_v2
@@ -200,6 +201,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_jobs_v2.router)
     app.include_router(ai_initialization_v2.router)
     app.include_router(ai_context_pack_v2.router)
+    app.include_router(ai_vector_index_v2.router)
     app.include_router(ai_citations_v2.router)
     app.include_router(ai_multi_chapter_v2.router)
     app.include_router(ai_continuation_v2.router)

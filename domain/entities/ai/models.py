@@ -107,6 +107,7 @@ class AIJob(AIBaseModel):
     status: AIJobStatus
     progress: AIJobProgress
     created_by: str = "user_action"
+    idempotency_key: str = ""
     payload: dict[str, Any] = Field(default_factory=dict)
     input_snapshot: dict[str, Any] = Field(default_factory=dict)
     params: dict[str, Any] = Field(default_factory=dict)
@@ -1011,6 +1012,7 @@ class InitializationStatus(StrEnum):
     MANUSCRIPT_ANALYZING = "manuscript_analyzing"
     MEMORY_BUILDING = "memory_building"
     STATE_BUILDING = "state_building"
+    VECTOR_INDEXING = "vector_indexing"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -1705,6 +1707,16 @@ class EmptyVectorRecallResult(AIBaseModel):
     error_reason: str = "vector_recall_disabled"
 
 
+class VectorIndexBuildResult(AIBaseModel):
+    index_status: str = "missing"
+    indexed_chapter_count: int = 0
+    indexed_chunk_count: int = 0
+    failed_chunk_count: int = 0
+    warning_count: int = 0
+    degraded_reason: str = ""
+    warnings: list[str] = Field(default_factory=list)
+
+
 class CandidateDraftStatus(StrEnum):
     GENERATED = "generated"
     PENDING_REVIEW = "pending_review"
@@ -2291,6 +2303,39 @@ class CitationBatch(AIBaseModel):
     verified_count: int = 0
     unknown_count: int = 0
     citations: list[CitationLink] = Field(default_factory=list)
+
+
+class ChapterChunk(AIBaseModel):
+    chunk_id: str
+    work_id: str
+    chapter_id: str
+    chapter_order: int
+    chunk_index: int
+    text_excerpt: str
+    content_hash: str
+    token_count: int = 0
+    start_offset: int = 0
+    end_offset: int = 0
+    source: str = "confirmed_chapter"
+    index_status: str = "active"
+    stale_status: str = "fresh"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class ChunkEmbedding(AIBaseModel):
+    embedding_id: str
+    chunk_id: str
+    work_id: str
+    chapter_id: str
+    embedding_model: str
+    embedding_provider: str
+    embedding_version: str
+    vector_id: str
+    content_hash: str
+    status: str = "active"
+    created_at: str = ""
+    updated_at: str = ""
 
 
 class MultiChapterSession(AIBaseModel):

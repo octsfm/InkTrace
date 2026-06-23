@@ -351,7 +351,7 @@ P2 默认继续使用**轮询**（与 P1 一致）。
 | `application/services/ai/context_pack_service.py` | P2-03 Style DNA 层以 `OPTIONAL_LOWEST` 优先级注入 ContextPack 可选层（见 P2-03 §4.1）；P2-05 Mention 上下文可能作为 ContextPack 扩展源 |
 | `application/services/v1/chapter_service.py` | P2-10 章节保存/确认后触发 `AnalysisMetricRefreshService.mark_stale` |
 | `application/services/ai/style_dna_extraction_service.py` | P2-10 StyleProfile 变更后触发 `mark_stale` |
-| `presentation/api/app.py` | 注册 P2 全部 11 个 router（含 P2-09 拆分的 cost_dashboard + cost_budget） |
+| `presentation/api/app.py` | 注册 P2 全部 11 个 router（含 P2-09 拆分的 cost_dashboard + cost_budget）；P2-02 新增 verify 写入口仍复用 citations router |
 
 ---
 

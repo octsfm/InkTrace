@@ -183,3 +183,30 @@ def test_multi_chapter_service_cancel_keeps_generated_candidate_drafts(tmp_path:
     assert cancelled.status == MultiChapterStatus.CANCELLED
     assert progress.per_chapter[0].candidate_draft_id
     assert len(candidate_store.list_by_work(work.id)) == 1
+
+
+def test_multi_chapter_service_ignores_non_pausable_job_when_waiting_for_user(tmp_path: Path) -> None:
+    service, _, work, chapter, _ = _build_multi_chapter_service(tmp_path)
+
+    original_pause_job = service._job_service.pause_job
+
+    def _raise_not_pausable(job_id: str, *, reason: str):
+        _ = job_id, reason
+        raise ValueError("job_not_pausable")
+
+    session = service.start(
+        work_id=work.id,
+        start_chapter_id=chapter.id.value,
+        target_chapters=1,
+        user_instruction="继续推进灯塔谜团。",
+        caller_type="user_action",
+    )
+    service._job_service.pause_job = _raise_not_pausable
+    try:
+        service._run_session_once(session.session_id)
+    finally:
+        service._job_service.pause_job = original_pause_job
+
+    stored = service.get_session(session.session_id)
+    assert stored.status == MultiChapterStatus.WAITING_USER_DECISION
+    assert stored.per_chapter_status[0].status == PerChapterStatus.READY
