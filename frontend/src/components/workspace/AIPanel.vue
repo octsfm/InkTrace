@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <section class="ai-panel" data-test="ai-panel">
     <header class="ai-panel-header">
       <div>
@@ -88,6 +88,61 @@
           {{ displayContextItemType(item.source_type || item.item_type) }} / {{ item.content_text || item.summary || 'summary' }}
         </li>
       </ul>
+    </div>
+
+    <div v-if="showAIMode && styleDNAStore.featureEnabled" class="ai-section">
+      <StyleDNAConfigPanel
+        :feature-enabled="styleDNAStore.featureEnabled"
+        :ai-settings-blocked="aiSettingsBlocked"
+        :loading="styleDNAStore.loading"
+        :extracting="styleDNAStore.extracting"
+        :extract-job-active="styleDNAStore.extractJobActive"
+        :draft-text="styleDNADraftText"
+        :source-mode="styleDNASourceMode"
+        :chapter-options="styleDNAChapterOptions"
+        :selected-chapter-ids="styleDNASelectedChapterIds"
+        :active-profile="styleDNAStore.activeProfile"
+        :current-profile="styleDNAStore.currentProfile"
+        :history-profiles="styleDNAStore.historyProfiles"
+        :warning-message="styleDNAStore.warningMessage"
+        :error-message="styleDNAStore.errorMessage"
+        @update:draft-text="styleDNADraftText = $event"
+        @update:source-mode="styleDNASourceMode = $event"
+        @update:selected-chapter-ids="styleDNASelectedChapterIds = $event"
+        @extract="handleStyleDNAExtract"
+        @confirm-profile="handleStyleDNAConfirm"
+        @disable-profile="handleStyleDNADisable"
+        @delete-profile="handleStyleDNADelete"
+        @view-profile="handleStyleDNAViewProfile"
+        @refresh="handleStyleDNARefresh"
+      />
+    </div>
+
+    <div v-if="showAIMode && autoQueueStore.featureEnabled" class="ai-section">
+      <AutoQueuePanel
+        :feature-enabled="autoQueueStore.featureEnabled"
+        :ai-settings-blocked="aiSettingsBlocked"
+        :loading="autoQueueStore.loading"
+        :saving-config="autoQueueStore.savingConfig"
+        :action-loading="autoQueueStore.actionLoading"
+        :chapter-id="chapterId"
+        :queue-mode="autoQueueMode"
+        :target-chapters="autoQueueTargetChapters"
+        :current-run="autoQueueStore.currentRun"
+        :history-runs="autoQueueStore.historyRuns"
+        :error-message="autoQueueStore.errorMessage"
+        :note-message="autoQueueStore.noteMessage"
+        @update:queue-mode="autoQueueMode = $event"
+        @update:target-chapters="autoQueueTargetChapters = $event"
+        @save-config="handleAutoQueueSaveConfig"
+        @start="handleAutoQueueStart"
+        @pause="handleAutoQueuePause"
+        @resume="handleAutoQueueResume"
+        @stop="handleAutoQueueStop"
+        @confirm-continue="handleAutoQueueConfirmContinue"
+        @refresh="handleAutoQueueRefresh"
+        @select-run="handleAutoQueueSelectRun"
+      />
     </div>
 
     <div v-if="showAIMode" class="ai-section">
@@ -747,7 +802,11 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { aiApi } from '@/api'
 import { useAIJobPolling } from '@/composables/useAIJobPolling'
+import { useAutoQueueStore } from '@/stores/useAutoQueueStore'
+import { useStyleDNAStore } from '@/stores/useStyleDNAStore'
+import AutoQueuePanel from './AutoQueuePanel.vue'
 import ReviewTab from './ReviewTab.vue'
+import StyleDNAConfigPanel from './StyleDNAConfigPanel.vue'
 
 const props = defineProps({
   workId: {
@@ -765,6 +824,14 @@ const props = defineProps({
   developerMode: {
     type: Boolean,
     default: false
+  },
+  chapterOptions: {
+    type: Array,
+    default: () => []
+  },
+  draftChapterIds: {
+    type: Array,
+    default: () => []
   },
   mode: {
     type: String,
@@ -822,8 +889,30 @@ const chapterPlans = ref([])
 const writingTasks = ref([])
 const planningActionError = ref('')
 const quickTrialResult = ref({})
+const styleDNADraftText = ref('')
+const styleDNASourceMode = ref('user_upload')
+const styleDNASelectedChapterIds = ref([])
+const autoQueueMode = ref('safe')
+const autoQueueTargetChapters = ref(5)
 const polling = useAIJobPolling({ intervalMs: 1000 })
 const reindexPolling = useAIJobPolling({ intervalMs: 3000, maxIntervalMs: 10000 })
+const autoQueueStore = useAutoQueueStore()
+const styleDNAStore = useStyleDNAStore()
+
+const styleDNAChapterOptions = computed(() => {
+  const draftChapterIdSet = new Set((props.draftChapterIds || []).map((item) => String(item || '')))
+  return (props.chapterOptions || []).map((chapter, index) => {
+    const chapterId = String(chapter?.id || '')
+    const orderIndex = Number(chapter?.order_index || index + 1)
+    const status = String(chapter?.status || '')
+    const title = String(chapter?.title || '').trim() || `未命名章节 ${orderIndex}`
+    return {
+      id: chapterId,
+      label: `第${orderIndex}章 ${title}`,
+      disabled: status !== 'published' || draftChapterIdSet.has(chapterId)
+    }
+  })
+})
 const sessionPolling = useAIJobPolling({
   intervalMs: 2000,
   maxIntervalMs: 5000,
@@ -1243,6 +1332,111 @@ const handleRetryVectorReindex = async () => {
 const clearPendingReindexRequest = () => {
   if (typeof window === 'undefined' || !window.sessionStorage || !props.workId) return
   window.sessionStorage.removeItem(buildReindexStorageKey())
+}
+
+const handleStyleDNAExtract = async () => {
+  if (styleDNASourceMode.value === 'chapter_reference') {
+    if (!styleDNASelectedChapterIds.value.length) {
+      styleDNAStore.errorMessage = '请先选择 1-3 个已确认章节。'
+      return
+    }
+    await styleDNAStore.startExtract({
+      sourceType: 'chapter_reference',
+      sourceChapterIds: styleDNASelectedChapterIds.value,
+      availableChapters: props.chapterOptions,
+      draftChapterIds: props.draftChapterIds
+    })
+    return
+  }
+  if (!styleDNADraftText.value.trim()) {
+    styleDNAStore.errorMessage = '请先粘贴标杆文本。'
+    return
+  }
+  await styleDNAStore.startExtract({
+    sourceText: styleDNADraftText.value,
+    sourceType: 'user_upload',
+    sourceRef: props.chapterId ? `chapter:${props.chapterId}` : 'manual'
+  })
+}
+
+const handleStyleDNAConfirm = async (profileId) => {
+  await styleDNAStore.confirmProfile(profileId)
+}
+
+const handleStyleDNADisable = async (profileId) => {
+  await styleDNAStore.disableProfile(profileId)
+}
+
+const handleStyleDNADelete = async (profileId) => {
+  await styleDNAStore.deleteProfile(profileId)
+}
+
+const handleStyleDNAViewProfile = async (profileId) => {
+  await styleDNAStore.loadProfile(profileId)
+}
+
+const handleStyleDNARefresh = async () => {
+  await styleDNAStore.refreshProfiles(props.workId)
+}
+
+const syncAutoQueueDraftsFromStore = () => {
+  autoQueueMode.value = String(autoQueueStore.config?.queue_mode || 'safe')
+  autoQueueTargetChapters.value = Number(autoQueueStore.config?.target_chapters || 5)
+}
+
+const handleAutoQueueSaveConfig = async () => {
+  await autoQueueStore.saveConfig({
+    queue_mode: autoQueueMode.value,
+    target_chapters: Number(autoQueueTargetChapters.value || 0)
+  })
+  syncAutoQueueDraftsFromStore()
+}
+
+const handleAutoQueueStart = async () => {
+  if (!ensureAISettingsReady(planningActionError)) return
+  if (!props.chapterId) {
+    autoQueueStore.errorMessage = '请先进入目标章节，再启动自动续写。'
+    return
+  }
+  await handleAutoQueueSaveConfig()
+  await autoQueueStore.startQueue({ startChapterId: props.chapterId })
+}
+
+const handleAutoQueuePause = async () => {
+  const runId = String(autoQueueStore.currentRun?.run_id || '')
+  if (!runId) return
+  await autoQueueStore.pauseQueue(runId)
+}
+
+const handleAutoQueueResume = async () => {
+  const runId = String(autoQueueStore.currentRun?.run_id || '')
+  if (!runId) return
+  await autoQueueStore.resumeQueue(runId)
+}
+
+const handleAutoQueueConfirmContinue = async () => {
+  const runId = String(autoQueueStore.currentRun?.run_id || '')
+  if (!runId) return
+  await autoQueueStore.confirmContinue(runId)
+}
+
+const handleAutoQueueStop = async () => {
+  const runId = String(autoQueueStore.currentRun?.run_id || '')
+  if (!runId) return
+  const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
+    ? true
+    : window.confirm('确定要停止自动续写吗？已生成的候选稿会保留。')
+  if (!confirmed) return
+  await autoQueueStore.stopQueue(runId)
+}
+
+const handleAutoQueueRefresh = async () => {
+  await autoQueueStore.refreshAll(props.workId)
+  syncAutoQueueDraftsFromStore()
+}
+
+const handleAutoQueueSelectRun = async (runId) => {
+  await autoQueueStore.selectRun(runId)
 }
 
 const buildVectorReindexRequest = (indexScope, overrides = {}) => {
@@ -2165,6 +2359,14 @@ watch(() => props.workId, async () => {
   reindexPolling.job.value = null
   reindexPolling.pollingHint.value = {}
   lastReindexRequest.value = null
+  styleDNADraftText.value = ''
+  styleDNASourceMode.value = 'user_upload'
+  styleDNASelectedChapterIds.value = []
+  autoQueueMode.value = 'safe'
+  autoQueueTargetChapters.value = 5
+  await autoQueueStore.initializeForWork(props.workId)
+  syncAutoQueueDraftsFromStore()
+  await styleDNAStore.initializeForWork(props.workId)
   await refreshPanel()
   await restorePendingVectorReindex()
 }, { immediate: true })
@@ -2197,6 +2399,10 @@ watch(() => String(reindexPolling.job.value?.status || ''), async (status) => {
   if (status === 'cancelled' && !reindexActionError.value) {
     reindexActionError.value = '索引重建已取消。'
   }
+})
+
+watch(() => [autoQueueStore.config?.queue_mode, autoQueueStore.config?.target_chapters], () => {
+  syncAutoQueueDraftsFromStore()
 })
 </script>
 

@@ -105,6 +105,89 @@ CREATE TABLE IF NOT EXISTS citation_links (
 )
 """
 
+STYLE_PROFILES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS style_profiles (
+    profile_id TEXT PRIMARY KEY,
+    work_id TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_ref TEXT DEFAULT '',
+    source_text_hash TEXT DEFAULT '',
+    source_text_length INTEGER DEFAULT 0,
+    confidence REAL DEFAULT 0.0,
+    low_confidence_reason TEXT DEFAULT '',
+    avg_sentence_length REAL DEFAULT 0.0,
+    sentence_length_variance REAL DEFAULT 0.0,
+    short_sentence_ratio REAL DEFAULT 0.0,
+    long_sentence_ratio REAL DEFAULT 0.0,
+    compound_sentence_ratio REAL DEFAULT 0.0,
+    avg_paragraph_length REAL DEFAULT 0.0,
+    paragraph_length_variance REAL DEFAULT 0.0,
+    dialogue_ratio REAL DEFAULT 0.0,
+    psychological_ratio REAL DEFAULT 0.0,
+    action_ratio REAL DEFAULT 0.0,
+    description_ratio REAL DEFAULT 0.0,
+    narrative_perspective TEXT DEFAULT '',
+    tense_preference TEXT DEFAULT '',
+    style_summary TEXT DEFAULT '',
+    style_tags_json TEXT DEFAULT '[]',
+    version INTEGER DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'pending_confirm',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT '',
+    confirmed_at TEXT DEFAULT ''
+)
+"""
+
+AUTO_QUEUE_CONFIGS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS auto_queue_configs (
+    config_id TEXT PRIMARY KEY,
+    work_id TEXT NOT NULL UNIQUE,
+    queue_mode TEXT NOT NULL DEFAULT 'safe',
+    target_chapters INTEGER DEFAULT 0,
+    target_word_count INTEGER DEFAULT 0,
+    stop_at_sequence_end INTEGER DEFAULT 1,
+    stop_on_blocking_review INTEGER DEFAULT 1,
+    max_consecutive_blocking INTEGER DEFAULT 2,
+    stop_on_budget_exceeded INTEGER DEFAULT 1,
+    stop_on_foreshadow_premature INTEGER DEFAULT 1,
+    max_consecutive_revision_failures INTEGER DEFAULT 3,
+    budget_limit_tokens INTEGER DEFAULT 0,
+    enabled INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+)
+"""
+
+AUTO_QUEUE_RUNS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS auto_queue_runs (
+    run_id TEXT PRIMARY KEY,
+    job_id TEXT DEFAULT '',
+    config_id TEXT NOT NULL,
+    work_id TEXT NOT NULL,
+    multi_chapter_session_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    queue_mode TEXT NOT NULL DEFAULT 'safe',
+    generated_count INTEGER DEFAULT 0,
+    total_word_count INTEGER DEFAULT 0,
+    consumed_tokens INTEGER DEFAULT 0,
+    current_stop_evaluation_json TEXT DEFAULT '{}',
+    stop_record_json TEXT DEFAULT '{}',
+    current_candidate_story_state_json TEXT DEFAULT '{}',
+    queue_state_snapshots_json TEXT DEFAULT '[]',
+    consecutive_blocking_count INTEGER DEFAULT 0,
+    consecutive_revision_failure_count INTEGER DEFAULT 0,
+    error_code TEXT DEFAULT '',
+    error_message TEXT DEFAULT '',
+    request_id TEXT DEFAULT '',
+    trace_id TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT '',
+    started_at TEXT DEFAULT '',
+    stopped_at TEXT DEFAULT '',
+    finished_at TEXT DEFAULT ''
+)
+"""
+
 CHAPTER_CHUNKS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS chapter_chunks (
     chunk_id TEXT PRIMARY KEY,
@@ -169,6 +252,9 @@ def migrate_ai_schema(conn: sqlite3.Connection) -> None:
     conn.execute(CANDIDATE_DRAFTS_TABLE_SQL)
     conn.execute(MULTI_CHAPTER_SESSIONS_TABLE_SQL)
     conn.execute(CITATION_LINKS_TABLE_SQL)
+    conn.execute(STYLE_PROFILES_TABLE_SQL)
+    conn.execute(AUTO_QUEUE_CONFIGS_TABLE_SQL)
+    conn.execute(AUTO_QUEUE_RUNS_TABLE_SQL)
     conn.execute(CHAPTER_CHUNKS_TABLE_SQL)
     conn.execute(CHUNK_EMBEDDINGS_TABLE_SQL)
     conn.execute(VECTOR_INDEX_STATUS_TABLE_SQL)
@@ -177,11 +263,14 @@ def migrate_ai_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_citations_candidate_version ON citation_links(candidate_version_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_citations_candidate_draft ON citation_links(candidate_draft_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_citations_source ON citation_links(source_type, source_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_style_profiles_work ON style_profiles(work_id, status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_auto_queue_runs_work ON auto_queue_runs(work_id, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_chunks_work_id ON chapter_chunks(work_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_chunks_chapter_id ON chapter_chunks(work_id, chapter_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_chunks_stale_status ON chapter_chunks(work_id, stale_status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_chunk_id ON chunk_embeddings(chunk_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_work_id ON chunk_embeddings(work_id)")
+    _add_column_if_missing(conn, "auto_queue_runs", "job_id", "TEXT DEFAULT ''")
 
     _add_column_if_missing(conn, "llm_call_logs", "work_id", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "llm_call_logs", "trace_id", "TEXT NOT NULL DEFAULT ''")

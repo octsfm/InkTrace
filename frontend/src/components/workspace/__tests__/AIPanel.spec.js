@@ -1,10 +1,27 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 
 const routerPush = vi.fn()
 const getAISettings = vi.fn()
 const startInitialization = vi.fn()
 const startVectorIndexReindex = vi.fn()
+const upsertAutoQueueConfig = vi.fn()
+const getAutoQueueConfig = vi.fn()
+const startAutoQueue = vi.fn()
+const getAutoQueueStatus = vi.fn()
+const getAutoQueueHistory = vi.fn()
+const pauseAutoQueue = vi.fn()
+const resumeAutoQueue = vi.fn()
+const stopAutoQueue = vi.fn()
+const confirmAutoQueueContinue = vi.fn()
+const startStyleDNAExtract = vi.fn()
+const getStyleProfile = vi.fn()
+const getActiveStyleProfile = vi.fn()
+const getStyleProfileHistory = vi.fn()
+const confirmStyleProfile = vi.fn()
+const disableStyleProfile = vi.fn()
+const deleteStyleProfile = vi.fn()
 const getAIJob = vi.fn()
 const getLatestInitialization = vi.fn()
 const getContextPackReadiness = vi.fn()
@@ -36,6 +53,10 @@ vi.mock('vue-router', () => ({
   })
 }))
 
+vi.mock('@/config/p2FeatureFlags', () => ({
+  isP2FeatureEnabled: (flagName) => ['enable_style_dna', 'enable_auto_queue'].includes(flagName)
+}))
+
 vi.mock('../ReviewTab.vue', () => ({
   default: {
     name: 'ReviewTab',
@@ -55,6 +76,22 @@ vi.mock('@/api', () => ({
     getAISettings,
     startInitialization,
     startVectorIndexReindex,
+    upsertAutoQueueConfig,
+    getAutoQueueConfig,
+    startAutoQueue,
+    getAutoQueueStatus,
+    getAutoQueueHistory,
+    pauseAutoQueue,
+    resumeAutoQueue,
+    stopAutoQueue,
+    confirmAutoQueueContinue,
+    startStyleDNAExtract,
+    getStyleProfile,
+    getActiveStyleProfile,
+    getStyleProfileHistory,
+    confirmStyleProfile,
+    disableStyleProfile,
+    deleteStyleProfile,
     getAIJob,
     getLatestInitialization,
     getContextPackReadiness,
@@ -86,8 +123,9 @@ describe('AIPanel', () => {
   let AIPanel
 
   beforeEach(async () => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     vi.useFakeTimers()
+    setActivePinia(createPinia())
     AIPanel = (await import('../AIPanel.vue')).default
 
     getAISettings.mockResolvedValue({
@@ -253,6 +291,63 @@ describe('AIPanel', () => {
       }
     })
     cancelAIJob.mockResolvedValue({ data: { job_id: 'job_reindex_1', status: 'cancelled' } })
+    upsertAutoQueueConfig.mockResolvedValue({
+      data: {
+        config: {
+          config_id: 'aqc_001',
+          work_id: 'work-1',
+          queue_mode: 'safe',
+          target_chapters: 5
+        }
+      }
+    })
+    getAutoQueueConfig.mockResolvedValue({
+      data: {
+        config: {
+          config_id: 'aqc_001',
+          work_id: 'work-1',
+          queue_mode: 'safe',
+          target_chapters: 5
+        }
+      }
+    })
+    getAutoQueueHistory.mockResolvedValue({ data: { runs: [] } })
+    startAutoQueue.mockResolvedValue({
+      data: {
+        run_id: 'aqr_001',
+        status: 'running',
+        queue_mode: 'safe'
+      }
+    })
+    getAutoQueueStatus.mockResolvedValue({
+      data: {
+        run: {
+          run_id: 'aqr_001',
+          status: 'waiting_user_decision',
+          queue_mode: 'safe',
+          generated_count: 1
+        }
+      }
+    })
+    pauseAutoQueue.mockResolvedValue({ data: { run: { run_id: 'aqr_001', status: 'paused', queue_mode: 'safe', generated_count: 1 } } })
+    resumeAutoQueue.mockResolvedValue({ data: { run: { run_id: 'aqr_001', status: 'running', queue_mode: 'safe', generated_count: 1 } } })
+    stopAutoQueue.mockResolvedValue({ data: { run: { run_id: 'aqr_001', status: 'stopped', queue_mode: 'safe', generated_count: 1 } } })
+    confirmAutoQueueContinue.mockResolvedValue({
+      data: { run: { run_id: 'aqr_001', status: 'running', queue_mode: 'safe', generated_count: 2 } }
+    })
+    getActiveStyleProfile.mockResolvedValue({ data: { profile: null } })
+    getStyleProfileHistory.mockResolvedValue({ data: { profiles: [] } })
+    getStyleProfile.mockResolvedValue({ data: { profile: null } })
+    startStyleDNAExtract.mockResolvedValue({
+      data: {
+        job_id: 'job_style_1',
+        status: 'queued',
+        polling_hint: { next_poll_after_ms: 3000, max_poll_interval_ms: 10000 }
+      }
+    })
+    confirmStyleProfile.mockResolvedValue({ data: { profile: { profile_id: 'sp_1', status: 'active' } } })
+    disableStyleProfile.mockResolvedValue({ data: { profile: { profile_id: 'sp_1', status: 'disabled' } } })
+    deleteStyleProfile.mockResolvedValue({ data: { deleted: true, status: 'deleted' } })
     getAIJob
       .mockResolvedValueOnce({ data: { job_id: 'job_1', status: 'running', steps: [] } })
       .mockResolvedValueOnce({ data: { job_id: 'job_1', status: 'completed', steps: [] } })
@@ -289,6 +384,55 @@ describe('AIPanel', () => {
     expect(listAgentTraces).not.toHaveBeenCalled()
     await wrapper.get('[data-test="go-settings-page"]').trigger('click')
     expect(routerPush).toHaveBeenCalledWith('/settings')
+  })
+
+  it('shows style dna config entry in ai workspace', async () => {
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai',
+        chapterOptions: [
+          { id: 'chapter-1', title: '起点', content: '第一章正文', status: 'published', order_index: 1 },
+          { id: 'chapter-2', title: '转折', content: '第二章正文', status: 'published', order_index: 2 },
+          { id: 'chapter-3', title: '草稿', content: '第三章正文', status: 'draft', order_index: 3 }
+        ],
+        draftChapterIds: ['chapter-3']
+      }
+    })
+
+    await vi.runAllTimersAsync()
+
+    expect(wrapper.text()).toContain('风格画像')
+    expect(wrapper.text()).toContain('从已有章节选择')
+  })
+
+  it('shows auto queue panel in ai workspace and starts safe queue from current chapter', async () => {
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await wrapper.get('[data-test="auto-queue-start"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('自动续写')
+    expect(wrapper.text()).toContain('安全模式')
+    expect(upsertAutoQueueConfig).toHaveBeenCalledWith({
+      work_id: 'work-1',
+      queue_mode: 'safe',
+      target_chapters: 5
+    })
+    expect(startAutoQueue).toHaveBeenCalledWith({
+      work_id: 'work-1',
+      start_chapter_id: 'chapter-1'
+    })
   })
 
   it('blocks ai actions when key or critical role mappings are missing', async () => {

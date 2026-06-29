@@ -21,11 +21,13 @@ from domain.entities.ai.models import (
     SceneMoment,
     SequenceArc,
     SequenceEvent,
+    StyleProfileStatus,
     VolumeArc,
 )
 from domain.repositories.ai.context_pack_repository import ContextPackRepository
 from domain.repositories.ai.initialization_repository import InitializationRepository
 from domain.repositories.ai.plot_arc_repository import PlotArcRepository
+from domain.repositories.ai.style_profile_repository import StyleProfileRepository
 from domain.repositories.ai.story_memory_repository import StoryMemoryRepository
 from domain.repositories.ai.story_state_repository import StoryStateRepository
 from domain.repositories.ai.vector_index_repository import VectorIndexRepositoryPort
@@ -46,6 +48,7 @@ class ContextPackService:
     PRIORITY_PLOT_THREAD = 12
     PRIORITY_CONTINUITY_NOTE = 13
     PRIORITY_VECTOR_RECALL = 14
+    PRIORITY_STYLE_DNA = 15
 
     def __init__(
         self,
@@ -58,6 +61,7 @@ class ContextPackService:
         plot_arc_repository: PlotArcRepository | None = None,
         vector_recall_service=None,
         vector_index_repository: VectorIndexRepositoryPort | None = None,
+        style_profile_repository: StyleProfileRepository | None = None,
     ) -> None:
         self._chapter_service = chapter_service
         self._initialization_repository = initialization_repository
@@ -67,6 +71,7 @@ class ContextPackService:
         self._plot_arc_repository = plot_arc_repository
         self._vector_recall_service = vector_recall_service
         self._vector_index_repository = vector_index_repository
+        self._style_profile_repository = style_profile_repository
 
     def build(self, request: ContextPackBuildRequest) -> ContextPackSnapshot:
         now = self._now()
@@ -339,6 +344,23 @@ class ContextPackService:
                     token_estimate=self._estimate_tokens(note),
                     required=False,
                 ))
+
+        style_profile = self._get_active_style_profile(request.work_id)
+        if style_profile is not None and style_profile.status == StyleProfileStatus.ACTIVE:
+            style_text = style_profile.to_context_summary()
+            items.append(ContextItem(
+                item_id=f"{pack_id}_style_{style_profile.profile_id}",
+                source_type="style_dna",
+                source_id=style_profile.profile_id,
+                priority=self.PRIORITY_STYLE_DNA,
+                content_text=style_text,
+                token_estimate=min(max(self._estimate_tokens(style_text), 1), 250),
+                required=False,
+                metadata={
+                    "confidence": style_profile.confidence,
+                    "low_confidence_reason": style_profile.low_confidence_reason,
+                },
+            ))
 
         vector_recall_items, vector_recall_status, vector_recall_warnings = self._build_vector_recall_items(
             request=request,
@@ -1072,6 +1094,14 @@ class ContextPackService:
             return None
         try:
             return self._vector_index_repository.get_index_status_by_work(work_id)
+        except Exception:
+            return None
+
+    def _get_active_style_profile(self, work_id: str):
+        if self._style_profile_repository is None:
+            return None
+        try:
+            return self._style_profile_repository.get_active(work_id)
         except Exception:
             return None
 

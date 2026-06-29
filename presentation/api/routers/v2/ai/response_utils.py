@@ -52,6 +52,19 @@ SAFE_MESSAGE_MAP = {
     "citation_not_found": "未找到对应引用记录。",
     "P2_CITATION_SOURCE_HASH_MISMATCH": "引用来源内容已变更，请刷新后重试。",
     "P2_CITATION_UNVERIFIED": "当前引用尚未通过校验。",
+    "style_profile_not_found": "未找到对应风格画像。",
+    "profile_not_confirmable": "当前风格画像状态下无法确认。",
+    "profile_not_disableable": "当前风格画像状态下无法禁用。",
+    "style_dna_source_text_empty": "请先提供标杆文本。",
+    "style_dna_extract_failed": "风格画像提取失败，请稍后重试。",
+    "auto_queue_config_not_found": "未找到当前作品的自动续写配置。",
+    "auto_queue_run_not_found": "未找到对应自动续写队列任务。",
+    "auto_queue_target_chapters_required": "当前配置缺少目标章节数，请先完成配置。",
+    "auto_queue_already_running": "当前作品已有自动续写任务在运行。",
+    "auto_queue_disabled": "当前自动续写配置已关闭，请先启用后再试。",
+    "auto_queue_work_id_mismatch": "自动续写任务与当前作品不匹配，请刷新后重试。",
+    "auto_queue_confirm_continue_only_for_safe_mode": "仅安全模式下支持确认后继续。",
+    "auto_queue_not_waiting_user_decision": "当前状态下不能执行确认后继续。",
 }
 
 

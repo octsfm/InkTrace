@@ -11,6 +11,9 @@ CHROMA_DIR = os.getenv("INKTRACE_CHROMA_DIR", str(Path("data") / "chroma"))
 def warmup_singletons_for_startup() -> None:
     get_agent_runtime_service().recover_after_restart()
     get_ai_job_service().recover_after_restart()
+    from presentation.api.routers.v2.ai.auto_queues import recover_auto_queue_runs_after_restart
+
+    recover_auto_queue_runs_after_restart()
     return None
 
 from functools import lru_cache
@@ -21,6 +24,7 @@ from application.services.ai.agent_runtime_service import AgentRuntimeService
 from application.services.ai.agent_trace_service import AgentTraceService
 from application.services.ai.ai_review_service import AIReviewApplicationService
 from application.services.ai.ai_suggestion_service import AISuggestionService
+from application.services.ai.auto_queue_service import AutoContinuationQueueService
 from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.ai.candidate_rewrite_service import CandidateRewriteService
 from application.services.ai.citation_link_service import CitationLinkService
@@ -36,9 +40,13 @@ from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.context_vector_recall_service import ContextVectorRecallService
 from application.services.ai.initialization_service import InitializationApplicationService
 from application.services.ai.model_router import ModelRouter
+from application.services.ai.output_validation_service import OutputValidationService
+from application.services.ai.prompt_registry import PromptRegistry
 from application.services.ai.provider_registry import ProviderRegistry
 from application.services.ai.quick_trial_service import QuickTrialApplicationService
 from application.services.ai.security import SettingsCipher
+from application.services.ai.style_dna_extraction_service import StyleDNAExtractionService
+from application.services.ai.stop_condition_evaluator import StopConditionEvaluator
 from application.services.ai.tool_facade import CoreToolFacade
 from application.services.ai.vector_index_service import VectorIndexService
 from application.services.ai.vector_reindex_service import VectorReindexApplicationService
@@ -66,6 +74,9 @@ from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlot
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 from infrastructure.persistence.sqlite_citation_link_repo import SQLiteCitationLinkRepository
+from infrastructure.persistence.sqlite_auto_queue_config_repo import SQLiteAutoQueueConfigRepository
+from infrastructure.persistence.sqlite_auto_queue_run_repo import SQLiteAutoQueueRunRepository
+from infrastructure.persistence.sqlite_style_profile_repo import SQLiteStyleProfileRepository
 from infrastructure.persistence.chroma_vector_store import ChromaVectorStore
 from infrastructure.persistence.sqlite_multi_chapter_session_repo import SQLiteMultiChapterSessionRepository
 from infrastructure.persistence.sqlite_vector_index_repo import SQLiteVectorIndexRepository
@@ -161,6 +172,21 @@ def get_citation_link_repository() -> SQLiteCitationLinkRepository:
 
 
 @lru_cache(maxsize=1)
+def get_style_profile_repository() -> SQLiteStyleProfileRepository:
+    return SQLiteStyleProfileRepository()
+
+
+@lru_cache(maxsize=1)
+def get_auto_queue_config_repository() -> SQLiteAutoQueueConfigRepository:
+    return SQLiteAutoQueueConfigRepository()
+
+
+@lru_cache(maxsize=1)
+def get_auto_queue_run_repository() -> SQLiteAutoQueueRunRepository:
+    return SQLiteAutoQueueRunRepository()
+
+
+@lru_cache(maxsize=1)
 def get_settings_cipher() -> SettingsCipher:
     return SettingsCipher()
 
@@ -205,6 +231,16 @@ def get_model_router() -> ModelRouter:
         provider_registry=get_provider_registry(),
         settings_cipher=get_settings_cipher(),
     )
+
+
+@lru_cache(maxsize=1)
+def get_prompt_registry() -> PromptRegistry:
+    return PromptRegistry()
+
+
+@lru_cache(maxsize=1)
+def get_output_validation_service() -> OutputValidationService:
+    return OutputValidationService()
 
 
 @lru_cache(maxsize=1)
@@ -293,6 +329,7 @@ def get_context_pack_service() -> ContextPackService:
         plot_arc_repository=get_plot_arc_repository(),
         vector_recall_service=get_context_vector_recall_service(),
         vector_index_repository=get_vector_index_repository(),
+        style_profile_repository=get_style_profile_repository(),
     )
 
 
@@ -317,6 +354,34 @@ def get_vector_index_service() -> VectorIndexService:
         embedding_provider=get_embedding_provider(),
         vector_store=get_vector_store(),
         vector_index_repository=get_vector_index_repository(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_style_dna_service() -> StyleDNAExtractionService:
+    return StyleDNAExtractionService(
+        profile_repository=get_style_profile_repository(),
+        model_router=get_model_router(),
+        prompt_registry=get_prompt_registry(),
+        output_validator=get_output_validation_service(),
+        trace_service=get_agent_trace_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_stop_condition_evaluator() -> StopConditionEvaluator:
+    return StopConditionEvaluator(plot_arc_repository=get_plot_arc_repository())
+
+
+@lru_cache(maxsize=1)
+def get_auto_queue_service() -> AutoContinuationQueueService:
+    return AutoContinuationQueueService(
+        config_repository=get_auto_queue_config_repository(),
+        run_repository=get_auto_queue_run_repository(),
+        multi_chapter_service=get_multi_chapter_service(),
+        stop_evaluator=get_stop_condition_evaluator(),
+        job_service=get_ai_job_service(),
+        trace_service=get_agent_trace_service(),
     )
 
 

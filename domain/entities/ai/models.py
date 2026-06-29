@@ -15,6 +15,7 @@ class ModelRole(StrEnum):
     OUTLINE_ANALYZER = "outline_analyzer"
     MANUSCRIPT_ANALYZER = "manuscript_analyzer"
     MEMORY_EXTRACTOR = "memory_extractor"
+    STYLE_EXTRACTOR = "style_extractor"
     PLANNER = "planner"
     WRITING_TASK_BUILDER = "writing_task_builder"
     REVIEWER = "reviewer"
@@ -2305,6 +2306,177 @@ class CitationBatch(AIBaseModel):
     citations: list[CitationLink] = Field(default_factory=list)
 
 
+class StyleProfileSourceType(StrEnum):
+    USER_UPLOAD = "user_upload"
+    CHAPTER_REFERENCE = "chapter_reference"
+    MANUAL = "manual"
+
+
+class StyleProfileStatus(StrEnum):
+    PENDING_CONFIRM = "pending_confirm"
+    ACTIVE = "active"
+    DISABLED = "disabled"
+    ARCHIVED = "archived"
+    DRAFT = "draft"
+
+
+class StyleProfile(AIBaseModel):
+    profile_id: str
+    work_id: str
+    source_type: StyleProfileSourceType
+    source_ref: str = ""
+    source_text_hash: str = ""
+    source_text_length: int = 0
+    confidence: float = 0.0
+    low_confidence_reason: str = ""
+    avg_sentence_length: float = 0.0
+    sentence_length_variance: float = 0.0
+    short_sentence_ratio: float = 0.0
+    long_sentence_ratio: float = 0.0
+    compound_sentence_ratio: float = 0.0
+    avg_paragraph_length: float = 0.0
+    paragraph_length_variance: float = 0.0
+    dialogue_ratio: float = 0.0
+    psychological_ratio: float = 0.0
+    action_ratio: float = 0.0
+    description_ratio: float = 0.0
+    narrative_perspective: str = ""
+    tense_preference: str = ""
+    style_summary: str = ""
+    style_tags: list[str] = Field(default_factory=list)
+    version: int = 1
+    status: StyleProfileStatus = StyleProfileStatus.PENDING_CONFIRM
+    created_at: str = ""
+    updated_at: str = ""
+    confirmed_at: str = ""
+
+    def to_context_summary(self) -> str:
+        parts = [f"风格特征：{self.style_summary}".strip()]
+        if self.style_tags:
+            parts.append(f"风格标签：{', '.join(self.style_tags)}")
+        parts.append(f"对白占比约 {self.dialogue_ratio:.0%}")
+        parts.append(f"平均句长 {self.avg_sentence_length:.0f} 字")
+        if self.narrative_perspective:
+            parts.append(f"叙述视角：{self.narrative_perspective}")
+        if self.confidence < 0.5:
+            parts.append("[注意：风格画像置信度较低，仅供参考]")
+        return "\n".join(item for item in parts if item and item != "风格特征：")
+
+
+class StyleDNAExtractionRequest(AIBaseModel):
+    work_id: str
+    source_type: StyleProfileSourceType
+    source_text: str
+    source_ref: str = ""
+
+
+class StyleDNAExtractionResult(AIBaseModel):
+    profile: StyleProfile
+    confidence: float = 0.0
+    warnings: list[str] = Field(default_factory=list)
+
+
+class AutoQueueMode(StrEnum):
+    SAFE = "safe"
+    CONTINUOUS = "continuous"
+
+
+class AutoQueueStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    PAUSED = "paused"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+    WAITING_USER_DECISION = "waiting_user_decision"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class StopCondition(StrEnum):
+    TARGET_CHAPTERS_REACHED = "target_chapters_reached"
+    TARGET_WORDS_REACHED = "target_words_reached"
+    SEQUENCE_ARC_ENDED = "sequence_arc_ended"
+    BLOCKING_REVIEW_CONSECUTIVE = "blocking_review_consecutive"
+    FORESHADOW_PREMATURE_REVEAL = "foreshadow_premature_reveal"
+    CONSECUTIVE_REVISION_FAILURE = "consecutive_revision_failure"
+    BUDGET_EXCEEDED = "budget_exceeded"
+    PROVIDER_UNRECOVERABLE = "provider_unrecoverable"
+    USER_MANUAL_STOP = "user_manual_stop"
+
+
+class StopSeverity(StrEnum):
+    NORMAL = "normal"
+    ABNORMAL = "abnormal"
+    BUDGET = "budget"
+    PROVIDER = "provider"
+    USER = "user"
+
+
+class AutoQueueConfig(AIBaseModel):
+    config_id: str
+    work_id: str
+    queue_mode: AutoQueueMode = AutoQueueMode.SAFE
+    target_chapters: int = 0
+    target_word_count: int = 0
+    stop_at_sequence_end: bool = True
+    stop_on_blocking_review: bool = True
+    max_consecutive_blocking: int = 2
+    stop_on_budget_exceeded: bool = True
+    max_consecutive_revision_failures: int = 3
+    stop_on_foreshadow_premature: bool = True
+    budget_limit_tokens: int = 0
+    enabled: bool = True
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class AutoQueueStopRecord(AIBaseModel):
+    stop_reason: StopCondition
+    stop_severity: StopSeverity
+    stop_context: dict[str, Any] = Field(default_factory=dict)
+    stopped_at: str = ""
+    user_action_required: bool = False
+    suggested_action: str = ""
+
+
+class StopEvaluationResult(AIBaseModel):
+    should_stop: bool = False
+    condition: StopCondition | None = None
+    severity: StopSeverity | None = None
+    reason: str = ""
+    user_action_required: bool = False
+    suggested_action: str = ""
+
+
+class AutoQueueRun(AIBaseModel):
+    run_id: str
+    job_id: str = ""
+    config_id: str
+    work_id: str
+    multi_chapter_session_id: str
+    status: AutoQueueStatus = AutoQueueStatus.PENDING
+    queue_mode: AutoQueueMode = AutoQueueMode.SAFE
+    generated_count: int = 0
+    total_word_count: int = 0
+    consumed_tokens: int = 0
+    current_stop_evaluation: dict[str, Any] = Field(default_factory=dict)
+    stop_record: AutoQueueStopRecord | None = None
+    current_candidate_story_state: dict[str, Any] = Field(default_factory=dict)
+    queue_state_snapshots: list[dict[str, Any]] = Field(default_factory=list)
+    consecutive_blocking_count: int = 0
+    consecutive_revision_failure_count: int = 0
+    error_code: str = ""
+    error_message: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    started_at: str = ""
+    stopped_at: str = ""
+    finished_at: str = ""
+
+
 class ChapterChunk(AIBaseModel):
     chunk_id: str
     work_id: str
@@ -2725,6 +2897,7 @@ def build_default_model_role_mappings() -> dict[str, ModelSelection]:
         ModelRole.OUTLINE_ANALYZER.value: ModelSelection(provider_name="kimi", model_name="kimi-analysis"),
         ModelRole.MANUSCRIPT_ANALYZER.value: ModelSelection(provider_name="kimi", model_name="kimi-analysis"),
         ModelRole.MEMORY_EXTRACTOR.value: ModelSelection(provider_name="kimi", model_name="kimi-analysis"),
+        ModelRole.STYLE_EXTRACTOR.value: ModelSelection(provider_name="kimi", model_name="kimi-analysis"),
         ModelRole.PLANNER.value: ModelSelection(provider_name="kimi", model_name="kimi-planner"),
         ModelRole.WRITING_TASK_BUILDER.value: ModelSelection(provider_name="kimi", model_name="kimi-planner"),
         ModelRole.REVIEWER.value: ModelSelection(provider_name="kimi", model_name="kimi-review"),

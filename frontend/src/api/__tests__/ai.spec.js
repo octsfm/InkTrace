@@ -52,6 +52,63 @@ describe('P0 AI API client', () => {
       caller_type: 'user_action',
       idempotency_key: 'idem-reindex-1'
     })
+    await api.aiApi.startStyleDNAExtract({
+      work_id: 'work-1',
+      source_text: '这是标杆文本',
+      source_type: 'user_upload',
+      caller_type: 'user_action',
+      idempotency_key: 'idem-style-1'
+    })
+    await api.aiApi.getStyleProfile('sp-1')
+    await api.aiApi.getActiveStyleProfile('work-1')
+    await api.aiApi.getStyleProfileHistory('work-1')
+    await api.aiApi.confirmStyleProfile('sp-1', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'style-confirm-1'
+    })
+    await api.aiApi.disableStyleProfile('sp-1', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'style-disable-1'
+    })
+    await api.aiApi.deleteStyleProfile('sp-1', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'style-delete-1'
+    })
+    await api.aiApi.upsertAutoQueueConfig({
+      work_id: 'work-1',
+      queue_mode: 'safe',
+      target_chapters: 5
+    })
+    await api.aiApi.getAutoQueueConfig('work-1')
+    await api.aiApi.startAutoQueue({
+      work_id: 'work-1',
+      start_chapter_id: 'chapter-1'
+    })
+    await api.aiApi.getAutoQueueStatus('aqr-1')
+    await api.aiApi.pauseAutoQueue('aqr-1', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'aq-pause-1'
+    })
+    await api.aiApi.resumeAutoQueue('aqr-1', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'aq-resume-1'
+    })
+    await api.aiApi.stopAutoQueue('aqr-1', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'aq-stop-1'
+    })
+    await api.aiApi.confirmAutoQueueContinue('aqr-1', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'aq-confirm-1'
+    })
+    await api.aiApi.getAutoQueueHistory('work-1')
     await api.aiApi.getLatestInitialization('work-1')
     await api.aiApi.buildContextPack({ work_id: 'work-1', chapter_id: 'chapter-1' })
     await api.aiApi.getLatestContextPack('work-1', 'chapter-1')
@@ -92,6 +149,65 @@ describe('P0 AI API client', () => {
       caller_type: 'user_action',
       idempotency_key: 'idem-reindex-1'
     })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/style-dna/extract', {
+      work_id: 'work-1',
+      source_text: '这是标杆文本',
+      source_type: 'user_upload',
+      caller_type: 'user_action',
+      idempotency_key: 'idem-style-1'
+    })
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/style-dna/profiles/sp-1')
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/style-dna/work-1/active')
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/style-dna/work-1/history')
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/style-dna/profiles/sp-1/confirm', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'style-confirm-1'
+    })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/style-dna/profiles/sp-1/disable', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'style-disable-1'
+    })
+    expect(mockDelete).toHaveBeenCalledWith('/v2/ai/style-dna/profiles/sp-1', {
+      data: {
+        caller_type: 'user_action',
+        user_action: true,
+        idempotency_key: 'style-delete-1'
+      }
+    })
+    expect(mockPut).toHaveBeenCalledWith('/v2/ai/auto-queues/config', {
+      work_id: 'work-1',
+      queue_mode: 'safe',
+      target_chapters: 5
+    })
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/auto-queues/config/work-1')
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/auto-queues/start', {
+      work_id: 'work-1',
+      start_chapter_id: 'chapter-1'
+    })
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/auto-queues/aqr-1/status')
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/auto-queues/aqr-1/pause', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'aq-pause-1'
+    })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/auto-queues/aqr-1/resume', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'aq-resume-1'
+    })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/auto-queues/aqr-1/stop', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'aq-stop-1'
+    })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/auto-queues/aqr-1/confirm-continue', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'aq-confirm-1'
+    })
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/auto-queues/work-1/history')
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/works/work-1/initialization/latest')
     expect(mockPost).toHaveBeenCalledWith('/v2/ai/context-packs', { work_id: 'work-1', chapter_id: 'chapter-1' })
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/context-packs/works/work-1/latest', { params: { chapter_id: 'chapter-1' } })

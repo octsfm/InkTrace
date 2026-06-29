@@ -60,8 +60,8 @@ export const useAIJobPolling = ({
   const scheduleNextFetch = () => {
     clearTimer()
     if (!jobId.value || isTerminal.value || pollingHint.value?.stop) return
-    timer = setTimeout(() => {
-      void fetchOnce()
+    timer = setTimeout(async () => {
+      await fetchOnce()
     }, resolveIntervalMs())
   }
 
@@ -144,7 +144,6 @@ export const useAIJobPolling = ({
         return
       }
     }
-    scheduleNextFetch()
   }
 
   onScopeDispose(stop)

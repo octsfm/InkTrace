@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <div class="writing-studio" :class="[themeClass, { 'writing-studio--focus': isFocusMode }]">
     <VersionConflictModal
       :model-value="conflictModalVisible"
@@ -192,6 +192,8 @@
               :work-id="workId"
               :chapter-id="chapterDataStore.activeChapterId"
               :chapter-version="Number(chapterDataStore.activeChapter?.version || 0)"
+              :chapter-options="chapterDataStore.chapters"
+              :draft-chapter-ids="draftChapterIds"
             />
             <ReviewTab
               v-else-if="activeTab === 'review'"

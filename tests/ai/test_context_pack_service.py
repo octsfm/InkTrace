@@ -8,6 +8,9 @@ from domain.entities.ai.models import (
     ContextItem,
     ContextPackBuildRequest,
     ContextPackStatus,
+    StyleProfile,
+    StyleProfileSourceType,
+    StyleProfileStatus,
 )
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from infrastructure.database.repositories.ai.file_context_pack_store import FileContextPackStore
@@ -16,6 +19,7 @@ from infrastructure.database.repositories.ai.file_initialization_store import Fi
 from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlotArcStore
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
+from infrastructure.persistence.sqlite_style_profile_repo import SQLiteStyleProfileRepository
 
 
 class _StubVectorIndexRepository:
@@ -46,6 +50,7 @@ def _build_services(
     *,
     vector_recall_service=None,
     vector_index_repository=None,
+    style_profile_repository=None,
 ) -> tuple[ContextPackService, InitializationApplicationService, WorkService, ChapterService, FilePlotArcStore]:
     work_repo = WorkRepo()
     chapter_repo = ChapterRepo()
@@ -73,6 +78,7 @@ def _build_services(
         plot_arc_repository=plot_arc_store,
         vector_recall_service=vector_recall_service,
         vector_index_repository=vector_index_repository,
+        style_profile_repository=style_profile_repository,
     )
     return cp_service, init_service, work_service, chapter_service, plot_arc_store
 
@@ -101,6 +107,59 @@ def test_context_pack_ready_with_story_memory_and_state() -> None:
     assert any(item.source_type == "plot_arc_volume" for item in snapshot.context_items)
     assert any(item.source_type == "plot_arc_sequence" for item in snapshot.context_items)
     assert any(item.source_type == "plot_arc_immediate" for item in snapshot.context_items)
+
+
+def test_context_pack_includes_active_style_profile_as_optional_lowest_layer(tmp_path) -> None:
+    style_repo = SQLiteStyleProfileRepository(tmp_path / "style-profile.db")
+    profile = StyleProfile(
+        profile_id="sp_active_001",
+        work_id="work_001",
+        source_type=StyleProfileSourceType.USER_UPLOAD,
+        source_ref="upload_001",
+        source_text_hash="sha256:style001",
+        source_text_length=2200,
+        confidence=0.48,
+        low_confidence_reason="source_text_too_short",
+        avg_sentence_length=14.0,
+        sentence_length_variance=3.0,
+        short_sentence_ratio=0.31,
+        long_sentence_ratio=0.06,
+        compound_sentence_ratio=0.22,
+        avg_paragraph_length=66.0,
+        paragraph_length_variance=9.0,
+        dialogue_ratio=0.41,
+        psychological_ratio=0.12,
+        action_ratio=0.26,
+        description_ratio=0.21,
+        narrative_perspective="third_person_limited",
+        tense_preference="past",
+        style_summary="对白占比高，句式简洁。",
+        style_tags=["简洁", "对白驱动"],
+        version=1,
+        status=StyleProfileStatus.ACTIVE,
+        created_at="2026-06-23T10:00:00Z",
+        updated_at="2026-06-23T10:00:00Z",
+        confirmed_at="2026-06-23T10:05:00Z",
+    )
+    style_repo.save(profile)
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services(
+        style_profile_repository=style_repo
+    )
+    work = work_service.create_work("风格画像作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(chapter.id.value, title="第一章", content="顾迟沿着灯塔台阶向上，脚步压得很轻。", expected_version=1)
+    init_service.start_initialization(work.id, created_by="user_action")
+
+    # Align the stored profile to the created work.
+    style_repo.save(profile.model_copy(update={"work_id": work.id}))
+
+    snapshot = cp_service.build_and_save(ContextPackBuildRequest(work_id=work.id, chapter_id=chapter.id.value))
+
+    style_items = [item for item in snapshot.context_items if item.source_type == "style_dna" and item.included]
+    assert style_items
+    assert style_items[0].priority == ContextPackService.PRIORITY_STYLE_DNA
+    assert style_items[0].metadata["low_confidence_reason"] == "source_text_too_short"
+    assert "风格特征" in style_items[0].content_text
 
 
 def test_context_pack_immediate_window_includes_scene_details_from_story_memory() -> None:

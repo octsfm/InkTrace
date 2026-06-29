@@ -7,6 +7,8 @@ from domain.repositories.ai.agent_observation_repository import AgentObservation
 from domain.repositories.ai.agent_session_repository import AgentSessionRepository
 from domain.repositories.ai.agent_step_repository import AgentStepRepository
 from domain.repositories.ai.ai_settings_repository import AISettingsRepository
+from domain.repositories.ai.auto_queue_config_repository import AutoQueueConfigRepository
+from domain.repositories.ai.auto_queue_run_repository import AutoQueueRunRepository
 from domain.repositories.ai.candidate_draft_repository import CandidateDraftRepository
 from domain.repositories.ai.citation_link_repository import CitationLinkRepository
 from domain.repositories.ai.chapter_plan_repository import ChapterPlanRepository
@@ -17,6 +19,7 @@ from domain.repositories.ai.initialization_repository import InitializationRepos
 from domain.repositories.ai.llm_call_log_repository import LLMCallLogRepository
 from domain.repositories.ai.multi_chapter_session_repository import MultiChapterSessionRepository
 from domain.repositories.ai.plot_arc_repository import PlotArcRepository
+from domain.repositories.ai.style_profile_repository import StyleProfileRepository
 from domain.repositories.ai.story_memory_repository import StoryMemoryRepository
 from domain.repositories.ai.story_state_repository import StoryStateRepository
 from domain.repositories.ai.vector_index_repository import VectorIndexRepositoryPort
@@ -32,6 +35,8 @@ __all__ = [
     "AgentSessionRepository",
     "AgentStepRepository",
     "AISettingsRepository",
+    "AutoQueueConfigRepository",
+    "AutoQueueRunRepository",
     "CandidateDraftRepository",
     "CitationLinkRepository",
     "ChapterPlanRepository",
@@ -42,6 +47,7 @@ __all__ = [
     "LLMCallLogRepository",
     "MultiChapterSessionRepository",
     "PlotArcRepository",
+    "StyleProfileRepository",
     "StoryMemoryRepository",
     "StoryStateRepository",
     "VectorIndexRepositoryPort",

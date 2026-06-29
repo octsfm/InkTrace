@@ -5,6 +5,7 @@ from application.services.ai.agent_runtime_service import AgentRuntimeService
 from application.services.ai.ai_settings_service import AISettingsService
 from application.services.ai.ai_review_service import AIReviewApplicationService
 from application.services.ai.ai_suggestion_service import AISuggestionService
+from application.services.ai.auto_queue_service import AutoContinuationQueueService
 from application.services.ai.candidate_rewrite_service import CandidateRewriteService
 from application.services.ai.continuation_workflow import MinimalContinuationWorkflow
 from application.services.ai.context_pack_service import ContextPackService
@@ -19,6 +20,8 @@ from application.services.ai.quick_trial_service import QuickTrialApplicationSer
 from application.services.ai.security import SettingsCipher
 from application.services.ai.story_memory_service import StoryMemoryService
 from application.services.ai.story_state_service import StoryStateService
+from application.services.ai.stop_condition_evaluator import StopConditionEvaluator
+from application.services.ai.style_dna_extraction_service import StyleDNAExtractionService
 from application.services.ai.vector_index_service import VectorIndexService
 from application.services.ai.vector_reindex_service import VectorReindexApplicationService
 from application.services.ai.writer_service import WriterService
@@ -32,6 +35,7 @@ __all__ = [
     "AISettingsService",
     "AIReviewApplicationService",
     "AISuggestionService",
+    "AutoContinuationQueueService",
     "CandidateRewriteService",
     "MinimalContinuationWorkflow",
     "ContextPackService",
@@ -46,6 +50,8 @@ __all__ = [
     "SettingsCipher",
     "StoryMemoryService",
     "StoryStateService",
+    "StopConditionEvaluator",
+    "StyleDNAExtractionService",
     "VectorIndexService",
     "VectorReindexApplicationService",
     "WriterService",

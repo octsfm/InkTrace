@@ -13,10 +13,30 @@ class _ProviderConnectionResultModel(BaseModel):
     message: str
 
 
+class _StyleDNAOutputModel(BaseModel):
+    confidence: float
+    avg_sentence_length: float
+    sentence_length_variance: float
+    short_sentence_ratio: float
+    long_sentence_ratio: float
+    compound_sentence_ratio: float
+    avg_paragraph_length: float
+    paragraph_length_variance: float
+    dialogue_ratio: float
+    psychological_ratio: float
+    action_ratio: float
+    description_ratio: float
+    narrative_perspective: str
+    tense_preference: str
+    style_summary: str
+    style_tags: list[str]
+
+
 class OutputValidationService:
     def __init__(self) -> None:
         self._schema_registry: dict[str, type[BaseModel]] = {
             "provider_connection_result": _ProviderConnectionResultModel,
+            "style_dna_output": _StyleDNAOutputModel,
         }
 
     def validate(self, output_schema_key: str, raw_output: Any) -> OutputValidationResult:
