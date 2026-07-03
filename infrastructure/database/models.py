@@ -138,6 +138,26 @@ CREATE TABLE IF NOT EXISTS style_profiles (
 )
 """
 
+CHAPTER_MENTIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS chapter_mentions (
+    mention_id TEXT PRIMARY KEY,
+    chapter_id TEXT NOT NULL,
+    work_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL DEFAULT '',
+    entity_name_snapshot TEXT NOT NULL DEFAULT '',
+    start_pos INTEGER NOT NULL DEFAULT 0,
+    end_pos INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'user_input',
+    ai_suggestion_id TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    validation_detail TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+)
+"""
+
 AUTO_QUEUE_CONFIGS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS auto_queue_configs (
     config_id TEXT PRIMARY KEY,
@@ -253,6 +273,7 @@ def migrate_ai_schema(conn: sqlite3.Connection) -> None:
     conn.execute(MULTI_CHAPTER_SESSIONS_TABLE_SQL)
     conn.execute(CITATION_LINKS_TABLE_SQL)
     conn.execute(STYLE_PROFILES_TABLE_SQL)
+    conn.execute(CHAPTER_MENTIONS_TABLE_SQL)
     conn.execute(AUTO_QUEUE_CONFIGS_TABLE_SQL)
     conn.execute(AUTO_QUEUE_RUNS_TABLE_SQL)
     conn.execute(CHAPTER_CHUNKS_TABLE_SQL)
@@ -264,6 +285,9 @@ def migrate_ai_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_citations_candidate_draft ON citation_links(candidate_draft_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_citations_source ON citation_links(source_type, source_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_style_profiles_work ON style_profiles(work_id, status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mentions_chapter ON chapter_mentions(chapter_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mentions_entity ON chapter_mentions(entity_type, entity_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mentions_work ON chapter_mentions(work_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_auto_queue_runs_work ON auto_queue_runs(work_id, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_chunks_work_id ON chapter_chunks(work_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_chunks_chapter_id ON chapter_chunks(work_id, chapter_id)")

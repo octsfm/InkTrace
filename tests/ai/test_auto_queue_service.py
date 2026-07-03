@@ -176,6 +176,34 @@ class _StubJobService:
         )()
 
 
+class _StubTraceService:
+    def __init__(self) -> None:
+        self.audit_events: list[dict[str, object]] = []
+
+    def record_audit_event(
+        self,
+        *,
+        trace_id: str,
+        session_id: str,
+        step_id: str,
+        event_type: str,
+        summary: str,
+        payload_digest: dict[str, object] | None = None,
+        high_risk_user_action: bool = False,
+    ):
+        event = {
+            "trace_id": trace_id,
+            "session_id": session_id,
+            "step_id": step_id,
+            "event_type": event_type,
+            "summary": summary,
+            "payload_digest": dict(payload_digest or {}),
+            "high_risk_user_action": high_risk_user_action,
+        }
+        self.audit_events.append(event)
+        return event
+
+
 class _StubPlotArcRepository:
     def __init__(self, *, active_sequence_arc=None) -> None:
         self.active_sequence_arc = active_sequence_arc
@@ -350,6 +378,37 @@ def test_auto_queue_service_start_creates_run_and_delegates_to_multi_chapter_sta
             "caller_type": "user_action",
         }
     ]
+
+
+def test_auto_queue_service_start_rejects_zero_target_chapters_even_with_other_stop_conditions() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(
+        _build_config(
+            target_chapters=0,
+            target_word_count=5000,
+            stop_at_sequence_end=True,
+            budget_limit_tokens=200000,
+        )
+    )
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session(status=MultiChapterStatus.RUNNING))
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+    )
+
+    try:
+        service.start(config_id="aqc_001", work_id="work_001", start_chapter_id="chapter_start")
+    except ValueError as exc:
+        assert str(exc) == "auto_queue_target_chapters_required"
+    else:
+        raise AssertionError("zero target_chapters should be rejected under current P2-01-aligned contract")
 
 
 def test_auto_queue_service_start_auto_advances_one_hop_in_continuous_mode() -> None:
@@ -539,6 +598,229 @@ def test_auto_queue_service_resume_stops_when_budget_exceeded() -> None:
     assert resumed.stop_record.stop_reason == StopCondition.BUDGET_EXCEEDED
     assert resumed.current_stop_evaluation["reason"] == "budget_exceeded"
     assert budget_service.calls == ["aqr_001"]
+
+
+def test_auto_queue_service_resume_records_budget_stop_audit_event() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    budget_service = _StubBudgetService(exceeded=True, suggested_action="adjust_budget")
+    trace_service = _StubTraceService()
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(
+        _build_config(
+            queue_mode=AutoQueueMode.CONTINUOUS,
+            target_chapters=4,
+            stop_at_sequence_end=False,
+            stop_on_budget_exceeded=True,
+        )
+    )
+    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+    multi_chapter_service.resume_result = _build_session(
+        status=MultiChapterStatus.RUNNING,
+        current_index=2,
+        target_chapters=4,
+    )
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(budget_service=budget_service),
+        job_service=_StubJobService(),
+        trace_service=trace_service,
+    )
+
+    service.resume("aqr_001")
+
+    assert trace_service.audit_events == [
+        {
+            "trace_id": "trace_mc_001",
+            "session_id": "mcs_001",
+            "step_id": "",
+            "event_type": "budget_stop_recorded",
+            "summary": "auto_queue_stopped_due_to_budget_exceeded",
+            "payload_digest": {
+                "run_id": "aqr_001",
+                "condition": "budget_exceeded",
+                "generated_count": 2,
+            },
+            "high_risk_user_action": False,
+        }
+    ]
+
+
+def test_auto_queue_service_resume_budget_audit_only_records_safe_digest_fields() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    budget_service = _StubBudgetService(exceeded=True, suggested_action="adjust_budget")
+    trace_service = _StubTraceService()
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(
+        _build_config(
+            queue_mode=AutoQueueMode.CONTINUOUS,
+            target_chapters=4,
+            stop_at_sequence_end=False,
+            stop_on_budget_exceeded=True,
+        )
+    )
+    run_repo.save(
+        _build_run(
+            status=AutoQueueStatus.PAUSED,
+            queue_mode=AutoQueueMode.CONTINUOUS,
+            generated_count=1,
+            error_message="FULL_PROVIDER_ERROR: secret quota details",
+            current_candidate_story_state={
+                "chapter_text": "FULL OFFICIAL BODY CONTENT",
+                "context_pack": "FULL CONTEXTPACK CONTENT",
+                "candidate_draft": "FULL CANDIDATE DRAFT",
+                "prompt": "FULL PROMPT CONTENT",
+            },
+        )
+    )
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+    multi_chapter_service.resume_result = _build_session(
+        status=MultiChapterStatus.RUNNING,
+        current_index=2,
+        target_chapters=4,
+    )
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(budget_service=budget_service),
+        job_service=_StubJobService(),
+        trace_service=trace_service,
+    )
+
+    service.resume("aqr_001")
+
+    assert len(trace_service.audit_events) == 1
+    event = trace_service.audit_events[0]
+    assert event["summary"] == "auto_queue_stopped_due_to_budget_exceeded"
+    assert event["payload_digest"] == {
+        "run_id": "aqr_001",
+        "condition": "budget_exceeded",
+        "generated_count": 2,
+    }
+    assert "FULL OFFICIAL BODY CONTENT" not in str(event)
+    assert "FULL CONTEXTPACK CONTENT" not in str(event)
+    assert "FULL CANDIDATE DRAFT" not in str(event)
+    assert "FULL PROMPT CONTENT" not in str(event)
+    assert "FULL_PROVIDER_ERROR: secret quota details" not in str(event)
+
+
+def test_auto_queue_service_resume_does_not_record_audit_event_for_non_budget_stop() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    trace_service = _StubTraceService()
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(
+        _build_config(
+            queue_mode=AutoQueueMode.CONTINUOUS,
+            target_chapters=4,
+            stop_at_sequence_end=False,
+            stop_on_budget_exceeded=True,
+        )
+    )
+    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+    multi_chapter_service.resume_result = _build_session(
+        status=MultiChapterStatus.BLOCKED,
+        current_index=2,
+        target_chapters=4,
+    ).model_copy(update={"blocked_reason_code": "blocking_review_consecutive"})
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+        trace_service=trace_service,
+    )
+
+    service.resume("aqr_001")
+
+    assert trace_service.audit_events == []
+
+
+def test_auto_queue_service_resume_does_not_record_budget_audit_for_provider_stop() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    trace_service = _StubTraceService()
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(
+        _build_config(
+            queue_mode=AutoQueueMode.CONTINUOUS,
+            target_chapters=4,
+            stop_at_sequence_end=False,
+            stop_on_budget_exceeded=True,
+        )
+    )
+    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+    multi_chapter_service.resume_result = _build_session(
+        status=MultiChapterStatus.BLOCKED,
+        current_index=2,
+        target_chapters=4,
+    ).model_copy(
+        update={
+            "blocked_reason_code": "provider_unrecoverable",
+            "error_code": "provider_unrecoverable",
+            "error_message": "quota exceeded",
+        }
+    )
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+        trace_service=trace_service,
+    )
+
+    updated = service.resume("aqr_001")
+
+    assert updated.status == AutoQueueStatus.STOPPED
+    assert updated.stop_record is not None
+    assert updated.stop_record.stop_reason == StopCondition.PROVIDER_UNRECOVERABLE
+    assert updated.error_code == "provider_unrecoverable"
+    assert updated.error_message == "quota exceeded"
+    assert trace_service.audit_events == []
+
+
+def test_auto_queue_service_stop_does_not_record_budget_audit_for_user_manual_stop() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    trace_service = _StubTraceService()
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.SAFE))
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+        trace_service=trace_service,
+    )
+
+    updated = service.stop("aqr_001", reason=StopCondition.USER_MANUAL_STOP)
+
+    assert updated.status == AutoQueueStatus.STOPPED
+    assert updated.stop_record is not None
+    assert updated.stop_record.stop_reason == StopCondition.USER_MANUAL_STOP
+    assert trace_service.audit_events == []
 
 
 def test_auto_queue_service_user_confirm_continue_advances_without_apply() -> None:
@@ -873,7 +1155,11 @@ def test_auto_queue_service_get_status_maps_blocked_session_to_stopped_with_stop
     run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(status=MultiChapterStatus.BLOCKED).model_copy(
-        update={"blocked_reason_code": "blocking_review_consecutive"}
+        update={
+            "blocked_reason_code": "blocking_review_consecutive",
+            "error_code": "blocking_review_consecutive",
+            "error_message": "review blocked by consecutive conflicts",
+        }
     )
 
     service = AutoContinuationQueueService(
@@ -890,6 +1176,73 @@ def test_auto_queue_service_get_status_maps_blocked_session_to_stopped_with_stop
     assert refreshed.stop_record is not None
     assert refreshed.stop_record.stop_reason == StopCondition.BLOCKING_REVIEW_CONSECUTIVE
     assert refreshed.stop_record.stop_severity == StopSeverity.ABNORMAL
+    assert refreshed.consecutive_blocking_count == 2
+    assert refreshed.error_code == "blocking_review_consecutive"
+    assert refreshed.error_message == "review blocked by consecutive conflicts"
+
+
+def test_auto_queue_service_get_status_resets_consecutive_blocking_count_after_non_blocking_session() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE, max_consecutive_blocking=2))
+    run_repo.save(
+        _build_run(
+            status=AutoQueueStatus.RUNNING,
+            queue_mode=AutoQueueMode.SAFE,
+            consecutive_blocking_count=1,
+        )
+    )
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+    multi_chapter_service.get_session_result = _build_session(
+        status=MultiChapterStatus.WAITING_USER_DECISION,
+        current_index=1,
+        target_chapters=3,
+    )
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+    )
+
+    refreshed = service.get_status("aqr_001")
+
+    assert refreshed.status == AutoQueueStatus.WAITING_USER_DECISION
+    assert refreshed.consecutive_blocking_count == 0
+
+
+def test_auto_queue_service_get_status_preserves_failed_session_error_details() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS))
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+    multi_chapter_service.get_session_result = _build_session(status=MultiChapterStatus.FAILED).model_copy(
+        update={
+            "error_code": "provider_unrecoverable",
+            "error_message": "upstream quota exceeded",
+        }
+    )
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+    )
+
+    refreshed = service.get_status("aqr_001")
+
+    assert refreshed.status == AutoQueueStatus.FAILED
+    assert refreshed.error_code == "provider_unrecoverable"
+    assert refreshed.error_message == "upstream quota exceeded"
 
 
 def test_auto_queue_service_get_status_marks_completed_when_target_chapters_reached() -> None:
@@ -964,6 +1317,87 @@ def test_auto_queue_service_get_status_stops_when_budget_exceeded() -> None:
     assert budget_service.calls == ["aqr_001"]
 
 
+def test_auto_queue_service_get_status_marks_completed_when_target_word_count_reached_from_session_snapshots() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(
+        _build_config(
+            queue_mode=AutoQueueMode.CONTINUOUS,
+            target_chapters=5,
+            target_word_count=5000,
+            stop_at_sequence_end=False,
+        )
+    )
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS, total_word_count=0))
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+    multi_chapter_service.get_session_result = _build_session(
+        status=MultiChapterStatus.WAITING_USER_DECISION,
+        current_index=2,
+        target_chapters=5,
+    ).model_copy(
+        update={
+            "candidate_story_state": {"latest_chapter_id": "chapter_002", "word_count": 2600},
+            "queue_state_snapshots": [
+                {"chapter_index": 1, "chapter_id": "chapter_001", "word_count": 2400},
+                {"chapter_index": 2, "chapter_id": "chapter_002", "word_count": 2600},
+            ],
+        }
+    )
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+    )
+
+    refreshed = service.get_status("aqr_001")
+
+    assert refreshed.total_word_count == 5000
+    assert refreshed.status == AutoQueueStatus.COMPLETED
+    assert refreshed.stop_record is not None
+    assert refreshed.stop_record.stop_reason == StopCondition.TARGET_WORDS_REACHED
+    assert refreshed.current_stop_evaluation["reason"] == "target_words_reached"
+
+
+def test_auto_queue_service_get_status_syncs_consumed_tokens_from_session_metadata() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=5, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS, consumed_tokens=0))
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+    multi_chapter_service.get_session_result = _build_session(
+        status=MultiChapterStatus.RUNNING,
+        current_index=2,
+        target_chapters=5,
+    ).model_copy(
+        update={
+            "metadata": {
+                "job_id": "job_mc_001",
+                "consumed_tokens": 4321,
+                "token_usage": {"total_tokens": 4321},
+            }
+        }
+    )
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+    )
+
+    refreshed = service.get_status("aqr_001")
+
+    assert refreshed.consumed_tokens == 4321
+
+
 def test_auto_queue_service_stop_records_user_manual_stop() -> None:
     from application.services.ai.auto_queue_service import AutoContinuationQueueService
 
@@ -1018,6 +1452,52 @@ def test_auto_queue_service_recover_after_restart_resumes_running_active_run() -
     assert recovered is not None
     assert recovered.status == AutoQueueStatus.RUNNING
     assert multi_chapter_service.resume_calls == ["mcs_001"]
+
+
+def test_auto_queue_service_recover_after_restart_records_budget_stop_audit_for_running_run() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    budget_service = _StubBudgetService(exceeded=True, suggested_action="adjust_budget")
+    trace_service = _StubTraceService()
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=4, stop_at_sequence_end=False, stop_on_budget_exceeded=True))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+    multi_chapter_service.resume_result = _build_session(
+        status=MultiChapterStatus.RUNNING,
+        current_index=2,
+        target_chapters=4,
+    )
+
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(budget_service=budget_service),
+        job_service=_StubJobService(),
+        trace_service=trace_service,
+    )
+
+    recovered = service.recover_after_restart("work_001")
+
+    assert recovered is not None
+    assert recovered.status == AutoQueueStatus.STOPPED
+    assert trace_service.audit_events == [
+        {
+            "trace_id": "trace_mc_001",
+            "session_id": "mcs_001",
+            "step_id": "",
+            "event_type": "budget_stop_recorded",
+            "summary": "auto_queue_stopped_due_to_budget_exceeded",
+            "payload_digest": {
+                "run_id": "aqr_001",
+                "condition": "budget_exceeded",
+                "generated_count": 2,
+            },
+            "high_risk_user_action": False,
+        }
+    ]
 
 
 def test_auto_queue_service_recover_after_restart_keeps_safe_waiting_run_waiting() -> None:

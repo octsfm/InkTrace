@@ -11,6 +11,7 @@ from presentation.api.routers.v2.ai.schemas import SessionActionRequest, V2AIBas
 router = APIRouter(prefix="/api/v2/ai/auto-queues", tags=["v2-ai-auto-queues"])
 _ACTIVE_AUTO_QUEUE_RUNNERS: set[str] = set()
 _ACTIVE_AUTO_QUEUE_RUNNERS_LOCK = threading.Lock()
+_TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
 
 
 class AutoQueueConfigUpsertRequest(V2AIBaseModel):
@@ -107,20 +108,38 @@ def _serialize_run(run) -> dict[str, object]:
     }
 
 
+def _validate_start_config(config) -> str | None:
+    if int(getattr(config, "target_chapters", 0) or 0) <= 0:
+        return "auto_queue_target_chapters_required"
+    return None
+
+
 def _spawn_auto_queue_runner(run, *, allow_terminal: bool = False) -> None:
     job_id = str(getattr(run, "job_id", "") or "")
     run_id = str(getattr(run, "run_id", "") or "")
     status = str(getattr(getattr(run, "status", ""), "value", getattr(run, "status", "")) or "")
+    skip_job_start = allow_terminal and status in {"completed", "stopped", "cancelled", "failed"}
     should_spawn = status in {"running", "waiting_user_decision"} or (allow_terminal and status in {"completed", "stopped", "cancelled", "failed"})
     if not job_id or not run_id or not should_spawn:
         return
+    if skip_job_start:
+        try:
+            job_service = dependencies.get_ai_job_service()
+            current_job = getattr(job_service, "get_job", lambda _job_id: None)(job_id)
+            current_status = str(getattr(getattr(current_job, "status", ""), "value", getattr(current_job, "status", "")) or "")
+            if current_status in _TERMINAL_JOB_STATUSES:
+                return
+        except Exception:
+            pass
     with _ACTIVE_AUTO_QUEUE_RUNNERS_LOCK:
         if run_id in _ACTIVE_AUTO_QUEUE_RUNNERS:
             return
         _ACTIVE_AUTO_QUEUE_RUNNERS.add(run_id)
+    thread_kwargs = {"skip_job_start": True} if skip_job_start else {}
     threading.Thread(
         target=_run_auto_queue_async,
         args=(job_id, run_id),
+        kwargs=thread_kwargs,
         daemon=True,
     ).start()
 
@@ -138,13 +157,15 @@ def recover_auto_queue_runs_after_restart() -> list[str]:
     return recovered_run_ids
 
 
-def _run_auto_queue_async(job_id: str, run_id: str) -> None:
+def _run_auto_queue_async(job_id: str, run_id: str, *, skip_job_start: bool = False) -> None:
     job_service = dependencies.get_ai_job_service()
     service = dependencies.get_auto_queue_service()
     try:
-        job_service.start_job(job_id)
+        if not skip_job_start:
+            job_service.start_job(job_id)
         step = job_service.get_job_steps(job_id)[0]
-        job_service.mark_step_running(job_id, step.step_id)
+        if not skip_job_start:
+            job_service.mark_step_running(job_id, step.step_id)
         last_run = None
         for _ in range(20):
             run = service.run_background_step(run_id)
@@ -180,7 +201,22 @@ def _run_auto_queue_async(job_id: str, run_id: str) -> None:
                 )
                 return
             if status in {"failed"}:
-                raise RuntimeError(f"auto_queue_terminal_failed:{run.run_id}:{status}")
+                error_code = str(getattr(run, "error_code", "") or "auto_queue_run_failed")
+                error_message = str(
+                    getattr(run, "error_message", "") or f"auto_queue_terminal_failed:{run.run_id}:{status}"
+                )
+                job_service.mark_step_failed(
+                    job_id,
+                    step.step_id,
+                    error_code=error_code,
+                    error_message=error_message,
+                )
+                job_service.mark_job_failed(
+                    job_id,
+                    error_code=error_code,
+                    error_message=error_message,
+                )
+                return
         raise RuntimeError(f"auto_queue_runner_iteration_exhausted:{getattr(last_run, 'run_id', run_id)}")
     except Exception as exc:
         try:
@@ -227,11 +263,21 @@ def start_auto_queue(payload: AutoQueueStartRequest, request: Request):
     config = service.get_config(payload.work_id)
     if config is None:
         return error_response(request, error_code="auto_queue_config_not_found", status_code=404)
+    invalid_error = _validate_start_config(config)
+    if invalid_error is not None:
+        return error_response(request, error_code=invalid_error, status_code=422)
     try:
         run = service.start(config.config_id, payload.work_id, payload.start_chapter_id)
     except ValueError as exc:
         error_code = str(exc)
-        status_code = 404 if error_code == "auto_queue_config_not_found" else 409 if error_code == "auto_queue_already_running" else 400
+        if error_code == "auto_queue_config_not_found":
+            status_code = 404
+        elif error_code == "auto_queue_already_running":
+            status_code = 409
+        elif error_code == "auto_queue_target_chapters_required":
+            status_code = 422
+        else:
+            status_code = 400
         return error_response(request, error_code=error_code, status_code=status_code)
     _spawn_auto_queue_runner(run)
     return success_response(

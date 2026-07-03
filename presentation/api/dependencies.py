@@ -28,6 +28,7 @@ from application.services.ai.auto_queue_service import AutoContinuationQueueServ
 from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.ai.candidate_rewrite_service import CandidateRewriteService
 from application.services.ai.citation_link_service import CitationLinkService
+from application.services.ai.mention_service import MentionService
 from application.services.ai.citation_vector_recall_service import CitationVectorRecallService
 from application.services.ai.multi_chapter_service import MultiChapterContinuationService
 from application.services.ai.memory_review_gate_service import MemoryReviewGateService
@@ -74,6 +75,7 @@ from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlot
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 from infrastructure.persistence.sqlite_citation_link_repo import SQLiteCitationLinkRepository
+from infrastructure.persistence.sqlite_chapter_mention_repo import SQLiteChapterMentionRepository
 from infrastructure.persistence.sqlite_auto_queue_config_repo import SQLiteAutoQueueConfigRepository
 from infrastructure.persistence.sqlite_auto_queue_run_repo import SQLiteAutoQueueRunRepository
 from infrastructure.persistence.sqlite_style_profile_repo import SQLiteStyleProfileRepository
@@ -174,6 +176,11 @@ def get_citation_link_repository() -> SQLiteCitationLinkRepository:
 @lru_cache(maxsize=1)
 def get_style_profile_repository() -> SQLiteStyleProfileRepository:
     return SQLiteStyleProfileRepository()
+
+
+@lru_cache(maxsize=1)
+def get_chapter_mention_repository() -> SQLiteChapterMentionRepository:
+    return SQLiteChapterMentionRepository()
 
 
 @lru_cache(maxsize=1)
@@ -567,6 +574,18 @@ def get_citation_link_service() -> CitationLinkService:
         writing_asset_service=build_writing_asset_service(),
         story_state_repository=get_story_state_repository(),
         vector_recall_service=get_citation_vector_recall_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_mention_service() -> MentionService:
+    return MentionService(
+        mention_repository=get_chapter_mention_repository(),
+        chapter_service=get_chapter_service(),
+        writing_asset_service=build_writing_asset_service(),
+        character_repository=CharacterRepo(),
+        timeline_repository=TimelineEventRepo(),
+        foreshadow_repository=ForeshadowRepo(),
     )
 
 

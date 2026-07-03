@@ -43,7 +43,16 @@ const getPlotArcStatus = vi.fn()
 const listCandidateDrafts = vi.fn()
 const listCandidateDraftVersions = vi.fn()
 const listAISuggestions = vi.fn()
+const getAISuggestion = vi.fn()
+const acceptAISuggestion = vi.fn()
+const dismissAISuggestion = vi.fn()
+const convertAISuggestion = vi.fn()
+const applyOutlineAssistSuggestion = vi.fn()
+const elMessageSuccess = vi.fn()
+const getOpeningAnalysis = vi.fn()
+const getOpeningStatus = vi.fn()
 const listConflicts = vi.fn()
+const getConflict = vi.fn()
 const listMemoryGates = vi.fn()
 const listAgentTraces = vi.fn()
 
@@ -53,8 +62,16 @@ vi.mock('vue-router', () => ({
   })
 }))
 
+vi.mock('element-plus', () => ({
+  ElMessage: {
+    success: elMessageSuccess,
+    error: vi.fn(),
+    info: vi.fn()
+  }
+}))
+
 vi.mock('@/config/p2FeatureFlags', () => ({
-  isP2FeatureEnabled: (flagName) => ['enable_style_dna', 'enable_auto_queue'].includes(flagName)
+  isP2FeatureEnabled: (flagName) => ['enable_style_dna', 'enable_auto_queue', 'enable_outline_assist', 'enable_opening_agent'].includes(flagName)
 }))
 
 vi.mock('../ReviewTab.vue', () => ({
@@ -113,7 +130,15 @@ vi.mock('@/api', () => ({
     listCandidateDrafts,
     listCandidateDraftVersions,
     listAISuggestions,
+    getAISuggestion,
+    acceptAISuggestion,
+    dismissAISuggestion,
+    convertAISuggestion,
+    applyOutlineAssistSuggestion,
+    getOpeningAnalysis,
+    getOpeningStatus,
     listConflicts,
+    getConflict,
     listMemoryGates,
     listAgentTraces
   }
@@ -277,7 +302,10 @@ describe('AIPanel', () => {
     listCandidateDrafts.mockResolvedValue({ data: { items: [] } })
     listCandidateDraftVersions.mockResolvedValue({ data: { items: [] } })
     listAISuggestions.mockResolvedValue({ data: { items: [] } })
+    getOpeningAnalysis.mockResolvedValue({ data: {} })
+    getOpeningStatus.mockResolvedValue({ data: {} })
     listConflicts.mockResolvedValue({ data: { items: [] } })
+    getConflict.mockResolvedValue({ data: {} })
     listMemoryGates.mockResolvedValue({ data: { items: [] } })
     listAgentTraces.mockResolvedValue({ data: { items: [] } })
 
@@ -419,9 +447,14 @@ describe('AIPanel', () => {
     })
 
     await vi.runAllTimersAsync()
+
+    expect(wrapper.get('[data-test="ai-helper-nav"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="ai-helper-tab-auto_queue"]').classes())
+      .toContain('ai-helper-tab--active')
     await wrapper.get('[data-test="auto-queue-start"]').trigger('click')
     await flushPromises()
 
+    expect(wrapper.text()).toContain('AI 助手')
     expect(wrapper.text()).toContain('自动续写')
     expect(wrapper.text()).toContain('安全模式')
     expect(upsertAutoQueueConfig).toHaveBeenCalledWith({
@@ -433,6 +466,2159 @@ describe('AIPanel', () => {
       work_id: 'work-1',
       start_chapter_id: 'chapter-1'
     })
+  })
+
+  it('shows outline assist tab and reuses ai suggestions actions', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [{
+          suggestion_id: 'sg_001',
+          title: '强化灯塔章节细纲',
+          suggestion_type: 'chapter_outline_suggestion',
+          severity: 'warning',
+          summary: '建议补足潜入前的侦查段落'
+        }]
+      }
+    })
+    getAISuggestion.mockResolvedValue({
+      data: {
+        suggestion_id: 'sg_001',
+        summary: '建议先补侦查，再进入档案室。'
+      }
+    })
+    acceptAISuggestion.mockResolvedValue({ data: { suggestion_id: 'sg_001', status: 'accepted' } })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="outline-assist-panel"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="outline-assist-view"]').text()).toContain('大纲辅助')
+    expect(wrapper.text()).toContain('强化灯塔章节细纲')
+
+    await wrapper.get('[data-test="suggestion-detail-sg_001"]').trigger('click')
+    await flushPromises()
+    expect(getAISuggestion).toHaveBeenCalledWith('sg_001')
+    expect(wrapper.get('[data-test="outline-assist-view"]').text()).toContain('建议先补侦查，再进入档案室。')
+
+    await wrapper.get('[data-test="suggestion-accept-sg_001"]').trigger('click')
+    await flushPromises()
+    expect(acceptAISuggestion).toHaveBeenCalled()
+    expect(applyOutlineAssistSuggestion).not.toHaveBeenCalled()
+  })
+
+  it('shows loading state and disables accept button while accepting outline suggestion', async () => {
+    let resolveAccept
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_accept_loading_001',
+            title: '强化灯塔章节细纲',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: '建议补足潜入前的侦查段落'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_accept_loading_001',
+            title: '强化灯塔章节细纲',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'accepted',
+            summary: '采纳后回刷结果'
+          }]
+        }
+      })
+    acceptAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveAccept = resolve
+    }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').text()).toContain('采纳中')
+    expect(wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').attributes('disabled')).toBeDefined()
+
+    resolveAccept({
+      data: {
+        suggestion_id: 'sg_accept_loading_001',
+        status: 'accepted'
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="suggestion-accept-sg_accept_loading_001"]').exists()).toBe(false)
+  })
+
+  it('disables sibling outline actions while accept is submitting', async () => {
+    let resolveAccept
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_accept_guard_001',
+            title: '强化灯塔章节细纲',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: '建议补足潜入前的侦查段落'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_accept_guard_001',
+            title: '强化灯塔章节细纲',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'accepted',
+            summary: '采纳后回刷结果'
+          }]
+        }
+      })
+    acceptAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveAccept = resolve
+    }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="suggestion-accept-sg_accept_guard_001"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="suggestion-accept-sg_accept_guard_001"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="suggestion-dismiss-sg_accept_guard_001"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="suggestion-convert-sg_accept_guard_001"]').attributes('disabled')).toBeDefined()
+
+    resolveAccept({
+      data: {
+        suggestion_id: 'sg_accept_guard_001',
+        status: 'accepted'
+      }
+    })
+    await flushPromises()
+  })
+
+  it('shows loading state for dismiss and convert buttons while outline actions are submitting', async () => {
+    let resolveDismiss
+    let resolveConvert
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_action_loading_001',
+            title: '强化灯塔章节细纲',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: '建议补足潜入前的侦查段落'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_action_loading_001',
+            title: '强化灯塔章节细纲',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'dismiss 后回刷结果'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_action_loading_001',
+            title: '强化灯塔章节细纲',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'convert 后回刷结果'
+          }]
+        }
+      })
+    dismissAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveDismiss = resolve
+    }))
+    convertAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveConvert = resolve
+    }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').text()).toContain('忽略中')
+    expect(wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').attributes('disabled')).toBeDefined()
+
+    resolveDismiss({
+      data: {
+        suggestion_id: 'sg_action_loading_001',
+        status: 'dismissed'
+      }
+    })
+    await flushPromises()
+
+    wrapper.vm.outlineAssistStore.setSuggestions([{
+      suggestion_id: 'sg_action_loading_001',
+      title: '强化灯塔章节细纲',
+      suggestion_type: 'outline_expand',
+      severity: 'warning',
+      status: 'pending',
+      summary: '再次进入 convert'
+    }])
+    await flushPromises()
+
+    await wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').text()).toContain('转换中')
+    expect(wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').attributes('disabled')).toBeDefined()
+
+    resolveConvert({
+      data: {
+        suggestion_id: 'sg_action_loading_001',
+        status: 'converted',
+        action: {
+          action_payload_ref: 'writing_task:wt_001'
+        }
+      }
+    })
+    await flushPromises()
+  })
+
+  it('requires lightweight confirmation before applying an accepted outline suggestion', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [{
+          suggestion_id: 'sg_apply_001',
+          title: '补全档案室潜入节点',
+          suggestion_type: 'outline_expand',
+          severity: 'warning',
+          status: 'accepted',
+          summary: '建议将侦查段落并入正式大纲节点。'
+        }]
+      }
+    })
+    applyOutlineAssistSuggestion.mockResolvedValue({
+      data: {
+        success: true
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="suggestion-apply-sg_apply_001"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="suggestion-apply-sg_apply_001"]').trigger('click')
+    await flushPromises()
+
+    expect(applyOutlineAssistSuggestion).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="suggestion-apply-confirm-sg_apply_001"]').text()).toContain('这将会修改正式大纲内容')
+    expect(wrapper.get('[data-test="suggestion-apply-confirm-sg_apply_001"]').text()).toContain('将 1 条建议应用到大纲')
+
+    await wrapper.get('[data-test="suggestion-apply-confirm-submit-sg_apply_001"]').trigger('click')
+    await flushPromises()
+
+    expect(applyOutlineAssistSuggestion).toHaveBeenCalledWith('sg_apply_001', expect.objectContaining({
+      caller_type: 'user_action'
+    }))
+  })
+
+  it('shows a 2-second success toast after applying an accepted outline suggestion', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [{
+          suggestion_id: 'sg_apply_success_001',
+          title: '补全雨夜潜入细纲',
+          suggestion_type: 'outline_expand',
+          severity: 'warning',
+          status: 'accepted',
+          summary: '建议补足潜入前的地形观察。'
+        }]
+      }
+    })
+    applyOutlineAssistSuggestion.mockResolvedValue({
+      data: {
+        success: true
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-apply-sg_apply_success_001"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-apply-confirm-submit-sg_apply_success_001"]').trigger('click')
+    await flushPromises()
+
+    expect(elMessageSuccess).toHaveBeenCalledWith({
+      message: '已应用 1 条建议',
+      duration: 2000
+    })
+  })
+
+  it('filters outline assist suggestions by selected mode', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [
+          {
+            suggestion_id: 'sg_polish_001',
+            title: '润色灯塔入口描述',
+            suggestion_type: 'outline_polish',
+            severity: 'warning',
+            status: 'accepted',
+            summary: '收紧入口段落的语言节奏。'
+          },
+          {
+            suggestion_id: 'sg_expand_001',
+            title: '扩写外墙侦查节点',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'accepted',
+            summary: '补足潜入前的观察步骤。'
+          },
+          {
+            suggestion_id: 'sg_detail_001',
+            title: '生成章节细纲',
+            suggestion_type: 'chapter_outline_detail',
+            severity: 'warning',
+            status: 'accepted',
+            summary: '细化本章场景节拍。'
+          },
+          {
+            suggestion_id: 'sg_task_001',
+            title: '调整写作任务目标',
+            suggestion_type: 'writing_task_suggestion',
+            severity: 'warning',
+            status: 'accepted',
+            summary: '重新聚焦钟声来源的调查目标。'
+          }
+        ]
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="outline-assist-mode-outline_polish"]').text()).toContain('润色')
+    expect(wrapper.text()).toContain('润色灯塔入口描述')
+    expect(wrapper.text()).not.toContain('扩写外墙侦查节点')
+
+    await wrapper.get('[data-test="outline-assist-mode-writing_task_suggestion"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('调整写作任务目标')
+    expect(wrapper.text()).not.toContain('润色灯塔入口描述')
+    expect(wrapper.text()).not.toContain('扩写外墙侦查节点')
+    expect(wrapper.text()).not.toContain('生成章节细纲')
+  })
+
+  it('shows refresh button and loading state for outline assist suggestions', async () => {
+    let resolveRefresh
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_refresh_ui_001',
+            title: '初始建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'initial suggestion'
+          }]
+        }
+      })
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveRefresh = resolve
+      }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    const refreshButton = wrapper.get('[data-test="outline-assist-refresh"]')
+    expect(refreshButton.text()).toContain('刷新建议')
+    expect(refreshButton.attributes('disabled')).toBeUndefined()
+
+    await refreshButton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新中')
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').attributes('disabled')).toBeDefined()
+
+    resolveRefresh({
+      data: {
+        items: [{
+          suggestion_id: 'sg_refresh_ui_002',
+          title: '刷新后建议',
+          suggestion_type: 'outline_expand',
+          severity: 'warning',
+          status: 'pending',
+          summary: 'refreshed suggestion'
+        }]
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新建议')
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).toContain('刷新后建议')
+  })
+
+  it('shows loading hint while outline assist suggestions are loading', async () => {
+    let resolveList
+    listAISuggestions.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveList = resolve
+    }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新中')
+    expect(wrapper.get('[data-test="outline-assist-loading"]').text()).toContain('正在加载建议')
+
+    resolveList({
+      data: {
+        items: [{
+          suggestion_id: 'sg_loading_ui_001',
+          title: '加载完成建议',
+          suggestion_type: 'outline_expand',
+          severity: 'warning',
+          status: 'pending',
+          summary: 'loaded'
+        }]
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="outline-assist-loading"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('加载完成建议')
+  })
+
+  it('restores outline assist refresh button after refresh fails', async () => {
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_refresh_fail_001',
+            title: '初始建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'initial suggestion'
+          }]
+        }
+      })
+      .mockRejectedValueOnce(new Error('network failed'))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="outline-assist-refresh"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新建议')
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
+  })
+
+  it('shows generating and failed lifecycle hints for outline suggestions', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [
+          {
+            suggestion_id: 'sg_generating_001',
+            title: '正在生成章节细纲',
+            suggestion_type: 'chapter_outline_detail',
+            severity: 'warning',
+            status: 'generating',
+            summary: '系统正在生成本章细纲。'
+          },
+          {
+            suggestion_id: 'sg_failed_001',
+            title: '写作建议生成失败',
+            suggestion_type: 'writing_task_suggestion',
+            severity: 'error',
+            status: 'failed',
+            summary: '上一次生成未成功完成。'
+          }
+        ]
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="outline-assist-mode-chapter_outline_detail"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="suggestion-generating-hint-sg_generating_001"]').text()).toContain('建议生成中')
+    expect(wrapper.find('[data-test="suggestion-accept-sg_generating_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-dismiss-sg_generating_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-convert-sg_generating_001"]').exists()).toBe(false)
+
+    await wrapper.get('[data-test="outline-assist-mode-writing_task_suggestion"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="suggestion-failed-hint-sg_failed_001"]').text()).toContain('建议生成失败')
+    expect(wrapper.find('[data-test="suggestion-accept-sg_failed_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-dismiss-sg_failed_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-convert-sg_failed_001"]').exists()).toBe(false)
+  })
+
+  it('hides resolved actions for accepted and terminal outline suggestions', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [
+          {
+            suggestion_id: 'sg_accepted_001',
+            title: '扩写灯塔外墙侦查节点',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'accepted',
+            summary: '建议补足潜入前侦查。'
+          },
+          {
+            suggestion_id: 'sg_applied_001',
+            title: '已应用的章节细纲',
+            suggestion_type: 'chapter_outline_detail',
+            severity: 'warning',
+            status: 'applied',
+            summary: '该建议已经写入正式大纲。'
+          },
+          {
+            suggestion_id: 'sg_dismissed_001',
+            title: '已忽略的扩写建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'dismissed',
+            summary: '该建议已被忽略。'
+          },
+          {
+            suggestion_id: 'sg_converted_001',
+            title: '已转执行动作的建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'converted',
+            summary: '该建议已转为执行动作。'
+          }
+        ]
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="outline-assist-mode-outline_expand"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="suggestion-accept-sg_accepted_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-apply-sg_accepted_001"]').exists()).toBe(true)
+
+    expect(wrapper.find('[data-test="suggestion-accept-sg_dismissed_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-dismiss-sg_dismissed_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-convert-sg_dismissed_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-apply-sg_dismissed_001"]').exists()).toBe(false)
+
+    expect(wrapper.find('[data-test="suggestion-accept-sg_converted_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-dismiss-sg_converted_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-convert-sg_converted_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-apply-sg_converted_001"]').exists()).toBe(false)
+
+    await wrapper.get('[data-test="outline-assist-mode-chapter_outline_detail"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="suggestion-accept-sg_applied_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-dismiss-sg_applied_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-convert-sg_applied_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-apply-sg_applied_001"]').exists()).toBe(false)
+  })
+
+  it('limits writing-task suggestion actions by suggestion type', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [
+          {
+            suggestion_id: 'sg_task_pending_001',
+            title: '优化写作任务目标',
+            suggestion_type: 'writing_task_suggestion',
+            severity: 'warning',
+            status: 'pending',
+            summary: '建议把任务重点聚焦到钟声来源。'
+          },
+          {
+            suggestion_id: 'sg_task_accepted_001',
+            title: '已采纳的写作任务建议',
+            suggestion_type: 'writing_task_suggestion',
+            severity: 'warning',
+            status: 'accepted',
+            summary: '该建议已进入写作任务确认链。'
+          }
+        ]
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="outline-assist-mode-writing_task_suggestion"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="suggestion-accept-sg_task_pending_001"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="suggestion-dismiss-sg_task_pending_001"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="suggestion-convert-sg_task_pending_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-apply-sg_task_pending_001"]').exists()).toBe(false)
+
+    expect(wrapper.find('[data-test="suggestion-accept-sg_task_accepted_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-dismiss-sg_task_accepted_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-convert-sg_task_accepted_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-apply-sg_task_accepted_001"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="suggestion-writing-task-hint-sg_task_accepted_001"]').text()).toContain('已进入写作任务确认链')
+  })
+
+  it('does not allow applying selection-only outline suggestions directly', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [{
+          suggestion_id: 'sg_selection_001',
+          title: '润色自由文本片段',
+          suggestion_type: 'outline_polish',
+          severity: 'warning',
+          status: 'accepted',
+          summary: '建议先润色这一段，再决定是否并入正式大纲。',
+          payload_json: {
+            target_kind: 'selection',
+            target_id: null
+          }
+        }]
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="suggestion-apply-sg_selection_001"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="suggestion-apply-hint-sg_selection_001"]').text()).toContain('需先选择目标大纲节点')
+    expect(applyOutlineAssistSuggestion).not.toHaveBeenCalled()
+  })
+
+  it('shows stale warning when outline suggestion may no longer match the latest outline', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [{
+          suggestion_id: 'sg_stale_001',
+          title: '补充灯塔外墙侦查段落',
+          suggestion_type: 'outline_expand',
+          severity: 'warning',
+          status: 'stale',
+          summary: '建议补强主角在进入档案室前的外部侦查。'
+        }]
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="suggestion-stale-hint-sg_stale_001"]').text()).toContain('大纲已被修改，建议可能已不适用')
+  })
+
+  it('shows refresh action next to stale outline suggestion hint', async () => {
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_stale_refresh_001',
+            title: '过期的大纲补全建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'stale',
+            summary: '建议可能与当前大纲版本不一致。'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_stale_refresh_002',
+            title: '刷新后的最新建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: '已重新获取最新建议。'
+          }]
+        }
+      })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="suggestion-stale-hint-sg_stale_refresh_001"]').text()).toContain('大纲已被修改')
+
+    await wrapper.get('[data-test="suggestion-stale-refresh-sg_stale_refresh_001"]').trigger('click')
+    await flushPromises()
+
+    expect(listAISuggestions).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('刷新后的最新建议')
+  })
+
+  it('shows outline assist conflict handoff when convert returns conflict guard ref', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [{
+          suggestion_id: 'sg_conflict_001',
+          title: '补全档案室节点',
+          suggestion_type: 'outline_expand',
+          severity: 'warning',
+          status: 'pending',
+          summary: '建议补足潜入前的侦查步骤。'
+        }]
+      }
+    })
+    convertAISuggestion.mockResolvedValue({
+      data: {
+        suggestion_id: 'sg_conflict_001',
+        status: 'converted',
+        action: {
+          action_payload_ref: 'conflict_guard:cg_outline_001'
+        }
+      }
+    })
+    listConflicts.mockResolvedValue({
+      data: {
+        items: [{
+          record_id: 'cg_outline_001',
+          title: '正式大纲节点冲突',
+          severity: 'blocking',
+          summary: '目标节点已被其他操作修改，请先确认差异。'
+        }]
+      }
+    })
+    getConflict.mockResolvedValue({
+      data: {
+        record_id: 'cg_outline_001',
+        title: '正式大纲节点冲突',
+        summary: '目标节点已被其他操作修改，请先确认差异。'
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-convert-sg_conflict_001"]').trigger('click')
+    await flushPromises()
+
+    expect(convertAISuggestion).toHaveBeenCalledWith('sg_conflict_001', expect.objectContaining({
+      caller_type: 'user_action',
+      user_action: true
+    }))
+    expect(getConflict).toHaveBeenCalledWith('cg_outline_001')
+    expect(listConflicts).toHaveBeenCalledWith({
+      work_id: 'work-1',
+      chapter_id: 'chapter-1'
+    })
+    expect(wrapper.get('[data-test="outline-assist-conflicts"]').text()).toContain('正式大纲节点冲突')
+    expect(wrapper.get('[data-test="outline-assist-conflicts"]').text()).toContain('目标节点已被其他操作修改，请先确认差异')
+  })
+
+  it('clears outline assist conflict handoff when chapter changes', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [{
+          suggestion_id: 'sg_conflict_002',
+          title: '补全潜入前侦查节点',
+          suggestion_type: 'outline_expand',
+          severity: 'warning',
+          status: 'pending',
+          summary: '建议补足潜入前的侦查步骤。'
+        }]
+      }
+    })
+    convertAISuggestion.mockResolvedValue({
+      data: {
+        suggestion_id: 'sg_conflict_002',
+        status: 'converted',
+        action: {
+          action_payload_ref: 'conflict_guard:cg_outline_002'
+        }
+      }
+    })
+    listConflicts.mockResolvedValue({
+      data: {
+        items: [{
+          record_id: 'cg_outline_002',
+          title: '大纲节点存在冲突',
+          severity: 'blocking',
+          summary: '当前章节的大纲节点已发生变化。'
+        }]
+      }
+    })
+    getConflict.mockResolvedValue({
+      data: {
+        record_id: 'cg_outline_002',
+        summary: '当前章节的大纲节点已发生变化。'
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-convert-sg_conflict_002"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="outline-assist-conflicts"]').exists()).toBe(true)
+
+    await wrapper.setProps({
+      chapterId: 'chapter-2',
+      chapterVersion: 4
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="outline-assist-conflicts"]').exists()).toBe(false)
+  })
+
+  it('clears previous outline assist conflict handoff when a later convert has no conflict guard', async () => {
+    listAISuggestions.mockResolvedValue({
+      data: {
+        items: [
+          {
+            suggestion_id: 'sg_conflict_003',
+            title: '补全侦查节点',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: '建议补足潜入前的侦查步骤。'
+          },
+          {
+            suggestion_id: 'sg_convert_ok_001',
+            title: '转为普通执行动作',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: '该建议可直接转为普通动作。'
+          }
+        ]
+      }
+    })
+    convertAISuggestion
+      .mockResolvedValueOnce({
+        data: {
+          suggestion_id: 'sg_conflict_003',
+          status: 'converted',
+          action: {
+            action_payload_ref: 'conflict_guard:cg_outline_003'
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          suggestion_id: 'sg_convert_ok_001',
+          status: 'converted',
+          action: {
+            action_payload_ref: 'writing_task:wt_001'
+          }
+        }
+      })
+    listConflicts.mockResolvedValue({
+      data: {
+        items: [{
+          record_id: 'cg_outline_003',
+          title: '侦查节点冲突',
+          severity: 'blocking',
+          summary: '目标节点已被其他操作修改。'
+        }]
+      }
+    })
+    getConflict.mockResolvedValue({
+      data: {
+        record_id: 'cg_outline_003',
+        summary: '目标节点已被其他操作修改。'
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-convert-sg_conflict_003"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="outline-assist-conflicts"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="suggestion-convert-sg_convert_ok_001"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="outline-assist-conflicts"]').exists()).toBe(false)
+  })
+
+  it('clears outline assist chapter-scoped ui state when chapter changes outside outline assist view', async () => {
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_apply_002',
+            title: '补全潜入节点',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'accepted',
+            summary: '建议补全潜入前的侦查段落。'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_apply_003',
+            title: '新章节建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'accepted',
+            summary: 'chapter-2 建议。'
+          }]
+        }
+      })
+    getAISuggestion.mockResolvedValue({
+      data: {
+        suggestion_id: 'sg_apply_002',
+        summary: '上一章详情'
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="suggestion-detail-sg_apply_002"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-apply-sg_apply_002"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('上一章详情')
+    expect(wrapper.find('[data-test="suggestion-apply-confirm-sg_apply_002"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="ai-helper-tab-auto_queue"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.setProps({
+      chapterId: 'chapter-2',
+      chapterVersion: 4
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('上一章详情')
+    expect(wrapper.find('[data-test="suggestion-apply-confirm-sg_apply_002"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('chapter-2 建议')
+  })
+
+  it('does not keep previous suggestion submitting state after chapter changes', async () => {
+    let resolveAccept
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_repeat_001',
+            title: '上一章建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: '上一章待采纳建议'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_repeat_001',
+            title: '下一章建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: '下一章同 id 建议'
+          }]
+        }
+      })
+      .mockResolvedValue({
+        data: {
+          items: []
+        }
+      })
+    acceptAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveAccept = resolve
+    }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').text()).toContain('采纳中')
+
+    await wrapper.setProps({
+      chapterId: 'chapter-2',
+      chapterVersion: 4
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('下一章建议')
+    expect(wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').text()).toContain('采纳建议')
+    expect(wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').attributes('disabled')).toBeUndefined()
+
+    resolveAccept({
+      data: {
+        suggestion_id: 'sg_repeat_001',
+        status: 'accepted'
+      }
+    })
+    await flushPromises()
+  })
+
+  it('ignores late accept result from previous chapter after chapter changes', async () => {
+    let resolveAccept
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_repeat_late_001',
+            title: '上一章建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: '上一章待采纳建议'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_repeat_late_001',
+            title: '下一章建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: '下一章仍应保持 pending'
+          }]
+        }
+      })
+    acceptAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveAccept = resolve
+    }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="suggestion-accept-sg_repeat_late_001"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.setProps({
+      chapterId: 'chapter-2',
+      chapterVersion: 4
+    })
+    await flushPromises()
+
+    resolveAccept({
+      data: {
+        suggestion_id: 'sg_repeat_late_001',
+        status: 'accepted',
+        summary: 'late accepted result'
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('下一章建议')
+    expect(wrapper.text()).toContain('下一章仍应保持 pending')
+    expect(wrapper.find('[data-test="suggestion-apply-sg_repeat_late_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-accept-sg_repeat_late_001"]').exists()).toBe(true)
+  })
+
+  it('does not show stale conflict handoff after chapter changes', async () => {
+    let resolveConvert
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_conflict_late_001',
+            title: '上一章冲突建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'chapter-1 convert'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_conflict_late_001',
+            title: '下一章建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'chapter-2 suggestion'
+          }]
+        }
+      })
+    convertAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveConvert = resolve
+    }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="suggestion-convert-sg_conflict_late_001"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.setProps({
+      chapterId: 'chapter-2',
+      chapterVersion: 4
+    })
+    await flushPromises()
+
+    resolveConvert({
+      data: {
+        suggestion_id: 'sg_conflict_late_001',
+        status: 'converted',
+        action: {
+          action_payload_ref: 'conflict_guard:cg_late_001'
+        }
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('下一章建议')
+    expect(wrapper.find('[data-test="outline-assist-conflicts"]').exists()).toBe(false)
+  })
+
+  it('ignores late apply result from previous chapter after chapter changes', async () => {
+    let resolveApply
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_apply_late_001',
+            title: '上一章应用建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'accepted',
+            summary: 'chapter-1 apply'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_apply_late_001',
+            title: '下一章建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'accepted',
+            summary: 'chapter-2 should stay accepted'
+          }]
+        }
+      })
+    applyOutlineAssistSuggestion.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveApply = resolve
+    }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-apply-sg_apply_late_001"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-apply-confirm-submit-sg_apply_late_001"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.setProps({
+      chapterId: 'chapter-2',
+      chapterVersion: 4
+    })
+    await flushPromises()
+
+    resolveApply({
+      data: {
+        suggestion_id: 'sg_apply_late_001',
+        status: 'applied',
+        summary: 'late applied result'
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('下一章建议')
+    expect(wrapper.text()).toContain('chapter-2 should stay accepted')
+    expect(wrapper.find('[data-test="suggestion-apply-sg_apply_late_001"]').exists()).toBe(true)
+  })
+
+  it('ignores late dismiss result from previous chapter after chapter changes', async () => {
+    let resolveDismiss
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_dismiss_late_001',
+            title: '上一章忽略建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'chapter-1 dismiss'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_dismiss_late_001',
+            title: '下一章建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'chapter-2 should stay pending'
+          }]
+        }
+      })
+    dismissAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveDismiss = resolve
+    }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-dismiss-sg_dismiss_late_001"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.setProps({
+      chapterId: 'chapter-2',
+      chapterVersion: 4
+    })
+    await flushPromises()
+
+    resolveDismiss({
+      data: {
+        suggestion_id: 'sg_dismiss_late_001',
+        status: 'dismissed',
+        summary: 'late dismissed result'
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('下一章建议')
+    expect(wrapper.text()).toContain('chapter-2 should stay pending')
+    expect(wrapper.find('[data-test="suggestion-accept-sg_dismiss_late_001"]').exists()).toBe(true)
+  })
+
+  it('ignores late convert result from previous chapter after chapter changes', async () => {
+    let resolveConvert
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_convert_late_001',
+            title: '上一章转换建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'chapter-1 convert'
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_convert_late_001',
+            title: '下一章建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'chapter-2 should stay pending'
+          }]
+        }
+      })
+    convertAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveConvert = resolve
+    }))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-convert-sg_convert_late_001"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.setProps({
+      chapterId: 'chapter-2',
+      chapterVersion: 4
+    })
+    await flushPromises()
+
+    resolveConvert({
+      data: {
+        suggestion_id: 'sg_convert_late_001',
+        status: 'converted',
+        summary: 'late converted result',
+        action: {
+          action_payload_ref: 'writing_task:wt_001'
+        }
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('下一章建议')
+    expect(wrapper.text()).toContain('chapter-2 should stay pending')
+    expect(wrapper.find('[data-test="suggestion-accept-sg_convert_late_001"]').exists()).toBe(true)
+  })
+
+  it('does not keep previous outline assist suggestions visible when chapter reload fails', async () => {
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_prev_002',
+            title: '上一章建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'chapter-1 suggestion'
+          }]
+        }
+      })
+      .mockRejectedValueOnce(new Error('network failed'))
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('上一章建议')
+
+    await wrapper.setProps({
+      chapterId: 'chapter-2',
+      chapterVersion: 4
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('上一章建议')
+    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
+  })
+
+  it('clears outline assist load error after a successful reload for the same chapter', async () => {
+    listAISuggestions
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_retry_001',
+            title: '当前章节建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'chapter-1 suggestion'
+          }]
+        }
+      })
+      .mockRejectedValueOnce(new Error('network failed'))
+      .mockResolvedValueOnce({
+        data: {
+          items: [{
+            suggestion_id: 'sg_retry_002',
+            title: '重试成功建议',
+            suggestion_type: 'outline_expand',
+            severity: 'warning',
+            status: 'pending',
+            summary: 'reload succeeded'
+          }]
+        }
+      })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('当前章节建议')
+
+    await wrapper.setProps({
+      chapterId: 'chapter-2',
+      chapterVersion: 4
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
+
+    await wrapper.get('[data-test="ai-helper-tab-auto_queue"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('大纲建议加载失败，请稍后重试')
+    expect(wrapper.text()).toContain('重试成功建议')
+  })
+
+  it('shows opening agent tab and opens wizard shell', async () => {
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-opening_agent"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="opening-agent-view"]').text()).toContain('开篇助手')
+    await wrapper.get('[data-test="opening-agent-open"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="opening-agent-wizard"]').exists()).toBe(true)
+  })
+
+  it('shows opening preview summary in opening agent view', async () => {
+    const { useOpeningStore } = await import('@/stores/useOpeningStore')
+    const store = useOpeningStore()
+    getOpeningAnalysis.mockRejectedValue(new Error('opening_snapshot_failed'))
+    store.loadPreview({
+      analysis: {
+        analysis_summary: '通过海雾钟声建立开篇悬念。'
+      },
+      strategy: {
+        target_audience: '悬疑向女频读者',
+        genre_positioning: '都市悬疑',
+        first_three_chapter_goal: '三章内建立主角与旧案的强关联',
+        forbidden_similarity_notes: '避免直接复用灯塔旧案设定',
+        protagonist_entry: '第一章前半段以归乡视角登场',
+        conflict_entry: '第一章结尾抛出旧案重启',
+        selling_points: ['悬念强', '节奏快']
+      },
+      riskLevel: 'medium'
+    })
+    store.loadSnapshot({
+      phase: 'generate',
+      status: 'running',
+      candidate_draft_ids: ['cd_1', 'cd_2']
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-opening_agent"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="opening-agent-summary"]').text()).toContain('通过海雾钟声建立开篇悬念')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('当前显示为本地预览快照')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('opening snapshot 读取失败')
+    expect(wrapper.get('[data-test="opening-agent-strategy"]').text()).toContain('悬疑向女频读者')
+    expect(wrapper.get('[data-test="opening-agent-strategy-details"]').text()).toContain('都市悬疑')
+    expect(wrapper.get('[data-test="opening-agent-strategy-details"]').text()).toContain('三章内建立主角与旧案的强关联')
+    expect(wrapper.get('[data-test="opening-agent-strategy-details"]').text()).toContain('避免直接复用灯塔旧案设定')
+    expect(wrapper.get('[data-test="opening-agent-strategy-structure"]').text()).toContain('第一章前半段以归乡视角登场')
+    expect(wrapper.get('[data-test="opening-agent-strategy-structure"]').text()).toContain('第一章结尾抛出旧案重启')
+    expect(wrapper.get('[data-test="opening-agent-strategy-structure"]').text()).toContain('悬念强')
+    expect(wrapper.get('[data-test="opening-agent-strategy-structure"]').text()).toContain('节奏快')
+    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('generate')
+    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('进行中')
+    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('2')
+    expect(wrapper.get('[data-test="opening-agent-risk"]').text()).toContain('中风险')
+  })
+
+  it('loads opening snapshot during panel initialization', async () => {
+    vi.setSystemTime(new Date('2026-07-02T10:47:00.000Z'))
+    getOpeningAnalysis.mockResolvedValue({
+      data: {
+        analysis: {
+          analysis_summary: '通过潮声和残页手记建立开篇悬念。'
+        },
+        strategy: {
+          target_audience: '悬疑签约向读者'
+        },
+        risk_report: {
+          risk_level: 'high'
+        }
+      }
+    })
+    getOpeningStatus.mockResolvedValue({
+      data: {
+        phase: 'generate',
+        status: 'running',
+        candidate_draft_ids: ['cd_1', 'cd_2', 'cd_3']
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-opening_agent"]').trigger('click')
+    await flushPromises()
+
+    expect(getOpeningAnalysis).toHaveBeenCalledWith('work-1')
+    expect(getOpeningStatus).toHaveBeenCalledWith('work-1')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取 Opening API 实时快照')
+    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次快照结果：读取成功')
+    expect(wrapper.get('[data-test="opening-agent-last-updated"]').text()).toContain('2026-07-02T10:47:00.000Z')
+    expect(wrapper.get('[data-test="opening-agent-summary"]').text()).toContain('通过潮声和残页手记建立开篇悬念')
+    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('generate')
+    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('进行中')
+    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('3')
+    expect(wrapper.get('[data-test="opening-agent-risk"]').text()).toContain('高风险')
+  })
+
+  it('refreshes opening snapshot on demand after fallback preview', async () => {
+    vi.setSystemTime(new Date('2026-07-02T10:48:00.000Z'))
+    getOpeningAnalysis
+      .mockRejectedValueOnce(new Error('opening_snapshot_failed'))
+      .mockResolvedValueOnce({
+        data: {
+          analysis: {
+            analysis_summary: '通过潮声和遗失手札更新开篇悬念。'
+          },
+          strategy: {
+            target_audience: '悬疑签约向读者'
+          },
+          risk_report: {
+            risk_level: 'high'
+          }
+        }
+      })
+    getOpeningStatus.mockResolvedValue({
+      data: {
+        phase: 'generate',
+        status: 'running',
+        candidate_draft_ids: ['cd_1', 'cd_2', 'cd_3']
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-opening_agent"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('opening snapshot 读取失败')
+    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次快照结果：已回退到本地预览')
+    expect(wrapper.get('[data-test="opening-agent-last-updated"]').text()).toContain('2026-07-02T10:48:00.000Z')
+
+    vi.setSystemTime(new Date('2026-07-02T10:49:00.000Z'))
+    await wrapper.get('[data-test="opening-agent-refresh"]').trigger('click')
+    await flushPromises()
+
+    expect(getOpeningAnalysis).toHaveBeenCalledTimes(2)
+    expect(getOpeningStatus).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取 Opening API 实时快照')
+    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次快照结果：读取成功')
+    expect(wrapper.get('[data-test="opening-agent-last-updated"]').text()).toContain('2026-07-02T10:49:00.000Z')
+    expect(wrapper.get('[data-test="opening-agent-summary"]').text()).toContain('通过潮声和遗失手札更新开篇悬念')
+    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('3')
+  })
+
+  it('shows loading state while refreshing opening snapshot on demand', async () => {
+    let resolveRefresh
+    const refreshPromise = new Promise((resolve) => {
+      resolveRefresh = resolve
+    })
+
+    getOpeningAnalysis
+      .mockRejectedValueOnce(new Error('opening_snapshot_failed'))
+      .mockImplementationOnce(() => refreshPromise)
+    getOpeningStatus.mockResolvedValue({
+      data: {
+        phase: 'generate',
+        status: 'running',
+        candidate_draft_ids: ['cd_1']
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-opening_agent"]').trigger('click')
+    await flushPromises()
+
+    const refreshButton = wrapper.get('[data-test="opening-agent-refresh"]')
+    expect(refreshButton.text()).toContain('刷新快照')
+
+    const refreshTrigger = refreshButton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="opening-agent-refresh"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="opening-agent-refresh"]').text()).toContain('刷新中')
+
+    resolveRefresh({
+      data: {
+        analysis: {
+          analysis_summary: '刷新中返回了新的开篇摘要。'
+        },
+        strategy: {
+          target_audience: '悬疑签约向读者'
+        },
+        risk_report: {
+          risk_level: 'medium'
+        }
+      }
+    })
+
+    await refreshTrigger
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="opening-agent-refresh"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-test="opening-agent-refresh"]').text()).toContain('刷新快照')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取 Opening API 实时快照')
+  })
+
+  it('shows loading hint while initializing opening snapshot on mount', async () => {
+    let resolveInitialLoad
+    const initialLoadPromise = new Promise((resolve) => {
+      resolveInitialLoad = resolve
+    })
+
+    getOpeningAnalysis.mockImplementationOnce(() => initialLoadPromise)
+    getOpeningStatus.mockResolvedValue({
+      data: {
+        phase: 'analyze',
+        status: 'running',
+        candidate_draft_ids: []
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-opening_agent"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('正在读取 Opening API 实时快照')
+    expect(wrapper.get('[data-test="opening-agent-refresh"]').attributes('disabled')).toBeDefined()
+
+    resolveInitialLoad({
+      data: {
+        analysis: {
+          analysis_summary: '初始化阶段返回了最新开篇摘要。'
+        },
+        strategy: {
+          target_audience: '悬疑签约向读者'
+        },
+        risk_report: {
+          risk_level: 'medium'
+        }
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取 Opening API 实时快照')
+    expect(wrapper.get('[data-test="opening-agent-refresh"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('passes opening preview data from store into wizard', async () => {
+    const { useOpeningStore } = await import('@/stores/useOpeningStore')
+    const store = useOpeningStore()
+    store.hydratePreview({
+      analysis: {
+        analysis_summary: '通过灯塔钟声建立开篇悬念。'
+      },
+      strategy: {
+        target_audience: '女频悬疑读者'
+      },
+      riskLevel: 'high'
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="ai-helper-tab-opening_agent"]').trigger('click')
+    await wrapper.get('[data-test="opening-agent-open"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="opening-rights-confirm-step1"]').setValue(true)
+    await wrapper.get('[data-test="opening-next"]').trigger('click')
+    expect(wrapper.get('[data-test="opening-analysis-summary"]').text()).toContain('通过灯塔钟声建立开篇悬念')
+
+    await wrapper.get('[data-test="opening-next"]').trigger('click')
+    expect(wrapper.get('[data-test="opening-strategy-card"]').text()).toContain('女频悬疑读者')
+
+    await wrapper.get('[data-test="opening-strategy-confirm"]').setValue(true)
+    await wrapper.get('[data-test="opening-next"]').trigger('click')
+    expect(wrapper.get('[data-test="opening-return-modify"]').exists()).toBe(true)
+  })
+
+  it('confirms before disabling auto queue budget check', async () => {
+    upsertAutoQueueConfig.mockResolvedValue({
+      data: {
+        config: {
+          config_id: 'aqc_001',
+          work_id: 'work-1',
+          queue_mode: 'safe',
+          target_chapters: 5,
+          stop_on_budget_exceeded: false
+        }
+      }
+    })
+    getAutoQueueHistory.mockResolvedValue({
+      data: {
+        runs: [{
+          run_id: 'aqr_001',
+          status: 'stopped',
+          queue_mode: 'safe',
+          generated_count: 2,
+          stop_record: {
+            stop_reason: 'budget_exceeded',
+            stop_severity: 'budget',
+            suggested_action: 'adjust_budget'
+          }
+        }]
+      }
+    })
+    getAutoQueueStatus.mockResolvedValue({
+      data: {
+        run: {
+          run_id: 'aqr_001',
+          status: 'stopped',
+          queue_mode: 'safe',
+          generated_count: 2,
+          stop_record: {
+            stop_reason: 'budget_exceeded',
+            stop_severity: 'budget',
+            suggested_action: 'adjust_budget'
+          }
+        }
+      }
+    })
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await wrapper.get('[data-test="auto-queue-history-aqr_001"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="auto-queue-disable-budget-check"]').trigger('click')
+    await flushPromises()
+
+    expect(confirmSpy).toHaveBeenCalledWith('关闭预算检查后，AI 功能将不再受预算限制。确定要关闭吗？')
+    expect(upsertAutoQueueConfig).toHaveBeenLastCalledWith({
+      work_id: 'work-1',
+      queue_mode: 'safe',
+      target_chapters: 5,
+      stop_on_budget_exceeded: false
+    })
+  })
+
+  it('loads and shows blocking conflict details from auto queue action', async () => {
+    getAutoQueueHistory.mockResolvedValue({
+      data: {
+        runs: [{
+          run_id: 'aqr_010',
+          status: 'stopped',
+          queue_mode: 'continuous',
+          generated_count: 2,
+          stop_record: {
+            stop_reason: 'blocking_review_consecutive',
+            stop_severity: 'blocking',
+            suggested_action: 'resolve_conflict'
+          }
+        }]
+      }
+    })
+    getAutoQueueStatus.mockResolvedValue({
+      data: {
+        run: {
+          run_id: 'aqr_010',
+          status: 'stopped',
+          queue_mode: 'continuous',
+          generated_count: 2,
+          stop_record: {
+            stop_reason: 'blocking_review_consecutive',
+            stop_severity: 'blocking',
+            suggested_action: 'resolve_conflict'
+          }
+        }
+      }
+    })
+    listConflicts.mockResolvedValue({
+      data: {
+        items: [{
+          record_id: 'conf_001',
+          title: '人物设定冲突',
+          severity: 'blocking',
+          summary: '主角设定与既有章节不一致'
+        }]
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await wrapper.get('[data-test="auto-queue-view-conflicts"]').trigger('click')
+    await flushPromises()
+
+    expect(listConflicts).toHaveBeenCalledWith({
+      work_id: 'work-1',
+      chapter_id: 'chapter-1'
+    })
+    expect(wrapper.get('[data-test="auto-queue-conflicts"]').text()).toContain('人物设定冲突')
+    expect(wrapper.get('[data-test="auto-queue-conflicts"]').text()).toContain('主角设定与既有章节不一致')
   })
 
   it('blocks ai actions when key or critical role mappings are missing', async () => {

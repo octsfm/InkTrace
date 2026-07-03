@@ -252,12 +252,28 @@ class AutoContinuationQueueService:
             raise ValueError("auto_queue_run_not_found")
         return run
 
-    def _save_from_session(self, run: AutoQueueRun, session, *, forced_status: AutoQueueStatus | None = None) -> AutoQueueRun:
+    def _save_from_session(
+        self,
+        run: AutoQueueRun,
+        session,
+        *,
+        config: AutoQueueConfig | None = None,
+        forced_status: AutoQueueStatus | None = None,
+    ) -> AutoQueueRun:
         status = forced_status or self._map_session_status(session.status)
         now = self._now()
         updates = {
             "status": status,
             "generated_count": self._count_generated(session),
+            "total_word_count": self._derive_total_word_count(session, current_value=run.total_word_count),
+            "consumed_tokens": self._derive_consumed_tokens(session, current_value=run.consumed_tokens),
+            "consecutive_blocking_count": self._derive_consecutive_blocking_count(
+                session,
+                current_value=run.consecutive_blocking_count,
+                config=config,
+            ),
+            "error_code": self._derive_error_code(session, current_value=run.error_code),
+            "error_message": self._derive_error_message(session, current_value=run.error_message),
             "current_candidate_story_state": dict(session.candidate_story_state or {}),
             "queue_state_snapshots": list(session.queue_state_snapshots or []),
             "request_id": str(session.request_id or run.request_id),
@@ -280,15 +296,14 @@ class AutoContinuationQueueService:
         allow_continuous_auto_advance: bool = True,
     ) -> AutoQueueRun:
         status = self._map_session_status(session.status)
-        synced_run = self._save_from_session(run, session, forced_status=status)
+        if config is None:
+            config = self._load_config(run.config_id)
+        synced_run = self._save_from_session(run, session, config=config, forced_status=status)
         if status == AutoQueueStatus.STOPPED:
             evaluation = self._build_session_stop_evaluation(session)
             return self._mark_stopped(synced_run, evaluation, session=session)
         if status in self.TERMINAL_STATUSES:
             return synced_run
-
-        if config is None:
-            config = self._load_config(synced_run.config_id)
         evaluation = self._evaluate_stop_conditions(synced_run, config)
         if bool(evaluation.should_stop):
             if evaluation.severity == StopSeverity.NORMAL:
@@ -377,7 +392,9 @@ class AutoContinuationQueueService:
                 "finished_at": run.finished_at or now,
             }
         )
-        return self._run_repository.update(updated)
+        saved = self._run_repository.update(updated)
+        self._record_budget_stop_audit(saved, evaluation)
+        return saved
 
     def _build_session_stop_evaluation(self, session):
         reason_code = str(getattr(session, "blocked_reason_code", "") or "")
@@ -404,6 +421,26 @@ class AutoContinuationQueueService:
                 "suggested_action": suggested_action,
             },
         )()
+
+    def _record_budget_stop_audit(self, run: AutoQueueRun, evaluation) -> None:
+        if self._trace_service is None or not str(run.trace_id or "").strip():
+            return
+        condition = getattr(evaluation, "condition", None)
+        if condition != StopCondition.BUDGET_EXCEEDED:
+            return
+        self._trace_service.record_audit_event(
+            trace_id=str(run.trace_id or ""),
+            session_id=str(run.multi_chapter_session_id or ""),
+            step_id="",
+            event_type="budget_stop_recorded",
+            summary="auto_queue_stopped_due_to_budget_exceeded",
+            payload_digest={
+                "run_id": run.run_id,
+                "condition": getattr(condition, "value", str(condition)),
+                "generated_count": int(run.generated_count or 0),
+            },
+            high_risk_user_action=False,
+        )
 
     @staticmethod
     def _map_session_status(status: MultiChapterStatus) -> AutoQueueStatus:
@@ -433,6 +470,84 @@ class AutoContinuationQueueService:
             if PerChapterStatus(item.status) in generated_statuses:
                 count += 1
         return count
+
+    @staticmethod
+    def _derive_total_word_count(session, *, current_value: int = 0) -> int:
+        total = 0
+        seen_keys: set[str] = set()
+        for snapshot in list(getattr(session, "queue_state_snapshots", []) or []):
+            if not isinstance(snapshot, dict):
+                continue
+            word_count = int(snapshot.get("word_count", 0) or 0)
+            if word_count <= 0:
+                continue
+            key = str(
+                snapshot.get("chapter_id")
+                or snapshot.get("candidate_draft_id")
+                or snapshot.get("chapter_index")
+                or f"snapshot:{len(seen_keys)}"
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            total += word_count
+
+        candidate_story_state = getattr(session, "candidate_story_state", {}) or {}
+        if isinstance(candidate_story_state, dict):
+            latest_word_count = int(candidate_story_state.get("word_count", 0) or 0)
+            latest_key = str(
+                candidate_story_state.get("latest_chapter_id")
+                or candidate_story_state.get("latest_candidate_draft_id")
+                or ""
+            )
+            if latest_word_count > 0 and latest_key and latest_key not in seen_keys:
+                total += latest_word_count
+
+        if total > 0:
+            return total
+        return int(current_value or 0)
+
+    @staticmethod
+    def _derive_consumed_tokens(session, *, current_value: int = 0) -> int:
+        metadata = getattr(session, "metadata", {}) or {}
+        if isinstance(metadata, dict):
+            direct = int(metadata.get("consumed_tokens", 0) or 0)
+            if direct > 0:
+                return direct
+            token_usage = metadata.get("token_usage", {}) or {}
+            if isinstance(token_usage, dict):
+                total_tokens = int(token_usage.get("total_tokens", 0) or 0)
+                if total_tokens > 0:
+                    return total_tokens
+        return int(current_value or 0)
+
+    @staticmethod
+    def _derive_consecutive_blocking_count(session, *, current_value: int = 0, config: AutoQueueConfig | None = None) -> int:
+        reason_code = str(getattr(session, "blocked_reason_code", "") or "")
+        session_status = MultiChapterStatus(getattr(session, "status"))
+        if session_status == MultiChapterStatus.BLOCKED and reason_code == "blocking_review_consecutive":
+            threshold = 1
+            if config is not None:
+                threshold = max(int(getattr(config, "max_consecutive_blocking", 2) or 2), 1)
+            return max(int(current_value or 0), threshold)
+        return 0
+
+    @staticmethod
+    def _derive_error_code(session, *, current_value: str = "") -> str:
+        error_code = str(getattr(session, "error_code", "") or "")
+        if error_code:
+            return error_code
+        blocked_reason_code = str(getattr(session, "blocked_reason_code", "") or "")
+        if blocked_reason_code:
+            return blocked_reason_code
+        return str(current_value or "")
+
+    @staticmethod
+    def _derive_error_message(session, *, current_value: str = "") -> str:
+        error_message = str(getattr(session, "error_message", "") or "")
+        if error_message:
+            return error_message
+        return str(current_value or "")
 
     @staticmethod
     def _serialize_stop_evaluation(evaluation) -> dict[str, object]:

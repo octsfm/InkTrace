@@ -72,6 +72,26 @@ describe('PureTextEditor', () => {
     expect(wrapper.emitted('cursor-change')).toEqual([[{ cursorPosition: 3 }]])
   })
 
+  it('emits selection payload with selected text and range', async () => {
+    const wrapper = mount(PureTextEditor, {
+      props: {
+        modelValue: '月光落在窗台上'
+      }
+    })
+
+    const textarea = wrapper.find('textarea')
+    textarea.element.selectionStart = 2
+    textarea.element.selectionEnd = 6
+
+    await textarea.trigger('select')
+
+    expect(wrapper.emitted('selection-change')).toEqual([[{
+      text: '落在窗台',
+      start: 2,
+      end: 6
+    }]])
+  })
+
   it('pastes plain text only and updates cursor state', async () => {
     const wrapper = mount(PureTextEditor, {
       props: {
@@ -95,6 +115,29 @@ describe('PureTextEditor', () => {
     expect(getData).toHaveBeenCalledWith('text/plain')
     expect(wrapper.emitted('update:modelValue')).toEqual([['Hello 纯文本 ']])
     expect(wrapper.emitted('cursor-change')).toEqual([[{ cursorPosition: 10 }]])
+  })
+
+  it('exposes plain text insertion helper for parent-level mention insertion', async () => {
+    const wrapper = mount(PureTextEditor, {
+      props: {
+        modelValue: '他说'
+      }
+    })
+
+    const textarea = wrapper.find('textarea')
+    textarea.element.selectionStart = 2
+    textarea.element.selectionEnd = 2
+
+    const inserted = wrapper.vm.insertPlainTextAtSelection('@张三')
+    await wrapper.vm.$nextTick()
+
+    expect(inserted).toEqual({
+      text: '@张三',
+      start: 2,
+      end: 5
+    })
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['他说@张三'])
+    expect(wrapper.emitted('cursor-change')?.at(-1)).toEqual([{ cursorPosition: 5 }])
   })
 
   it('emits scroll position', async () => {

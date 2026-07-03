@@ -46,6 +46,7 @@ from presentation.api.routers.v2.ai import memory as ai_memory_v2
 from presentation.api.routers.v2.ai import plot_arcs as ai_plot_arcs_v2
 from presentation.api.routers.v2.ai import sessions as ai_sessions_v2
 from presentation.api.routers.v2.ai import traces as ai_traces_v2
+from presentation.api.routers.v2 import mentions as mentions_v2
 from presentation.api.routers.v2.ai import jobs as ai_jobs_v2
 from presentation.api.routers.v2.ai import citations as ai_citations_v2
 from presentation.api.routers.v2.ai import multi_chapter as ai_multi_chapter_v2
@@ -199,6 +200,7 @@ def create_app() -> FastAPI:
     app.include_router(timeline_v1.router)
     app.include_router(foreshadows_v1.router)
     app.include_router(characters_v1.router)
+    app.include_router(mentions_v2.router)
     app.include_router(ai_settings_v2.router)
     app.include_router(ai_jobs_v2.router)
     app.include_router(ai_initialization_v2.router)

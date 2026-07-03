@@ -128,4 +128,126 @@ describe('AutoQueuePanel', () => {
     await wrapper.get('[data-test="auto-queue-resume"]').trigger('click')
     expect(wrapper.emitted('resume')).toHaveLength(1)
   })
+
+  it('highlights confirm continue and exposes disable budget check action', async () => {
+    const wrapper = mount(AutoQueuePanel, {
+      props: {
+        featureEnabled: true,
+        aiSettingsBlocked: false,
+        loading: false,
+        savingConfig: false,
+        actionLoading: false,
+        chapterId: 'chapter-1',
+        queueMode: 'safe',
+        targetChapters: 3,
+        currentRun: {
+          run_id: 'aqr_004',
+          status: 'waiting_user_decision',
+          queue_mode: 'safe',
+          generated_count: 2,
+          stop_record: null
+        },
+        historyRuns: [],
+        noteMessage: '等待你确认后继续下一章。'
+      }
+    })
+
+    expect(wrapper.get('[data-test="auto-queue-confirm-continue"]').classes())
+      .toContain('auto-queue-panel__primary')
+
+    await wrapper.setProps({
+      currentRun: {
+        run_id: 'aqr_004',
+        status: 'stopped',
+        queue_mode: 'safe',
+        generated_count: 2,
+        stop_record: {
+          stop_reason: 'budget_exceeded',
+          stop_severity: 'budget',
+          suggested_action: 'adjust_budget'
+        }
+      },
+      noteMessage: ''
+    })
+
+    await wrapper.get('[data-test="auto-queue-disable-budget-check"]').trigger('click')
+    expect(wrapper.emitted('disable-budget-check')).toHaveLength(1)
+  })
+
+  it('exposes view conflicts action for blocking stop reason', async () => {
+    const wrapper = mount(AutoQueuePanel, {
+      props: {
+        featureEnabled: true,
+        aiSettingsBlocked: false,
+        loading: false,
+        savingConfig: false,
+        actionLoading: false,
+        chapterId: 'chapter-1',
+        queueMode: 'continuous',
+        targetChapters: 4,
+        currentRun: {
+          run_id: 'aqr_005',
+          status: 'stopped',
+          queue_mode: 'continuous',
+          generated_count: 2,
+          stop_record: {
+            stop_reason: 'blocking_review_consecutive',
+            stop_severity: 'blocking',
+            suggested_action: 'resolve_conflict'
+          }
+        },
+        historyRuns: []
+      }
+    })
+
+    await wrapper.get('[data-test="auto-queue-view-conflicts"]').trigger('click')
+    expect(wrapper.emitted('view-conflicts')).toHaveLength(1)
+  })
+
+  it('renders severity banner styles and budget usage detail', async () => {
+    const wrapper = mount(AutoQueuePanel, {
+      props: {
+        featureEnabled: true,
+        aiSettingsBlocked: false,
+        loading: false,
+        savingConfig: false,
+        actionLoading: false,
+        chapterId: 'chapter-1',
+        queueMode: 'safe',
+        targetChapters: 3,
+        currentRun: {
+          run_id: 'aqr_006',
+          status: 'waiting_user_decision',
+          queue_mode: 'safe',
+          generated_count: 2,
+          stop_record: null
+        },
+        historyRuns: [],
+        noteMessage: '等待你确认后继续下一章。'
+      }
+    })
+
+    expect(wrapper.get('[data-test="auto-queue-banner"]').classes())
+      .toContain('auto-queue-panel__banner--info')
+
+    await wrapper.setProps({
+      currentRun: {
+        run_id: 'aqr_006',
+        status: 'stopped',
+        queue_mode: 'safe',
+        generated_count: 2,
+        consumed_tokens: 128000,
+        stop_record: {
+          stop_reason: 'budget_exceeded',
+          stop_severity: 'budget',
+          suggested_action: 'adjust_budget'
+        }
+      },
+      noteMessage: ''
+    })
+
+    expect(wrapper.get('[data-test="auto-queue-banner"]').classes())
+      .toContain('auto-queue-panel__banner--error')
+    expect(wrapper.text()).toContain('已使用约 128000 tokens')
+  })
 })

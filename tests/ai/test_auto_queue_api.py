@@ -180,6 +180,11 @@ class _FakeJobStep:
         self.step_id = step_id
 
 
+class _FakeAIJob:
+    def __init__(self, status: str = "paused") -> None:
+        self.status = status
+
+
 class _FakeAIJobService:
     def __init__(self) -> None:
         self.started_jobs: list[str] = []
@@ -190,10 +195,15 @@ class _FakeAIJobService:
         self.completed_jobs: list[tuple[str, dict[str, object], str]] = []
         self.failed_steps: list[tuple[str, str, str, str]] = []
         self.failed_jobs: list[tuple[str, str, str]] = []
+        self.job_statuses: dict[str, str] = {}
 
     def start_job(self, job_id: str):
         self.started_jobs.append(job_id)
+        self.job_statuses[job_id] = "running"
         return None
+
+    def get_job(self, job_id: str):
+        return _FakeAIJob(self.job_statuses.get(job_id, "paused"))
 
     def get_job_steps(self, job_id: str):
         _ = job_id
@@ -205,10 +215,12 @@ class _FakeAIJobService:
 
     def pause_job(self, job_id: str, *, reason: str):
         self.paused_jobs.append((job_id, reason))
+        self.job_statuses[job_id] = "paused"
         return None
 
     def cancel_job(self, job_id: str, *, reason: str):
         self.cancelled_jobs.append((job_id, reason))
+        self.job_statuses[job_id] = "cancelled"
         return None
 
     def mark_step_completed(self, job_id: str, step_id: str, summary: str = "", *, warning_count: int = 0, status_reason: str = ""):
@@ -218,6 +230,7 @@ class _FakeAIJobService:
 
     def mark_job_completed(self, job_id: str, *, result_summary: dict[str, object], result_ref: str = ""):
         self.completed_jobs.append((job_id, dict(result_summary), result_ref))
+        self.job_statuses[job_id] = "completed"
         return None
 
     def mark_step_failed(self, job_id: str, step_id: str, *, error_code: str, error_message: str, warning_count: int = 0):
@@ -227,6 +240,7 @@ class _FakeAIJobService:
 
     def mark_job_failed(self, job_id: str, *, error_code: str, error_message: str):
         self.failed_jobs.append((job_id, error_code, error_message))
+        self.job_statuses[job_id] = "failed"
         return None
 
 
@@ -284,6 +298,30 @@ def test_auto_queue_start_and_status_api_return_run_payload(monkeypatch) -> None
     assert status_response.json()["data"]["run"]["run_id"] == run_id
     assert status_response.json()["data"]["run"]["job_id"] == "job_aq_001"
     assert fake_service.start_calls == [("aqc_work_001", "work_001", "chapter_001")]
+
+
+def test_auto_queue_start_api_returns_422_when_target_chapters_is_zero(monkeypatch) -> None:
+    fake_service = _install_test_dependencies(monkeypatch)
+    fake_service.configs["work_001"] = _build_config(
+        work_id="work_001",
+        config_id="aqc_work_001",
+    ).model_copy(
+        update={
+            "target_chapters": 0,
+            "target_word_count": 5000,
+            "stop_at_sequence_end": True,
+            "budget_limit_tokens": 200000,
+        }
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v2/ai/auto-queues/start",
+        json={"work_id": "work_001", "start_chapter_id": "chapter_001"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["error_code"] == "auto_queue_target_chapters_required"
 
 
 def test_auto_queue_start_api_spawns_background_runner(monkeypatch) -> None:
@@ -556,6 +594,302 @@ def test_recover_auto_queue_runs_after_restart_converges_completed_run_to_comple
             "auto_queue_run:aqr_004",
         )
     ]
+
+
+def test_recover_auto_queue_runs_after_restart_preserves_failed_run_error_details(monkeypatch) -> None:
+    fake_service = _install_test_dependencies(monkeypatch)
+    failed_run = _build_run(
+        run_id="aqr_005",
+        work_id="work_005",
+        status=AutoQueueStatus.FAILED,
+        queue_mode=AutoQueueMode.CONTINUOUS,
+    ).model_copy(
+        update={
+            "error_code": "provider_unrecoverable",
+            "error_message": "quota exceeded",
+        }
+    )
+    fake_service.recover_results["work_005"] = failed_run
+    fake_service.runs["aqr_005"] = failed_run
+    fake_job_service = _FakeAIJobService()
+    monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
+    monkeypatch.setattr(dependencies, "get_work_service", lambda: _FakeWorkService(["work_005"]), raising=False)
+    auto_queues._ACTIVE_AUTO_QUEUE_RUNNERS.clear()
+
+    class _FakeThread:
+        def __init__(self, *, target, args=(), kwargs=None, daemon=None):
+            self.target = target
+            self.args = args
+            self.kwargs = kwargs or {}
+            self.daemon = daemon
+
+        def start(self):
+            self.target(*self.args, **self.kwargs)
+
+    monkeypatch.setattr(auto_queues.threading, "Thread", _FakeThread)
+
+    recovered_run_ids = auto_queues.recover_auto_queue_runs_after_restart()
+
+    assert recovered_run_ids == ["aqr_005"]
+    assert fake_job_service.failed_jobs == [
+        (
+            "job_aq_001",
+            "provider_unrecoverable",
+            "quota exceeded",
+        )
+    ]
+    assert fake_job_service.failed_steps == [
+        (
+            "job_aq_001",
+            "step_aq_001",
+            "provider_unrecoverable",
+            "quota exceeded",
+        )
+    ]
+
+
+def test_recover_auto_queue_runs_after_restart_cancels_cancelled_run_without_restarting_job(monkeypatch) -> None:
+    fake_service = _install_test_dependencies(monkeypatch)
+    cancelled_run = _build_run(
+        run_id="aqr_006",
+        work_id="work_006",
+        status=AutoQueueStatus.CANCELLED,
+        queue_mode=AutoQueueMode.CONTINUOUS,
+    )
+    fake_service.recover_results["work_006"] = cancelled_run
+    fake_service.runs["aqr_006"] = cancelled_run
+    fake_job_service = _FakeAIJobService()
+    monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
+    monkeypatch.setattr(dependencies, "get_work_service", lambda: _FakeWorkService(["work_006"]), raising=False)
+    auto_queues._ACTIVE_AUTO_QUEUE_RUNNERS.clear()
+
+    class _FakeThread:
+        def __init__(self, *, target, args=(), kwargs=None, daemon=None):
+            self.target = target
+            self.args = args
+            self.kwargs = kwargs or {}
+            self.daemon = daemon
+
+        def start(self):
+            self.target(*self.args, **self.kwargs)
+
+    monkeypatch.setattr(auto_queues.threading, "Thread", _FakeThread)
+
+    recovered_run_ids = auto_queues.recover_auto_queue_runs_after_restart()
+
+    assert recovered_run_ids == ["aqr_006"]
+    assert fake_job_service.started_jobs == []
+    assert fake_job_service.running_steps == []
+    assert fake_job_service.cancelled_jobs == [("job_aq_001", "auto_queue_cancelled")]
+
+
+def test_recover_auto_queue_runs_after_restart_completes_terminal_runs_without_restarting_job(monkeypatch) -> None:
+    fake_service = _install_test_dependencies(monkeypatch)
+    completed_run = _build_run(
+        run_id="aqr_007",
+        work_id="work_007",
+        status=AutoQueueStatus.COMPLETED,
+        queue_mode=AutoQueueMode.CONTINUOUS,
+    ).model_copy(
+        update={
+            "job_id": "job_aq_007",
+        }
+    )
+    stopped_run = _build_run(
+        run_id="aqr_008",
+        work_id="work_008",
+        status=AutoQueueStatus.STOPPED,
+        queue_mode=AutoQueueMode.CONTINUOUS,
+        stop_record=AutoQueueStopRecord(
+            stop_reason=StopCondition.USER_MANUAL_STOP,
+            stop_severity=StopSeverity.USER,
+            stop_context={"source": "test"},
+            stopped_at=_now(),
+            user_action_required=False,
+            suggested_action="",
+        ),
+    ).model_copy(
+        update={
+            "job_id": "job_aq_008",
+        }
+    )
+    failed_run = _build_run(
+        run_id="aqr_009",
+        work_id="work_009",
+        status=AutoQueueStatus.FAILED,
+        queue_mode=AutoQueueMode.CONTINUOUS,
+    ).model_copy(
+        update={
+            "job_id": "job_aq_009",
+            "error_code": "provider_unrecoverable",
+            "error_message": "quota exceeded",
+        }
+    )
+    fake_service.recover_results["work_007"] = completed_run
+    fake_service.recover_results["work_008"] = stopped_run
+    fake_service.recover_results["work_009"] = failed_run
+    fake_service.runs["aqr_007"] = completed_run
+    fake_service.runs["aqr_008"] = stopped_run
+    fake_service.runs["aqr_009"] = failed_run
+    fake_job_service = _FakeAIJobService()
+    monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
+    monkeypatch.setattr(dependencies, "get_work_service", lambda: _FakeWorkService(["work_007", "work_008", "work_009"]), raising=False)
+    auto_queues._ACTIVE_AUTO_QUEUE_RUNNERS.clear()
+
+    class _FakeThread:
+        def __init__(self, *, target, args=(), kwargs=None, daemon=None):
+            self.target = target
+            self.args = args
+            self.kwargs = kwargs or {}
+            self.daemon = daemon
+
+        def start(self):
+            self.target(*self.args, **self.kwargs)
+
+    monkeypatch.setattr(auto_queues.threading, "Thread", _FakeThread)
+
+    recovered_run_ids = auto_queues.recover_auto_queue_runs_after_restart()
+
+    assert recovered_run_ids == ["aqr_007", "aqr_008", "aqr_009"]
+    assert fake_job_service.started_jobs == []
+    assert fake_job_service.running_steps == []
+    assert fake_job_service.completed_jobs == [
+        (
+            "job_aq_007",
+            {
+                "run_id": "aqr_007",
+                "status": "completed",
+                "queue_mode": "continuous",
+            },
+            "auto_queue_run:aqr_007",
+        ),
+        (
+            "job_aq_008",
+            {
+                "run_id": "aqr_008",
+                "status": "stopped",
+                "queue_mode": "continuous",
+                "stop_reason": "user_manual_stop",
+            },
+            "auto_queue_run:aqr_008",
+        ),
+    ]
+    assert fake_job_service.failed_jobs == [
+        (
+            "job_aq_009",
+            "provider_unrecoverable",
+            "quota exceeded",
+        )
+    ]
+
+
+def test_recover_auto_queue_runs_after_restart_skips_terminal_reconvergence_when_ai_job_already_terminal(monkeypatch) -> None:
+    fake_service = _install_test_dependencies(monkeypatch)
+    completed_run = _build_run(
+        run_id="aqr_010",
+        work_id="work_010",
+        status=AutoQueueStatus.COMPLETED,
+        queue_mode=AutoQueueMode.CONTINUOUS,
+    ).model_copy(
+        update={
+            "job_id": "job_aq_010",
+        }
+    )
+    fake_service.recover_results["work_010"] = completed_run
+    fake_service.runs["aqr_010"] = completed_run
+    fake_job_service = _FakeAIJobService()
+    monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
+    monkeypatch.setattr(dependencies, "get_work_service", lambda: _FakeWorkService(["work_010"]), raising=False)
+    auto_queues._ACTIVE_AUTO_QUEUE_RUNNERS.clear()
+
+    class _FakeThread:
+        def __init__(self, *, target, args=(), kwargs=None, daemon=None):
+            self.target = target
+            self.args = args
+            self.kwargs = kwargs or {}
+            self.daemon = daemon
+
+        def start(self):
+            self.target(*self.args, **self.kwargs)
+
+    monkeypatch.setattr(auto_queues.threading, "Thread", _FakeThread)
+
+    first_recovered = auto_queues.recover_auto_queue_runs_after_restart()
+    second_recovered = auto_queues.recover_auto_queue_runs_after_restart()
+
+    assert first_recovered == ["aqr_010"]
+    assert second_recovered == ["aqr_010"]
+    assert fake_job_service.completed_jobs == [
+        (
+            "job_aq_010",
+            {
+                "run_id": "aqr_010",
+                "status": "completed",
+                "queue_mode": "continuous",
+            },
+            "auto_queue_run:aqr_010",
+        )
+    ]
+
+
+def test_recover_auto_queue_runs_after_restart_skips_failed_and_cancelled_reconvergence_when_ai_job_already_terminal(monkeypatch) -> None:
+    fake_service = _install_test_dependencies(monkeypatch)
+    failed_run = _build_run(
+        run_id="aqr_011",
+        work_id="work_011",
+        status=AutoQueueStatus.FAILED,
+        queue_mode=AutoQueueMode.CONTINUOUS,
+    ).model_copy(
+        update={
+            "job_id": "job_aq_011",
+            "error_code": "provider_unrecoverable",
+            "error_message": "quota exceeded",
+        }
+    )
+    cancelled_run = _build_run(
+        run_id="aqr_012",
+        work_id="work_012",
+        status=AutoQueueStatus.CANCELLED,
+        queue_mode=AutoQueueMode.CONTINUOUS,
+    ).model_copy(
+        update={
+            "job_id": "job_aq_012",
+        }
+    )
+    fake_service.recover_results["work_011"] = failed_run
+    fake_service.recover_results["work_012"] = cancelled_run
+    fake_service.runs["aqr_011"] = failed_run
+    fake_service.runs["aqr_012"] = cancelled_run
+    fake_job_service = _FakeAIJobService()
+    monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
+    monkeypatch.setattr(dependencies, "get_work_service", lambda: _FakeWorkService(["work_011", "work_012"]), raising=False)
+    auto_queues._ACTIVE_AUTO_QUEUE_RUNNERS.clear()
+
+    class _FakeThread:
+        def __init__(self, *, target, args=(), kwargs=None, daemon=None):
+            self.target = target
+            self.args = args
+            self.kwargs = kwargs or {}
+            self.daemon = daemon
+
+        def start(self):
+            self.target(*self.args, **self.kwargs)
+
+    monkeypatch.setattr(auto_queues.threading, "Thread", _FakeThread)
+
+    first_recovered = auto_queues.recover_auto_queue_runs_after_restart()
+    second_recovered = auto_queues.recover_auto_queue_runs_after_restart()
+
+    assert first_recovered == ["aqr_011", "aqr_012"]
+    assert second_recovered == ["aqr_011", "aqr_012"]
+    assert fake_job_service.failed_jobs == [
+        (
+            "job_aq_011",
+            "provider_unrecoverable",
+            "quota exceeded",
+        )
+    ]
+    assert fake_job_service.cancelled_jobs == [("job_aq_012", "auto_queue_cancelled")]
 
 
 def test_run_auto_queue_async_completes_ai_job_from_background_step(monkeypatch) -> None:

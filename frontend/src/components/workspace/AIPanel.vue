@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <section class="ai-panel" data-test="ai-panel">
     <header class="ai-panel-header">
       <div>
@@ -118,8 +118,24 @@
       />
     </div>
 
-    <div v-if="showAIMode && autoQueueStore.featureEnabled" class="ai-section">
+    <div v-if="showAIMode && aiHelperViews.length" class="ai-section" data-test="ai-helper-section">
+      <h4>AI 助手</h4>
+      <div class="ai-helper-nav" data-test="ai-helper-nav">
+        <button
+          v-for="view in aiHelperViews"
+          :key="view.id"
+          :data-test="`ai-helper-tab-${view.id}`"
+          type="button"
+          class="ai-helper-tab"
+          :class="{ 'ai-helper-tab--active': aiHelperActiveView === view.id }"
+          @click="aiHelperActiveView = view.id"
+        >
+          {{ view.label }}
+        </button>
+      </div>
+
       <AutoQueuePanel
+        v-if="aiHelperActiveView === 'auto_queue' && autoQueueStore.featureEnabled"
         :feature-enabled="autoQueueStore.featureEnabled"
         :ai-settings-blocked="aiSettingsBlocked"
         :loading="autoQueueStore.loading"
@@ -140,10 +156,162 @@
         @resume="handleAutoQueueResume"
         @stop="handleAutoQueueStop"
         @confirm-continue="handleAutoQueueConfirmContinue"
+        @disable-budget-check="handleAutoQueueDisableBudgetCheck"
+        @view-conflicts="handleAutoQueueViewConflicts"
         @refresh="handleAutoQueueRefresh"
         @select-run="handleAutoQueueSelectRun"
       />
+
+      <div
+        v-if="aiHelperActiveView === 'auto_queue' && autoQueueConflictSectionVisible"
+        data-test="auto-queue-conflicts"
+      >
+        <h5>自动续写冲突详情</h5>
+        <p v-if="autoQueueConflictLoading" class="ai-note">正在加载冲突详情…</p>
+        <p v-else-if="!autoQueueConflictItems.length" class="ai-note">当前没有可展示的阻断冲突，请刷新后重试。</p>
+        <ul v-else class="ai-list">
+          <li
+            v-for="conflict in autoQueueConflictItems"
+            :key="conflict.record_id"
+            class="planning-item"
+          >
+            <div class="candidate-summary">
+              <strong>{{ conflict.title || '待处理冲突' }}</strong>
+              <span>{{ displaySeverity(conflict.severity) }}</span>
+              <span>{{ conflict.summary || '请先处理冲突后再继续队列。' }}</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <OutlineAssistPanel
+        v-if="aiHelperActiveView === 'outline_assist' && outlineAssistEnabled"
+        :feature-enabled="outlineAssistStore.featureEnabled"
+        :modes="outlineAssistStore.modes"
+        :active-mode="outlineAssistStore.activeMode"
+        :suggestions="outlineAssistStore.filteredSuggestions"
+        :suggestion-details="outlineAssistStore.suggestionDetails"
+        :action-error="outlineAssistStore.actionError"
+        :submitting-suggestion-id="outlineAssistStore.submittingSuggestionId"
+        :submitting-action-type="outlineAssistStore.submittingActionType"
+        :loading="outlineAssistStore.loading"
+        :conflict-section-visible="outlineAssistStore.conflictSectionVisible"
+        :conflict-loading="outlineAssistStore.conflictLoading"
+        :conflict-items="outlineAssistStore.conflictItems"
+        :conflict-details="outlineAssistStore.conflictDetails"
+        :apply-confirm-suggestion-id="outlineAssistStore.applyConfirmSuggestionId"
+        :apply-submitting-suggestion-id="outlineAssistStore.applySubmittingSuggestionId"
+        :can-accept-suggestion="outlineAssistStore.canAcceptSuggestion"
+        :can-resolve-suggestion="outlineAssistStore.canResolveSuggestion"
+        :can-convert-suggestion="outlineAssistStore.canConvertSuggestion"
+        :can-apply-suggestion="outlineAssistStore.canApplySuggestion"
+        :is-accepted-writing-task-suggestion="outlineAssistStore.isAcceptedWritingTaskSuggestion"
+        :is-selection-only-suggestion="outlineAssistStore.isSelectionOnlySuggestion"
+        :is-stale-suggestion="outlineAssistStore.isStaleSuggestion"
+        :display-suggestion-type="displaySuggestionType"
+        :display-severity="displaySeverity"
+        @update:active-mode="outlineAssistStore.setActiveMode"
+        @suggestion-detail="outlineAssistStore.loadSuggestionDetail"
+        @suggestion-accept="outlineAssistStore.acceptSuggestion"
+        @suggestion-apply-open="outlineAssistStore.openApplyConfirm"
+        @suggestion-dismiss="outlineAssistStore.dismissSuggestion"
+        @suggestion-convert="outlineAssistStore.convertSuggestionWithConflictSync"
+        @suggestion-apply-cancel="outlineAssistStore.closeApplyConfirm"
+        @suggestion-apply-confirm-submit="handleApplyOutlineSuggestion"
+        @refresh="loadAISuggestions"
+      />
+
+      <div
+        v-if="aiHelperActiveView === 'opening_agent' && openingAgentEnabled"
+        class="ai-helper-view"
+        data-test="opening-agent-view"
+      >
+        <h5>开篇助手</h5>
+        <p class="ai-note">导入参考、分析开篇特点、确认策略与风险后，再进入正式候选稿生成链路。</p>
+        <p class="ai-note" data-test="opening-agent-preview-status">
+          {{ openingPreviewStatusHint }}
+        </p>
+        <p class="ai-note" data-test="opening-agent-last-result">
+          {{ openingLastSnapshotResultHint }}
+        </p>
+        <p class="ai-note" data-test="opening-agent-last-updated">
+          {{ openingLastSnapshotUpdatedHint }}
+        </p>
+        <div class="opening-preview-grid">
+          <div class="opening-preview-card" data-test="opening-agent-summary">
+            <strong>分析摘要</strong>
+            <span>{{ openingStore.analysis.analysis_summary }}</span>
+          </div>
+          <div class="opening-preview-card" data-test="opening-agent-strategy">
+            <strong>目标读者</strong>
+            <span>{{ openingStore.strategy.target_audience }}</span>
+            <strong>开篇钩子</strong>
+            <span>{{ openingStore.strategy.opening_hook }}</span>
+          </div>
+          <div class="opening-preview-card" data-test="opening-agent-strategy-details">
+            <strong>类型定位</strong>
+            <span>{{ openingStore.strategy.genre_positioning }}</span>
+            <strong>前三章目标</strong>
+            <span>{{ openingStore.strategy.first_three_chapter_goal }}</span>
+            <strong>避相似提醒</strong>
+            <span>{{ openingStore.strategy.forbidden_similarity_notes }}</span>
+          </div>
+          <div class="opening-preview-card" data-test="opening-agent-strategy-structure">
+            <strong>主角登场</strong>
+            <span>{{ openingStore.strategy.protagonist_entry }}</span>
+            <strong>冲突引入</strong>
+            <span>{{ openingStore.strategy.conflict_entry }}</span>
+            <strong>签约卖点</strong>
+            <span>{{ (openingStore.strategy.selling_points || []).join(' / ') }}</span>
+          </div>
+          <div class="opening-preview-card" data-test="opening-agent-runtime">
+            <strong>当前阶段</strong>
+            <span>{{ openingStore.phase || '-' }}</span>
+            <strong>执行状态</strong>
+            <span>{{ displayStatus(openingStore.status || 'unknown') }}</span>
+            <strong>已生成候选稿</strong>
+            <span>{{ openingStore.candidateDraftIds.length }}</span>
+          </div>
+        </div>
+        <div
+          :class="[
+            'conflict-banner',
+            openingPreviewRiskBlocking ? 'conflict-banner-blocking' : 'conflict-banner-warning'
+          ]"
+          data-test="opening-agent-risk"
+        >
+          <strong>{{ openingPreviewRiskLabel }}</strong>
+          <span>{{ openingPreviewRiskHint }}</span>
+        </div>
+        <div class="ai-actions">
+          <button
+            data-test="opening-agent-refresh"
+            type="button"
+            :disabled="!workId || openingRefreshSubmitting || openingInitialLoading"
+            @click="handleOpeningRefresh"
+          >
+            {{ openingRefreshSubmitting ? '刷新中...' : '刷新快照' }}
+          </button>
+          <button
+            data-test="opening-agent-open"
+            type="button"
+            :disabled="aiSettingsBlocked"
+            @click="openingWizardVisible = true"
+          >
+            打开开篇助手
+          </button>
+        </div>
+      </div>
     </div>
+
+    <OpeningAgentWizard
+      :visible="openingWizardVisible"
+      :analysis="openingStore.analysis"
+      :strategy="openingStore.strategy"
+      :risk-level="openingStore.riskLevel"
+      @close="openingWizardVisible = false"
+      @generate="handleOpeningGenerate"
+    />
 
     <div v-if="showAIMode" class="ai-section">
       <h4>向量索引</h4>
@@ -582,42 +750,6 @@
     </div>
 
     <div v-if="false" class="ai-section">
-      <h4>AI 建议</h4>
-      <ul v-if="aiSuggestions.length" class="ai-list">
-        <li v-for="item in aiSuggestions" :key="item.suggestion_id" class="planning-item">
-          <div class="candidate-summary">
-            <strong>{{ item.title }}</strong>
-            <span>{{ displaySuggestionType(item.suggestion_type) }}</span>
-            <span>{{ displaySeverity(item.severity) }}</span>
-            <span>{{ item.summary }}</span>
-          </div>
-          <div class="ai-actions">
-            <button :data-test="`suggestion-detail-${item.suggestion_id}`" type="button" @click="handleSuggestionDetail(item.suggestion_id)">
-                  查看建议
-            </button>
-              <button :data-test="`suggestion-accept-${item.suggestion_id}`" type="button" @click="handleAcceptSuggestion(item.suggestion_id)">
-              采纳建议
-            </button>
-              <button :data-test="`suggestion-dismiss-${item.suggestion_id}`" type="button" @click="handleDismissSuggestion(item.suggestion_id)">
-              忽略建议
-            </button>
-            <button
-              v-if="item.suggestion_type !== 'risk_warning'"
-              :data-test="`suggestion-convert-${item.suggestion_id}`"
-              type="button"
-              @click="handleConvertSuggestion(item.suggestion_id)"
-            >
-               转为执行动作
-            </button>
-          </div>
-          <div v-if="aiSuggestionDetails[item.suggestion_id]" class="ai-note">
-            {{ aiSuggestionDetails[item.suggestion_id].summary }}
-          </div>
-        </li>
-      </ul>
-    </div>
-
-    <div v-if="false" class="ai-section">
       <h4>记忆审批</h4>
       <ul v-if="memoryGates.length" class="ai-list">
         <li v-for="gate in memoryGates" :key="gate.gate_id" class="planning-item">
@@ -801,10 +933,15 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { aiApi } from '@/api'
+import { isP2FeatureEnabled } from '@/config/p2FeatureFlags'
 import { useAIJobPolling } from '@/composables/useAIJobPolling'
 import { useAutoQueueStore } from '@/stores/useAutoQueueStore'
+import { useOutlineAssistStore } from '@/stores/useOutlineAssistStore'
+import { useOpeningStore } from '@/stores/useOpeningStore'
 import { useStyleDNAStore } from '@/stores/useStyleDNAStore'
 import AutoQueuePanel from './AutoQueuePanel.vue'
+import OpeningAgentWizard from './OpeningAgentWizard.vue'
+import OutlineAssistPanel from './OutlineAssistPanel.vue'
 import ReviewTab from './ReviewTab.vue'
 import StyleDNAConfigPanel from './StyleDNAConfigPanel.vue'
 
@@ -868,8 +1005,6 @@ const candidateVersionDetails = ref({})
 const candidateVersionDiffs = ref({})
 const selectedVersionByDraft = ref({})
 const candidateReviewByDraft = ref({})
-const aiSuggestions = ref([])
-const aiSuggestionDetails = ref({})
 const memoryGates = ref([])
 const memoryRevisionDetails = ref({})
 const memoryActionError = ref('')
@@ -894,9 +1029,19 @@ const styleDNASourceMode = ref('user_upload')
 const styleDNASelectedChapterIds = ref([])
 const autoQueueMode = ref('safe')
 const autoQueueTargetChapters = ref(5)
+const autoQueueConflictSectionVisible = ref(false)
+const autoQueueConflictLoading = ref(false)
+const aiHelperActiveView = ref('auto_queue')
+const outlineAssistEnabled = isP2FeatureEnabled('enable_outline_assist')
+const openingAgentEnabled = isP2FeatureEnabled('enable_opening_agent')
+const openingWizardVisible = ref(false)
+const openingInitialLoading = ref(false)
+const openingRefreshSubmitting = ref(false)
 const polling = useAIJobPolling({ intervalMs: 1000 })
 const reindexPolling = useAIJobPolling({ intervalMs: 3000, maxIntervalMs: 10000 })
 const autoQueueStore = useAutoQueueStore()
+const outlineAssistStore = useOutlineAssistStore()
+const openingStore = useOpeningStore()
 const styleDNAStore = useStyleDNAStore()
 
 const styleDNAChapterOptions = computed(() => {
@@ -942,6 +1087,55 @@ const panelDescription = computed(() => (
     : props.mode === 'ai'
     ? '设置、初始化、写作上下文、剧情轨道、方向计划、会话进度与快速试写。'
     : '最小集成入口：设置、初始化、写作上下文、续写、快速试写、AI审阅。'
+))
+const aiHelperViews = computed(() => {
+  const items = []
+  if (autoQueueStore.featureEnabled) {
+    items.push({ id: 'auto_queue', label: '自动续写' })
+  }
+  if (outlineAssistEnabled) {
+    items.push({ id: 'outline_assist', label: '大纲辅助' })
+  }
+  if (openingAgentEnabled) {
+    items.push({ id: 'opening_agent', label: '开篇助手' })
+  }
+  return items
+})
+const openingPreviewRiskLevel = computed(() => String(openingStore.riskLevel || 'warning').toLowerCase())
+const openingPreviewRiskBlocking = computed(() => ['high', 'blocking'].includes(openingPreviewRiskLevel.value))
+const openingPreviewRiskLabel = computed(() => ({
+  low: '低风险（low）',
+  medium: '中风险（medium）',
+  warning: '警告（warning）',
+  high: '高风险（high）',
+  blocking: '阻断（blocking）'
+}[openingPreviewRiskLevel.value] || '警告（warning）'))
+const openingPreviewRiskHint = computed(() => (
+  openingPreviewRiskBlocking.value
+    ? '存在较高的模仿风险，建议返回修改策略后再生成。'
+    : '风险可控，确认版权与策略后可继续进入候选稿生成。'
+))
+const openingPreviewStatusHint = computed(() => {
+  if (openingInitialLoading.value) {
+    return '正在读取 Opening API 实时快照，请稍候。'
+  }
+  if (openingStore.snapshotLoaded) {
+    return '已读取 Opening API 实时快照，当前展示为最新只读 snapshot。'
+  }
+  if (openingStore.snapshotLoadFailed) {
+    return '当前显示为本地预览快照；opening snapshot 读取失败，暂回退到本地预览。'
+  }
+  return '当前显示为本地预览快照；待后续接入 Opening API 实时结果后，再切换为联调数据。'
+})
+const openingLastSnapshotResultHint = computed(() => ({
+  succeeded: '最近一次快照结果：读取成功。',
+  failed: '最近一次快照结果：已回退到本地预览。',
+  idle: '最近一次快照结果：尚未读取。'
+}[openingStore.lastSnapshotOutcome] || '最近一次快照结果：尚未读取。'))
+const openingLastSnapshotUpdatedHint = computed(() => (
+  openingStore.lastSnapshotAt
+    ? `最近更新时间：${openingStore.lastSnapshotAt}`
+    : '最近更新时间：尚无。'
 ))
 const jobSteps = computed(() => polling.job.value?.steps || [])
 const jobStatusText = computed(() => String(polling.job.value?.status || ''))
@@ -1030,6 +1224,11 @@ const conflictsByDraft = computed(() => {
     grouped[draftId].push(item)
   }
   return grouped
+})
+
+const autoQueueConflictItems = computed(() => {
+  const blockingItems = conflicts.value.filter((item) => String(item?.severity || '') === 'blocking')
+  return blockingItems.length ? blockingItems : conflicts.value
 })
 const conflictSummary = computed(() => conflicts.value.reduce((acc, item) => {
   if (item.severity === 'blocking') acc.blockingCount += 1
@@ -1126,6 +1325,10 @@ const suggestionTypeLabelMap = {
   continuity_suggestion: '连续性建议（continuity_suggestion）',
   conflict_resolution_suggestion: '冲突处理建议（conflict_resolution_suggestion）',
   memory_update_suggestion_ref: '记忆更新建议引用（memory_update_suggestion_ref）',
+  outline_polish: '大纲润色（outline_polish）',
+  outline_expand: '大纲扩写（outline_expand）',
+  chapter_outline_detail: '章节细纲（chapter_outline_detail）',
+  writing_task_suggestion: '写作任务建议（writing_task_suggestion）',
   risk_warning: '风险提示（risk_warning）'
 }
 
@@ -1277,7 +1480,6 @@ const displayEntityType = (value) => entityTypeLabelMap[value] || String(value |
 const displayToolName = (value) => String(value || '-')
 const displayStepAction = (value) => stepActionLabelMap[value] || String(value || '-')
 const displayMemoryTargetType = (value) => memoryTargetTypeLabelMap[value] || String(value || '-')
-
 const buildIdempotencyKey = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 const REINDEX_SESSION_KEY_PREFIX = 'inktrace.vector-reindex.pending'
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'partial_success'])
@@ -1418,6 +1620,44 @@ const handleAutoQueueConfirmContinue = async () => {
   const runId = String(autoQueueStore.currentRun?.run_id || '')
   if (!runId) return
   await autoQueueStore.confirmContinue(runId)
+}
+
+const handleAutoQueueDisableBudgetCheck = async () => {
+  const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
+    ? true
+    : window.confirm('关闭预算检查后，AI 功能将不再受预算限制。确定要关闭吗？')
+  if (!confirmed) return
+  await autoQueueStore.saveConfig({
+    queue_mode: autoQueueMode.value,
+    target_chapters: Number(autoQueueTargetChapters.value || 0),
+    stop_on_budget_exceeded: false
+  })
+  syncAutoQueueDraftsFromStore()
+}
+
+const handleAutoQueueViewConflicts = async () => {
+  autoQueueConflictSectionVisible.value = true
+  autoQueueConflictLoading.value = true
+  try {
+    await loadConflicts()
+  } finally {
+    autoQueueConflictLoading.value = false
+  }
+}
+
+const handleOpeningGenerate = () => {
+  openingWizardVisible.value = false
+  ElMessage.info('开篇助手入口已接入，正式生成链路待后续联调。')
+}
+
+const handleOpeningRefresh = async () => {
+  if (!props.workId || openingRefreshSubmitting.value) return
+  openingRefreshSubmitting.value = true
+  try {
+    await openingStore.loadOpeningSnapshot(props.workId)
+  } finally {
+    openingRefreshSubmitting.value = false
+  }
 }
 
 const handleAutoQueueStop = async () => {
@@ -1683,11 +1923,14 @@ const loadPlanningData = async () => {
 
 const loadAISuggestions = async () => {
   if (!props.workId) return
-  const payload = unwrapData(await aiApi.listAISuggestions({
-    work_id: props.workId,
-    chapter_id: props.chapterId
-  }))
-  aiSuggestions.value = payload.items || []
+  try {
+    await outlineAssistStore.loadSuggestions({
+      workId: props.workId,
+      chapterId: props.chapterId
+    })
+  } catch (error) {
+    outlineAssistStore.setActionError(String(error?.userMessage || '大纲建议加载失败，请稍后重试'))
+  }
 }
 
 const loadMemoryGates = async () => {
@@ -2113,12 +2356,15 @@ const handleRejectCandidateVersion = async (candidateDraftId, candidateVersionId
   }
 }
 
-const handleSuggestionDetail = async (suggestionId) => {
-  const payload = unwrapData(await aiApi.getAISuggestion(suggestionId))
-  aiSuggestionDetails.value = {
-    ...aiSuggestionDetails.value,
-    [suggestionId]: payload
-  }
+const handleApplyOutlineSuggestion = async (suggestionId) => {
+  if (!suggestionId || outlineAssistStore.applySubmittingSuggestionId === suggestionId) return
+  try {
+    await outlineAssistStore.applySuggestion(suggestionId)
+    ElMessage.success({
+      message: '已应用 1 条建议',
+      duration: 2000
+    })
+  } catch {}
 }
 
 const handleConflictDetail = async (recordId) => {
@@ -2166,45 +2412,6 @@ const handleConflictReject = async (conflict) => {
     await loadConflicts()
   }
   await handleConflictDecision(conflict.record_id, 'resolved', 'reject_candidate')
-}
-
-const handleAcceptSuggestion = async (suggestionId) => {
-  await aiApi.acceptAISuggestion(suggestionId, {
-    caller_type: 'user_action',
-    user_action: true,
-    user_id: 'ui-user',
-    idempotency_key: buildIdempotencyKey('suggestion_accept')
-  })
-  await loadAISuggestions()
-}
-
-const handleDismissSuggestion = async (suggestionId) => {
-  await aiApi.dismissAISuggestion(suggestionId, {
-    caller_type: 'user_action',
-    user_action: true,
-    user_id: 'ui-user',
-    decision_note: 'manual dismiss',
-    idempotency_key: buildIdempotencyKey('suggestion_dismiss')
-  })
-  await loadAISuggestions()
-}
-
-const handleConvertSuggestion = async (suggestionId) => {
-  const payload = unwrapData(await aiApi.convertAISuggestion(suggestionId, {
-    caller_type: 'user_action',
-    user_action: true,
-    user_id: 'ui-user',
-    idempotency_key: buildIdempotencyKey('suggestion_convert')
-  }))
-  const actionRef = String(payload?.action?.action_payload_ref || '')
-  if (actionRef.startsWith('conflict_guard:')) {
-    const recordId = actionRef.split(':').slice(1).join(':')
-    if (recordId) {
-      await handleConflictDetail(recordId)
-      await loadConflicts()
-    }
-  }
-  await loadAISuggestions()
 }
 
 const handleApproveMemorySuggestion = async (gateId, suggestionId) => {
@@ -2364,24 +2571,56 @@ watch(() => props.workId, async () => {
   styleDNASelectedChapterIds.value = []
   autoQueueMode.value = 'safe'
   autoQueueTargetChapters.value = 5
+  autoQueueConflictSectionVisible.value = false
+  autoQueueConflictLoading.value = false
+  openingWizardVisible.value = false
   await autoQueueStore.initializeForWork(props.workId)
+  await outlineAssistStore.initializeForWork(props.workId)
   syncAutoQueueDraftsFromStore()
+  await openingStore.initializeForWork(props.workId)
+  openingInitialLoading.value = true
+  try {
+    await openingStore.loadOpeningSnapshot(props.workId)
+  } finally {
+    openingInitialLoading.value = false
+  }
   await styleDNAStore.initializeForWork(props.workId)
   await refreshPanel()
   await restorePendingVectorReindex()
 }, { immediate: true })
 
+watch(aiHelperViews, (views) => {
+  const firstViewId = String(views[0]?.id || '')
+  if (!views.some((item) => item.id === aiHelperActiveView.value)) {
+    aiHelperActiveView.value = firstViewId
+  }
+}, { immediate: true })
+
+watch(aiHelperActiveView, async (viewId) => {
+  if (viewId === 'outline_assist' && outlineAssistEnabled) {
+    await loadAISuggestions()
+  }
+})
+
 watch(() => props.chapterId, async () => {
+  autoQueueConflictSectionVisible.value = false
+  autoQueueConflictLoading.value = false
   if (isReviewMode.value) {
     await refreshReviewPanel()
     return
   }
-  await Promise.all([
+  const tasks = [
     loadContextReadiness(),
     loadAgentSessions(),
     loadPlotArcs(),
     loadPlanningData()
-  ])
+  ]
+  if (outlineAssistEnabled && aiHelperActiveView.value === 'outline_assist') {
+    tasks.push(loadAISuggestions())
+  } else {
+    outlineAssistStore.clearChapterScopedUiState()
+  }
+  await Promise.all(tasks)
 }, { immediate: true })
 
 watch(() => String(reindexPolling.job.value?.status || ''), async (status) => {
@@ -2496,6 +2735,65 @@ watch(() => [autoQueueStore.config?.queue_mode, autoQueueStore.config?.target_ch
   gap: 8px;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.ai-helper-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-helper-tab {
+  border: 1px solid var(--ai-border);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--ai-title);
+  background: var(--ai-bg-soft);
+  cursor: pointer;
+}
+
+.ai-helper-tab--active {
+  border-color: color-mix(in srgb, var(--ink-accent, #2563eb) 70%, white);
+  background: color-mix(in srgb, var(--ink-accent-soft, #dbeafe) 65%, white);
+  color: var(--ink-accent, #2563eb);
+  font-weight: 600;
+}
+
+.opening-preview-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.opening-preview-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--ai-border);
+  border-radius: 12px;
+  background: var(--ai-bg-soft);
+  padding: 12px;
+  font-size: 13px;
+  color: var(--ai-text);
+}
+
+.opening-preview-card strong {
+  color: var(--ai-title);
+}
+
+.outline-apply-confirm {
+  display: grid;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--ink-accent, #2563eb) 35%, var(--ai-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink-accent-soft, #dbeafe) 35%, var(--ai-bg));
+  padding: 12px;
+  font-size: 12px;
+  color: var(--ai-text);
+}
+
+.outline-apply-confirm strong {
+  color: var(--ai-title);
 }
 
 .ai-actions button,

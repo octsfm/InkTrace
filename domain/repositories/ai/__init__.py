@@ -11,6 +11,7 @@ from domain.repositories.ai.auto_queue_config_repository import AutoQueueConfigR
 from domain.repositories.ai.auto_queue_run_repository import AutoQueueRunRepository
 from domain.repositories.ai.candidate_draft_repository import CandidateDraftRepository
 from domain.repositories.ai.citation_link_repository import CitationLinkRepository
+from domain.repositories.ai.chapter_mention_repository import ChapterMentionRepository
 from domain.repositories.ai.chapter_plan_repository import ChapterPlanRepository
 from domain.repositories.ai.context_pack_repository import ContextPackRepository
 from domain.repositories.ai.conflict_guard_repository import ConflictGuardRepository
@@ -39,6 +40,7 @@ __all__ = [
     "AutoQueueRunRepository",
     "CandidateDraftRepository",
     "CitationLinkRepository",
+    "ChapterMentionRepository",
     "ChapterPlanRepository",
     "ContextPackRepository",
     "ConflictGuardRepository",

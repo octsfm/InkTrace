@@ -226,6 +226,15 @@ export const aiApi = {
   cancelAIJob: (jobId, payload) => api.post(`/v2/ai/jobs/${encodeURIComponent(jobId)}/cancel`, payload),
   startVectorIndexReindex: (payload) => api.post('/v2/ai/vector-index/reindex', payload),
   startStyleDNAExtract: (payload) => api.post('/v2/ai/style-dna/extract', payload),
+  importOpeningReference: (payload) => api.post('/v2/ai/opening/import-reference', payload),
+  analyzeOpening: (payload) => api.post('/v2/ai/opening/analyze', payload),
+  getOpeningStrategy: (workId) => api.get(`/v2/ai/opening/${encodeURIComponent(workId)}/strategy`),
+  confirmOpeningStrategy: (strategyId, payload) => api.post(`/v2/ai/opening/strategies/${encodeURIComponent(strategyId)}/confirm`, payload),
+  rejectOpeningStrategy: (strategyId, payload) => api.post(`/v2/ai/opening/strategies/${encodeURIComponent(strategyId)}/reject`, payload),
+  generateOpeningDrafts: (payload) => api.post('/v2/ai/opening/generate', payload),
+  getOpeningStatus: (workId) => api.get(`/v2/ai/opening/${encodeURIComponent(workId)}/status`),
+  getOpeningAnalysis: (workId) => api.get(`/v2/ai/opening/${encodeURIComponent(workId)}/analysis`),
+  getOpeningDrafts: (workId) => api.get(`/v2/ai/opening/${encodeURIComponent(workId)}/drafts`),
   getStyleProfile: (profileId) => api.get(`/v2/ai/style-dna/profiles/${encodeURIComponent(profileId)}`),
   getActiveStyleProfile: (workId) => api.get(`/v2/ai/style-dna/${encodeURIComponent(workId)}/active`),
   getStyleProfileHistory: (workId) => api.get(`/v2/ai/style-dna/${encodeURIComponent(workId)}/history`),
@@ -310,6 +319,21 @@ export const aiApi = {
   acceptAISuggestion: (suggestionId, payload) => api.post(`/v2/ai/suggestions/${encodeURIComponent(suggestionId)}/accept`, payload),
   dismissAISuggestion: (suggestionId, payload) => api.post(`/v2/ai/suggestions/${encodeURIComponent(suggestionId)}/dismiss`, payload),
   convertAISuggestion: (suggestionId, payload) => api.post(`/v2/ai/suggestions/${encodeURIComponent(suggestionId)}/convert`, payload),
+  applyOutlineAssistSuggestion: (suggestionId, payload) => api.post(
+    `/v2/ai/outline-assist/suggestions/${encodeURIComponent(suggestionId)}/apply`,
+    payload
+  ),
+  createSelectionRewrite: (payload) => api.post('/v2/ai/selection-rewrite', payload),
+  getSelectionRewrite: (rewriteId) => api.get(`/v2/ai/selection-rewrite/${encodeURIComponent(rewriteId)}`),
+  applySelectionRewrite: (rewriteId, payload) => api.post(
+    `/v2/ai/selection-rewrite/${encodeURIComponent(rewriteId)}/apply`,
+    payload
+  ),
+  rejectSelectionRewrite: (rewriteId) => api.post(`/v2/ai/selection-rewrite/${encodeURIComponent(rewriteId)}/reject`),
+  suggestMentions: (params = {}) => api.get('/v2/mentions/suggest', { params }),
+  getChapterMentions: (chapterId) => api.get(`/v2/chapters/${encodeURIComponent(chapterId)}/mentions`),
+  replaceChapterMentions: (chapterId, payload) => api.put(`/v2/chapters/${encodeURIComponent(chapterId)}/mentions`, payload),
+  getMentionSummary: (mentionId) => api.get(`/v2/mentions/${encodeURIComponent(mentionId)}/summary`),
 
   // ConflictGuard
   listConflicts: (params = {}) => api.get('/v2/ai/conflicts', { params }),

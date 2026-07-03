@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿<template>
   <div class="pure-text-editor" :data-theme="theme">
     <div v-if="showSoftLimitWarning" class="soft-limit-banner">
       当前章节已超过 20 万有效字符，建议尽快拆分章节以保持流畅编辑。
@@ -16,6 +16,7 @@
       @paste="onPaste"
       @click="emitCursorState"
       @keyup="emitCursorState"
+      @select="emitSelectionState"
       @scroll="emitScrollState"
     />
 
@@ -60,7 +61,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'cursor-change', 'scroll-change'])
+const emit = defineEmits(['update:modelValue', 'cursor-change', 'scroll-change', 'selection-change'])
 
 const textareaRef = ref(null)
 const effectiveWordCount = computed(() => countEffectiveCharacters(props.modelValue))
@@ -82,6 +83,18 @@ const emitCursorState = () => {
   if (!target) return
   emit('cursor-change', {
     cursorPosition: Number(target.selectionStart || 0)
+  })
+}
+
+const emitSelectionState = () => {
+  const target = textareaRef.value
+  if (!target) return
+  const start = Number(target.selectionStart || 0)
+  const end = Number(target.selectionEnd || 0)
+  emit('selection-change', {
+    text: String(target.value || '').slice(start, end),
+    start,
+    end
   })
 }
 
@@ -138,11 +151,12 @@ const onInput = (event) => {
 
 const insertPlainTextAtSelection = (text) => {
   const target = textareaRef.value
-  if (!target) return
+  if (!target) return undefined
   const source = String(props.modelValue || '')
   const start = Number(target.selectionStart || 0)
   const end = Number(target.selectionEnd || 0)
   const nextValue = `${source.slice(0, start)}${text}${source.slice(end)}`
+  target.value = nextValue
   emit('update:modelValue', nextValue)
   requestAnimationFrame(() => {
     const nextCursor = start + text.length
@@ -150,6 +164,11 @@ const insertPlainTextAtSelection = (text) => {
     target.selectionEnd = nextCursor
     emitCursorState()
   })
+  return {
+    text,
+    start,
+    end: start + text.length
+  }
 }
 
 const onPaste = (event) => {
@@ -158,7 +177,7 @@ const onPaste = (event) => {
   insertPlainTextAtSelection(text)
 }
 
-defineExpose({ restoreViewport, getViewport, focusEditor })
+defineExpose({ restoreViewport, getViewport, focusEditor, insertPlainTextAtSelection })
 </script>
 
 <style scoped>

@@ -25,9 +25,15 @@
       <span>{{ errorMessage }}</span>
     </div>
 
-    <div v-else-if="displayNote" class="auto-queue-panel__banner auto-queue-panel__banner--warning">
+    <div
+      v-else-if="displayNote"
+      data-test="auto-queue-banner"
+      class="auto-queue-panel__banner"
+      :class="bannerModifierClass"
+    >
       <strong>{{ noteTitle }}</strong>
       <span>{{ displayNote }}</span>
+      <span v-if="budgetUsageCopy">{{ budgetUsageCopy }}</span>
     </div>
 
     <div class="auto-queue-panel__mode">
@@ -107,6 +113,7 @@
         v-if="showConfirmContinue"
         data-test="auto-queue-confirm-continue"
         type="button"
+        class="auto-queue-panel__primary"
         :disabled="actionLoading"
         @click="$emit('confirm-continue')"
       >
@@ -121,6 +128,29 @@
         @click="$emit('stop')"
       >
         停止队列
+      </button>
+    </div>
+
+    <div v-if="showDisableBudgetCheck" class="auto-queue-panel__follow-up-actions">
+      <button
+        data-test="auto-queue-disable-budget-check"
+        type="button"
+        class="auto-queue-panel__danger"
+        :disabled="actionLoading || savingConfig"
+        @click="$emit('disable-budget-check')"
+      >
+        关闭预算检查
+      </button>
+    </div>
+
+    <div v-if="showViewConflicts" class="auto-queue-panel__follow-up-actions">
+      <button
+        data-test="auto-queue-view-conflicts"
+        type="button"
+        :disabled="actionLoading || loading"
+        @click="$emit('view-conflicts')"
+      >
+        查看冲突详情
       </button>
     </div>
 
@@ -224,6 +254,8 @@ const emit = defineEmits([
   'resume',
   'stop',
   'confirm-continue',
+  'disable-budget-check',
+  'view-conflicts',
   'refresh',
   'select-run'
 ])
@@ -236,7 +268,22 @@ const showPause = computed(() => String(props.currentRun?.status || '') === 'run
 const showResume = computed(() => String(props.currentRun?.status || '') === 'paused')
 const showConfirmContinue = computed(() => String(props.currentRun?.status || '') === 'waiting_user_decision')
 const showStop = computed(() => ['running', 'paused', 'waiting_user_decision'].includes(String(props.currentRun?.status || '')))
+const showDisableBudgetCheck = computed(() => String(props.currentRun?.stop_record?.stop_reason || '') === 'budget_exceeded')
+const showViewConflicts = computed(() => String(props.currentRun?.stop_record?.stop_reason || '') === 'blocking_review_consecutive')
 const displayNote = computed(() => props.noteMessage || stopRecordCopy(props.currentRun?.stop_record))
+const bannerModifierClass = computed(() => {
+  const reason = String(props.currentRun?.stop_record?.stop_reason || '')
+  if (reason === 'budget_exceeded') return 'auto-queue-panel__banner--error'
+  if (showConfirmContinue.value) return 'auto-queue-panel__banner--info'
+  return 'auto-queue-panel__banner--warning'
+})
+const budgetUsageCopy = computed(() => {
+  const reason = String(props.currentRun?.stop_record?.stop_reason || '')
+  if (reason !== 'budget_exceeded') return ''
+  const consumedTokens = Number(props.currentRun?.consumed_tokens || 0)
+  if (consumedTokens <= 0) return ''
+  return `已使用约 ${consumedTokens} tokens`
+})
 const noteTitle = computed(() => {
   const reason = String(props.currentRun?.stop_record?.stop_reason || '')
   if (reason === 'budget_exceeded') return '预算已超出'
@@ -319,7 +366,8 @@ const emitTargetChapters = (value) => {
 .auto-queue-panel__header,
 .auto-queue-panel__card-header,
 .auto-queue-panel__meta,
-.auto-queue-panel__actions {
+.auto-queue-panel__actions,
+.auto-queue-panel__follow-up-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -391,6 +439,10 @@ const emitTargetChapters = (value) => {
   background: color-mix(in srgb, var(--ai-danger-bg, #fef2f2) 85%, white);
 }
 
+.auto-queue-panel__banner--info {
+  background: color-mix(in srgb, var(--ai-accent-soft, #dbeafe) 60%, white);
+}
+
 .auto-queue-panel__history ul {
   margin: 8px 0 0;
   padding-left: 18px;
@@ -425,5 +477,12 @@ const emitTargetChapters = (value) => {
 
 .auto-queue-panel__danger {
   color: var(--ink-danger-text, #b91c1c);
+}
+
+.auto-queue-panel__primary {
+  background: var(--ai-accent, #2563eb);
+  color: #ffffff;
+  border-color: var(--ai-accent, #2563eb);
+  font-weight: 600;
 }
 </style>

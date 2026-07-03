@@ -59,6 +59,39 @@ describe('P0 AI API client', () => {
       caller_type: 'user_action',
       idempotency_key: 'idem-style-1'
     })
+    await api.aiApi.importOpeningReference({
+      work_id: 'work-1',
+      title: '标杆开篇',
+      chapters_text: ['第一章文本'],
+      rights_confirmed: true,
+      rights_confirmation_text_version: 'v1'
+    })
+    await api.aiApi.analyzeOpening({
+      work_id: 'work-1',
+      analysis_id: 'oa-1',
+      job_id: 'job-opening-1'
+    })
+    await api.aiApi.getOpeningStrategy('work-1')
+    await api.aiApi.confirmOpeningStrategy('st-1', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'opening-confirm-1'
+    })
+    await api.aiApi.rejectOpeningStrategy('st-1', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'opening-reject-1',
+      reason: '请降低相似度'
+    })
+    await api.aiApi.generateOpeningDrafts({
+      work_id: 'work-1',
+      analysis_id: 'oa-1',
+      strategy_id: 'st-1',
+      job_id: 'job-opening-1'
+    })
+    await api.aiApi.getOpeningStatus('work-1')
+    await api.aiApi.getOpeningAnalysis('work-1')
+    await api.aiApi.getOpeningDrafts('work-1')
     await api.aiApi.getStyleProfile('sp-1')
     await api.aiApi.getActiveStyleProfile('work-1')
     await api.aiApi.getStyleProfileHistory('work-1')
@@ -156,6 +189,39 @@ describe('P0 AI API client', () => {
       caller_type: 'user_action',
       idempotency_key: 'idem-style-1'
     })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/import-reference', {
+      work_id: 'work-1',
+      title: '标杆开篇',
+      chapters_text: ['第一章文本'],
+      rights_confirmed: true,
+      rights_confirmation_text_version: 'v1'
+    })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/analyze', {
+      work_id: 'work-1',
+      analysis_id: 'oa-1',
+      job_id: 'job-opening-1'
+    })
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/work-1/strategy')
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/strategies/st-1/confirm', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'opening-confirm-1'
+    })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/strategies/st-1/reject', {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'opening-reject-1',
+      reason: '请降低相似度'
+    })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/generate', {
+      work_id: 'work-1',
+      analysis_id: 'oa-1',
+      strategy_id: 'st-1',
+      job_id: 'job-opening-1'
+    })
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/work-1/status')
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/work-1/analysis')
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/work-1/drafts')
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/style-dna/profiles/sp-1')
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/style-dna/work-1/active')
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/style-dna/work-1/history')
@@ -296,5 +362,105 @@ describe('P0 AI API client', () => {
 
     await expect(errorHandler(error)).rejects.toBe(error)
     expect(ElMessage.error).toHaveBeenCalledWith('AI 嵌入服务暂时不可用，请稍后重试或检查 AI 设置。')
+  })
+
+  it('wraps selection rewrite endpoints with expected request paths', async () => {
+    mockGet.mockResolvedValue({})
+    mockPost.mockResolvedValue({})
+
+    await api.aiApi.createSelectionRewrite({
+      work_id: 'work-1',
+      chapter_id: 'chapter-1',
+      chapter_revision: 7,
+      draft_revision: 12,
+      source_text: '月光落在窗台上',
+      source_hash: 'sha256-source',
+      start_pos: 4,
+      end_pos: 12,
+      mode: 'polish'
+    })
+    await api.aiApi.getSelectionRewrite('srw_001')
+    await api.aiApi.applySelectionRewrite('srw_001', {
+      final_text: '月光静静落在旧窗台上',
+      chapter_revision: 7,
+      draft_revision: 12,
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'selection-apply-1'
+    })
+    await api.aiApi.rejectSelectionRewrite('srw_001')
+
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/selection-rewrite', {
+      work_id: 'work-1',
+      chapter_id: 'chapter-1',
+      chapter_revision: 7,
+      draft_revision: 12,
+      source_text: '月光落在窗台上',
+      source_hash: 'sha256-source',
+      start_pos: 4,
+      end_pos: 12,
+      mode: 'polish'
+    })
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/selection-rewrite/srw_001')
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/selection-rewrite/srw_001/apply', {
+      final_text: '月光静静落在旧窗台上',
+      chapter_revision: 7,
+      draft_revision: 12,
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: 'selection-apply-1'
+    })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/selection-rewrite/srw_001/reject')
+  })
+
+  it('wraps mention endpoints with expected request paths', async () => {
+    mockGet.mockResolvedValue({})
+    mockPut.mockResolvedValue({})
+
+    await api.aiApi.suggestMentions({
+      work_id: 'work-1',
+      q: '张',
+      types: 'character,event',
+      limit: 10
+    })
+    await api.aiApi.getChapterMentions('chapter-1')
+    await api.aiApi.replaceChapterMentions('chapter-1', {
+      chapter_revision: 3,
+      mentions: [{
+        mention_id: 'm_001',
+        entity_type: 'character',
+        entity_id: 'char_001',
+        entity_name_snapshot: '张三',
+        start_pos: 2,
+        end_pos: 5,
+        source: 'user_input',
+        ai_suggestion_id: ''
+      }]
+    })
+    await api.aiApi.getMentionSummary('m_001')
+
+    expect(mockGet).toHaveBeenCalledWith('/v2/mentions/suggest', {
+      params: {
+        work_id: 'work-1',
+        q: '张',
+        types: 'character,event',
+        limit: 10
+      }
+    })
+    expect(mockGet).toHaveBeenCalledWith('/v2/chapters/chapter-1/mentions')
+    expect(mockPut).toHaveBeenCalledWith('/v2/chapters/chapter-1/mentions', {
+      chapter_revision: 3,
+      mentions: [{
+        mention_id: 'm_001',
+        entity_type: 'character',
+        entity_id: 'char_001',
+        entity_name_snapshot: '张三',
+        start_pos: 2,
+        end_pos: 5,
+        source: 'user_input',
+        ai_suggestion_id: ''
+      }]
+    })
+    expect(mockGet).toHaveBeenCalledWith('/v2/mentions/m_001/summary')
   })
 })

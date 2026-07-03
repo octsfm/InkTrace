@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <div class="writing-studio" :class="[themeClass, { 'writing-studio--focus': isFocusMode }]">
     <VersionConflictModal
       :model-value="conflictModalVisible"
@@ -8,6 +8,19 @@
       @cancel="handleConflictCancel"
       @discard="handleConflictDiscard"
       @override="handleConflictOverride"
+    />
+    <SelectionRewriteDiffModal
+      :model-value="selectionRewriteStore.modalVisible"
+      :source-text="selectionRewriteStore.selectionText"
+      :edited-text="selectionRewriteStore.editedText"
+      :diff-summary="selectionRewriteStore.diffSummary"
+      :word-count-before="Number(selectionRewriteStore.candidate?.word_count_before || selectionRewriteStore.selectionText.length || 0)"
+      :word-count-after="Number(selectionRewriteStore.candidate?.word_count_after || selectionRewriteStore.editedText.length || 0)"
+      :mode-label="displaySelectionRewriteMode(selectionRewriteStore.candidate?.rewrite_mode)"
+      @update:model-value="handleSelectionRewriteModalVisibility"
+      @update:edited-text="selectionRewriteStore.editedText = $event"
+      @accept="handleSelectionRewriteAccept"
+      @reject="handleSelectionRewriteReject"
     />
 
     <header class="studio-header" :class="{ 'studio-header--focus': isFocusMode }">
@@ -126,6 +139,21 @@
               @update:model-value="handleTitleInput"
             />
             <div class="editor-surface">
+              <SelectionRewriteToolbar
+                :visible="selectionRewriteToolbarVisible"
+                @mode-select="handleSelectionRewriteMode"
+              />
+              <div
+                v-if="mentionStore.featureEnabled && mentionStore.popupVisible"
+                class="mention-popup-anchor"
+                :style="mentionPopupStyle"
+              >
+                <MentionPopup
+                  :visible="mentionStore.popupVisible"
+                  :suggestions="mentionStore.suggestions"
+                  @select="handleMentionSuggestionSelect"
+                />
+              </div>
               <PureTextEditor
                 ref="editorRef"
                 :chapter-id="chapterDataStore.activeChapterId"
@@ -137,6 +165,7 @@
                 :theme="preferenceStore.appTheme"
                 @update:model-value="handleDraftChange"
                 @cursor-change="handleCursorChange"
+                @selection-change="handleSelectionChange"
                 @scroll-change="handleScrollChange"
               />
             </div>
@@ -224,6 +253,7 @@ import CharacterPanel from '@/components/workspace/CharacterPanel.vue'
 import ForeshadowPanel from '@/components/workspace/ForeshadowPanel.vue'
 import FocusModeToggle from '@/components/workspace/FocusModeToggle.vue'
 import ManualSyncButton from '@/components/workspace/ManualSyncButton.vue'
+import MentionPopup from '@/components/workspace/MentionPopup.vue'
 import OutlinePanel from '@/components/workspace/OutlinePanel.vue'
 import ReviewTab from '@/components/workspace/ReviewTab.vue'
 import RightWorkspacePanel from '@/components/workspace/RightWorkspacePanel.vue'
@@ -232,8 +262,12 @@ import WritingPreferencePanel from '@/components/workspace/WritingPreferencePane
 import ChapterSidebar from '@/components/workspace/ChapterSidebar.vue'
 import ChapterTitleInput from '@/components/workspace/ChapterTitleInput.vue'
 import PureTextEditor from '@/components/workspace/PureTextEditor.vue'
+import SelectionRewriteDiffModal from '@/components/workspace/SelectionRewriteDiffModal.vue'
+import SelectionRewriteToolbar from '@/components/workspace/SelectionRewriteToolbar.vue'
 import StatusBar from '@/components/workspace/StatusBar.vue'
 import VersionConflictModal from '@/components/workspace/VersionConflictModal.vue'
+import { useMentionStore } from '@/stores/useMentionStore'
+import { useSelectionRewriteStore } from '@/stores/useSelectionRewriteStore'
 
 const route = useRoute()
 const router = useRouter()
@@ -242,6 +276,8 @@ const chapterDataStore = useChapterDataStore()
 const saveStateStore = useSaveStateStore()
 const preferenceStore = usePreferenceStore()
 const writingAssetStore = useWritingAssetStore()
+const mentionStore = useMentionStore()
+const selectionRewriteStore = useSelectionRewriteStore()
 const chaptersLoading = ref(false)
 const pendingChapterId = ref('')
 const preferencePanelAnchorRef = ref(null)
@@ -276,6 +312,7 @@ const isMobileWorkspacePanel = ref(false)
 const rightWorkspacePanelWidth = ref(360)
 const preferencePanelVisible = ref(false)
 const lastEffectiveCountByChapterId = ref({})
+const draftRevisionByChapterId = ref({})
 const suppressDraftCaching = ref(false)
 
 const workId = computed(() => String(route.params.id || ''))
@@ -299,6 +336,12 @@ const assetDirtyTabs = computed(() => {
   return Array.from(tabs)
 })
 const statusUpdatedAt = computed(() => String(saveStateStore.lastSyncedAt || workspaceStore.sessionUpdatedAt || ''))
+const selectionRewriteToolbarVisible = computed(() => (
+  selectionRewriteStore.featureEnabled &&
+  Boolean(chapterDataStore.activeChapterId) &&
+  selectionRewriteStore.hasValidSelection &&
+  !selectionRewriteStore.modalVisible
+))
 const conflictModalVisible = computed(() => saveStateStore.hasConflict)
 const conflictPayload = computed(() => saveStateStore.conflictPayload)
 const conflictChapterId = computed(() => String(saveStateStore.conflictPayload?.chapterId || ''))
@@ -372,6 +415,10 @@ const showManualRetry = computed(() => (
 const studioShellStyle = computed(() => ({
   '--right-workspace-panel-width': `${rightWorkspacePanelWidth.value}px`
 }))
+const mentionPopupStyle = computed(() => ({
+  left: `${Number(mentionStore.popupPosition?.x || 24)}px`,
+  top: `${Number(mentionStore.popupPosition?.y || 24)}px`
+}))
 const conflictDescription = computed(() => {
   const chapterTitle = String(
     conflictPayload.value?.chapterTitle ||
@@ -438,6 +485,68 @@ const clearConflictState = () => {
   saveStateStore.clearConflict()
 }
 
+const getDraftRevision = (chapterId = chapterDataStore.activeChapterId) => {
+  const id = String(chapterId || '')
+  if (!id) return 0
+  return Number(draftRevisionByChapterId.value[id] || 0)
+}
+
+const ensureDraftRevision = (chapterId = chapterDataStore.activeChapterId) => {
+  const id = String(chapterId || '')
+  if (!id || Object.prototype.hasOwnProperty.call(draftRevisionByChapterId.value, id)) {
+    return getDraftRevision(id)
+  }
+  draftRevisionByChapterId.value = {
+    ...draftRevisionByChapterId.value,
+    [id]: 0
+  }
+  return 0
+}
+
+const bumpDraftRevision = (chapterId = chapterDataStore.activeChapterId) => {
+  const id = String(chapterId || '')
+  if (!id) return 0
+  const nextRevision = getDraftRevision(id) + 1
+  draftRevisionByChapterId.value = {
+    ...draftRevisionByChapterId.value,
+    [id]: nextRevision
+  }
+  return nextRevision
+}
+
+const syncSelectionRewriteContext = (targetChapterId = chapterDataStore.activeChapterId) => {
+  const id = String(targetChapterId || '')
+  const chapter = chapterDataStore.chapters.find((item) => item.id === id) || chapterDataStore.activeChapter || {}
+  selectionRewriteStore.initializeContext({
+    workId: workId.value,
+    chapterId: id,
+    chapterRevision: Number(chapter?.version || 0),
+    draftRevision: ensureDraftRevision(id)
+  })
+}
+
+const syncMentionContext = (
+  targetChapterId = chapterDataStore.activeChapterId,
+  targetChapterRevision = undefined
+) => {
+  const id = String(targetChapterId || '')
+  const chapter = chapterDataStore.chapters.find((item) => item.id === id) || chapterDataStore.activeChapter || {}
+  mentionStore.initializeContext({
+    workId: workId.value,
+    chapterId: id,
+    chapterRevision: targetChapterRevision ?? Number(chapter?.version || 0)
+  })
+}
+
+const displaySelectionRewriteMode = (mode) => ({
+  expand: '扩写',
+  rewrite: '重写',
+  abbreviate: '缩写',
+  polish: '润色',
+  dialogue_opt: '对白优化',
+  de_ai: '降低 AI 味'
+}[String(mode || '')] || '')
+
 const scrollSidebarToChapter = async (chapterId) => {
   await nextTick()
   sidebarRef.value?.scrollToChapter?.(chapterId)
@@ -464,6 +573,29 @@ const captureActiveEditorViewport = () => {
   return viewport
 }
 
+const resolveMentionPopupPosition = () => {
+  const textarea = editorRef.value?.$el?.querySelector?.('textarea') || editorRef.value?.$el
+  const fallbackX = 24
+  const fallbackY = 24
+  if (!textarea || typeof textarea.getBoundingClientRect !== 'function') {
+    return { x: fallbackX, y: fallbackY }
+  }
+  const rect = textarea.getBoundingClientRect()
+  return {
+    x: Math.max(fallbackX, Math.min(48, Math.round(rect.width * 0.08))),
+    y: Math.max(fallbackY, Math.min(56, Math.round(rect.height * 0.08)))
+  }
+}
+
+const setEditorSelectionRange = (start = 0, end = start) => {
+  const textarea = editorRef.value?.$el?.querySelector?.('textarea') || editorRef.value?.$el
+  if (!textarea) return false
+  textarea.selectionStart = Number(start || 0)
+  textarea.selectionEnd = Number(end || 0)
+  textarea.focus?.()
+  return true
+}
+
 const syncChapterWordBaseline = (chapterId, content = null) => {
   const id = String(chapterId || '')
   if (!id) return 0
@@ -474,6 +606,17 @@ const syncChapterWordBaseline = (chapterId, content = null) => {
     [id]: nextCount
   }
   return nextCount
+}
+
+const scheduleDraftPersistence = () => {
+  if (conflictModalVisible.value) return
+  if (!navigator.onLine || isOfflineMode.value) {
+    saveStateStore.markOffline()
+  } else {
+    saveStateStore.markSaving()
+    scheduleDraftSync()
+  }
+  scheduleSessionSave()
 }
 
 const primeTodayWordBaselines = () => {
@@ -661,6 +804,11 @@ const flushDraftQueue = async ({ retryAttempt = 0, manual = false } = {}) => {
         })
         lastUpdatedAt = String(savedChapter?.updated_at || lastUpdatedAt)
         chapterDataStore.upsertChapter(savedChapter)
+        syncMentionContext(draft.chapterId, Number(savedChapter?.version || chapter.version || 0))
+        await mentionStore.saveMentions(draft.content, {
+          targetChapterId: draft.chapterId,
+          chapterRevision: Number(savedChapter?.version || chapter.version || 0)
+        })
         const latestDraftContent = chapterDataStore.draftByChapterId[draft.chapterId]
         const latestDraftTitle = chapterDataStore.draftTitleByChapterId[draft.chapterId]
         const contentMatches = latestDraftContent === undefined || String(latestDraftContent) === String(draft.content || '')
@@ -827,6 +975,10 @@ const activateChapter = async (chapterId) => {
   if (!nextChapterId) return
   pendingChapterId.value = ''
   chapterDataStore.setActiveChapter(nextChapterId)
+  ensureDraftRevision(nextChapterId)
+  syncSelectionRewriteContext(nextChapterId)
+  syncMentionContext(nextChapterId)
+  await mentionStore.loadMentions(nextChapterId)
   syncChapterWordBaseline(nextChapterId)
   workspaceStore.setLastOpenChapter(nextChapterId)
   await scrollSidebarToChapter(nextChapterId)
@@ -944,8 +1096,13 @@ const handlePreferencePanelPointerDown = (event) => {
 }
 
 const handlePreferencePanelEscape = (event) => {
-  if (event?.key !== 'Escape' || !preferencePanelVisible.value) return
-  closePreferencePanel()
+  if (event?.key !== 'Escape') return
+  if (mentionStore.popupVisible) {
+    mentionStore.closePopup()
+  }
+  if (preferencePanelVisible.value) {
+    closePreferencePanel()
+  }
 }
 
 const handlePreferenceUpdate = (patch = {}) => {
@@ -1064,17 +1221,12 @@ const handleDraftChange = (content) => {
     saveStateStore.clearRetrySchedule()
   }
   chapterDataStore.updateChapterDraft(chapterId, content)
+  bumpDraftRevision(chapterId)
+  syncSelectionRewriteContext(chapterId)
+  selectionRewriteStore.clearSelection()
   workspaceStore.setLastOpenChapter(chapterId)
   writeCachedDraft(chapterId, content)
-  if (!conflictModalVisible.value) {
-    if (!navigator.onLine || isOfflineMode.value) {
-      saveStateStore.markOffline()
-    } else {
-      saveStateStore.markSaving()
-      scheduleDraftSync()
-    }
-  }
-  scheduleSessionSave()
+  scheduleDraftPersistence()
 }
 
 const handleTitleInput = (value) => {
@@ -1114,7 +1266,22 @@ const handleCursorChange = ({ cursorPosition = 0 } = {}) => {
   ) {
     writeCachedDraft(chapterDataStore.activeChapterId, chapterDataStore.activeChapterContent)
   }
+  syncMentionContext()
+  mentionStore.inspectTrigger({
+    content: chapterDataStore.activeChapterContent,
+    cursorPosition,
+    popupPosition: resolveMentionPopupPosition()
+  })
   scheduleSessionSave()
+}
+
+const handleSelectionChange = ({ text = '', start = 0, end = 0 } = {}) => {
+  syncSelectionRewriteContext()
+  selectionRewriteStore.setSelection({
+    text,
+    start,
+    end
+  })
 }
 
 const handleScrollChange = ({ scrollTop = 0 } = {}) => {
@@ -1133,6 +1300,61 @@ const handleScrollChange = ({ scrollTop = 0 } = {}) => {
     writeCachedDraft(chapterDataStore.activeChapterId, chapterDataStore.activeChapterContent)
   }
   scheduleSessionSave()
+}
+
+const handleSelectionRewriteMode = async (mode) => {
+  try {
+    syncSelectionRewriteContext()
+    const created = await selectionRewriteStore.createRewrite(mode)
+    if (String(created?.rewrite_id || '')) {
+      await selectionRewriteStore.loadRewriteResult(created.rewrite_id)
+    }
+  } catch (error) {
+    ElMessage.error(selectionRewriteStore.actionError || '选区改写生成失败，请稍后重试。')
+  }
+}
+
+const handleSelectionRewriteModalVisibility = (visible) => {
+  if (visible) return
+  selectionRewriteStore.clearModalState()
+}
+
+const handleSelectionRewriteAccept = async ({ finalText = '' } = {}) => {
+  const chapterId = String(chapterDataStore.activeChapterId || '')
+  if (!chapterId) return
+  try {
+    selectionRewriteStore.editedText = String(finalText || selectionRewriteStore.editedText || '')
+    await selectionRewriteStore.applyCurrentRewrite()
+    bumpDraftRevision(chapterId)
+    syncSelectionRewriteContext(chapterId)
+    syncChapterWordBaseline(chapterId, chapterDataStore.activeChapterContent)
+    workspaceStore.setLastOpenChapter(chapterId)
+    writeCachedDraft(chapterId, chapterDataStore.activeChapterContent)
+    selectionRewriteStore.clearSelection()
+    scheduleDraftPersistence()
+  } catch (error) {
+    ElMessage.error(selectionRewriteStore.actionError || '选区改写应用失败，请重新尝试。')
+  }
+}
+
+const handleSelectionRewriteReject = async () => {
+  try {
+    await selectionRewriteStore.rejectCurrentRewrite()
+    selectionRewriteStore.clearSelection()
+  } catch (error) {
+    ElMessage.error(selectionRewriteStore.actionError || '选区改写拒绝失败，请稍后重试。')
+  }
+}
+
+const handleMentionSuggestionSelect = async (suggestion) => {
+  const label = `@${String(suggestion?.entity_name || '')}`
+  const range = mentionStore.triggerRange || { start: 0, end: 0 }
+  setEditorSelectionRange(range.start, range.end)
+  const inserted = editorRef.value?.insertPlainTextAtSelection?.(label)
+  if (!inserted) return
+  mentionStore.registerInsertedMention(suggestion, inserted)
+  await nextTick()
+  await focusEditor()
 }
 
 const handleCreateChapter = async () => {
@@ -1600,6 +1822,7 @@ const handleManualSync = async () => {
 }
 
 .editor-surface {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -1607,6 +1830,11 @@ const handleManualSync = async () => {
   background: var(--studio-card-bg);
   padding: 0;
   display: flex;
+}
+
+.mention-popup-anchor {
+  position: absolute;
+  z-index: 20;
 }
 
 .right-workspace-column {

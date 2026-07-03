@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { webcrypto } from 'node:crypto'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, h, nextTick, ref } from 'vue'
@@ -34,6 +35,13 @@ const mockAIApplyCandidateDraft = vi.fn()
 const mockAIRunQuickTrial = vi.fn()
 const mockAIReviewCandidateDraft = vi.fn()
 const mockAIGetAIReview = vi.fn()
+const mockAICreateSelectionRewrite = vi.fn()
+const mockAIGetSelectionRewrite = vi.fn()
+const mockAIApplySelectionRewrite = vi.fn()
+const mockAIRejectSelectionRewrite = vi.fn()
+const mockAISuggestMentions = vi.fn()
+const mockAIGetChapterMentions = vi.fn()
+const mockAIReplaceChapterMentions = vi.fn()
 const elMessage = {
   warning: vi.fn(),
   error: vi.fn(),
@@ -53,6 +61,10 @@ vi.mock('vue-router', () => ({
 
 vi.mock('element-plus', () => ({
   ElMessage: elMessage
+}))
+
+vi.mock('@/config/p2FeatureFlags', () => ({
+  isP2FeatureEnabled: (flagName) => ['enable_selection_rewrite', 'enable_mentions'].includes(flagName)
 }))
 
 vi.mock('@/api', () => ({
@@ -88,7 +100,14 @@ vi.mock('@/api', () => ({
     applyCandidateDraft: mockAIApplyCandidateDraft,
     runQuickTrial: mockAIRunQuickTrial,
     reviewCandidateDraft: mockAIReviewCandidateDraft,
-    getAIReview: mockAIGetAIReview
+    getAIReview: mockAIGetAIReview,
+    createSelectionRewrite: mockAICreateSelectionRewrite,
+    getSelectionRewrite: mockAIGetSelectionRewrite,
+    applySelectionRewrite: mockAIApplySelectionRewrite,
+    rejectSelectionRewrite: mockAIRejectSelectionRewrite,
+    suggestMentions: mockAISuggestMentions,
+    getChapterMentions: mockAIGetChapterMentions,
+    replaceChapterMentions: mockAIReplaceChapterMentions
   }
 }))
 
@@ -170,7 +189,8 @@ const VersionConflictModalStub = defineComponent({
 const createPureTextEditorStub = ({
   getViewportSpy = vi.fn(),
   restoreViewportSpy = vi.fn(),
-  focusEditorSpy = vi.fn()
+  focusEditorSpy = vi.fn(),
+  insertPlainTextAtSelectionSpy = vi.fn()
 } = {}) => defineComponent({
   name: 'PureTextEditorStub',
   props: {
@@ -179,7 +199,8 @@ const createPureTextEditorStub = ({
       default: ''
     }
   },
-  setup(props, { expose }) {
+  emits: ['update:modelValue', 'cursor-change', 'selection-change', 'scroll-change'],
+  setup(props, { emit, expose }) {
     const textareaRef = ref(null)
 
     const readViewport = () => ({
@@ -209,16 +230,51 @@ const createPureTextEditorStub = ({
       textareaRef.value?.focus()
     }
 
+    const insertPlainTextAtSelection = (text) => {
+      const target = textareaRef.value
+      if (!target) return undefined
+      const source = String(props.modelValue || '')
+      const start = Number(target.selectionStart || 0)
+      const end = Number(target.selectionEnd || 0)
+      const nextValue = `${source.slice(0, start)}${text}${source.slice(end)}`
+      insertPlainTextAtSelectionSpy(text, { start, end, nextValue })
+      target.value = nextValue
+      const nextCursor = start + String(text || '').length
+      target.selectionStart = nextCursor
+      target.selectionEnd = nextCursor
+      emit('update:modelValue', nextValue)
+      emit('cursor-change', {
+        cursorPosition: nextCursor
+      })
+      return {
+        text,
+        start,
+        end: nextCursor
+      }
+    }
+
     expose({
       getViewport,
       restoreViewport,
-      focusEditor
+      focusEditor,
+      insertPlainTextAtSelection
     })
 
     return () => h('textarea', {
       ref: textareaRef,
       class: 'pure-text-editor-stub',
-      value: props.modelValue
+      value: props.modelValue,
+      onInput: (event) => {
+        emit('update:modelValue', event.target.value)
+        emit('cursor-change', {
+          cursorPosition: Number(event.target.selectionStart || event.target.value.length || 0)
+        })
+      },
+      onClick: (event) => {
+        emit('cursor-change', {
+          cursorPosition: Number(event.target.selectionStart || 0)
+        })
+      }
     }, props.modelValue)
   }
 })
@@ -445,6 +501,15 @@ describe('WritingStudio layout contract', () => {
     expect(source).toContain('writeCachedDraft(chapterId, chapterDataStore.activeChapterContent)')
     expect(source).toContain('await flushCurrentDraftNow()')
   })
+
+  it('wires selection rewrite toolbar modal and editor selection handlers into the studio shell', () => {
+    expect(source).toContain('<SelectionRewriteToolbar')
+    expect(source).toContain('<SelectionRewriteDiffModal')
+    expect(source).toContain('@selection-change="handleSelectionChange"')
+    expect(source).toContain('@mode-select="handleSelectionRewriteMode"')
+    expect(source).toContain('@accept="handleSelectionRewriteAccept"')
+    expect(source).toContain('@reject="handleSelectionRewriteReject"')
+  })
 })
 
 describe('WritingStudio focus mode', () => {
@@ -458,6 +523,10 @@ describe('WritingStudio focus mode', () => {
     globalThis.requestAnimationFrame = vi.fn((callback) => {
       callback()
       return 1
+    })
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: webcrypto
     })
     Object.defineProperty(window.navigator, 'onLine', {
       configurable: true,
@@ -505,6 +574,9 @@ describe('WritingStudio focus mode', () => {
     mockAIRunQuickTrial.mockResolvedValue({ data: { status: 'succeeded', output_text: '试跑输出', validation_status: 'passed' } })
     mockAIReviewCandidateDraft.mockResolvedValue({ data: { review_id: 'rv_1', status: 'succeeded', summary: '审阅完成' } })
     mockAIGetAIReview.mockResolvedValue({ data: { review_id: 'rv_1', summary: '审阅完成', issues: [], suggestions: [], risk_level: 'low' } })
+    mockAISuggestMentions.mockResolvedValue({ data: { suggestions: [] } })
+    mockAIGetChapterMentions.mockResolvedValue({ data: { mentions: [] } })
+    mockAIReplaceChapterMentions.mockResolvedValue({ data: { mentions: [] } })
 
     mockV1WorksGet.mockResolvedValue({
       id: 'work-1',
@@ -756,6 +828,230 @@ describe('WritingStudio focus mode', () => {
     await flushStudio()
     expect(preferenceStore.todayWordDelta).toBe(0)
     expect(JSON.parse(window.localStorage.getItem('inktrace.preference.v1') || '{}').todayWordDelta).toBe(0)
+  })
+
+  it('shows selection rewrite toolbar for valid selection and hides it after draft content changes', async () => {
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+
+    const editor = wrapper.findComponent({ name: 'PureTextEditor' })
+    editor.vm.$emit('selection-change', {
+      text: '第一章正文内容',
+      start: 0,
+      end: 8
+    })
+    await flushStudio()
+
+    expect(wrapper.find('[data-test="selection-rewrite-toolbar"]').exists()).toBe(true)
+    const textarea = wrapper.get('textarea')
+    await textarea.setValue('第一章正文内容新增一句')
+    await flushStudio()
+
+    expect(wrapper.find('[data-test="selection-rewrite-toolbar"]').exists()).toBe(false)
+  })
+
+  it('loads chapter mentions on activation, shows popup after @ input, and saves mentions after chapter save succeeds', async () => {
+    mockAIGetChapterMentions.mockResolvedValue({
+      data: {
+        mentions: [{
+          mention_id: 'm_existing',
+          chapter_id: 'chapter-1',
+          work_id: 'work-1',
+          entity_type: 'character',
+          entity_id: 'char_existing',
+          entity_name_snapshot: '李四',
+          start_pos: 0,
+          end_pos: 3,
+          source: 'user_input',
+          status: 'active',
+          is_active: true,
+          ai_suggestion_id: '',
+          validation_detail: '',
+          created_at: '2026-07-03T12:00:00Z',
+          updated_at: '2026-07-03T12:00:00Z'
+        }]
+      }
+    })
+    mockAISuggestMentions.mockResolvedValue({
+      data: {
+        suggestions: [{
+          entity_type: 'character',
+          entity_id: 'char_001',
+          entity_name: '张三',
+          match_type: 'prefix',
+          summary_preview: '主角'
+        }]
+      }
+    })
+    mockAIReplaceChapterMentions.mockResolvedValue({
+      data: {
+        mentions: [{
+          mention_id: 'm_new',
+          chapter_id: 'chapter-1',
+          work_id: 'work-1',
+          entity_type: 'character',
+          entity_id: 'char_001',
+          entity_name_snapshot: '张三',
+          start_pos: 4,
+          end_pos: 7,
+          source: 'user_input',
+          status: 'active',
+          is_active: true,
+          ai_suggestion_id: '',
+          validation_detail: '',
+          created_at: '2026-07-03T12:00:00Z',
+          updated_at: '2026-07-03T12:00:00Z'
+        }]
+      }
+    })
+    mockV1ChaptersUpdate.mockResolvedValue({
+      id: 'chapter-1',
+      title: '第一章',
+      content: '他说@张三',
+      order_index: 1,
+      version: 4,
+      updated_at: '2026-05-06T12:00:00.000Z'
+    })
+
+    const insertPlainTextAtSelectionSpy = vi.fn()
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          PureTextEditor: createPureTextEditorStub({
+            insertPlainTextAtSelectionSpy
+          }),
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+
+    expect(mockAIGetChapterMentions).toHaveBeenCalledWith('chapter-1')
+
+    const textarea = wrapper.get('textarea')
+    await textarea.setValue('他说@张')
+    textarea.element.selectionStart = 4
+    textarea.element.selectionEnd = 4
+    await textarea.trigger('click')
+    await flushStudio()
+
+    expect(mockAISuggestMentions).toHaveBeenCalledWith({
+      work_id: 'work-1',
+      q: '张',
+      types: 'character,event,foreshadow',
+      limit: 10
+    })
+    expect(wrapper.find('[data-test="mention-popup"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="mention-popup-option-char_001"]').trigger('click')
+    await flushStudio()
+
+    expect(insertPlainTextAtSelectionSpy).toHaveBeenCalledWith('@张三', expect.any(Object))
+    await wrapper.get('[data-test="manual-sync-button"]').trigger('click')
+    await flushStudio()
+
+    expect(mockV1ChaptersUpdate).toHaveBeenLastCalledWith('chapter-1', expect.objectContaining({
+      title: '第一章',
+      content: '他说@张三',
+      expected_version: 4
+    }))
+    expect(mockAIReplaceChapterMentions).toHaveBeenLastCalledWith('chapter-1', {
+      chapter_revision: 4,
+      mentions: [expect.objectContaining({
+        entity_type: 'character',
+        entity_id: 'char_001',
+        entity_name_snapshot: '张三',
+        start_pos: 2,
+        end_pos: 5,
+        source: 'user_input',
+        ai_suggestion_id: ''
+      })]
+    })
+  })
+
+  it('closes mention popup when Escape is pressed', async () => {
+    mockAISuggestMentions.mockResolvedValue({
+      data: {
+        suggestions: [{
+          entity_type: 'character',
+          entity_id: 'char_001',
+          entity_name: '张三',
+          match_type: 'prefix',
+          summary_preview: '主角'
+        }]
+      }
+    })
+
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+
+    const textarea = wrapper.get('textarea')
+    await textarea.setValue('他说@张')
+    textarea.element.selectionStart = 4
+    textarea.element.selectionEnd = 4
+    await textarea.trigger('click')
+    await flushStudio()
+
+    expect(wrapper.find('[data-test="mention-popup"]').exists()).toBe(true)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushStudio()
+
+    expect(wrapper.find('[data-test="mention-popup"]').exists()).toBe(false)
   })
 
   it('flushes the current chapter immediately and clears local draft after manual sync success', async () => {

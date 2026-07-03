@@ -2306,6 +2306,64 @@ class CitationBatch(AIBaseModel):
     citations: list[CitationLink] = Field(default_factory=list)
 
 
+class MentionEntityType(StrEnum):
+    CHARACTER = "character"
+    EVENT = "event"
+    FORESHADOW = "foreshadow"
+    LOCATION = "location"
+
+
+class MentionSource(StrEnum):
+    USER_INPUT = "user_input"
+    AI_SUGGESTION = "ai_suggestion"
+
+
+class MentionStatus(StrEnum):
+    ACTIVE = "active"
+    BROKEN = "broken"
+    STALE = "stale"
+    INACTIVE_ENTITY = "inactive_entity"
+
+
+class ChapterMention(AIBaseModel):
+    mention_id: str
+    chapter_id: str
+    work_id: str
+    entity_type: MentionEntityType
+    entity_id: str = ""
+    entity_name_snapshot: str = ""
+    start_pos: int = 0
+    end_pos: int = 0
+    source: MentionSource = MentionSource.USER_INPUT
+    ai_suggestion_id: str = ""
+    status: MentionStatus = MentionStatus.ACTIVE
+    is_active: bool = True
+    validation_detail: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class MentionSuggestion(AIBaseModel):
+    entity_type: MentionEntityType
+    entity_id: str
+    entity_name: str
+    match_type: str = "prefix"
+    last_used_at: str = ""
+    summary_preview: str = ""
+
+
+class MentionSummary(AIBaseModel):
+    mention_id: str
+    entity_type: MentionEntityType
+    entity_id: str = ""
+    entity_name_snapshot: str = ""
+    entity_current_name: str = ""
+    summary_text: str = ""
+    status: MentionStatus = MentionStatus.ACTIVE
+    is_active: bool = True
+    last_updated: str = ""
+
+
 class StyleProfileSourceType(StrEnum):
     USER_UPLOAD = "user_upload"
     CHAPTER_REFERENCE = "chapter_reference"
@@ -2649,6 +2707,7 @@ class AISuggestionType(StrEnum):
     PLOT_SUGGESTION = "plot_suggestion"
     CHARACTER_SUGGESTION = "character_suggestion"
     FORESHADOW_SUGGESTION = "foreshadow_suggestion"
+    MENTION_SUGGESTION = "mention_suggestion"
     MEMORY_UPDATE_SUGGESTION_REF = "memory_update_suggestion_ref"
     CONFLICT_RESOLUTION_SUGGESTION = "conflict_resolution_suggestion"
     DIRECTION_PLAN_SUGGESTION = "direction_plan_suggestion"
