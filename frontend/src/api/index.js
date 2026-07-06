@@ -57,7 +57,8 @@ const ERROR_MESSAGE_MAP = {
   MEMORY_REQUIRED: '请先整理故事结构后再继续创作。',
   CONTINUE_FAILED: '当前章节创作失败，请调整目标后重试。',
   CONTINUE_INPUT_INVALID: '续写参数有误，请检查后重试。',
-  CONTINUE_INTERNAL_ERROR: '续写失败，请稍后再试。'
+  CONTINUE_INTERNAL_ERROR: '续写失败，请稍后再试。',
+  P2_FEATURE_DISABLED: '这个功能暂未开启'
 }
 
 const formatValidationErrors = (detail) => {
@@ -87,7 +88,14 @@ const resolveErrorMessage = (error) => {
   const payloadError = error.response?.data?.error
   const detail = error.response?.data?.detail
   if (payloadError && typeof payloadError === 'object') {
-    return payloadError.safe_message || payloadError.user_message || payloadError.message || error.message || '请求失败'
+    return (
+      payloadError.safe_message
+      || payloadError.user_message
+      || ERROR_MESSAGE_MAP[payloadError.error_code]
+      || payloadError.message
+      || error.message
+      || '请求失败'
+    )
   }
   if (payloadError) {
     return String(payloadError)
@@ -325,11 +333,13 @@ export const aiApi = {
   ),
   createSelectionRewrite: (payload) => api.post('/v2/ai/selection-rewrite', payload),
   getSelectionRewrite: (rewriteId) => api.get(`/v2/ai/selection-rewrite/${encodeURIComponent(rewriteId)}`),
+  listSelectionRewriteHistory: (chapterId) => api.get(`/v2/ai/selection-rewrite/chapters/${encodeURIComponent(chapterId)}/history`),
   applySelectionRewrite: (rewriteId, payload) => api.post(
     `/v2/ai/selection-rewrite/${encodeURIComponent(rewriteId)}/apply`,
     payload
   ),
   rejectSelectionRewrite: (rewriteId) => api.post(`/v2/ai/selection-rewrite/${encodeURIComponent(rewriteId)}/reject`),
+  clearSelectionRewriteHistory: (chapterId) => api.delete(`/v2/ai/selection-rewrite/chapters/${encodeURIComponent(chapterId)}/history`),
   suggestMentions: (params = {}) => api.get('/v2/mentions/suggest', { params }),
   getChapterMentions: (chapterId) => api.get(`/v2/chapters/${encodeURIComponent(chapterId)}/mentions`),
   replaceChapterMentions: (chapterId, payload) => api.put(`/v2/chapters/${encodeURIComponent(chapterId)}/mentions`, payload),

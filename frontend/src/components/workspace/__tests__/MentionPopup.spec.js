@@ -47,4 +47,23 @@ describe('MentionPopup', () => {
 
     expect(wrapper.find('[data-test="mention-popup"]').exists()).toBe(false)
   })
+
+  it('renders empty state and emits create-character when no suggestions match', async () => {
+    const wrapper = mount(MentionPopup, {
+      props: {
+        visible: true,
+        suggestions: [],
+        query: '赵云'
+      }
+    })
+
+    expect(wrapper.text()).toContain('试试其他关键词')
+    expect(wrapper.text()).toContain('新建角色')
+
+    await wrapper.get('[data-test="mention-popup-create-character"]').trigger('click')
+
+    expect(wrapper.emitted('create-character')).toEqual([[{
+      query: '赵云'
+    }]])
+  })
 })

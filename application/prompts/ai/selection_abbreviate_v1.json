@@ -1,0 +1,8 @@
+{
+  "prompt_key": "selection_abbreviate_v1",
+  "prompt_version": "v1",
+  "model_role": "writer",
+  "output_schema_key": "selection_rewrite_schema",
+  "template_text": "你是小说写作助手。当前任务：缩写用户选中的片段，压缩表达但不得丢失关键剧情信息。\n前文环境：{context_before}\n原始选区：{source_text}\n后文环境：{context_after}\n请只返回 JSON，字段必须包含 rewritten_text、diff_summary、risk_notes。",
+  "enabled": true
+}

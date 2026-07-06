@@ -45,7 +45,8 @@ const mockAIReplaceChapterMentions = vi.fn()
 const elMessage = {
   warning: vi.fn(),
   error: vi.fn(),
-  success: vi.fn()
+  success: vi.fn(),
+  info: vi.fn()
 }
 
 vi.mock('vue-router', () => ({
@@ -344,6 +345,7 @@ describe('WritingStudio layout contract', () => {
     expect(source).toContain("activeTab === 'ai'")
     expect(source).toContain("mode=\"ai\"")
     expect(source).toContain(':chapter-id="chapterDataStore.activeChapterId"')
+    expect(source).toContain('@open-review-tab="handleAIPanelOpenReviewTab"')
     expect(source).not.toContain('<AIPanel\n              v-show="!isFocusMode"')
   })
 
@@ -504,9 +506,18 @@ describe('WritingStudio layout contract', () => {
 
   it('wires selection rewrite toolbar modal and editor selection handlers into the studio shell', () => {
     expect(source).toContain('<SelectionRewriteToolbar')
+    expect(source).toContain(':floating-style="selectionRewriteToolbarStyle"')
+    expect(source).toContain(':placement="selectionRewriteToolbarPlacement"')
     expect(source).toContain('<SelectionRewriteDiffModal')
+    expect(source).toContain(':waiting-user-action="selectionRewriteStore.status === \'pending\'"')
+    expect(source).toContain(':conflicted="selectionRewriteStore.status === \'conflicted\'"')
+    expect(source).toContain(':conflict-message="selectionRewriteStore.actionError"')
+    expect(source).toContain(':busy="selectionRewriteStore.loading"')
+    expect(source).toContain(":polling=\"selectionRewriteStore.status === 'generating'\"")
+    expect(source).toContain(':applying="selectionRewriteStore.applying"')
     expect(source).toContain('@selection-change="handleSelectionChange"')
     expect(source).toContain('@mode-select="handleSelectionRewriteMode"')
+    expect(source).toContain('@clear-history="handleSelectionRewriteClearHistory"')
     expect(source).toContain('@accept="handleSelectionRewriteAccept"')
     expect(source).toContain('@reject="handleSelectionRewriteReject"')
   })
@@ -870,6 +881,419 @@ describe('WritingStudio focus mode', () => {
     expect(wrapper.find('[data-test="selection-rewrite-toolbar"]').exists()).toBe(false)
   })
 
+  it('positions selection rewrite toolbar from editor selection anchor payload', async () => {
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+    const editor = wrapper.getComponent({ name: 'PureTextEditor' })
+    editor.vm.$emit('selection-change', {
+      text: '第一章正文内容',
+      start: 0,
+      end: 8,
+      anchorX: 188,
+      anchorY: 84,
+      anchorHeight: 24,
+      containerWidth: 640
+    })
+    await flushStudio()
+
+    const toolbar = wrapper.get('[data-test="selection-rewrite-toolbar"]')
+    expect(toolbar.attributes('style')).toContain('left: 188px;')
+    expect(toolbar.attributes('style')).toContain('top: 108px;')
+    expect(toolbar.classes()).toContain('selection-rewrite-toolbar--below')
+  })
+
+  it('delegates selection rewrite result polling to the store instead of manually reloading in the page', () => {
+    expect(source).toContain('const handleSelectionRewriteMode = async (mode) => {')
+    expect(source).toContain('await selectionRewriteStore.createRewrite(mode)')
+    expect(source).not.toContain('await selectionRewriteStore.loadRewriteResult(created.rewrite_id)')
+  })
+
+  it('shows async terminal selection rewrite errors once per unique rewrite status', async () => {
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const { useSelectionRewriteStore } = await import('@/stores/useSelectionRewriteStore')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+    const selectionRewriteStore = useSelectionRewriteStore()
+
+    selectionRewriteStore.activeRewriteId = 'srw_001'
+    selectionRewriteStore.status = 'failed'
+    selectionRewriteStore.actionError = '选区改写生成失败，请稍后重试。'
+    await flushStudio()
+
+    expect(elMessage.error).toHaveBeenCalledTimes(1)
+    const failedToastPayload = elMessage.error.mock.calls[0][0]
+    expect(failedToastPayload.duration).toBe(5000)
+    expect(failedToastPayload.message.children[0].children).toBe('选区改写生成失败，请稍后重试。')
+
+    selectionRewriteStore.actionError = ''
+    await flushStudio()
+    selectionRewriteStore.actionError = '选区改写生成失败，请稍后重试。'
+    await flushStudio()
+
+    expect(elMessage.error).toHaveBeenCalledTimes(1)
+
+    selectionRewriteStore.status = 'conflicted'
+    selectionRewriteStore.actionError = '原文已变化，请重新选择。'
+    selectionRewriteStore.modalVisible = true
+    selectionRewriteStore.selectionText = '月光落在窗台上'
+    await flushStudio()
+
+    expect(elMessage.error).toHaveBeenCalledTimes(1)
+    expect(elMessage.warning).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('原文已变化，请重新选择。')
+
+    wrapper.unmount()
+  })
+
+  it('supports reselect action for conflicted selection rewrite terminal state', async () => {
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const { useSelectionRewriteStore } = await import('@/stores/useSelectionRewriteStore')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+    const selectionRewriteStore = useSelectionRewriteStore()
+    selectionRewriteStore.activeRewriteId = 'srw_001'
+    selectionRewriteStore.requestId = 'job_001'
+    selectionRewriteStore.status = 'conflicted'
+    selectionRewriteStore.actionError = '原文已变化，请重新选择。'
+    selectionRewriteStore.selectionText = '月光落在窗台上'
+    selectionRewriteStore.selectionStart = 4
+    selectionRewriteStore.selectionEnd = 12
+    selectionRewriteStore.modalVisible = true
+    selectionRewriteStore.candidate = {
+      rewrite_id: 'srw_001',
+      status: 'conflicted'
+    }
+
+    await flushStudio()
+
+    await wrapper.get('[data-test="selection-rewrite-conflict-reselect"]').trigger('click')
+    await flushStudio()
+
+    expect(selectionRewriteStore.activeRewriteId).toBe('')
+    expect(selectionRewriteStore.requestId).toBe('')
+    expect(selectionRewriteStore.status).toBe('')
+    expect(selectionRewriteStore.selectionText).toBe('')
+    expect(selectionRewriteStore.modalVisible).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('shows retry action for failed selection rewrite terminal state', async () => {
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const { useSelectionRewriteStore } = await import('@/stores/useSelectionRewriteStore')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+    const selectionRewriteStore = useSelectionRewriteStore()
+    selectionRewriteStore.initializeContext({
+      workId: 'work-1',
+      chapterId: 'chapter-1',
+      chapterRevision: 3,
+      draftRevision: 12
+    })
+    selectionRewriteStore.setSelection({
+      text: '月光落在窗台上',
+      start: 4,
+      end: 12
+    })
+    selectionRewriteStore.lastRequestedMode = 'polish'
+    selectionRewriteStore.activeRewriteId = 'srw_001'
+    selectionRewriteStore.status = 'failed'
+    selectionRewriteStore.actionError = '选区改写生成失败，请稍后重试。'
+    await flushStudio()
+
+    const errorPayload = elMessage.error.mock.calls[0][0]
+    const retryButtonVNode = errorPayload.message.children[1]
+    mockAICreateSelectionRewrite.mockResolvedValue({
+      data: {
+        rewrite_id: 'srw_002',
+        status: 'generating',
+        request_id: 'job_002'
+      }
+    })
+
+    await retryButtonVNode.props.onClick()
+    await flushStudio()
+
+    expect(mockAICreateSelectionRewrite).toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
+  it('shows undo toast after applying selection rewrite and reverts draft when undo is clicked', async () => {
+    mockAIApplySelectionRewrite.mockResolvedValue({
+      data: {
+        rewrite_id: 'srw_001',
+        status: 'applied',
+        patch: {
+          range: [6, 13],
+          replacement: '月光静静落在旧窗台上'
+        }
+      }
+    })
+
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const { useSelectionRewriteStore } = await import('@/stores/useSelectionRewriteStore')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+    const chapterStore = useChapterDataStore()
+    const selectionRewriteStore = useSelectionRewriteStore()
+
+    chapterStore.updateChapterDraft('chapter-1', '这是旧文本，月光落在窗台上，风吹进来。')
+    selectionRewriteStore.initializeContext({
+      workId: 'work-1',
+      chapterId: 'chapter-1',
+      chapterRevision: 3,
+      draftRevision: 12
+    })
+    selectionRewriteStore.candidate = {
+      rewrite_id: 'srw_001',
+      status: 'pending',
+      source_start_pos: 6,
+      source_end_pos: 13,
+      rewritten_text: '月光静静落在旧窗台上'
+    }
+    selectionRewriteStore.activeRewriteId = 'srw_001'
+    selectionRewriteStore.editedText = '月光静静落在旧窗台上'
+    selectionRewriteStore.modalVisible = true
+
+    await wrapper.vm.handleSelectionRewriteAccept({ finalText: '月光静静落在旧窗台上' })
+    await flushStudio()
+
+    expect(elMessage.success).toHaveBeenCalledTimes(1)
+    const successPayload = elMessage.success.mock.calls[0][0]
+    expect(successPayload.duration).toBe(5000)
+    const undoButtonVNode = successPayload.message.children[1]
+    await undoButtonVNode.props.onClick()
+    await flushStudio()
+
+    expect(chapterStore.activeChapterContent).toBe('这是旧文本，月光落在窗台上，风吹进来。')
+
+    wrapper.unmount()
+  })
+
+  it('shows manual retry error when local selection rewrite patch apply fails', async () => {
+    mockAIApplySelectionRewrite.mockResolvedValue({
+      data: {
+        rewrite_id: 'srw_001',
+        status: 'applied',
+        patch: {
+          range: [6, 13],
+          replacement: '月光静静落在旧窗台上'
+        }
+      }
+    })
+
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const { useSelectionRewriteStore } = await import('@/stores/useSelectionRewriteStore')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+    const chapterStore = useChapterDataStore()
+    const selectionRewriteStore = useSelectionRewriteStore()
+    const originalDraft = chapterStore.activeChapterContent
+
+    selectionRewriteStore.initializeContext({
+      workId: 'work-1',
+      chapterId: 'chapter-1',
+      chapterRevision: 3,
+      draftRevision: 12
+    })
+    selectionRewriteStore.candidate = {
+      rewrite_id: 'srw_001',
+      status: 'pending',
+      source_start_pos: 6,
+      source_end_pos: 13,
+      source_text: '月光落在窗台上',
+      rewritten_text: '月光静静落在旧窗台上'
+    }
+    selectionRewriteStore.activeRewriteId = 'srw_001'
+    selectionRewriteStore.editedText = '月光静静落在旧窗台上'
+    selectionRewriteStore.modalVisible = true
+
+    await wrapper.vm.handleSelectionRewriteAccept({ finalText: '月光静静落在旧窗台上' })
+    await flushStudio()
+
+    expect(elMessage.error).toHaveBeenCalledWith('改写结果已确认，但本地草稿应用失败，请手动重试。')
+    expect(chapterStore.activeChapterContent).toBe(originalDraft)
+    expect(selectionRewriteStore.modalVisible).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('shows rejected toast after selection rewrite reject succeeds', async () => {
+    mockAIRejectSelectionRewrite.mockResolvedValue({
+      data: {
+        rewrite_id: 'srw_001',
+        status: 'rejected'
+      }
+    })
+
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const { useSelectionRewriteStore } = await import('@/stores/useSelectionRewriteStore')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+    const selectionRewriteStore = useSelectionRewriteStore()
+    selectionRewriteStore.initializeContext({
+      workId: 'work-1',
+      chapterId: 'chapter-1',
+      chapterRevision: 3,
+      draftRevision: 12
+    })
+    selectionRewriteStore.selectionText = '月光落在窗台上'
+    selectionRewriteStore.selectionStart = 4
+    selectionRewriteStore.selectionEnd = 12
+    selectionRewriteStore.activeRewriteId = 'srw_001'
+    selectionRewriteStore.modalVisible = true
+    selectionRewriteStore.candidate = {
+      rewrite_id: 'srw_001',
+      status: 'pending'
+    }
+
+    await wrapper.vm.handleSelectionRewriteReject()
+    await flushStudio()
+
+    expect(elMessage.info).toHaveBeenCalledWith({
+      duration: 2000,
+      message: '已拒绝'
+    })
+    expect(selectionRewriteStore.selectionText).toBe('')
+
+    wrapper.unmount()
+  })
+
   it('loads chapter mentions on activation, shows popup after @ input, and saves mentions after chapter save succeeds', async () => {
     mockAIGetChapterMentions.mockResolvedValue({
       data: {
@@ -1052,6 +1476,130 @@ describe('WritingStudio focus mode', () => {
     await flushStudio()
 
     expect(wrapper.find('[data-test="mention-popup"]').exists()).toBe(false)
+  })
+
+  it('supports ArrowDown and Enter to pick the active mention suggestion', async () => {
+    mockAISuggestMentions.mockResolvedValue({
+      data: {
+        suggestions: [{
+          entity_type: 'character',
+          entity_id: 'char_001',
+          entity_name: '张三',
+          match_type: 'prefix',
+          summary_preview: '主角'
+        }, {
+          entity_type: 'event',
+          entity_id: 'event_001',
+          entity_name: '雨夜决战',
+          match_type: 'prefix',
+          summary_preview: '关键事件'
+        }]
+      }
+    })
+
+    const insertPlainTextAtSelectionSpy = vi.fn()
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          PureTextEditor: createPureTextEditorStub({
+            insertPlainTextAtSelectionSpy
+          }),
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: buildAssetPanelStub('character-panel'),
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+
+    const textarea = wrapper.get('textarea')
+    await textarea.setValue('他说@张')
+    textarea.element.selectionStart = 4
+    textarea.element.selectionEnd = 4
+    await textarea.trigger('click')
+    await flushStudio()
+
+    expect(wrapper.find('[data-test="mention-popup"]').exists()).toBe(true)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }))
+    await flushStudio()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    await flushStudio()
+
+    expect(insertPlainTextAtSelectionSpy).toHaveBeenCalledWith('@雨夜决战', expect.any(Object))
+    expect(wrapper.find('[data-test="mention-popup"]').exists()).toBe(false)
+  })
+
+  it('routes empty mention results to character creation entry', async () => {
+    mockAISuggestMentions.mockResolvedValue({
+      data: {
+        suggestions: []
+      }
+    })
+
+    const startCreateSpy = vi.fn()
+    const CharacterPanelCreateStub = defineComponent({
+      name: 'CharacterPanelStub',
+      setup(_, { expose }) {
+        expose({
+          saveFocusedDraft: vi.fn(async () => {}),
+          discardFocusedDraft: vi.fn(),
+          startCreate: startCreateSpy
+        })
+        return () => h('div', { class: 'character-panel-stub' })
+      }
+    })
+
+    const { default: WritingStudio } = await import('../WritingStudio.vue')
+    const wrapper = mount(WritingStudio, {
+      global: {
+        stubs: {
+          ChapterSidebar: ChapterSidebarStub,
+          ChapterTitleInput: ChapterTitleInputStub,
+          RightWorkspacePanel: RightWorkspacePanelStub,
+          ReviewTab: ReviewTabStub,
+          OutlinePanel: buildAssetPanelStub('outline-panel'),
+          TimelinePanel: buildAssetPanelStub('timeline-panel'),
+          ForeshadowPanel: buildAssetPanelStub('foreshadow-panel'),
+          CharacterPanel: CharacterPanelCreateStub,
+          StatusBar: StatusBarStub,
+          VersionConflictModal: VersionConflictModalStub,
+          'el-button': {
+            template: '<button class="el-button-stub"><slot /></button>'
+          }
+        }
+      }
+    })
+
+    await flushStudio()
+
+    const textarea = wrapper.get('textarea')
+    await textarea.setValue('他说@赵云')
+    textarea.element.selectionStart = 5
+    textarea.element.selectionEnd = 5
+    await textarea.trigger('click')
+    await flushStudio()
+
+    expect(wrapper.find('[data-test="mention-popup"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="mention-popup-create-character"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="mention-popup-create-character"]').trigger('click')
+    await flushStudio()
+
+    expect(startCreateSpy).toHaveBeenCalled()
+    expect(wrapper.find('.character-panel-stub').exists()).toBe(true)
   })
 
   it('flushes the current chapter immediately and clears local draft after manual sync success', async () => {

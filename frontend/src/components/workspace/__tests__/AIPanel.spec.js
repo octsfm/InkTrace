@@ -325,7 +325,13 @@ describe('AIPanel', () => {
           config_id: 'aqc_001',
           work_id: 'work-1',
           queue_mode: 'safe',
-          target_chapters: 5
+          target_chapters: 5,
+          target_word_count: 0,
+          budget_limit_tokens: 0,
+          stop_at_sequence_end: true,
+          stop_on_blocking_review: true,
+          stop_on_budget_exceeded: true,
+          stop_on_foreshadow_premature: true
         }
       }
     })
@@ -335,7 +341,13 @@ describe('AIPanel', () => {
           config_id: 'aqc_001',
           work_id: 'work-1',
           queue_mode: 'safe',
-          target_chapters: 5
+          target_chapters: 5,
+          target_word_count: 0,
+          budget_limit_tokens: 0,
+          stop_at_sequence_end: true,
+          stop_on_blocking_review: true,
+          stop_on_budget_exceeded: true,
+          stop_on_foreshadow_premature: true
         }
       }
     })
@@ -460,7 +472,13 @@ describe('AIPanel', () => {
     expect(upsertAutoQueueConfig).toHaveBeenCalledWith({
       work_id: 'work-1',
       queue_mode: 'safe',
-      target_chapters: 5
+      target_chapters: 5,
+      target_word_count: 0,
+      budget_limit_tokens: 0,
+      stop_at_sequence_end: true,
+      stop_on_blocking_review: true,
+      stop_on_budget_exceeded: true,
+      stop_on_foreshadow_premature: true
     })
     expect(startAutoQueue).toHaveBeenCalledWith({
       work_id: 'work-1',
@@ -2554,8 +2572,75 @@ describe('AIPanel', () => {
       work_id: 'work-1',
       queue_mode: 'safe',
       target_chapters: 5,
-      stop_on_budget_exceeded: false
+      target_word_count: 0,
+      budget_limit_tokens: 0,
+      stop_at_sequence_end: true,
+      stop_on_blocking_review: true,
+      stop_on_budget_exceeded: false,
+      stop_on_foreshadow_premature: true
     })
+  })
+
+  it('continues auto queue from stopped run', async () => {
+    getAutoQueueHistory.mockResolvedValue({
+      data: {
+        runs: [{
+          run_id: 'aqr_031',
+          status: 'stopped',
+          queue_mode: 'safe',
+          generated_count: 2,
+          stop_record: {
+            stop_reason: 'user_manual_stop',
+            stop_severity: 'warning',
+            suggested_action: 'resume_queue'
+          }
+        }]
+      }
+    })
+    getAutoQueueStatus.mockResolvedValue({
+      data: {
+        run: {
+          run_id: 'aqr_031',
+          status: 'stopped',
+          queue_mode: 'safe',
+          generated_count: 2,
+          stop_record: {
+            stop_reason: 'user_manual_stop',
+            stop_severity: 'warning',
+            suggested_action: 'resume_queue'
+          }
+        }
+      }
+    })
+    resumeAutoQueue.mockResolvedValue({
+      data: {
+        run: {
+          run_id: 'aqr_031',
+          status: 'running',
+          queue_mode: 'safe',
+          generated_count: 2
+        }
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await wrapper.get('[data-test="auto-queue-history-aqr_031"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="auto-queue-continue"]').trigger('click')
+    await flushPromises()
+
+    expect(resumeAutoQueue).toHaveBeenCalledWith('aqr_031', expect.objectContaining({
+      idempotency_key: expect.stringContaining('auto_queue_resume')
+    }))
   })
 
   it('loads and shows blocking conflict details from auto queue action', async () => {
@@ -2619,6 +2704,137 @@ describe('AIPanel', () => {
     })
     expect(wrapper.get('[data-test="auto-queue-conflicts"]').text()).toContain('人物设定冲突')
     expect(wrapper.get('[data-test="auto-queue-conflicts"]').text()).toContain('主角设定与既有章节不一致')
+  })
+
+  it('shows auto queue progress overview and per chapter statuses from selected run', async () => {
+    getAutoQueueHistory.mockResolvedValue({
+      data: {
+        runs: [{
+          run_id: 'aqr_020',
+          status: 'completed',
+          queue_mode: 'continuous',
+          generated_count: 5,
+          target_chapters: 10,
+          total_word_count: 25000,
+          target_word_count: 50000,
+          consumed_tokens: 120000,
+          per_chapter: [
+            { chapter_title: '第1章', generated_word_count: 3200, status: 'review_passed' },
+            { chapter_title: '第2章', generated_word_count: 2800, status: 'review_passed' },
+            { chapter_title: '第3章', generated_word_count: 2600, status: 'candidate_generation' },
+            { chapter_title: '第4章', generated_word_count: 0, status: 'waiting' }
+          ]
+        }]
+      }
+    })
+    getAutoQueueStatus.mockResolvedValue({
+      data: {
+        run: {
+          run_id: 'aqr_020',
+          status: 'completed',
+          queue_mode: 'continuous',
+          generated_count: 5,
+          target_chapters: 10,
+          total_word_count: 25000,
+          target_word_count: 50000,
+          consumed_tokens: 120000,
+          per_chapter: [
+            { chapter_title: '第1章', generated_word_count: 3200, status: 'review_passed' },
+            { chapter_title: '第2章', generated_word_count: 2800, status: 'review_passed' },
+            { chapter_title: '第3章', generated_word_count: 2600, status: 'candidate_generation' },
+            { chapter_title: '第4章', generated_word_count: 0, status: 'waiting' }
+          ]
+        }
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+
+    expect(wrapper.get('[data-test="auto-queue-progress"]').text()).toContain('5 / 10 章')
+    expect(wrapper.text()).toContain('字数25,000 / 50,000')
+    expect(wrapper.text()).toContain('Token120K')
+    expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('第3章')
+    expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('生成中')
+  })
+
+  it('saves auto queue target word count from panel controls', async () => {
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await wrapper.get('[data-test="auto-queue-target-words"]').setValue('80000')
+    await wrapper.get('[data-test="auto-queue-budget-limit"]').setValue('160000')
+    await wrapper.get('[data-test="auto-queue-stop-sequence-end"]').setValue(false)
+    await wrapper.get('[data-test="auto-queue-stop-blocking-review"]').setValue(false)
+    await wrapper.get('[data-test="auto-queue-stop-budget"]').setValue(false)
+    await wrapper.get('[data-test="auto-queue-stop-foreshadow"]').setValue(false)
+    await wrapper.get('[data-test="auto-queue-save-config"]').trigger('click')
+    await flushPromises()
+
+    expect(upsertAutoQueueConfig).toHaveBeenCalledWith({
+      work_id: 'work-1',
+      queue_mode: 'safe',
+      target_chapters: 5,
+      target_word_count: 80000,
+      budget_limit_tokens: 160000,
+      stop_at_sequence_end: false,
+      stop_on_blocking_review: false,
+      stop_on_budget_exceeded: false,
+      stop_on_foreshadow_premature: false
+    })
+  })
+
+  it('opens review workspace from auto queue candidate shortcut', async () => {
+    getAutoQueueHistory.mockResolvedValue({
+      data: {
+        runs: [{
+          run_id: 'aqr_030',
+          status: 'completed',
+          queue_mode: 'safe',
+          generated_count: 2
+        }]
+      }
+    })
+    getAutoQueueStatus.mockResolvedValue({
+      data: {
+        run: {
+          run_id: 'aqr_030',
+          status: 'completed',
+          queue_mode: 'safe',
+          generated_count: 2
+        }
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    await wrapper.get('[data-test="auto-queue-view-candidates"]').trigger('click')
+
+    expect(wrapper.emitted('open-review-tab')).toEqual([[]])
   })
 
   it('blocks ai actions when key or critical role mappings are missing', async () => {

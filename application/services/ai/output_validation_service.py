@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from domain.entities.ai.models import OutputValidationResult
+from domain.validators.selection_rewrite_schema import SelectionRewriteOutputModel
 
 
 class _ProviderConnectionResultModel(BaseModel):
@@ -37,6 +38,7 @@ class OutputValidationService:
         self._schema_registry: dict[str, type[BaseModel]] = {
             "provider_connection_result": _ProviderConnectionResultModel,
             "style_dna_output": _StyleDNAOutputModel,
+            "selection_rewrite_schema": SelectionRewriteOutputModel,
         }
 
     def validate(self, output_schema_key: str, raw_output: Any) -> OutputValidationResult:

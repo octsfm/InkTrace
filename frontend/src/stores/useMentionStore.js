@@ -38,10 +38,13 @@ export const useMentionStore = defineStore('workbenchMention', () => {
   const chapterRevision = ref(0)
   const mentions = ref([])
   const mentionsByChapterId = ref({})
+  const mentionSummaryById = ref({})
   const suggestions = ref([])
   const popupVisible = ref(false)
   const popupPosition = ref({ x: 0, y: 0 })
   const activeQuery = ref('')
+  const activeSuggestionIndex = ref(-1)
+  const skipNextTriggerInspection = ref(false)
   const triggerRange = ref({ start: 0, end: 0 })
   const featureEnabled = computed(() => isP2FeatureEnabled('enable_mentions'))
 
@@ -66,6 +69,7 @@ export const useMentionStore = defineStore('workbenchMention', () => {
     popupVisible.value = false
     activeQuery.value = ''
     suggestions.value = []
+    activeSuggestionIndex.value = -1
     triggerRange.value = { start: 0, end: 0 }
   }
 
@@ -103,8 +107,71 @@ export const useMentionStore = defineStore('workbenchMention', () => {
       limit: 10
     }))
     suggestions.value = Array.isArray(payload?.suggestions) ? payload.suggestions : []
-    popupVisible.value = suggestions.value.length > 0
+    popupVisible.value = true
+    activeSuggestionIndex.value = suggestions.value.length > 0 ? 0 : -1
     return suggestions.value
+  }
+
+  const moveActiveSuggestion = (delta = 0) => {
+    const total = suggestions.value.length
+    if (!popupVisible.value || total <= 0) {
+      activeSuggestionIndex.value = -1
+      return null
+    }
+    const normalizedDelta = Number(delta || 0)
+    const fallbackIndex = activeSuggestionIndex.value >= 0 ? activeSuggestionIndex.value : 0
+    const nextIndex = ((fallbackIndex + normalizedDelta) % total + total) % total
+    activeSuggestionIndex.value = nextIndex
+    return suggestions.value[nextIndex] || null
+  }
+
+  const getActiveSuggestion = () => {
+    if (!popupVisible.value) return null
+    const index = Number(activeSuggestionIndex.value)
+    if (index < 0 || index >= suggestions.value.length) {
+      return suggestions.value[0] || null
+    }
+    return suggestions.value[index] || null
+  }
+
+  const suppressNextTriggerInspection = () => {
+    skipNextTriggerInspection.value = true
+  }
+
+  const describeMentionSummary = (summary) => {
+    const status = String(summary?.status || 'active')
+    const snapshotName = String(summary?.entity_name_snapshot || '')
+    const currentName = String(summary?.entity_current_name || snapshotName || '')
+    const summaryText = String(summary?.summary_text || '')
+    if (status === 'broken') {
+      return '该 mention 已失效，历史数据仅供追溯。'
+    }
+    if (status === 'inactive_entity') {
+      return '该实体已删除，历史数据仅供追溯。'
+    }
+    if (status === 'stale' && snapshotName && currentName && snapshotName !== currentName) {
+      return `${snapshotName} 已更名为 ${currentName}。${summaryText}`.trim()
+    }
+    return summaryText
+  }
+
+  const loadMentionSummary = async (mentionId, { forceRefresh = false } = {}) => {
+    const normalizedMentionId = String(mentionId || '')
+    if (!featureEnabled.value || !normalizedMentionId) return null
+    if (!forceRefresh && mentionSummaryById.value[normalizedMentionId]) {
+      return mentionSummaryById.value[normalizedMentionId]
+    }
+    const payload = unwrapData(await aiApi.getMentionSummary(normalizedMentionId))
+    const summary = {
+      ...payload,
+      mention_id: normalizedMentionId,
+      helper_text: describeMentionSummary(payload)
+    }
+    mentionSummaryById.value = {
+      ...mentionSummaryById.value,
+      [normalizedMentionId]: summary
+    }
+    return summary
   }
 
   const inspectTrigger = async ({
@@ -113,6 +180,11 @@ export const useMentionStore = defineStore('workbenchMention', () => {
     popupPosition: nextPopupPosition = null
   } = {}) => {
     if (!featureEnabled.value) return []
+    if (skipNextTriggerInspection.value) {
+      skipNextTriggerInspection.value = false
+      closePopup()
+      return []
+    }
     const detected = detectMentionQuery(content, cursorPosition)
     if (!detected) {
       closePopup()
@@ -191,16 +263,23 @@ export const useMentionStore = defineStore('workbenchMention', () => {
     chapterId,
     chapterRevision,
     mentions,
+    mentionSummaryById,
     suggestions,
     popupVisible,
     popupPosition,
     activeQuery,
+    activeSuggestionIndex,
     triggerRange,
     featureEnabled,
     initializeContext,
     closePopup,
     loadMentions,
     fetchSuggestions,
+    moveActiveSuggestion,
+    getActiveSuggestion,
+    suppressNextTriggerInspection,
+    describeMentionSummary,
+    loadMentionSummary,
     inspectTrigger,
     registerInsertedMention,
     saveMentions

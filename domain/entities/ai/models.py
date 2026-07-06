@@ -2850,6 +2850,56 @@ class AISuggestion(AIBaseModel):
             return False
 
 
+class SelectionRewriteMode(StrEnum):
+    EXPAND = "expand"
+    REWRITE = "rewrite"
+    ABBREVIATE = "abbreviate"
+    POLISH = "polish"
+    DIALOGUE_OPT = "dialogue_opt"
+    DE_AI = "de_ai"
+
+
+class SelectionRewriteStatus(StrEnum):
+    GENERATING = "generating"
+    PENDING = "pending"
+    APPLIED = "applied"
+    REJECTED = "rejected"
+    FAILED = "failed"
+    CONFLICTED = "conflicted"
+    EXPIRED = "expired"
+
+
+class SelectionRewriteCandidate(AIBaseModel):
+    rewrite_id: str
+    chapter_id: str
+    work_id: str
+    rewrite_mode: SelectionRewriteMode
+    source_text: str
+    source_hash: str = ""
+    source_start_pos: int = 0
+    source_end_pos: int = 0
+    rewritten_text: str = ""
+    applied_text: str = ""
+    word_count_before: int = 0
+    word_count_after: int = 0
+    diff_summary: str = ""
+    status: SelectionRewriteStatus = SelectionRewriteStatus.GENERATING
+    model_role: str = ""
+    chapter_revision: int = 0
+    draft_revision: int = 0
+    draft_text_hash: str = ""
+    draft_length: int = 0
+    edited_before_apply: bool = False
+    context_before: str = ""
+    context_after: str = ""
+    error_code: str = ""
+    error_message: str = ""
+    request_id: str = ""
+    trace_id: str = ""
+    created_at: str = ""
+    applied_at: str = ""
+
+
 class ConflictType(StrEnum):
     CHARACTER_CONFLICT = "character_conflict"
     SETTING_CONFLICT = "setting_conflict"

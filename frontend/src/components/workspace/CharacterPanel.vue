@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <section class="character-panel" data-panel="character">
     <header class="panel-header">
       <div>
@@ -472,6 +472,7 @@ watch(
 )
 
 defineExpose({
+  startCreate: handleCreate,
   saveFocusedDraft: saveCurrentDraft,
   discardFocusedDraft: discardCurrentDraft
 })

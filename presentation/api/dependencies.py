@@ -29,6 +29,7 @@ from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.ai.candidate_rewrite_service import CandidateRewriteService
 from application.services.ai.citation_link_service import CitationLinkService
 from application.services.ai.mention_service import MentionService
+from application.services.ai.selection_rewrite_service import SelectionRewriteService
 from application.services.ai.citation_vector_recall_service import CitationVectorRecallService
 from application.services.ai.multi_chapter_service import MultiChapterContinuationService
 from application.services.ai.memory_review_gate_service import MemoryReviewGateService
@@ -76,6 +77,7 @@ from infrastructure.database.repositories.ai.file_story_memory_store import File
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 from infrastructure.persistence.sqlite_citation_link_repo import SQLiteCitationLinkRepository
 from infrastructure.persistence.sqlite_chapter_mention_repo import SQLiteChapterMentionRepository
+from infrastructure.persistence.sqlite_selection_rewrite_repo import SQLiteSelectionRewriteRepository
 from infrastructure.persistence.sqlite_auto_queue_config_repo import SQLiteAutoQueueConfigRepository
 from infrastructure.persistence.sqlite_auto_queue_run_repo import SQLiteAutoQueueRunRepository
 from infrastructure.persistence.sqlite_style_profile_repo import SQLiteStyleProfileRepository
@@ -181,6 +183,11 @@ def get_style_profile_repository() -> SQLiteStyleProfileRepository:
 @lru_cache(maxsize=1)
 def get_chapter_mention_repository() -> SQLiteChapterMentionRepository:
     return SQLiteChapterMentionRepository()
+
+
+@lru_cache(maxsize=1)
+def get_selection_rewrite_repository() -> SQLiteSelectionRewriteRepository:
+    return SQLiteSelectionRewriteRepository()
 
 
 @lru_cache(maxsize=1)
@@ -586,6 +593,16 @@ def get_mention_service() -> MentionService:
         character_repository=CharacterRepo(),
         timeline_repository=TimelineEventRepo(),
         foreshadow_repository=ForeshadowRepo(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_selection_rewrite_service() -> SelectionRewriteService:
+    return SelectionRewriteService(
+        rewrite_repository=get_selection_rewrite_repository(),
+        job_service=get_ai_job_service(),
+        model_router=get_model_router(),
+        prompt_registry=get_prompt_registry(),
     )
 
 

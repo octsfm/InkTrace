@@ -4,12 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const suggestMentions = vi.fn()
 const getChapterMentions = vi.fn()
 const replaceChapterMentions = vi.fn()
+const getMentionSummary = vi.fn()
 
 vi.mock('@/api', () => ({
   aiApi: {
     suggestMentions,
     getChapterMentions,
-    replaceChapterMentions
+    replaceChapterMentions,
+    getMentionSummary
   }
 }))
 
@@ -161,5 +163,114 @@ describe('useMentionStore', () => {
     expect(store.activeQuery).toBe('')
     expect(mentions[0].mention_id).toBe('m_001')
     expect(store.mentions[0].start_pos).toBe(4)
+  })
+
+  it('tracks active suggestion index and cycles with keyboard navigation', async () => {
+    const { useMentionStore } = await import('../useMentionStore')
+    const store = useMentionStore()
+
+    suggestMentions.mockResolvedValue({
+      data: {
+        suggestions: [{
+          entity_type: 'character',
+          entity_id: 'char_001',
+          entity_name: '张三',
+          match_type: 'prefix',
+          summary_preview: '主角'
+        }, {
+          entity_type: 'event',
+          entity_id: 'event_001',
+          entity_name: '雨夜决战',
+          match_type: 'prefix',
+          summary_preview: '关键事件'
+        }]
+      }
+    })
+
+    store.initializeContext({
+      workId: 'work-1',
+      chapterId: 'chapter-1',
+      chapterRevision: 3
+    })
+
+    await store.inspectTrigger({
+      content: '他说@张',
+      cursorPosition: 4
+    })
+
+    expect(store.activeSuggestionIndex).toBe(0)
+    expect(store.getActiveSuggestion().entity_id).toBe('char_001')
+
+    store.moveActiveSuggestion(1)
+    expect(store.activeSuggestionIndex).toBe(1)
+    expect(store.getActiveSuggestion().entity_id).toBe('event_001')
+
+    store.moveActiveSuggestion(1)
+    expect(store.activeSuggestionIndex).toBe(0)
+
+    store.moveActiveSuggestion(-1)
+    expect(store.activeSuggestionIndex).toBe(1)
+
+    store.closePopup()
+    expect(store.activeSuggestionIndex).toBe(-1)
+    expect(store.getActiveSuggestion()).toBe(null)
+  })
+
+  it('loads mention summary once and reuses cached result for the same mention', async () => {
+    const { useMentionStore } = await import('../useMentionStore')
+    const store = useMentionStore()
+
+    getMentionSummary.mockResolvedValue({
+      data: {
+        mention_id: 'm_001',
+        entity_type: 'character',
+        entity_id: 'char_001',
+        entity_name_snapshot: '张三',
+        entity_current_name: '张三',
+        summary_text: '张三是本书主角。',
+        status: 'active'
+      }
+    })
+
+    const first = await store.loadMentionSummary('m_001')
+    const second = await store.loadMentionSummary('m_001')
+
+    expect(getMentionSummary).toHaveBeenCalledTimes(1)
+    expect(first.summary_text).toContain('主角')
+    expect(second.summary_text).toContain('主角')
+    expect(store.mentionSummaryById.m_001.summary_text).toContain('主角')
+  })
+
+  it('builds status-specific mention helper messages from summary payload', async () => {
+    const { useMentionStore } = await import('../useMentionStore')
+    const store = useMentionStore()
+
+    expect(store.describeMentionSummary({
+      status: 'broken',
+      entity_name_snapshot: '张三',
+      entity_current_name: '张三',
+      summary_text: '原摘要'
+    })).toContain('已失效')
+
+    expect(store.describeMentionSummary({
+      status: 'stale',
+      entity_name_snapshot: '张三',
+      entity_current_name: '张小凡',
+      summary_text: '原摘要'
+    })).toContain('已更名')
+
+    expect(store.describeMentionSummary({
+      status: 'inactive_entity',
+      entity_name_snapshot: '张三',
+      entity_current_name: '张三',
+      summary_text: '原摘要'
+    })).toContain('已删除')
+
+    expect(store.describeMentionSummary({
+      status: 'active',
+      entity_name_snapshot: '张三',
+      entity_current_name: '张三',
+      summary_text: '张三是本书主角。'
+    })).toContain('张三是本书主角')
   })
 })

@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <section class="ai-panel" data-test="ai-panel">
     <header class="ai-panel-header">
       <div>
@@ -144,12 +144,24 @@
         :chapter-id="chapterId"
         :queue-mode="autoQueueMode"
         :target-chapters="autoQueueTargetChapters"
+        :target-word-count="autoQueueTargetWordCount"
+        :budget-limit-tokens="autoQueueBudgetLimitTokens"
+        :stop-at-sequence-end="autoQueueStopAtSequenceEnd"
+        :stop-on-blocking-review="autoQueueStopOnBlockingReview"
+        :stop-on-budget-exceeded="autoQueueStopOnBudgetExceeded"
+        :stop-on-foreshadow-premature="autoQueueStopOnForeshadowPremature"
         :current-run="autoQueueStore.currentRun"
         :history-runs="autoQueueStore.historyRuns"
         :error-message="autoQueueStore.errorMessage"
         :note-message="autoQueueStore.noteMessage"
         @update:queue-mode="autoQueueMode = $event"
         @update:target-chapters="autoQueueTargetChapters = $event"
+        @update:target-word-count="autoQueueTargetWordCount = $event"
+        @update:budget-limit-tokens="autoQueueBudgetLimitTokens = $event"
+        @update:stop-at-sequence-end="autoQueueStopAtSequenceEnd = $event"
+        @update:stop-on-blocking-review="autoQueueStopOnBlockingReview = $event"
+        @update:stop-on-budget-exceeded="autoQueueStopOnBudgetExceeded = $event"
+        @update:stop-on-foreshadow-premature="autoQueueStopOnForeshadowPremature = $event"
         @save-config="handleAutoQueueSaveConfig"
         @start="handleAutoQueueStart"
         @pause="handleAutoQueuePause"
@@ -157,6 +169,7 @@
         @stop="handleAutoQueueStop"
         @confirm-continue="handleAutoQueueConfirmContinue"
         @disable-budget-check="handleAutoQueueDisableBudgetCheck"
+        @view-candidates="handleAutoQueueViewCandidates"
         @view-conflicts="handleAutoQueueViewConflicts"
         @refresh="handleAutoQueueRefresh"
         @select-run="handleAutoQueueSelectRun"
@@ -945,6 +958,8 @@ import OutlineAssistPanel from './OutlineAssistPanel.vue'
 import ReviewTab from './ReviewTab.vue'
 import StyleDNAConfigPanel from './StyleDNAConfigPanel.vue'
 
+const emit = defineEmits(['open-review-tab'])
+
 const props = defineProps({
   workId: {
     type: String,
@@ -1029,6 +1044,12 @@ const styleDNASourceMode = ref('user_upload')
 const styleDNASelectedChapterIds = ref([])
 const autoQueueMode = ref('safe')
 const autoQueueTargetChapters = ref(5)
+const autoQueueTargetWordCount = ref(0)
+const autoQueueBudgetLimitTokens = ref(0)
+const autoQueueStopAtSequenceEnd = ref(true)
+const autoQueueStopOnBlockingReview = ref(true)
+const autoQueueStopOnBudgetExceeded = ref(true)
+const autoQueueStopOnForeshadowPremature = ref(true)
 const autoQueueConflictSectionVisible = ref(false)
 const autoQueueConflictLoading = ref(false)
 const aiHelperActiveView = ref('auto_queue')
@@ -1584,12 +1605,24 @@ const handleStyleDNARefresh = async () => {
 const syncAutoQueueDraftsFromStore = () => {
   autoQueueMode.value = String(autoQueueStore.config?.queue_mode || 'safe')
   autoQueueTargetChapters.value = Number(autoQueueStore.config?.target_chapters || 5)
+  autoQueueTargetWordCount.value = Number(autoQueueStore.config?.target_word_count || 0)
+  autoQueueBudgetLimitTokens.value = Number(autoQueueStore.config?.budget_limit_tokens || 0)
+  autoQueueStopAtSequenceEnd.value = Boolean(autoQueueStore.config?.stop_at_sequence_end ?? true)
+  autoQueueStopOnBlockingReview.value = Boolean(autoQueueStore.config?.stop_on_blocking_review ?? true)
+  autoQueueStopOnBudgetExceeded.value = Boolean(autoQueueStore.config?.stop_on_budget_exceeded ?? true)
+  autoQueueStopOnForeshadowPremature.value = Boolean(autoQueueStore.config?.stop_on_foreshadow_premature ?? true)
 }
 
 const handleAutoQueueSaveConfig = async () => {
   await autoQueueStore.saveConfig({
     queue_mode: autoQueueMode.value,
-    target_chapters: Number(autoQueueTargetChapters.value || 0)
+    target_chapters: Number(autoQueueTargetChapters.value || 0),
+    target_word_count: Number(autoQueueTargetWordCount.value || 0),
+    budget_limit_tokens: Number(autoQueueBudgetLimitTokens.value || 0),
+    stop_at_sequence_end: Boolean(autoQueueStopAtSequenceEnd.value),
+    stop_on_blocking_review: Boolean(autoQueueStopOnBlockingReview.value),
+    stop_on_budget_exceeded: Boolean(autoQueueStopOnBudgetExceeded.value),
+    stop_on_foreshadow_premature: Boolean(autoQueueStopOnForeshadowPremature.value)
   })
   syncAutoQueueDraftsFromStore()
 }
@@ -1630,7 +1663,12 @@ const handleAutoQueueDisableBudgetCheck = async () => {
   await autoQueueStore.saveConfig({
     queue_mode: autoQueueMode.value,
     target_chapters: Number(autoQueueTargetChapters.value || 0),
-    stop_on_budget_exceeded: false
+    target_word_count: Number(autoQueueTargetWordCount.value || 0),
+    budget_limit_tokens: Number(autoQueueBudgetLimitTokens.value || 0),
+    stop_at_sequence_end: Boolean(autoQueueStopAtSequenceEnd.value),
+    stop_on_blocking_review: Boolean(autoQueueStopOnBlockingReview.value),
+    stop_on_budget_exceeded: false,
+    stop_on_foreshadow_premature: Boolean(autoQueueStopOnForeshadowPremature.value)
   })
   syncAutoQueueDraftsFromStore()
 }
@@ -1673,6 +1711,10 @@ const handleAutoQueueStop = async () => {
 const handleAutoQueueRefresh = async () => {
   await autoQueueStore.refreshAll(props.workId)
   syncAutoQueueDraftsFromStore()
+}
+
+const handleAutoQueueViewCandidates = () => {
+  emit('open-review-tab')
 }
 
 const handleAutoQueueSelectRun = async (runId) => {
@@ -2571,6 +2613,7 @@ watch(() => props.workId, async () => {
   styleDNASelectedChapterIds.value = []
   autoQueueMode.value = 'safe'
   autoQueueTargetChapters.value = 5
+  autoQueueTargetWordCount.value = 0
   autoQueueConflictSectionVisible.value = false
   autoQueueConflictLoading.value = false
   openingWizardVisible.value = false

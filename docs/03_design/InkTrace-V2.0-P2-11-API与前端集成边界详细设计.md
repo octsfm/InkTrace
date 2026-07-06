@@ -191,7 +191,7 @@ WritingStudio.vue
 ├── 中间编辑区 (PureTextEditor)
 │   ├── MentionDetector                 → P2-05 内联 (composable)
 │   ├── MentionPopup                    → P2-05 浮动 (组件)
-│   └── SelectionToolbar                → P2-08 浮动
+│   └── SelectionToolbar                → P2-08 浮动 + DraftSnapshot 采集
 ├── 右侧面板 (RightWorkspacePanel)
 │   ├── [候选稿] tab (已有)
 │   │   └── Citation 引用浮层          → P2-02 内联
@@ -246,7 +246,30 @@ P2-05 前端组件统一使用 `Mention*` 命名（不带 `At` 前缀）：
 | `ChapterTitleInput.vue` | 不动 |
 | `StatusBar.vue` | 仅追加 P2 进度指示器，不改已有逻辑 |
 
-### 4.2 P1 API 不受影响
+### 4.2 P2-08 DraftSnapshot 集成边界（冻结）
+
+P2-08 `Selection Rewrite` 在集成层新增如下冻结边界：
+
+1. 当前草稿权威源仍为前端 Workbench Local-First 状态。
+2. 后端 `selection_rewrite` 路由**不直接读取服务端草稿正文**。
+3. `useSelectionRewriteStore` 在 create/apply 时负责上传 `DraftSnapshot` 元信息。
+
+`DraftSnapshot` 最小字段：
+
+| 字段 | 来源 | 说明 |
+|---|---|---|
+| `draft_revision` | `useSelectionRewriteStore` / `WritingStudio` | 当前草稿 revision |
+| `draft_text_hash` | 前端对当前整章草稿计算 SHA-256 | 用于整章快照冲突校验 |
+| `draft_length` | 当前整章草稿长度 | 用于位置范围校验 |
+| `range_text` | apply 时由前端当前选区区间文本计算 | 用于区间文本匹配校验 |
+
+约束：
+
+1. 前端不得上传完整草稿正文到 `selection_rewrite` API。
+2. 后端不得新增服务端 draft 正文持久化作为 P2-08 初期实现前提。
+3. `apply` 仍只返回 patch，由前端 Workbench Store 替换当前草稿并进入既有保存链路。
+
+### 4.3 P1 API 不受影响
 
 - P1 的 `/api/v2/ai/sessions`、`/api/v2/ai/continuation`、`/api/v2/ai/suggestions` 等全部保留。
 - P2 新增路由使用不同前缀子路径，不与 P1 冲突。
@@ -305,6 +328,7 @@ P2 默认继续使用**轮询**（与 P1 一致）。
 | `P2_STRATEGY_NOT_CONFIRMED` | 400 | 开篇策略未确认 | P2-06 |
 | `P2_RIGHTS_NOT_CONFIRMED` | 400 | 权利声明未确认 | P2-06 |
 | `P2_SELECTION_EMPTY` | 400 | 选区为空 | P2-08 |
+| `P2_DRAFT_SNAPSHOT_INVALID` | 400 | 前端未提供有效 DraftSnapshot 元信息 | P2-08 |
 | `P2_SELECTION_CONFLICT` | 409 | 选区与其他版本冲突 | P2-08 |
 | `P2_SELECTION_TEXT_MISMATCH` | 409 | 选区基准文本与当前正文不匹配 | P2-08 |
 | `P2_TARGET_CONFLICT` | 409 | 目标章节冲突 | P2-07 |
@@ -469,7 +493,7 @@ frontend/src/components/workspace/
 
 frontend/src/composables/
   useMentionDetector.js                # P2-05
-  useSelectionRewrite.js               # P2-08
+  useSelectionRewrite.js               # P2-08（如保留，仅做 UI/composable，不承载 DraftSnapshot 权威）
 
 frontend/src/stores/
   useMultiChapterStore.js              # P2-01

@@ -158,6 +158,39 @@ CREATE TABLE IF NOT EXISTS chapter_mentions (
 )
 """
 
+SELECTION_REWRITE_CANDIDATES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS selection_rewrite_candidates (
+    rewrite_id TEXT PRIMARY KEY,
+    chapter_id TEXT NOT NULL,
+    work_id TEXT NOT NULL,
+    rewrite_mode TEXT NOT NULL,
+    source_text TEXT NOT NULL,
+    source_hash TEXT NOT NULL DEFAULT '',
+    source_start_pos INTEGER NOT NULL DEFAULT 0,
+    source_end_pos INTEGER NOT NULL DEFAULT 0,
+    rewritten_text TEXT NOT NULL DEFAULT '',
+    applied_text TEXT NOT NULL DEFAULT '',
+    word_count_before INTEGER NOT NULL DEFAULT 0,
+    word_count_after INTEGER NOT NULL DEFAULT 0,
+    diff_summary TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'generating',
+    model_role TEXT NOT NULL DEFAULT '',
+    chapter_revision INTEGER NOT NULL DEFAULT 0,
+    draft_revision INTEGER NOT NULL DEFAULT 0,
+    draft_text_hash TEXT NOT NULL DEFAULT '',
+    draft_length INTEGER NOT NULL DEFAULT 0,
+    edited_before_apply INTEGER NOT NULL DEFAULT 0,
+    context_before TEXT DEFAULT '',
+    context_after TEXT DEFAULT '',
+    error_code TEXT DEFAULT '',
+    error_message TEXT DEFAULT '',
+    request_id TEXT DEFAULT '',
+    trace_id TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '',
+    applied_at TEXT DEFAULT ''
+)
+"""
+
 AUTO_QUEUE_CONFIGS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS auto_queue_configs (
     config_id TEXT PRIMARY KEY,
@@ -274,6 +307,7 @@ def migrate_ai_schema(conn: sqlite3.Connection) -> None:
     conn.execute(CITATION_LINKS_TABLE_SQL)
     conn.execute(STYLE_PROFILES_TABLE_SQL)
     conn.execute(CHAPTER_MENTIONS_TABLE_SQL)
+    conn.execute(SELECTION_REWRITE_CANDIDATES_TABLE_SQL)
     conn.execute(AUTO_QUEUE_CONFIGS_TABLE_SQL)
     conn.execute(AUTO_QUEUE_RUNS_TABLE_SQL)
     conn.execute(CHAPTER_CHUNKS_TABLE_SQL)
@@ -288,6 +322,9 @@ def migrate_ai_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mentions_chapter ON chapter_mentions(chapter_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mentions_entity ON chapter_mentions(entity_type, entity_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mentions_work ON chapter_mentions(work_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rewrite_chapter ON selection_rewrite_candidates(chapter_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rewrite_chapter_status ON selection_rewrite_candidates(chapter_id, status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rewrite_work ON selection_rewrite_candidates(work_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_auto_queue_runs_work ON auto_queue_runs(work_id, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_chunks_work_id ON chapter_chunks(work_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_chunks_chapter_id ON chapter_chunks(work_id, chapter_id)")
@@ -306,6 +343,8 @@ def migrate_ai_schema(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "candidate_drafts", "revision_count", "INTEGER NOT NULL DEFAULT 0")
     _add_column_if_missing(conn, "citation_links", "work_id", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "citation_links", "source_hash", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "selection_rewrite_candidates", "draft_text_hash", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "selection_rewrite_candidates", "draft_length", "INTEGER NOT NULL DEFAULT 0")
 
     conn.execute("UPDATE candidate_drafts SET revision_count = 0 WHERE revision_count IS NULL")
     conn.execute("UPDATE llm_call_logs SET estimated_cost = 0.0 WHERE estimated_cost IS NULL")

@@ -44,6 +44,19 @@ class FakeLLMProvider(LLMProvider):
                 },
                 ensure_ascii=False,
             )
+        elif request.output_schema_key == "selection_rewrite_schema":
+            rewritten_text = self._build_selection_rewrite_text(
+                prompt_key=str(request.prompt_key or ""),
+                source_text=user_message,
+            )
+            content = json.dumps(
+                {
+                    "rewritten_text": rewritten_text,
+                    "diff_summary": f"{request.prompt_key or request.model_role}_generated",
+                    "risk_notes": [],
+                },
+                ensure_ascii=False,
+            )
         return LLMResponse(
             provider_name=self.provider_name,
             model_name=model_name,
@@ -53,6 +66,22 @@ class FakeLLMProvider(LLMProvider):
             token_usage=LLMUsage(input_tokens=10, output_tokens=20, total_tokens=30),
             finish_reason="stop",
         )
+
+    @staticmethod
+    def _build_selection_rewrite_text(*, prompt_key: str, source_text: str) -> str:
+        base = str(source_text or "").strip() or "测试片段"
+        if prompt_key == "selection_expand_v1":
+            return f"{base}风更冷些"
+        if prompt_key == "selection_abbreviate_v1":
+            keep_length = max(1, int(len(base) * 0.5))
+            return base[:keep_length]
+        if prompt_key == "selection_polish_v1":
+            return f"{base}，语气与节奏更克制。"
+        if prompt_key == "selection_dialogue_opt_v1":
+            return f"{base}，他说得更自然。"
+        if prompt_key == "selection_de_ai_v1":
+            return f"{base}，表达更贴近日常叙事。"
+        return f"{base}，细节更完整。"
 
     def test_connection(self, provider_config: AIProviderConfig, model_name: str) -> dict[str, str]:
         if not provider_config.encrypted_api_key:

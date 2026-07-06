@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <div class="writing-studio" :class="[themeClass, { 'writing-studio--focus': isFocusMode }]">
     <VersionConflictModal
       :model-value="conflictModalVisible"
@@ -17,10 +17,16 @@
       :word-count-before="Number(selectionRewriteStore.candidate?.word_count_before || selectionRewriteStore.selectionText.length || 0)"
       :word-count-after="Number(selectionRewriteStore.candidate?.word_count_after || selectionRewriteStore.editedText.length || 0)"
       :mode-label="displaySelectionRewriteMode(selectionRewriteStore.candidate?.rewrite_mode)"
+      :applying="selectionRewriteStore.applying"
+      :waiting-user-action="selectionRewriteStore.status === 'pending'"
+      :conflicted="selectionRewriteStore.status === 'conflicted'"
+      :conflict-message="selectionRewriteStore.actionError"
       @update:model-value="handleSelectionRewriteModalVisibility"
       @update:edited-text="selectionRewriteStore.editedText = $event"
       @accept="handleSelectionRewriteAccept"
       @reject="handleSelectionRewriteReject"
+      @reselect="handleReselectSelectionRewrite"
+      @dismiss-conflict="selectionRewriteStore.clearError()"
     />
 
     <header class="studio-header" :class="{ 'studio-header--focus': isFocusMode }">
@@ -141,7 +147,12 @@
             <div class="editor-surface">
               <SelectionRewriteToolbar
                 :visible="selectionRewriteToolbarVisible"
+                :busy="selectionRewriteStore.loading"
+                :polling="selectionRewriteStore.status === 'generating'"
+                :floating-style="selectionRewriteToolbarStyle"
+                :placement="selectionRewriteToolbarPlacement"
                 @mode-select="handleSelectionRewriteMode"
+                @clear-history="handleSelectionRewriteClearHistory"
               />
               <div
                 v-if="mentionStore.featureEnabled && mentionStore.popupVisible"
@@ -151,7 +162,10 @@
                 <MentionPopup
                   :visible="mentionStore.popupVisible"
                   :suggestions="mentionStore.suggestions"
+                  :query="mentionStore.activeQuery"
+                  :active-index="mentionStore.activeSuggestionIndex"
                   @select="handleMentionSuggestionSelect"
+                  @create-character="handleMentionCreateCharacter"
                 />
               </div>
               <PureTextEditor
@@ -223,6 +237,7 @@
               :chapter-version="Number(chapterDataStore.activeChapter?.version || 0)"
               :chapter-options="chapterDataStore.chapters"
               :draft-chapter-ids="draftChapterIds"
+              @open-review-tab="handleAIPanelOpenReviewTab"
             />
             <ReviewTab
               v-else-if="activeTab === 'review'"
@@ -238,7 +253,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { v1ChaptersApi, v1WorksApi } from '@/api'
@@ -293,10 +308,12 @@ const workTitle = ref('作品')
 const workAuthor = ref('')
 const workTitleEditing = ref(false)
 const workTitleDraft = ref('')
+const lastSelectionRewriteErrorKey = ref('')
 let sessionSaveTimer = null
 let draftSyncTimer = null
 let retryTimer = null
 let isDraftSyncing = false
+const SELECTION_REWRITE_TOOLBAR_WIDTH = 320
 const DRAFT_SYNC_DELAY_MS = 2500
 const RETRY_DELAYS_MS = [1000, 2000, 4000]
 const MOBILE_ASSET_BREAKPOINT = 760
@@ -314,6 +331,12 @@ const preferencePanelVisible = ref(false)
 const lastEffectiveCountByChapterId = ref({})
 const draftRevisionByChapterId = ref({})
 const suppressDraftCaching = ref(false)
+const selectionRewriteToolbarAnchor = ref({
+  x: 0,
+  y: 0,
+  height: 0,
+  containerWidth: 0
+})
 
 const workId = computed(() => String(route.params.id || ''))
 const isFocusMode = computed(() => preferenceStore.focusMode)
@@ -342,6 +365,28 @@ const selectionRewriteToolbarVisible = computed(() => (
   selectionRewriteStore.hasValidSelection &&
   !selectionRewriteStore.modalVisible
 ))
+const selectionRewriteToolbarPlacement = computed(() => (
+  Number(selectionRewriteToolbarAnchor.value.y || 0) < 96 ? 'below' : 'above'
+))
+const selectionRewriteToolbarStyle = computed(() => {
+  const containerWidth = Number(selectionRewriteToolbarAnchor.value.containerWidth || 0)
+  const minimumX = Math.min(SELECTION_REWRITE_TOOLBAR_WIDTH / 2, containerWidth / 2 || 0)
+  const maximumX = Math.max(minimumX, containerWidth - (SELECTION_REWRITE_TOOLBAR_WIDTH / 2))
+  const anchoredX = Number(selectionRewriteToolbarAnchor.value.x || 0)
+  const clampedX = containerWidth
+    ? Math.min(Math.max(anchoredX, minimumX), maximumX)
+    : anchoredX
+  const anchoredY = Number(selectionRewriteToolbarAnchor.value.y || 0)
+  const anchoredHeight = Number(selectionRewriteToolbarAnchor.value.height || 0)
+  return {
+    left: `${Math.round(clampedX)}px`,
+    top: `${Math.round(
+      selectionRewriteToolbarPlacement.value === 'below'
+        ? anchoredY + anchoredHeight
+        : anchoredY
+    )}px`
+  }
+})
 const conflictModalVisible = computed(() => saveStateStore.hasConflict)
 const conflictPayload = computed(() => saveStateStore.conflictPayload)
 const conflictChapterId = computed(() => String(saveStateStore.conflictPayload?.chapterId || ''))
@@ -555,6 +600,15 @@ const scrollSidebarToChapter = async (chapterId) => {
 const focusEditor = async () => {
   await nextTick()
   editorRef.value?.focusEditor?.()
+}
+
+const clearSelectionRewriteToolbarAnchor = () => {
+  selectionRewriteToolbarAnchor.value = {
+    x: 0,
+    y: 0,
+    height: 0,
+    containerWidth: 0
+  }
 }
 
 const captureActiveEditorViewport = () => {
@@ -970,6 +1024,26 @@ const handleEditorSaveShortcut = async (event) => {
   await saveFocusedAssetDraft()
 }
 
+const handleMentionPopupKeyboard = async (event) => {
+  if (!mentionStore.popupVisible || event?.isComposing) return
+  if (event?.key === 'ArrowDown') {
+    event.preventDefault()
+    mentionStore.moveActiveSuggestion(1)
+    return
+  }
+  if (event?.key === 'ArrowUp') {
+    event.preventDefault()
+    mentionStore.moveActiveSuggestion(-1)
+    return
+  }
+  if (event?.key === 'Enter') {
+    const activeSuggestion = mentionStore.getActiveSuggestion()
+    if (!activeSuggestion) return
+    event.preventDefault()
+    await handleMentionSuggestionSelect(activeSuggestion)
+  }
+}
+
 const activateChapter = async (chapterId) => {
   const nextChapterId = String(chapterId || '')
   if (!nextChapterId) return
@@ -996,6 +1070,7 @@ onMounted(async () => {
   window.addEventListener('online', handleBrowserOnline)
   window.addEventListener('inktrace-cache-pruned', handleCachePruned)
   window.addEventListener('keydown', handleEditorSaveShortcut)
+  window.addEventListener('keydown', handleMentionPopupKeyboard)
   window.addEventListener('keydown', handlePreferencePanelEscape)
   window.addEventListener('resize', syncWorkspaceViewport)
   document.addEventListener('pointerdown', handlePreferencePanelPointerDown)
@@ -1047,6 +1122,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('online', handleBrowserOnline)
   window.removeEventListener('inktrace-cache-pruned', handleCachePruned)
   window.removeEventListener('keydown', handleEditorSaveShortcut)
+  window.removeEventListener('keydown', handleMentionPopupKeyboard)
   window.removeEventListener('keydown', handlePreferencePanelEscape)
   window.removeEventListener('resize', syncWorkspaceViewport)
   document.removeEventListener('pointerdown', handlePreferencePanelPointerDown)
@@ -1113,6 +1189,11 @@ const handleWorkspaceTabChange = (tabKey) => {
   const nextKey = String(tabKey || '')
   activeAssetFocusArea.value = String(nextKey || activeWorkspaceTab.value || 'outline')
   activeWorkspaceTab.value = nextKey
+}
+
+const handleAIPanelOpenReviewTab = () => {
+  activeAssetFocusArea.value = 'review'
+  activeWorkspaceTab.value = 'review'
 }
 
 const handleAssetFocusArea = (area) => {
@@ -1275,13 +1356,31 @@ const handleCursorChange = ({ cursorPosition = 0 } = {}) => {
   scheduleSessionSave()
 }
 
-const handleSelectionChange = ({ text = '', start = 0, end = 0 } = {}) => {
+const handleSelectionChange = ({
+  text = '',
+  start = 0,
+  end = 0,
+  anchorX = 0,
+  anchorY = 0,
+  anchorHeight = 0,
+  containerWidth = 0
+} = {}) => {
   syncSelectionRewriteContext()
   selectionRewriteStore.setSelection({
     text,
     start,
     end
   })
+  if (!text || end <= start) {
+    clearSelectionRewriteToolbarAnchor()
+    return
+  }
+  selectionRewriteToolbarAnchor.value = {
+    x: Number(anchorX || 0),
+    y: Number(anchorY || 0),
+    height: Number(anchorHeight || 0),
+    containerWidth: Number(containerWidth || 0)
+  }
 }
 
 const handleScrollChange = ({ scrollTop = 0 } = {}) => {
@@ -1305,10 +1404,7 @@ const handleScrollChange = ({ scrollTop = 0 } = {}) => {
 const handleSelectionRewriteMode = async (mode) => {
   try {
     syncSelectionRewriteContext()
-    const created = await selectionRewriteStore.createRewrite(mode)
-    if (String(created?.rewrite_id || '')) {
-      await selectionRewriteStore.loadRewriteResult(created.rewrite_id)
-    }
+    await selectionRewriteStore.createRewrite(mode)
   } catch (error) {
     ElMessage.error(selectionRewriteStore.actionError || '选区改写生成失败，请稍后重试。')
   }
@@ -1317,6 +1413,49 @@ const handleSelectionRewriteMode = async (mode) => {
 const handleSelectionRewriteModalVisibility = (visible) => {
   if (visible) return
   selectionRewriteStore.clearModalState()
+}
+
+const handleUndoSelectionRewriteApply = async () => {
+  const chapterId = String(chapterDataStore.activeChapterId || '')
+  if (!chapterId) return
+  const restored = selectionRewriteStore.undoLastApply()
+  if (!restored) return
+  bumpDraftRevision(chapterId)
+  syncSelectionRewriteContext(chapterId)
+  syncChapterWordBaseline(chapterId, chapterDataStore.activeChapterContent)
+  workspaceStore.setLastOpenChapter(chapterId)
+  writeCachedDraft(chapterId, chapterDataStore.activeChapterContent)
+  scheduleDraftPersistence()
+  await nextTick()
+}
+
+const handleRetrySelectionRewrite = async () => {
+  try {
+    await selectionRewriteStore.retryLastRewrite()
+  } catch (error) {
+    ElMessage.error(selectionRewriteStore.actionError || '选区改写生成失败，请稍后重试。')
+  }
+}
+
+const handleReselectSelectionRewrite = async () => {
+  selectionRewriteStore.activeRewriteId = ''
+  selectionRewriteStore.requestId = ''
+  selectionRewriteStore.status = ''
+  selectionRewriteStore.candidate = null
+  selectionRewriteStore.clearSelection()
+  selectionRewriteStore.clearModalState()
+  selectionRewriteStore.clearError()
+  await nextTick()
+  await focusEditor()
+}
+
+const handleSelectionRewriteClearHistory = async () => {
+  try {
+    const result = await selectionRewriteStore.clearChapterHistory()
+    ElMessage.success(`已清除 ${Number(result?.cleared_count || 0)} 条历史改写。`)
+  } catch (error) {
+    ElMessage.error(selectionRewriteStore.actionError || '清除历史改写失败，请稍后重试。')
+  }
 }
 
 const handleSelectionRewriteAccept = async ({ finalText = '' } = {}) => {
@@ -1332,6 +1471,17 @@ const handleSelectionRewriteAccept = async ({ finalText = '' } = {}) => {
     writeCachedDraft(chapterId, chapterDataStore.activeChapterContent)
     selectionRewriteStore.clearSelection()
     scheduleDraftPersistence()
+    ElMessage.success({
+      duration: 5000,
+      message: h('span', { class: 'selection-rewrite-apply-toast' }, [
+        h('span', '选区改写已应用。'),
+        h('button', {
+          type: 'button',
+          class: 'selection-rewrite-undo-button',
+          onClick: () => handleUndoSelectionRewriteApply()
+        }, '撤销')
+      ])
+    })
   } catch (error) {
     ElMessage.error(selectionRewriteStore.actionError || '选区改写应用失败，请重新尝试。')
   }
@@ -1341,20 +1491,71 @@ const handleSelectionRewriteReject = async () => {
   try {
     await selectionRewriteStore.rejectCurrentRewrite()
     selectionRewriteStore.clearSelection()
+    ElMessage.info({
+      duration: 2000,
+      message: '已拒绝'
+    })
   } catch (error) {
     ElMessage.error(selectionRewriteStore.actionError || '选区改写拒绝失败，请稍后重试。')
   }
 }
 
+watch(
+  () => [
+    String(selectionRewriteStore.activeRewriteId || ''),
+    String(selectionRewriteStore.status || ''),
+    String(selectionRewriteStore.actionError || '')
+  ],
+  ([rewriteId, rewriteStatus, rewriteError]) => {
+    if (!rewriteId || !rewriteError) return
+    if (!['failed', 'conflicted', 'expired'].includes(rewriteStatus)) return
+    const nextKey = `${rewriteId}:${rewriteStatus}:${rewriteError}`
+    if (lastSelectionRewriteErrorKey.value === nextKey) return
+    lastSelectionRewriteErrorKey.value = nextKey
+    if (rewriteStatus === 'failed') {
+      ElMessage.error({
+        duration: 5000,
+        message: h('span', { class: 'selection-rewrite-error-toast' }, [
+          h('span', rewriteError),
+          h('button', {
+            type: 'button',
+            class: 'selection-rewrite-retry-button',
+            onClick: () => handleRetrySelectionRewrite()
+          }, '重试'),
+          h('button', {
+            type: 'button',
+            class: 'selection-rewrite-cancel-button',
+            onClick: () => {
+              selectionRewriteStore.clearError()
+            }
+          }, '取消')
+        ])
+      })
+      return
+    }
+    if (rewriteStatus === 'conflicted') return
+    ElMessage.error(rewriteError)
+  }
+)
+
 const handleMentionSuggestionSelect = async (suggestion) => {
   const label = `@${String(suggestion?.entity_name || '')}`
   const range = mentionStore.triggerRange || { start: 0, end: 0 }
   setEditorSelectionRange(range.start, range.end)
+  mentionStore.suppressNextTriggerInspection()
   const inserted = editorRef.value?.insertPlainTextAtSelection?.(label)
   if (!inserted) return
   mentionStore.registerInsertedMention(suggestion, inserted)
   await nextTick()
   await focusEditor()
+}
+
+const handleMentionCreateCharacter = async () => {
+  mentionStore.closePopup()
+  activeWorkspaceTab.value = 'character'
+  activeAssetFocusArea.value = 'character'
+  await nextTick()
+  characterPanelRef.value?.startCreate?.()
 }
 
 const handleCreateChapter = async () => {

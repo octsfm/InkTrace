@@ -72,7 +72,7 @@ describe('PureTextEditor', () => {
     expect(wrapper.emitted('cursor-change')).toEqual([[{ cursorPosition: 3 }]])
   })
 
-  it('emits selection payload with selected text and range', async () => {
+  it('emits selection payload with selected text, range and floating anchor position', async () => {
     const wrapper = mount(PureTextEditor, {
       props: {
         modelValue: '月光落在窗台上'
@@ -80,6 +80,22 @@ describe('PureTextEditor', () => {
     })
 
     const textarea = wrapper.find('textarea')
+    Object.defineProperty(textarea.element, 'clientWidth', {
+      configurable: true,
+      value: 320
+    })
+    Object.defineProperty(textarea.element, 'clientHeight', {
+      configurable: true,
+      value: 180
+    })
+    textarea.element.getBoundingClientRect = vi.fn(() => ({
+      left: 24,
+      top: 36,
+      width: 320,
+      height: 180,
+      right: 344,
+      bottom: 216
+    }))
     textarea.element.selectionStart = 2
     textarea.element.selectionEnd = 6
 
@@ -88,7 +104,11 @@ describe('PureTextEditor', () => {
     expect(wrapper.emitted('selection-change')).toEqual([[{
       text: '落在窗台',
       start: 2,
-      end: 6
+      end: 6,
+      anchorX: expect.any(Number),
+      anchorY: expect.any(Number),
+      anchorHeight: expect.any(Number),
+      containerWidth: 320
     }]])
   })
 

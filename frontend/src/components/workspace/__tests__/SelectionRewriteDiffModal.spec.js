@@ -60,4 +60,67 @@ describe('SelectionRewriteDiffModal', () => {
     expect(wrapper.emitted('reject')).toHaveLength(1)
     expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
   })
+
+  it('shows applying state and disables modal actions while applying rewrite', () => {
+    const wrapper = mount(SelectionRewriteDiffModal, {
+      props: {
+        modelValue: true,
+        sourceText: '月光落在窗台上',
+        editedText: '月光静静落在旧窗台上',
+        applying: true
+      }
+    })
+
+    expect(wrapper.text()).toContain('正在应用…')
+    for (const button of wrapper.findAll('button')) {
+      expect(button.attributes('disabled')).toBeDefined()
+    }
+  })
+
+  it('shows waiting-user-action banner and highlights accept action in pending state', () => {
+    const wrapper = mount(SelectionRewriteDiffModal, {
+      props: {
+        modelValue: true,
+        sourceText: '月光落在窗台上',
+        editedText: '月光静静落在旧窗台上',
+        waitingUserAction: true
+      }
+    })
+
+    expect(wrapper.text()).toContain('等待你确认')
+    expect(wrapper.get('[data-test="selection-rewrite-accept"]').classes()).toContain('selection-rewrite-modal__action--primary')
+  })
+
+  it('uses fullscreen panel container for diff review', () => {
+    const wrapper = mount(SelectionRewriteDiffModal, {
+      props: {
+        modelValue: true,
+        sourceText: '月光落在窗台上',
+        editedText: '月光静静落在旧窗台上'
+      }
+    })
+
+    expect(wrapper.get('.selection-rewrite-modal__panel').classes()).toContain('selection-rewrite-modal__panel--fullscreen')
+  })
+
+  it('shows conflicted banner and emits reselect or dismiss actions', async () => {
+    const wrapper = mount(SelectionRewriteDiffModal, {
+      props: {
+        modelValue: true,
+        sourceText: '月光落在窗台上',
+        editedText: '月光静静落在旧窗台上',
+        conflicted: true,
+        conflictMessage: '原文已变化，请重新选择。'
+      }
+    })
+
+    expect(wrapper.text()).toContain('原文已变化，请重新选择。')
+    expect(wrapper.find('[data-test="selection-rewrite-accept"]').exists()).toBe(false)
+
+    await wrapper.get('[data-test="selection-rewrite-conflict-reselect"]').trigger('click')
+    await wrapper.get('[data-test="selection-rewrite-conflict-cancel"]').trigger('click')
+
+    expect(wrapper.emitted('reselect')).toEqual([[]])
+    expect(wrapper.emitted('dismiss-conflict')).toEqual([[]])
+  })
 })

@@ -1,4 +1,4 @@
-﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <div class="pure-text-editor" :data-theme="theme">
     <div v-if="showSoftLimitWarning" class="soft-limit-banner">
       当前章节已超过 20 万有效字符，建议尽快拆分章节以保持流畅编辑。
@@ -78,6 +78,51 @@ const normalizeNonNegative = (value) => {
   return Number.isFinite(next) && next >= 0 ? next : 0
 }
 
+const parsePixelValue = (value, fallback = 0) => {
+  const next = Number.parseFloat(value)
+  return Number.isFinite(next) ? next : fallback
+}
+
+const resolveLineHeight = (value, fontSize) => {
+  const normalized = String(value || '').trim()
+  if (!normalized || normalized === 'normal') return fontSize * 1.8
+  if (normalized.endsWith('px')) return parsePixelValue(normalized, fontSize * 1.8)
+  const next = Number.parseFloat(normalized)
+  if (!Number.isFinite(next)) return fontSize * 1.8
+  return next <= 4 ? next * fontSize : next
+}
+
+const measureSelectionAnchor = (target, end) => {
+  const style = window.getComputedStyle(target)
+  const fontSize = parsePixelValue(style.fontSize, 18)
+  const lineHeight = resolveLineHeight(style.lineHeight, fontSize)
+  const paddingLeft = parsePixelValue(style.paddingLeft, 0)
+  const paddingRight = parsePixelValue(style.paddingRight, 0)
+  const paddingTop = parsePixelValue(style.paddingTop, 0)
+  const availableWidth = Math.max(1, Number(target.clientWidth || 0) - paddingLeft - paddingRight)
+  const approximateCharWidth = Math.max(1, fontSize * 0.56)
+  const columnCapacity = Math.max(1, Math.floor(availableWidth / approximateCharWidth))
+  const textBeforeSelectionEnd = String(target.value || '').slice(0, Math.max(0, Number(end || 0)))
+  const logicalLines = textBeforeSelectionEnd.split('\n')
+  let visualLineIndex = 0
+  for (let index = 0; index < logicalLines.length - 1; index += 1) {
+    const line = logicalLines[index]
+    visualLineIndex += Math.floor(line.length / columnCapacity) + 1
+  }
+  const lastLine = logicalLines.at(-1) || ''
+  visualLineIndex += Math.floor(lastLine.length / columnCapacity)
+  const lineColumn = lastLine.length % columnCapacity
+  return {
+    anchorX: Math.round(Math.min(
+      Number(target.clientWidth || 0),
+      paddingLeft + (lineColumn * approximateCharWidth)
+    )),
+    anchorY: Math.round(Math.max(0, paddingTop + (visualLineIndex * lineHeight) - Number(target.scrollTop || 0))),
+    anchorHeight: Math.round(lineHeight),
+    containerWidth: Number(target.clientWidth || 0)
+  }
+}
+
 const emitCursorState = () => {
   const target = textareaRef.value
   if (!target) return
@@ -91,10 +136,12 @@ const emitSelectionState = () => {
   if (!target) return
   const start = Number(target.selectionStart || 0)
   const end = Number(target.selectionEnd || 0)
+  const anchor = measureSelectionAnchor(target, end)
   emit('selection-change', {
     text: String(target.value || '').slice(start, end),
     start,
-    end
+    end,
+    ...anchor
   })
 }
 

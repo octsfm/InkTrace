@@ -364,9 +364,39 @@ describe('P0 AI API client', () => {
     expect(ElMessage.error).toHaveBeenCalledWith('AI 嵌入服务暂时不可用，请稍后重试或检查 AI 设置。')
   })
 
+  it('maps P2 feature disabled errors to a unified chinese message', async () => {
+    const { ElMessage } = await import('element-plus')
+    const errorHandler = responseUse.mock.calls[0][1]
+    const error = {
+      message: 'Request failed with status code 403',
+      response: {
+        status: 403,
+        data: {
+          status: 'error',
+          error: {
+            error_code: 'P2_FEATURE_DISABLED',
+            message: 'feature disabled'
+          }
+        },
+        headers: {
+          'x-request-id': 'req_feature_disabled_1'
+        }
+      },
+      config: {
+        metadata: {
+          requestId: 'req_feature_disabled_1'
+        }
+      }
+    }
+
+    await expect(errorHandler(error)).rejects.toBe(error)
+    expect(ElMessage.error).toHaveBeenCalledWith('这个功能暂未开启')
+  })
+
   it('wraps selection rewrite endpoints with expected request paths', async () => {
     mockGet.mockResolvedValue({})
     mockPost.mockResolvedValue({})
+    mockDelete.mockResolvedValue({})
 
     await api.aiApi.createSelectionRewrite({
       work_id: 'work-1',
@@ -377,9 +407,12 @@ describe('P0 AI API client', () => {
       source_hash: 'sha256-source',
       start_pos: 4,
       end_pos: 12,
+      context_before: '前文片段',
+      context_after: '后文片段',
       mode: 'polish'
     })
     await api.aiApi.getSelectionRewrite('srw_001')
+    await api.aiApi.listSelectionRewriteHistory('chapter-1')
     await api.aiApi.applySelectionRewrite('srw_001', {
       final_text: '月光静静落在旧窗台上',
       chapter_revision: 7,
@@ -389,6 +422,7 @@ describe('P0 AI API client', () => {
       idempotency_key: 'selection-apply-1'
     })
     await api.aiApi.rejectSelectionRewrite('srw_001')
+    await api.aiApi.clearSelectionRewriteHistory('chapter-1')
 
     expect(mockPost).toHaveBeenCalledWith('/v2/ai/selection-rewrite', {
       work_id: 'work-1',
@@ -399,9 +433,12 @@ describe('P0 AI API client', () => {
       source_hash: 'sha256-source',
       start_pos: 4,
       end_pos: 12,
+      context_before: '前文片段',
+      context_after: '后文片段',
       mode: 'polish'
     })
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/selection-rewrite/srw_001')
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/selection-rewrite/chapters/chapter-1/history')
     expect(mockPost).toHaveBeenCalledWith('/v2/ai/selection-rewrite/srw_001/apply', {
       final_text: '月光静静落在旧窗台上',
       chapter_revision: 7,
@@ -411,6 +448,7 @@ describe('P0 AI API client', () => {
       idempotency_key: 'selection-apply-1'
     })
     expect(mockPost).toHaveBeenCalledWith('/v2/ai/selection-rewrite/srw_001/reject')
+    expect(mockDelete).toHaveBeenCalledWith('/v2/ai/selection-rewrite/chapters/chapter-1/history')
   })
 
   it('wraps mention endpoints with expected request paths', async () => {

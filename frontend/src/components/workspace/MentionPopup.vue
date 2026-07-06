@@ -3,7 +3,22 @@
     v-if="visible"
     class="mention-popup"
     data-test="mention-popup"
+    role="listbox"
   >
+    <section
+      v-if="!groupedSuggestions.length"
+      class="mention-popup__empty"
+    >
+      <p>试试其他关键词，或</p>
+      <button
+        type="button"
+        class="mention-popup__create"
+        data-test="mention-popup-create-character"
+        @click="$emit('create-character', { query })"
+      >
+        新建角色
+      </button>
+    </section>
     <section
       v-for="group in groupedSuggestions"
       :key="group.type"
@@ -15,7 +30,9 @@
         :key="item.entity_id"
         type="button"
         class="mention-popup__option"
+        :class="{ 'mention-popup__option--active': flatIndexMap[item.entity_id] === activeIndex }"
         :data-test="`mention-popup-option-${item.entity_id}`"
+        :aria-selected="flatIndexMap[item.entity_id] === activeIndex"
         @click="$emit('select', item)"
       >
         <strong>{{ item.entity_name }}</strong>
@@ -36,10 +53,18 @@ const props = defineProps({
   suggestions: {
     type: Array,
     default: () => []
+  },
+  query: {
+    type: String,
+    default: ''
+  },
+  activeIndex: {
+    type: Number,
+    default: -1
   }
 })
 
-defineEmits(['select'])
+defineEmits(['select', 'create-character'])
 
 const typeLabelMap = {
   character: '人物',
@@ -62,6 +87,14 @@ const groupedSuggestions = computed(() => {
   }
   return Array.from(groups.values())
 })
+
+const flatIndexMap = computed(() => {
+  const entries = {}
+  props.suggestions.forEach((item, index) => {
+    entries[String(item?.entity_id || index)] = index
+  })
+  return entries
+})
 </script>
 
 <style scoped>
@@ -81,6 +114,26 @@ const groupedSuggestions = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.mention-popup__empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.mention-popup__empty p {
+  margin: 0;
+}
+
+.mention-popup__create {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0;
 }
 
 .mention-popup__title {
@@ -103,6 +156,12 @@ const groupedSuggestions = computed(() => {
 
 .mention-popup__option strong {
   color: #111827;
+}
+
+.mention-popup__option--active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.2);
 }
 
 .mention-popup__option span {

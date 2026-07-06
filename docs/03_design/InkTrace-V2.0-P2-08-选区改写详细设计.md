@@ -13,6 +13,13 @@
 
 说明：选区改写不是独立 Agent，通过轻量级 ContextPack + Writer/Rewriter Model 实现。结果进入候选替换区，用户确认后由前端 Workbench Store 替换编辑器草稿，后续保存走 V1.1 Local-First。本文档不写代码、不修改源码。
 
+**v1.3 修订记录（2026-07-03）：**
+1. 冻结 P2-08 初期不引入服务端 Draft 持久化，继续保持 V1.1 Local-First 草稿权威在前端 Workbench。（补充问题 13）
+2. 新增 `DraftSnapshot` 契约：`draft_text_hash`、`draft_length`、`range_text`，用于 rewrite/apply 冲突校验。（补充问题 13）
+3. 修订 §3.3 / §3.4：后端不再“读取当前草稿正文”，改为校验客户端上传的草稿快照元信息。（补充问题 13）
+4. 扩展 `SelectionRewriteCandidate` 与 DDL：新增 `draft_text_hash`、`draft_length`。（补充问题 13）
+5. 扩展测试矩阵与安全边界，明确不上传、不持久化完整草稿正文。（补充问题 13）
+
 **v1.2 修订记录（2026-06-09）：**
 1. §2.3 SelectionRewriteCandidate 扩展：新增 chapter_revision、draft_revision、source_hash、source_text、context_before、context_after、applied_text、edited_before_apply、error_code、error_message。（问题 1+5）
 2. §2.2 状态机扩展：新增 GENERATING、FAILED、CONFLICTED、EXPIRED。（问题 8）
@@ -135,6 +142,8 @@ P2-08 初期最小实现：24 小时过期 + 手动清理。版本偏离不自�
 | model_role | str | 使用的模型角色 |
 | chapter_revision | int | 生成改写时的章节 revision（V1.1 乐观锁版本号） |
 | draft_revision | int | 生成改写时的草稿 revision |
+| draft_text_hash | str | 生成改写时整章草稿全文 SHA-256 |
+| draft_length | int | 生成改写时整章草稿全文长度 |
 | edited_before_apply | bool | 用户是否编辑后才接受 |
 | context_before | str | 选区前 100 字快照（apply 冲突时辅助定位） |
 | context_after | str | 选区后 100 字快照 |
@@ -170,6 +179,8 @@ class SelectionRewriteService:
         chapter_id: str,
         chapter_revision: int,         # 章节版本号
         draft_revision: int,           # 草稿版本号
+        draft_text_hash: str,          # 当前整章草稿全文哈希
+        draft_length: int,             # 当前整章草稿全文长度
         source_text: str,
         source_hash: str,              # SHA-256(source_text)，后端校验
         start_pos: int,
@@ -189,6 +200,9 @@ class SelectionRewriteService:
         final_text: str | None = None,    # null → 使用 rewritten_text；非 null → 用户编辑后的文本
         chapter_revision: int,             # 当前章节 revision
         draft_revision: int,               # 当前草稿 revision
+        draft_text_hash: str,              # 当前整章草稿全文哈希
+        draft_length: int,                 # 当前整章草稿全文长度
+        range_text: str,                   # 当前 [start_pos, end_pos] 区间文本
         caller_type: str = "user_action",
     ) -> SelectionRewriteCandidate: ...
     # apply 不直接修改后端草稿（见 §3.6），返回 patched_text + patch_range 供前端 Workbench Store 替换
@@ -209,7 +223,18 @@ async def _validate_selection(self, source_text: str) -> None:
         raise ValidationError(400, "selection_too_long")
 ```
 
-### 3.3 后端校验规则（冻结）
+### 3.3 DraftSnapshot 与后端校验规则（冻结）
+
+**冻结结论**：P2-08 初期不引入服务端 Draft 持久化。当前草稿权威源仍为前端 Workbench Local-First 状态；后端只接收客户端上传的 `DraftSnapshot` 元信息完成 rewrite/apply 校验。
+
+`DraftSnapshot` 最小字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `draft_revision` | int | 当前前端草稿 revision |
+| `draft_text_hash` | str | 当前整章草稿全文 SHA-256 |
+| `draft_length` | int | 当前整章草稿全文长度 |
+| `range_text` | str | apply 时当前区间文本 |
 
 POST /selection-rewrite 时后端必须执行以下校验，任一项失败拒绝请求：
 
@@ -217,29 +242,31 @@ POST /selection-rewrite 时后端必须执行以下校验，任一项失败拒�
 |---|--------|------|--------|
 | 1 | 位置范围 | `start_pos >= 0` | `invalid_selection_range` |
 | 2 | 位置范围 | `end_pos > start_pos` | `invalid_selection_range` |
-| 3 | 位置范围 | `end_pos <= len(current_draft)` | `invalid_selection_range` |
-| 4 | 文本匹配 | `current_draft[start_pos:end_pos] == source_text` | 409 `selection_text_mismatch` |
+| 3 | 位置范围 | `end_pos <= draft_length` | `invalid_selection_range` |
+| 4 | 草稿快照 | `draft_text_hash` 非空 | 400 `draft_snapshot_invalid` |
 | 5 | 哈希匹配 | `sha256(source_text) == source_hash` | 400 `source_hash_mismatch` |
 | 6 | 非空 | `source_text` 不为空字符串 | `selection_too_short` |
 
-校验通过后，后端保存 `chapter_revision` / `draft_revision` 快照到 candidate，供 apply 时冲突检测。
+校验通过后，后端保存 `chapter_revision` / `draft_revision` / `draft_text_hash` / `draft_length` 快照到 candidate，供 apply 时冲突检测。
 
 ### 3.4 apply 冲突策略（冻结）
 
-**P2-08 初期采用最保守策略：仅当草稿未变化且选区文本完全匹配时允许 apply。**
+**P2-08 初期采用最保守策略：仅当草稿快照未变化且选区文本完全匹配时允许 apply。**
 
 ```
-apply(rewrite_id, final_text, chapter_revision, draft_revision)
+apply(rewrite_id, final_text, chapter_revision, draft_revision, draft_text_hash, draft_length, range_text)
   │
   ├─ 1. 校验 caller_type == "user_action"（否则 403）
   │
   ├─ 2. 校验 candidate.status == PENDING（否则 400）
   │
-  ├─ 3. 读取当前草稿内容
-  │     → current_draft_revision != candidate.draft_revision → 409 selection_conflict
+  ├─ 3. 校验草稿快照
+  │     → draft_revision != candidate.draft_revision → 409 selection_conflict
+  │     → draft_text_hash != candidate.draft_text_hash → 409 selection_conflict
+  │     → draft_length < candidate.source_end_pos → 409 selection_conflict
   │
-  ├─ 4. 在 [source_start_pos, source_end_pos] 区间提取当前文本
-  │     → current_text != candidate.source_text → 409 selection_conflict
+  ├─ 4. 校验当前区间文本
+  │     → range_text != candidate.source_text → 409 selection_text_mismatch
   │
   ├─ 5. 确定最终文本：
   │     final_text 非空 → applied_text = final_text, edited_before_apply = true
@@ -253,6 +280,12 @@ apply(rewrite_id, final_text, chapter_revision, draft_revision)
 ```
 
 **APPLIED 标记语义（冻结）**：服务端 apply 成功后立即标记 APPLIED——表示用户已确认应用决策，**不代表草稿已成功持久化**。草稿持久化状态仍以 V1.1 Local-First 保存状态为准。若前端 Workbench Store 应用 patch 失败，前端应调用错误恢复流程并提示用户手动重试。P2-08 不引入 apply_ack 双向确认机制。
+
+**职责边界（冻结）**：
+
+1. 前端 Workbench 负责维护当前草稿全文、`draft_revision`、`draft_text_hash` 与 `draft_length`。
+2. 后端 SelectionRewriteService 只保存候选快照字段并执行冲突校验，不持久化完整草稿正文。
+3. P2-08 初期不新增 `drafts` 表，不把完整草稿正文写入 `edit_sessions`。
 
 **冲突响应**：
 ```json
@@ -274,7 +307,7 @@ apply(rewrite_id, final_text, chapter_revision, draft_revision)
 用户点击 [编辑后接受]
   → Diff 弹窗中 rewritten_text 变为可编辑
   → 用户修改文本后点击确认
-  → 前端调用 POST /apply { final_text: "用户编辑后的文本", chapter_revision, draft_revision }
+  → 前端调用 POST /apply { final_text: "用户编辑后的文本", chapter_revision, draft_revision, draft_text_hash, draft_length, range_text }
   → 后端按 §3.4 校验 → 位置匹配 → applied_text = final_text, edited_before_apply = true
 ```
 
@@ -299,7 +332,7 @@ apply 返回:
   3. 后端不直接调用 update_official_content 或绕过前端草稿状态
 ```
 
-**不改 V1.1 保存链路**：apply 只是生成了一个 patch，前端 Store 负责应用和保存，与 V1.1 现有流程一致。
+**不改 V1.1 保存链路**：apply 只是生成了一个 patch，前端 Store 负责应用和保存，与 V1.1 现有流程一致。P2-08 初期也**不扩展为云端 Draft 同步能力**。
 
 ### 3.7 选区 ContextPack（轻量版）
 
@@ -362,6 +395,8 @@ CREATE TABLE IF NOT EXISTS selection_rewrite_candidates (
     model_role TEXT NOT NULL DEFAULT '',
     chapter_revision INTEGER NOT NULL DEFAULT 0,
     draft_revision INTEGER NOT NULL DEFAULT 0,
+    draft_text_hash TEXT NOT NULL DEFAULT '',
+    draft_length INTEGER NOT NULL DEFAULT 0,
     edited_before_apply INTEGER DEFAULT 0,      -- bool
     context_before TEXT DEFAULT '',             -- 选区前 100 字快照
     context_after TEXT DEFAULT '',              -- 选区后 100 字快照
@@ -391,6 +426,8 @@ POST   /api/v2/ai/selection-rewrite
               chapter_id: str,
               chapter_revision: int,           # 必传，apply 时校验
               draft_revision: int,             # 必传，apply 时校验
+              draft_text_hash: str,            # 必传，当前整章草稿全文哈希
+              draft_length: int,               # 必传，当前整章草稿全文长度
               source_text: str,
               source_hash: str,                # SHA-256(source_text)
               start_pos: int,
@@ -398,10 +435,9 @@ POST   /api/v2/ai/selection-rewrite
               mode: str
             }
   Note:     后端执行 §3.3 六项校验 → 创建 AIJob → 创建 SelectionRewriteCandidate(status=GENERATING)
-            → 保存 chapter_revision/draft_revision 快照 → 立即返回 rewrite_id
+            → 保存 chapter_revision/draft_revision/draft_text_hash/draft_length 快照 → 立即返回 rewrite_id
   Response: { rewrite_id, status: "generating" }
-  或 400 invalid_selection_range / source_hash_mismatch / selection_too_long / selection_too_short
-  或 409 selection_text_mismatch
+  或 400 invalid_selection_range / source_hash_mismatch / selection_too_long / selection_too_short / draft_snapshot_invalid
 
 GET    /api/v2/ai/selection-rewrite/{rewrite_id}
   Note:     前端轮询，status=GENERATING→loading, PENDING→Diff弹窗, FAILED→错误+重试
@@ -412,12 +448,15 @@ POST   /api/v2/ai/selection-rewrite/{rewrite_id}/apply
   Request:  {
               final_text: str | null,          # null→使用 rewritten_text
               chapter_revision: int,
-              draft_revision: int
+              draft_revision: int,
+              draft_text_hash: str,
+              draft_length: int,
+              range_text: str
             }
   Note:     后端执行 §3.4 冲突策略 → 返回 patch 供前端 Store 替换
   Response: { rewrite_id, status: "applied",
               patch: { range: [int, int], replacement: str } }
-  或 409 selection_conflict / 400 status_not_pending / 403 caller_type_forbidden
+  或 409 selection_conflict / selection_text_mismatch / 400 status_not_pending / 403 caller_type_forbidden
 
 POST   /api/v2/ai/selection-rewrite/{rewrite_id}/reject
   Response: { rewrite_id, status: "rejected" }
@@ -477,8 +516,11 @@ POST   /api/v2/ai/selection-rewrite/{rewrite_id}/reject
 | T11 | 编辑后接受 | apply({ final_text: "用户编辑版" }) → applied_text = final_text, edited_before_apply = true |
 | T12 | 选区超长 | source_text > 3000 字 → 400 selection_too_long |
 | T13 | 选区过短 | source_text < 2 字 → 400 selection_too_short |
-| T14 | draft 位置文本不匹配 | current_draft[start_pos:end_pos] ≠ source_text → 409 selection_text_mismatch（冲突类，非参数错误） |
+| T14 | draft 位置文本不匹配 | `range_text ≠ source_text` → 409 selection_text_mismatch（冲突类，非参数错误） |
 | T15 | OutputValidator 失败 | schema 校验失败 → 重试 → 最终失败 → status=FAILED |
+| T16 | rewrite 缺少草稿快照 | `draft_text_hash` 为空 → 400 `draft_snapshot_invalid` |
+| T17 | apply 时整章草稿哈希变化 | `draft_text_hash` 不一致 → 409 `selection_conflict` |
+| T18 | apply 时整章长度不足 | `draft_length < source_end_pos` → 409 `selection_conflict` |
 
 ---
 
@@ -491,8 +533,9 @@ POST   /api/v2/ai/selection-rewrite/{rewrite_id}/reject
 | 最小必要上下文 | ContextPack 仅发送选区 + 前后各 500 字 + Story/Style 信息，不发送整章/整书 |
 | 不改变选区外内容 | patch 仅覆盖 [start_pos, end_pos] |
 | 选区长度限制 | 2-3000 字，超限拒绝 |
-| apply 前双重校验 | draft_revision + source_text 文本匹配，任一不通过 → 409 |
+| apply 前双重校验 | `draft_revision / draft_text_hash / range_text` 任一不通过 → 409 |
 | source_hash 校验 | POST 时后端校验 sha256(source_text) == source_hash |
+| 不持久化完整草稿正文 | P2-08 初期只保存 `draft_revision / draft_text_hash / draft_length`，不新增服务端 Draft 正文存储 |
 | 模式约束 | expand 1.5-3× / abbreviate 30%-80% / polish 事实不变 / de_ai 剧情不变 |
 
 ---

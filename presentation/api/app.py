@@ -56,6 +56,7 @@ from presentation.api.routers.v2.ai import vector_index as ai_vector_index_v2
 from presentation.api.routers.v2.ai import planning as ai_planning_v2
 from presentation.api.routers.v2.ai import quick_trial as ai_quick_trial_v2
 from presentation.api.routers.v2.ai import review as ai_review_v2
+from presentation.api.routers.v2.ai import selection_rewrite as ai_selection_rewrite_v2
 from presentation.api.routers.v2.ai import suggestions as ai_suggestions_v2
 from presentation.api.routers.v2.ai import settings as ai_settings_v2
 from presentation.api.routers.v1.schemas import V1APIError, build_error_response
@@ -216,6 +217,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_plot_arcs_v2.router)
     app.include_router(ai_quick_trial_v2.router)
     app.include_router(ai_review_v2.router)
+    app.include_router(ai_selection_rewrite_v2.router)
     app.include_router(ai_sessions_v2.router)
     app.include_router(ai_suggestions_v2.router)
     app.include_router(ai_memory_v2.router)

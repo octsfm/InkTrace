@@ -4,11 +4,52 @@
     class="selection-rewrite-modal"
     data-test="selection-rewrite-diff-modal"
   >
-    <div class="selection-rewrite-modal__panel">
+    <div class="selection-rewrite-modal__panel selection-rewrite-modal__panel--fullscreen">
       <header class="selection-rewrite-modal__header">
         <h3>改写结果预览</h3>
-        <button type="button" class="selection-rewrite-modal__close" @click="closeModal">关闭</button>
+        <button type="button" class="selection-rewrite-modal__close" :disabled="applying" @click="closeModal">关闭</button>
       </header>
+
+      <p
+        v-if="waitingUserAction"
+        class="selection-rewrite-modal__waiting"
+        data-test="selection-rewrite-waiting-banner"
+      >
+        等待你确认
+      </p>
+
+      <div
+        v-if="conflicted"
+        class="selection-rewrite-modal__conflict"
+        data-test="selection-rewrite-conflict-banner"
+      >
+        <span>{{ conflictMessage || '原文已变化，请重新选择。' }}</span>
+        <div class="selection-rewrite-modal__conflict-actions">
+          <button
+            type="button"
+            class="selection-rewrite-modal__action selection-rewrite-modal__action--warning"
+            data-test="selection-rewrite-conflict-reselect"
+            @click="emit('reselect')"
+          >
+            重新选择
+          </button>
+          <button
+            type="button"
+            data-test="selection-rewrite-conflict-cancel"
+            @click="emit('dismiss-conflict')"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+
+      <p
+        v-if="applying"
+        class="selection-rewrite-modal__status"
+        data-test="selection-rewrite-applying-status"
+      >
+        正在应用…
+      </p>
 
       <div class="selection-rewrite-modal__body">
         <section class="selection-rewrite-modal__column">
@@ -31,11 +72,12 @@
       <p v-if="diffSummary" class="selection-rewrite-modal__summary">{{ diffSummary }}</p>
       <p class="selection-rewrite-modal__meta">字数：{{ wordCountBefore }} -> {{ wordCountAfter }}<span v-if="modeLabel"> | 模式：{{ modeLabel }}</span></p>
 
-      <footer class="selection-rewrite-modal__actions">
+      <footer v-if="!conflicted" class="selection-rewrite-modal__actions">
         <button
           v-if="!editMode"
           type="button"
           data-test="selection-rewrite-edit"
+          :disabled="applying"
           @click="editMode = true"
         >
           编辑后接受
@@ -44,6 +86,9 @@
           v-if="editMode"
           type="button"
           data-test="selection-rewrite-confirm-edit"
+          class="selection-rewrite-modal__action"
+          :class="{ 'selection-rewrite-modal__action--primary': waitingUserAction }"
+          :disabled="applying"
           @click="confirmEditedAccept"
         >
           确认编辑并接受
@@ -52,6 +97,9 @@
           v-if="!editMode"
           type="button"
           data-test="selection-rewrite-accept"
+          class="selection-rewrite-modal__action"
+          :class="{ 'selection-rewrite-modal__action--primary': waitingUserAction }"
+          :disabled="applying"
           @click="emitAccept(false)"
         >
           直接接受
@@ -59,6 +107,7 @@
         <button
           type="button"
           data-test="selection-rewrite-reject"
+          :disabled="applying"
           @click="rejectCurrent"
         >
           拒绝
@@ -99,10 +148,33 @@ const props = defineProps({
   modeLabel: {
     type: String,
     default: ''
+  },
+  applying: {
+    type: Boolean,
+    default: false
+  },
+  waitingUserAction: {
+    type: Boolean,
+    default: false
+  },
+  conflicted: {
+    type: Boolean,
+    default: false
+  },
+  conflictMessage: {
+    type: String,
+    default: ''
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'update:editedText', 'accept', 'reject'])
+const emit = defineEmits([
+  'update:modelValue',
+  'update:editedText',
+  'accept',
+  'reject',
+  'reselect',
+  'dismiss-conflict'
+])
 const editMode = ref(false)
 const localEditedText = ref(String(props.editedText || ''))
 
@@ -149,18 +221,25 @@ const rejectCurrent = () => {
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  padding: 24px;
+  padding: 0;
   background: rgba(15, 23, 42, 0.42);
 }
 
 .selection-rewrite-modal__panel {
   width: min(800px, 100%);
+  height: 100%;
   border-radius: 24px;
   background: #ffffff;
   padding: 24px;
   box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+}
+
+.selection-rewrite-modal__panel--fullscreen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
 .selection-rewrite-modal__header,
@@ -206,10 +285,66 @@ const rejectCurrent = () => {
   color: #4b5563;
 }
 
+.selection-rewrite-modal__waiting {
+  margin: 0 0 12px;
+  border: 1px solid #93c5fd;
+  border-radius: 12px;
+  background: #eff6ff;
+  padding: 10px 12px;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.selection-rewrite-modal__conflict {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  border: 1px solid #fdba74;
+  border-radius: 12px;
+  background: #fff7ed;
+  padding: 10px 12px;
+  color: #c2410c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.selection-rewrite-modal__conflict-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selection-rewrite-modal__status {
+  margin: 0;
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.selection-rewrite-modal__action--primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.selection-rewrite-modal__action--warning {
+  border-color: #ea580c;
+  background: #ea580c;
+  color: #ffffff;
+}
+
 .selection-rewrite-modal__close {
   border: none;
   background: transparent;
   color: #6b7280;
   cursor: pointer;
+}
+
+.selection-rewrite-modal__close:disabled,
+.selection-rewrite-modal__actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
 }
 </style>

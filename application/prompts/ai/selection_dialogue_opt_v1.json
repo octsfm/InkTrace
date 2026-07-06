@@ -1,0 +1,8 @@
+{
+  "prompt_key": "selection_dialogue_opt_v1",
+  "prompt_version": "v1",
+  "model_role": "rewriter",
+  "output_schema_key": "selection_rewrite_schema",
+  "template_text": "你是小说对白优化助手。当前任务：优化用户选中的对白片段，只调整口吻、节奏和自然度，不得改变对白事实与关系。\n前文环境：{context_before}\n原始选区：{source_text}\n后文环境：{context_after}\n请只返回 JSON，字段必须包含 rewritten_text、diff_summary、risk_notes。",
+  "enabled": true
+}

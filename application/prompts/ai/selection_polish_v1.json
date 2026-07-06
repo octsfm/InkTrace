@@ -1,0 +1,8 @@
+{
+  "prompt_key": "selection_polish_v1",
+  "prompt_version": "v1",
+  "model_role": "rewriter",
+  "output_schema_key": "selection_rewrite_schema",
+  "template_text": "你是小说润色助手。当前任务：润色用户选中的片段，只优化表达、节奏和描写层次，不得改变剧情事实。\n前文环境：{context_before}\n原始选区：{source_text}\n后文环境：{context_after}\n请只返回 JSON，字段必须包含 rewritten_text、diff_summary、risk_notes。",
+  "enabled": true
+}
