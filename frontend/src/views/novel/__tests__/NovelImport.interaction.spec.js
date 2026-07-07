@@ -21,6 +21,7 @@ vi.mock('element-plus', () => ({
 
 vi.mock('@/api', () => ({
   novelApi: {
+    create: vi.fn().mockResolvedValue({ id: 'novel_1' }),
     importTxt: vi.fn().mockResolvedValue({ novel_id: 'novel_1', project_id: 'project_1' })
   },
   contentApi: {
@@ -31,7 +32,11 @@ vi.mock('@/api', () => ({
     retryOrganize: (...args) => mockRetryOrganize(...args),
     organizeProgress: (...args) => mockOrganizeProgress(...args)
   },
-  projectApi: {}
+  projectApi: {
+    importPreview: vi.fn().mockResolvedValue({ chapters: [] }),
+    importV2: vi.fn().mockResolvedValue({ id: 'novel_1' }),
+    importV2Upload: vi.fn().mockResolvedValue({ id: 'novel_1' })
+  }
 }))
 
 const slotStub = { template: '<div><slot name="header" /><slot /><slot name="footer" /></div>' }
@@ -58,7 +63,7 @@ async function mountPage() {
         'el-table': slotStub,
         'el-table-column': slotStub,
         'el-upload': slotStub,
-        'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' }
+        'el-button': { template: '<button><slot /></button>' }
       }
     }
   })
@@ -90,6 +95,7 @@ describe('NovelImport 整理进度与控制', () => {
     wrapper.vm.createdNovelId = 'novel_1'
     await wrapper.vm.fetchOrganizeProgress()
     await flushPromises()
+
     const text = wrapper.text()
     expect(text).toContain('整理任务已暂停')
     expect(text).toContain('状态：已暂停')
@@ -113,7 +119,7 @@ describe('NovelImport 整理进度与控制', () => {
     expect(mockCancelOrganize).toHaveBeenCalledWith('novel_1')
   })
 
-  it('批次配置会透传到开始/继续/重试整理接口', async () => {
+  it('批次配置会透传到开始、继续和重试整理接口', async () => {
     const wrapper = await mountPage()
     wrapper.vm.createdNovelId = 'novel_1'
     wrapper.vm.form.batch_size_chapters = 3
@@ -127,22 +133,24 @@ describe('NovelImport 整理进度与控制', () => {
     expect(mockRetryOrganize).toHaveBeenCalledWith('novel_1', 'full_reanalyze', 3)
   })
 
-  it('鏁寸悊澶辫触鏃朵細寮瑰嚭閿欒鎻愮ず', async () => {
+  it('整理失败时会弹出错误提示', async () => {
+    const errorMessage = 'Kimi API Key 无效或未配置，请在模型配置页更新后重新整理。'
     mockOrganizeProgress.mockResolvedValueOnce({
       status: 'error',
       stage: 'error',
       current: 1,
       total: 5,
       percent: 20,
-      current_chapter_title: '绗?绔?',
-      message: 'Kimi API Key 无效或未配置，请在模型配置页更新后重新整理。',
-      last_error: 'Kimi API Key 无效或未配置，请在模型配置页更新后重新整理。'
+      current_chapter_title: '第一章',
+      message: errorMessage,
+      last_error: errorMessage
     })
+
     const wrapper = await mountPage()
     wrapper.vm.createdNovelId = 'novel_1'
     await wrapper.vm.fetchOrganizeProgress()
     await flushPromises()
 
-    expect(ElMessage.error).toHaveBeenCalledWith('Kimi API Key 无效或未配置，请在模型配置页更新后重新整理。')
+    expect(ElMessage.error).toHaveBeenCalledWith(errorMessage)
   })
 })

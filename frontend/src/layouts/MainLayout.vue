@@ -30,7 +30,7 @@
         </nav>
 
         <div class="header-right">
-          <el-button class="header-back-btn" type="primary" @click="$router.push('/works')">
+          <el-button class="ink-el-button ink-el-button--primary header-back-btn" type="primary" @click="$router.push('/works')">
             返回书架</el-button>
         </div>
       </div>
@@ -183,17 +183,7 @@ const themeClass = computed(() => `main-layout--theme-${String(appTheme.value ||
 }
 
 .header-right :deep(.header-back-btn.el-button) {
-  min-height: 42px;
-  border-radius: 999px;
-  font-weight: 600;
-  padding: 10px 16px;
-  --el-button-bg-color: var(--ink-accent);
-  --el-button-border-color: var(--ink-accent);
-  --el-button-text-color: #ffffff;
-  --el-button-hover-bg-color: color-mix(in srgb, var(--ink-accent) 88%, #ffffff 12%);
-  --el-button-hover-border-color: color-mix(in srgb, var(--ink-accent) 88%, #ffffff 12%);
-  --el-button-active-bg-color: color-mix(in srgb, var(--ink-accent) 78%, #000000 22%);
-  --el-button-active-border-color: color-mix(in srgb, var(--ink-accent) 78%, #000000 22%);
+  min-width: 112px;
 }
 
 .main-content {

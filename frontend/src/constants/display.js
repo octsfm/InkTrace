@@ -3,7 +3,10 @@ export const genreLabelMap = {
   xianxia: '仙侠',
   dushi: '都市',
   kehuan: '科幻',
-  lishi: '历史'
+  lishi: '历史',
+  wuxia: '武侠',
+  qihuan: '奇幻',
+  other: '其他'
 }
 
 export const novelStatusLabelMap = {
@@ -23,8 +26,8 @@ export const chapterFunctionLabelMap = {
   advance_investigation: '推进调查',
   reveal_abnormal: '揭示异常',
   recover_foreshadow: '回收伏笔',
-  transition: '过渡章',
-  explosion: '爆发章'
+  transition: '过渡章节',
+  explosion: '爆发章节'
 }
 
 export const organizeStatusLabelMap = {

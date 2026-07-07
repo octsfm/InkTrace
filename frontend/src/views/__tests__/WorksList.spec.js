@@ -1,3 +1,4 @@
+import { h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElMessage } from 'element-plus'
@@ -23,46 +24,61 @@ vi.mock('@/api', () => ({
 }))
 
 vi.mock('element-plus', () => ({
-  ElMessage: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
+  ElMessage: { success: vi.fn(), warning: vi.fn(), error: vi.fn() }
 }))
 
 const slotStub = { template: '<div><slot /></div>' }
+const elButtonStub = {
+  emits: ['click'],
+  render() {
+    return h(
+      'button',
+      { onClick: () => this.$emit('click') },
+      this.$slots.default ? this.$slots.default() : []
+    )
+  }
+}
+
+const createWorkModalStub = {
+  props: ['modelValue', 'defaultTitle'],
+  emits: ['update:modelValue', 'created'],
+  methods: {
+    confirm() {
+      this.$emit('created', { id: 'work-new', title: '未命名作品0429', author: '' })
+    }
+  },
+  template:
+    '<div v-if="modelValue" class="create-work-modal-stub"><span class="default-title">{{ defaultTitle }}</span><button class="confirm-create" @click="confirm">confirm create</button></div>'
+}
+
+const importModalStub = {
+  props: ['modelValue'],
+  emits: ['update:modelValue', 'imported'],
+  template: '<div v-if="modelValue" class="import-modal-stub">import modal</div>'
+}
+
+const exportTxtModalStub = {
+  props: ['modelValue', 'work'],
+  emits: ['update:modelValue', 'exported'],
+  methods: {
+    confirm() {
+      this.$emit('exported', this.work)
+      this.$emit('update:modelValue', false)
+    }
+  },
+  template:
+    '<div v-if="modelValue" class="export-modal-stub"><span class="export-work-title">{{ work ? work.title : "" }}</span><button class="confirm-export" @click="confirm">confirm export</button></div>'
+}
 
 const mountPage = async () => {
   const wrapper = mount(WorksList, {
     global: {
       plugins: [createPinia()],
       stubs: {
-        CreateWorkModal: {
-          props: ['modelValue', 'defaultTitle'],
-          emits: ['update:modelValue', 'created'],
-          template: `
-            <div v-if="modelValue" class="create-work-modal-stub">
-              <span class="default-title">{{ defaultTitle }}</span>
-              <button class="confirm-create" @click="$emit('created', { id: 'work-new', title: '未命名作品 0428', author: '' })">
-                confirm create
-              </button>
-            </div>
-          `
-        },
-        ImportModal: {
-          props: ['modelValue'],
-          emits: ['update:modelValue', 'imported'],
-          template: '<div v-if="modelValue" class="import-modal-stub">import modal</div>'
-        },
-        ExportTxtModal: {
-          props: ['modelValue', 'work'],
-          emits: ['update:modelValue', 'exported'],
-          template: `
-            <div v-if="modelValue" class="export-modal-stub">
-              <span class="export-work-title">{{ work?.title }}</span>
-              <button class="confirm-export" @click="$emit('exported', work); $emit('update:modelValue', false)">
-                confirm export
-              </button>
-            </div>
-          `
-        },
-        'el-button': { template: '<button @click="$emit(\'click\')"><slot /></button>' },
+        CreateWorkModal: createWorkModalStub,
+        ImportModal: importModalStub,
+        ExportTxtModal: exportTxtModalStub,
+        'el-button': elButtonStub,
         'el-empty': slotStub,
         'el-skeleton': slotStub,
         'el-icon': slotStub,
@@ -95,12 +111,11 @@ describe('WorksList 页面', () => {
     })
     mockUpdate.mockImplementation(async (workId, payload) => ({
       id: workId,
-      title: payload.title ?? '椋庢毚灏嗚嚦',
-      author: payload.author ?? '娴嬭瘯浣滆€?',
+      title: payload.title ?? '新的标题',
+      author: payload.author ?? '新的作者',
       current_word_count: 32000,
       updated_at: '2026-04-09T10:00:00.000Z'
     }))
-    vi.spyOn(window, 'prompt').mockRestore?.()
   })
 
   it('renders hero actions and work list', async () => {
@@ -221,11 +236,10 @@ describe('WorksList 页面', () => {
 
     const retryButton = wrapper.findAll('button').find((node) => node.text().includes('重新加载'))
     expect(retryButton).toBeTruthy()
-    const callCountBeforeRetry = mockList.mock.calls.length
+    const callsBeforeRetry = mockList.mock.calls.length
     await retryButton.trigger('click')
     await flushPromises()
 
-    expect(mockList.mock.calls.length).toBeGreaterThan(callCountBeforeRetry)
+    expect(mockList.mock.calls.length).toBe(callsBeforeRetry + 1)
   })
 })
-

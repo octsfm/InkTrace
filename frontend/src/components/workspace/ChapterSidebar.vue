@@ -452,11 +452,11 @@ defineExpose({ scrollToChapter })
 }
 
 .chapter-state-marker[data-state='draft'] {
-  color: #2563eb;
+  color: var(--sidebar-accent);
 }
 
 .chapter-state-marker[data-state='conflict'] {
-  color: #dc2626;
+  color: var(--ink-danger-text, var(--ink-error));
 }
 
 .chapter-meta {

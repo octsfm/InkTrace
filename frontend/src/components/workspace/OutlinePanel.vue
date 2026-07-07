@@ -1,10 +1,10 @@
-<template>
+﻿<template>
   <section class="outline-panel" data-panel="outline">
     <header class="outline-header">
       <div class="outline-mode-tabs" role="tablist" aria-label="大纲视图切换">
         <button
           type="button"
-          class="outline-mode-tab"
+          class="ink-button ink-button--ghost outline-mode-tab"
           :class="{ active: currentMode === 'work' }"
           data-testid="outline-mode-work"
           @click="requestModeSwitch('work')"
@@ -13,7 +13,7 @@
         </button>
         <button
           type="button"
-          class="outline-mode-tab"
+          class="ink-button ink-button--ghost outline-mode-tab"
           :class="{ active: currentMode === 'chapter' }"
           data-testid="outline-mode-chapter"
           @click="requestModeSwitch('chapter')"
@@ -25,7 +25,7 @@
         <button
           v-if="currentMode === 'work'"
           type="button"
-          class="ghost-button"
+          class="ink-button ink-button--ghost ghost-button"
           data-testid="outline-import-trigger"
           @click="openImportModal"
         >
@@ -42,17 +42,17 @@
       </header>
       <div class="plot-arc-grid">
         <article class="plot-arc-card">
-          <h5>主线轨道（Master Arc）</h5>
+              <h5>主线轨道</h5>
           <p v-if="masterArcSummary.arc_title">{{ masterArcSummary.arc_title }}</p>
           <p v-if="masterArcSummary.current_stage">当前阶段：{{ masterArcSummary.current_stage }}</p>
           <p v-if="masterArcSummary.ultimate_goal">终局目标：{{ masterArcSummary.ultimate_goal }}</p>
         </article>
         <article class="plot-arc-card">
-          <h5>卷轨道（Volume Arc）</h5>
+              <h5>卷轨道</h5>
           <p v-if="volumeArcSummary.stage_goal">{{ volumeArcSummary.stage_goal }}</p>
         </article>
         <article class="plot-arc-card">
-          <h5>章节序列轨道（Sequence Arc）</h5>
+              <h5>章节序列轨道</h5>
           <p v-if="sequenceArcSummary.sequence_goal">{{ sequenceArcSummary.sequence_goal }}</p>
           <ul v-if="sequenceKeyEvents.length" class="plot-arc-list">
             <li v-for="event in sequenceKeyEvents" :key="event">{{ event }}</li>
@@ -67,7 +67,7 @@
         <textarea
           class="outline-textarea"
           :value="draftText"
-          placeholder="在这里输入整本作品的大纲。"
+          placeholder="在这里输入整部作品的大纲。"
           data-testid="work-outline-text"
           @input="handleInput"
           @focus="$emit('focus-area', 'outline')"
@@ -93,7 +93,7 @@
       <span class="save-status">{{ currentMode === 'work' ? saveStatusLabel : chapterSaveStatusLabel }}</span>
       <button
         type="button"
-        class="save-button"
+        class="ink-button ink-button--primary save-button"
         :disabled="currentMode === 'chapter' ? (!activeChapterId || chapterSaveStatus === 'saving') : saveStatus === 'saving'"
         @click="currentMode === 'work' ? handleSave() : handleChapterSave()"
       >
@@ -104,9 +104,9 @@
     <section v-if="modeSwitchGuardVisible" class="mode-switch-guard">
       <p>当前编辑区存在未保存内容，切换前请选择处理方式。</p>
       <div class="mode-switch-guard-actions">
-        <button type="button" class="save-button" @click="handleGuardSave">保存并切换</button>
-        <button type="button" class="ghost-button" @click="handleGuardDiscard">放弃并切换</button>
-        <button type="button" class="ghost-button" @click="handleGuardCancel">取消</button>
+        <button type="button" class="ink-button ink-button--primary save-button" @click="handleGuardSave">保存并切换</button>
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="handleGuardDiscard">放弃并切换</button>
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="handleGuardCancel">取消</button>
       </div>
     </section>
 
@@ -184,9 +184,9 @@ const plotArcVisible = computed(() => Boolean(
   Object.keys(assetStore.plotArcStatuses || {}).length
 ))
 const plotArcStatusMap = {
-  ready: '可继续（ready）',
-  degraded: '信息可能不足（degraded）',
-  blocked: '无法继续（blocked）',
+  ready: '可继续',
+  degraded: '信息可能不足',
+  blocked: '无法继续',
   pending: '待处理（pending）',
   unknown: '未知（unknown）'
 }
@@ -541,15 +541,15 @@ defineExpose({
 .outline-mode-tab,
 .ghost-button,
 .save-button {
-  border: 0;
+  min-width: 88px;
+}
+
+.outline-mode-tab {
+  border: 1px solid transparent;
   border-radius: 999px;
   padding: 10px 16px;
   font-weight: 700;
   cursor: pointer;
-}
-
-.outline-mode-tab,
-.ghost-button {
   background: var(--outline-bg-soft);
   color: var(--outline-title);
 }
@@ -557,16 +557,6 @@ defineExpose({
 .outline-mode-tab.active {
   background: var(--outline-accent-soft);
   color: var(--outline-accent);
-}
-
-.save-button {
-  background: var(--outline-accent);
-  color: #ffffff;
-}
-
-.save-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 .outline-header-actions {

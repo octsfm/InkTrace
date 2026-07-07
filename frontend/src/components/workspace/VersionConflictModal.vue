@@ -28,9 +28,9 @@
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="ghost-button" @click="$emit('cancel')">取消</button>
-        <button type="button" class="ghost-button" @click="$emit('discard')">放弃本地，重新加载服务端</button>
-        <button type="button" class="danger-button" @click="$emit('override')">覆盖服务端</button>
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="$emit('cancel')">取消</button>
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="$emit('discard')">放弃本地，重新加载服务端</button>
+        <button type="button" class="ink-button ink-button--danger danger-button" @click="$emit('override')">覆盖服务端</button>
       </div>
     </div>
   </div>
@@ -171,22 +171,7 @@ defineEmits(['cancel', 'discard', 'override'])
 
 .ghost-button,
 .danger-button {
-  border: none;
-  border-radius: 999px;
-  padding: 10px 18px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.ghost-button {
-  background: var(--ink-surface-3);
-  color: var(--ink-text-primary);
-}
-
-.danger-button {
-  background: #dc2626;
-  color: var(--ink-surface-1);
+  min-width: 96px;
 }
 
 @media (max-width: 760px) {

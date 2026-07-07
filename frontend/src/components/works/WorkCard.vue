@@ -1,7 +1,7 @@
 ﻿﻿﻿﻿﻿﻿<template>
   <article class="work-card-shell" @click="$emit('open', work.id)">
     <div class="work-card-actions">
-      <button type="button" class="more-button" @click.stop="toggleMenu">...</button>
+      <button type="button" class="ink-button ink-button--ghost ink-button--icon more-button" @click.stop="toggleMenu">...</button>
       <div v-if="menuVisible" class="card-menu" @click.stop>
         <button type="button" class="menu-item rename" @click.stop="emitAction('rename')">重命名</button>
         <button type="button" class="menu-item author" @click.stop="emitAction('change-author')">修改作者</button>
@@ -38,8 +38,8 @@
         <h4>确认删除作品？</h4>
         <p>此操作不可恢复，确认删除？</p>
         <div class="confirm-actions">
-          <button type="button" class="ghost-button" @click.stop="closeDeleteConfirm">取消</button>
-          <button type="button" class="danger-button" :disabled="deleting" @click.stop="confirmDelete">
+          <button type="button" class="ink-button ink-button--ghost ghost-button" @click.stop="closeDeleteConfirm">取消</button>
+          <button type="button" class="ink-button ink-button--danger danger-button" :disabled="deleting" @click.stop="confirmDelete">
             {{ deleting ? '删除中...' : '删除' }}
           </button>
         </div>
@@ -136,15 +136,9 @@ const formatDate = (value) => {
 }
 
 .more-button {
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--ink-border, #e5e7eb);
-  border-radius: 999px;
-  background: var(--ink-surface-1, #ffffff);
   color: var(--ink-text-secondary, #4b5563);
   font-size: 18px;
   line-height: 1;
-  cursor: pointer;
 }
 
 .card-menu {
@@ -293,25 +287,7 @@ const formatDate = (value) => {
 
 .ghost-button,
 .danger-button {
-  border: 1px solid var(--ink-border-strong, #d1d5db);
-  border-radius: 999px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  background: var(--ink-surface-1, #ffffff);
-  color: var(--ink-text-secondary, #374151);
-}
-
-.danger-button {
-  border-color: #dc2626;
-  background: #dc2626;
-  color: #ffffff;
-}
-
-.danger-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
+  min-width: 76px;
 }
 
 @media (max-width: 760px) {

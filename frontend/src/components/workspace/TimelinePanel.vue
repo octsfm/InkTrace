@@ -5,7 +5,7 @@
         <h3>时间线</h3>
         <p>按顺序维护故事事件，编辑后需手动保存。</p>
       </div>
-      <button type="button" class="create-button" @click="handleCreate">
+      <button type="button" class="ink-button ink-button--primary create-button" @click="handleCreate">
         新建事件
       </button>
     </header>
@@ -60,7 +60,7 @@
         <div v-if="selectedEvent && !isCreating" class="reorder-actions">
           <button
             type="button"
-            class="ghost-button"
+            class="ink-button ink-button--ghost ghost-button"
             data-testid="timeline-move-up"
             :disabled="!canMoveUp"
             @click="handleMove('up')"
@@ -69,7 +69,7 @@
           </button>
           <button
             type="button"
-            class="ghost-button"
+            class="ink-button ink-button--ghost ghost-button"
             data-testid="timeline-move-down"
             :disabled="!canMoveDown"
             @click="handleMove('down')"
@@ -79,7 +79,7 @@
           <button
             v-if="reorderDirty"
             type="button"
-            class="save-button"
+            class="ink-button ink-button--primary save-button"
             data-testid="timeline-save-order"
             :disabled="reorderSaveStatus === 'saving'"
             @click="handleSaveReorder"
@@ -134,7 +134,7 @@
           <div class="editor-actions">
             <button
               type="button"
-              class="ghost-button"
+              class="ink-button ink-button--ghost ghost-button"
               :disabled="!canDelete"
               @click="handleDelete"
             >
@@ -142,7 +142,7 @@
             </button>
             <button
               type="button"
-              class="save-button"
+              class="ink-button ink-button--primary save-button"
               :disabled="saveStatus === 'saving'"
               @click="handleSave"
             >
@@ -243,9 +243,9 @@ const chapterOptions = computed(() => (
   }).filter((chapter) => chapter.id)
 ))
 const plotArcStatusMap = {
-  ready: '可继续（ready）',
-  degraded: '信息可能不足（degraded）',
-  blocked: '无法继续（blocked）',
+  ready: '可继续',
+  degraded: '信息可能不足',
+  blocked: '无法继续',
   pending: '待处理（pending）',
   unknown: '未知（unknown）'
 }
@@ -595,23 +595,7 @@ defineExpose({
 .create-button,
 .save-button,
 .ghost-button {
-  border: 0;
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.create-button,
-.save-button {
-  background: var(--panel-title);
-  color: var(--panel-surface);
-}
-
-.ghost-button {
-  background: var(--panel-button-bg);
-  color: var(--panel-title);
-  border: 1px solid var(--panel-border);
+  min-width: 88px;
 }
 
 .timeline-layout {

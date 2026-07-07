@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div
     v-if="visible"
     class="selection-rewrite-toolbar"
@@ -12,7 +12,7 @@
       class="selection-rewrite-toolbar__status"
       data-test="selection-rewrite-toolbar-status"
     >
-      <span>正在生成，请稍等</span>
+      <span>{{ POLLING_TEXT }}</span>
       <span class="selection-rewrite-toolbar__status-bar" />
     </div>
     <button
@@ -33,12 +33,15 @@
       :disabled="busy"
       @click="$emit('clear-history')"
     >
-      清除历史改写
+      {{ CLEAR_HISTORY_TEXT }}
     </button>
   </div>
 </template>
 
 <script setup>
+const POLLING_TEXT = '正在生成，请稍等'
+const CLEAR_HISTORY_TEXT = '清除历史改写'
+
 const props = defineProps({
   visible: {
     type: Boolean,
@@ -83,9 +86,9 @@ const modeOptions = [
   gap: 8px;
   width: 320px;
   padding: 12px;
-  border: 1px solid var(--studio-border, #d1d5db);
-  border-radius: 16px;
-  background: var(--studio-card-bg, #ffffff);
+  border: 1px solid var(--studio-border, var(--ink-border));
+  border-radius: 20px;
+  background: var(--studio-card-bg, var(--ink-surface-1));
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
 }
 
@@ -104,7 +107,7 @@ const modeOptions = [
   width: 100%;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--studio-muted, #6b7280);
+  color: var(--studio-muted, var(--ink-text-secondary));
 }
 
 .selection-rewrite-toolbar__status-bar {
@@ -114,7 +117,7 @@ const modeOptions = [
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: #e5e7eb;
+  background: color-mix(in srgb, var(--studio-border, var(--ink-border)) 65%, transparent);
 }
 
 .selection-rewrite-toolbar__status-bar::after {
@@ -123,19 +126,29 @@ const modeOptions = [
   inset: 0;
   width: 45%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #60a5fa, #2563eb);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ink-accent, #4f7cff) 55%, white),
+    var(--ink-accent, #4f7cff)
+  );
   animation: selection-rewrite-toolbar-pulse 1.2s ease-in-out infinite;
 }
 
 .selection-rewrite-toolbar__button {
-  border: 1px solid var(--studio-border, #d1d5db);
+  border: 1px solid var(--studio-border, var(--ink-border));
   border-radius: 999px;
-  background: var(--studio-card-bg, #ffffff);
+  background: var(--studio-surface, var(--ink-surface-2));
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1;
-  color: var(--studio-title, #111827);
+  color: var(--studio-title, var(--ink-text-primary));
   cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.selection-rewrite-toolbar__button:hover:not(:disabled) {
+  border-color: var(--ink-accent, var(--ink-primary));
+  background: var(--ink-primary-soft, rgba(79, 124, 255, 0.1));
 }
 
 .selection-rewrite-toolbar__button:disabled {
@@ -144,7 +157,7 @@ const modeOptions = [
 }
 
 .selection-rewrite-toolbar__button--secondary {
-  color: var(--studio-muted, #6b7280);
+  color: var(--studio-muted, var(--ink-text-secondary));
 }
 
 @keyframes selection-rewrite-toolbar-pulse {

@@ -54,7 +54,7 @@
       </div>
       <div class="ai-meta">
         <span v-if="initializationInfo.initialization_id">初始化ID {{ initializationInfo.initialization_id }}</span>
-        <span v-if="polling.jobId">job {{ polling.jobId }}</span>
+        <span v-if="polling.jobId">任务 {{ polling.jobId }}</span>
         <span v-if="jobStatusText">{{ displayStatus(jobStatusText) }}</span>
         <span>分析成功 {{ initializationSummary.analyzed }}</span>
         <span>空章节 {{ initializationSummary.empty }}</span>
@@ -80,8 +80,8 @@
       </div>
       <div class="ai-meta">
         <span>状态 {{ displayStatus(contextPackReadiness.status || 'unknown') }}</span>
-        <span v-if="contextPackReadiness.blocked_reason">阻塞原因: {{ contextPackReadiness.blocked_reason }}</span>
-        <span v-if="contextPackReadiness.degraded_reason">降级原因: {{ contextPackReadiness.degraded_reason }}</span>
+        <span v-if="contextPackReadiness.blocked_reason">阻塞原因：{{ displayReadinessReason(contextPackReadiness.blocked_reason) }}</span>
+        <span v-if="contextPackReadiness.degraded_reason">降级原因：{{ displayReadinessReason(contextPackReadiness.degraded_reason) }}</span>
       </div>
       <ul v-if="contextPackItems.length" class="ai-list">
         <li v-for="item in contextPackItems" :key="item.item_id || item.source_type">
@@ -369,7 +369,7 @@
       </div>
       <div class="ai-meta">
         <span>状态 {{ displayStatus(vectorIndexDisplayStatus) }}</span>
-        <span v-if="reindexPolling.jobId.value">job {{ reindexPolling.jobId.value }}</span>
+        <span v-if="reindexPolling.jobId.value">任务 {{ reindexPolling.jobId.value }}</span>
         <span v-if="vectorIndexStatusHint">{{ vectorIndexStatusHint }}</span>
         <span v-if="vectorIndexProgressPercent > 0">进度 {{ vectorIndexProgressPercent }}%</span>
         <span v-if="vectorIndexStepLabel">{{ vectorIndexStepLabel }}</span>
@@ -1314,47 +1314,47 @@ const displayWritingTaskConfirmation = (task) => (
 )
 
 const statusLabelMap = {
-  pending: '待处理（pending）',
-  running: '进行中（running）',
-  completed: '已完成（completed）',
-  partial_success: '部分成功（partial_success）',
-  failed: '失败（failed）',
-  cancelled: '已取消（cancelled）',
-  waiting_for_user: '等待你确认（waiting_for_user）',
-  paused: '已暂停（paused）',
-  ready: '可继续（ready）',
-  degraded: '信息可能不足（degraded）',
-  blocked: '无法继续（blocked）',
-  generated: '已生成（generated）',
-  shown: '已展示（shown）',
-  accepted: '已接受（accepted）',
-  rejected: '已拒绝（rejected）',
-  applied: '已应用（applied）',
-  stale: '可能已过期（stale）',
-  superseded: '已有新版本（superseded）',
-  converted: '已转化（converted）',
-  revision_requested: '待修订（revision_requested）',
-  review_completed: '审阅完成（review_completed）',
-  waiting_for_selection: '待选择方向（waiting_for_selection）',
-  waiting_for_confirmation: '待确认计划（waiting_for_confirmation）',
-  open: '已开启（open）',
-  partially_approved: '部分通过（partially_approved）'
+  pending: '待处理',
+  running: '进行中',
+  completed: '已完成',
+  partial_success: '部分成功',
+  failed: '失败',
+  cancelled: '已取消',
+  waiting_for_user: '等待你确认',
+  paused: '已暂停',
+  ready: '可继续',
+  degraded: '信息可能不足',
+  blocked: '无法继续',
+  generated: '已生成',
+  shown: '已展示',
+  accepted: '已接受',
+  rejected: '已拒绝',
+  applied: '已应用',
+  stale: '可能已过期',
+  superseded: '已有新版本',
+  converted: '已转化',
+  revision_requested: '待修订',
+  review_completed: '审阅完成',
+  waiting_for_selection: '待选择方向',
+  waiting_for_confirmation: '待确认计划',
+  open: '已开启',
+  partially_approved: '部分通过'
 }
 
 const agentTypeLabelMap = {
-  memory: '理解故事（Memory Agent）',
-  planner: '规划方向（Planner Agent）',
-  writer: '生成候选稿（Writer Agent）',
-  reviewer: '审阅稿件（Reviewer Agent）',
-  rewriter: '修订稿件（Rewriter Agent）'
+  memory: '理解故事',
+  planner: '规划方向',
+  writer: '生成候选稿',
+  reviewer: '审阅稿件',
+  rewriter: '修订稿件'
 }
 
 const workflowTypeLabelMap = {
-  continuation: '续写流程（continuation）',
-  planning: '规划流程（planning）',
-  review: '审阅流程（review）',
-  revision: '修订流程（revision）',
-  memory: '记忆流程（memory）'
+  continuation: '续写流程',
+  planning: '规划流程',
+  review: '审阅流程',
+  revision: '修订流程',
+  memory: '记忆流程'
 }
 
 const workflowStageLabelMap = {
@@ -1372,137 +1372,137 @@ const workflowStageLabelMap = {
 }
 
 const suggestionTypeLabelMap = {
-  rewrite_suggestion: '改写建议（rewrite_suggestion）',
-  style_suggestion: '风格建议（style_suggestion）',
-  plot_suggestion: '剧情建议（plot_suggestion）',
-  continuity_suggestion: '连续性建议（continuity_suggestion）',
-  conflict_resolution_suggestion: '冲突处理建议（conflict_resolution_suggestion）',
-  memory_update_suggestion_ref: '记忆更新建议引用（memory_update_suggestion_ref）',
-  outline_polish: '大纲润色（outline_polish）',
-  outline_expand: '大纲扩写（outline_expand）',
-  chapter_outline_detail: '章节细纲（chapter_outline_detail）',
-  writing_task_suggestion: '写作任务建议（writing_task_suggestion）',
-  risk_warning: '风险提示（risk_warning）'
+  rewrite_suggestion: '改写建议',
+  style_suggestion: '风格建议',
+  plot_suggestion: '剧情建议',
+  continuity_suggestion: '连续性建议',
+  conflict_resolution_suggestion: '冲突处理建议',
+  memory_update_suggestion_ref: '记忆更新建议引用',
+  outline_polish: '大纲润色',
+  outline_expand: '大纲扩写',
+  chapter_outline_detail: '章节细纲',
+  writing_task_suggestion: '写作任务建议',
+  risk_warning: '风险提示'
 }
 
 const revisionTypeLabelMap = {
-  character_update: '人物更新（character_update）',
-  setting_update: '设定更新（setting_update）',
-  timeline_event_add: '时间线新增（timeline_event_add）',
-  timeline_event_update: '时间线更新（timeline_event_update）',
-  foreshadow_add: '伏笔新增（foreshadow_add）',
-  foreshadow_update: '伏笔推进（foreshadow_update）',
-  foreshadow_resolve: '伏笔回收（foreshadow_resolve）',
-  plot_thread_update: '剧情线索更新（plot_thread_update）',
-  story_state_update: '故事状态更新（story_state_update）',
-  arc_note_update: '轨道备注更新（arc_note_update）',
-  continuity_note_add: '连续性备注（continuity_note_add）',
-  unknown_memory_update: '待确认记忆更新（unknown_memory_update）'
+  character_update: '人物更新',
+  setting_update: '设定更新',
+  timeline_event_add: '时间线新增',
+  timeline_event_update: '时间线更新',
+  foreshadow_add: '伏笔新增',
+  foreshadow_update: '伏笔推进',
+  foreshadow_resolve: '伏笔回收',
+  plot_thread_update: '剧情线索更新',
+  story_state_update: '故事状态更新',
+  arc_note_update: '轨道备注更新',
+  continuity_note_add: '连续性备注',
+  unknown_memory_update: '待确认记忆更新'
 }
 
 const severityLabelMap = {
-  high: '高（high）',
-  medium: '中（medium）',
-  low: '低（low）',
-  warning: '警告（warning）',
-  blocking: '阻断（blocking）',
-  info: '提示（info）'
+  high: '高',
+  medium: '中',
+  low: '低',
+  warning: '警告',
+  blocking: '阻断',
+  info: '提示'
 }
 
 const validationStatusLabelMap = {
-  passed: '已通过（passed）',
-  failed: '未通过（failed）',
-  blocked: '已阻断（blocked）',
-  degraded: '降级通过（degraded）'
+  passed: '已通过',
+  failed: '未通过',
+  blocked: '已阻断',
+  degraded: '降级通过'
 }
 
 const arcLevelLabelMap = {
-  master_arc: '主线轨道（master_arc）',
-  volume_arc: '卷轨道（volume_arc）',
-  sequence_arc: '章节序列轨道（sequence_arc）',
-  immediate_window: '临近章节窗口（immediate_window）'
+  master_arc: '主线轨道',
+  volume_arc: '卷轨道',
+  sequence_arc: '章节序列轨道',
+  immediate_window: '临近章节窗口'
 }
 
 const contextItemTypeLabelMap = {
-  chapter_text: '章节正文片段（chapter_text）',
-  story_memory: '故事记忆（story_memory）',
-  story_state: '故事状态（story_state）',
-  plot_arc: '剧情轨道（plot_arc）',
-  direction_plan: '方向与计划（direction_plan）',
-  continuity_note: '连续性提示（continuity_note）'
+  chapter_text: '章节正文片段',
+  story_memory: '故事记忆',
+  story_state: '故事状态',
+  plot_arc: '剧情轨道',
+  direction_plan: '方向与计划',
+  continuity_note: '连续性提示'
 }
 
 const conflictTypeLabelMap = {
-  character_conflict: '人物冲突（character_conflict）',
-  setting_conflict: '设定冲突（setting_conflict）',
-  timeline_conflict: '时间线冲突（timeline_conflict）',
-  arc_conflict: '轨道冲突（arc_conflict）',
-  direction_plan_conflict: '方向计划冲突（direction_plan_conflict）',
-  memory_conflict: '记忆冲突（memory_conflict）',
-  foreshadow_conflict: '伏笔冲突（foreshadow_conflict）',
-  candidate_version_conflict: '候选版本冲突（candidate_version_conflict）',
-  user_draft_conflict: '用户草稿冲突（user_draft_conflict）',
-  apply_version_conflict: '应用版本冲突（apply_version_conflict）',
-  unknown_conflict: '待确认冲突（unknown_conflict）'
+  character_conflict: '人物冲突',
+  setting_conflict: '设定冲突',
+  timeline_conflict: '时间线冲突',
+  arc_conflict: '轨道冲突',
+  direction_plan_conflict: '方向计划冲突',
+  memory_conflict: '记忆冲突',
+  foreshadow_conflict: '伏笔冲突',
+  candidate_version_conflict: '候选版本冲突',
+  user_draft_conflict: '用户草稿冲突',
+  apply_version_conflict: '应用版本冲突',
+  unknown_conflict: '待确认冲突'
 }
 
 const permissionResultLabelMap = {
-  allow: '允许（allow）',
-  deny: '拒绝（deny）',
-  conditional: '条件允许（conditional）'
+  allow: '允许',
+  deny: '拒绝',
+  conditional: '条件允许'
 }
 
 const eventTypeLabelMap = {
-  tool_call_denied: '工具调用被拒绝（tool_call_denied）',
-  ignored_late_result: '迟到结果已忽略（ignored_late_result）',
-  user_decision_recorded: '用户决策已记录（user_decision_recorded）',
-  agent_session_started: '任务已启动（agent_session_started）',
-  agent_session_completed: '任务已完成（agent_session_completed）',
-  agent_session_failed: '任务失败（agent_session_failed）'
+  tool_call_denied: '工具调用被拒绝',
+  ignored_late_result: '迟到结果已忽略',
+  user_decision_recorded: '用户决策已记录',
+  agent_session_started: '任务已启动',
+  agent_session_completed: '任务已完成',
+  agent_session_failed: '任务失败'
 }
 
 const metricNameLabelMap = {
-  tool_call_latency_ms: '工具调用耗时（tool_call_latency_ms）',
-  llm_token_count: '模型Token用量（llm_token_count）',
-  step_elapsed_ms: '步骤耗时（step_elapsed_ms）'
+  tool_call_latency_ms: '工具调用耗时',
+  llm_token_count: '模型 Token 用量',
+  step_elapsed_ms: '步骤耗时'
 }
 
 const alertTypeLabelMap = {
-  audit_write_failed: '审计写入失败（audit_write_failed）',
-  trace_write_failed: '追踪写入失败（trace_write_failed）',
-  conflict_blocking_detected: '检测到阻断冲突（conflict_blocking_detected）'
+  audit_write_failed: '审计写入失败',
+  trace_write_failed: '追踪写入失败',
+  conflict_blocking_detected: '检测到阻断冲突'
 }
 
 const decisionTypeLabelMap = {
-  accept_candidate: '接受候选稿（accept_candidate）',
-  reject_candidate: '拒绝候选稿（reject_candidate）',
-  apply_candidate: '应用候选稿（apply_candidate）',
-  accept_suggestion: '采纳建议（accept_suggestion）',
-  dismiss_suggestion: '忽略建议（dismiss_suggestion）',
-  convert_suggestion: '转化建议（convert_suggestion）',
-  resolve_conflict: '处理冲突（resolve_conflict）',
-  override_conflict: '强制覆盖冲突（override_conflict）',
-  approve_memory: '审批记忆更新（approve_memory）',
-  reject_memory: '拒绝记忆更新（reject_memory）',
-  apply_memory: '应用记忆修订（apply_memory）'
+  accept_candidate: '接受候选稿',
+  reject_candidate: '拒绝候选稿',
+  apply_candidate: '应用候选稿',
+  accept_suggestion: '采纳建议',
+  dismiss_suggestion: '忽略建议',
+  convert_suggestion: '转化建议',
+  resolve_conflict: '处理冲突',
+  override_conflict: '强制覆盖冲突',
+  approve_memory: '审批记忆更新',
+  reject_memory: '拒绝记忆更新',
+  apply_memory: '应用记忆修订'
 }
 
 const entityTypeLabelMap = {
-  candidate_draft: '候选稿（candidate_draft）',
-  candidate_version: '候选版本（candidate_version）',
-  suggestion: 'AI建议（suggestion）',
-  conflict_record: '冲突记录（conflict_record）',
-  memory_gate: '记忆审批组（memory_gate）',
-  memory_revision: '记忆修订（memory_revision）'
+  candidate_draft: '候选稿',
+  candidate_version: '候选版本',
+  suggestion: 'AI 建议',
+  conflict_record: '冲突记录',
+  memory_gate: '记忆审批组',
+  memory_revision: '记忆修订'
 }
 
 const memoryTargetTypeLabelMap = {
-  character: '人物记忆（character）',
-  setting: '设定记忆（setting）',
-  timeline: '时间线记忆（timeline）',
-  foreshadow: '伏笔记忆（foreshadow）',
-  plot_thread: '剧情线索记忆（plot_thread）',
-  story_state: '故事状态（story_state）'
+  character: '人物记忆',
+  setting: '设定记忆',
+  timeline: '时间线记忆',
+  foreshadow: '伏笔记忆',
+  plot_thread: '剧情线索记忆',
+  story_state: '故事状态'
 }
 
 const stepActionLabelMap = {
@@ -1511,6 +1511,23 @@ const stepActionLabelMap = {
   observe: '观察（observe）',
   decide: '决策（decide）',
   tool_call: '工具调用（tool_call）'
+}
+
+const readinessReasonLabelMap = {
+  missing_work_id: '缺少作品标识',
+  missing_chapter_id: '缺少章节标识',
+  master_arc_missing: '主线轨道缺失',
+  master_arc_inferred_without_outline: '主线轨道仅根据现有内容推测，可靠性不足',
+  arc_placeholder_only: '剧情轨道仍是占位信息',
+  volume_arc_missing: '卷轨道缺失',
+  sequence_arc_missing: '章节序列轨道缺失',
+  immediate_window_missing: '近期剧情窗口缺失',
+  context_pack_missing: '写作上下文尚未生成',
+  vector_recall_unavailable: '向量召回暂不可用',
+  optional_trimmed: '部分可选信息已裁剪',
+  writing_task_missing: '写作任务尚未就绪',
+  direction_not_selected: '方向尚未确认',
+  chapter_plan_not_confirmed: '章节计划尚未确认'
 }
 
 const displayStatus = (value) => statusLabelMap[value] || String(value || '-')
@@ -1533,6 +1550,7 @@ const displayEntityType = (value) => entityTypeLabelMap[value] || String(value |
 const displayToolName = (value) => String(value || '-')
 const displayStepAction = (value) => stepActionLabelMap[value] || String(value || '-')
 const displayMemoryTargetType = (value) => memoryTargetTypeLabelMap[value] || String(value || '-')
+const displayReadinessReason = (value) => readinessReasonLabelMap[value] || String(value || '-')
 const buildIdempotencyKey = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 const REINDEX_SESSION_KEY_PREFIX = 'inktrace.vector-reindex.pending'
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'partial_success'])

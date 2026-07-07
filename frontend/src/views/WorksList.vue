@@ -7,11 +7,11 @@
         <p class="hero-description">支持新建作品或导入 TXT，进入后即可继续创作。</p>
       </div>
       <div class="hero-actions">
-        <el-button class="hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">
+        <el-button class="ink-el-button ink-el-button--primary hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">
           <el-icon><Plus /></el-icon>
           新建作品
         </el-button>
-        <el-button class="hero-btn hero-btn--secondary" plain @click="showImportModal = true">
+        <el-button class="ink-el-button ink-el-button--secondary hero-btn hero-btn--secondary" plain @click="showImportModal = true">
           <el-icon><Upload /></el-icon>
           导入 TXT
         </el-button>
@@ -41,8 +41,8 @@
       <h2>书架加载失败</h2>
       <p>{{ errorMessage }}</p>
       <div class="error-actions">
-        <el-button class="hero-btn hero-btn--primary" type="primary" @click="loadWorks">重新加载</el-button>
-        <el-button class="hero-btn hero-btn--secondary" plain @click="showCreateModal = true">先新建作品</el-button>
+        <el-button class="ink-el-button ink-el-button--primary hero-btn hero-btn--primary" type="primary" @click="loadWorks">重新加载</el-button>
+        <el-button class="ink-el-button ink-el-button--secondary hero-btn hero-btn--secondary" plain @click="showCreateModal = true">先新建作品</el-button>
       </div>
     </section>
 
@@ -50,8 +50,8 @@
       <el-empty description="你可以先新建空白作品，也可以直接导入 TXT。">
         <p class="empty-hint">先创建一本空白作品开始写作，或者直接导入现有 TXT 稿件。</p>
         <div class="empty-actions">
-          <el-button class="hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">新建作品</el-button>
-          <el-button class="hero-btn hero-btn--secondary" plain @click="showImportModal = true">导入 TXT</el-button>
+          <el-button class="ink-el-button ink-el-button--primary hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">新建作品</el-button>
+          <el-button class="ink-el-button ink-el-button--secondary hero-btn hero-btn--secondary" plain @click="showImportModal = true">导入 TXT</el-button>
         </div>
       </el-empty>
     </div>
@@ -291,20 +291,6 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-}
-
-:deep(.hero-btn.el-button) {
-  min-height: 42px;
-  border-radius: 999px;
-  font-weight: 600;
-  padding: 10px 16px;
-  transition: all 0.2s ease;
-}
-
-:deep(.hero-btn--primary.el-button) {
-  --el-button-bg-color: var(--ink-accent);
-  --el-button-border-color: var(--ink-accent);
-  --el-button-text-color: #fff;
 }
 
 :deep(.hero-btn--secondary.el-button) {

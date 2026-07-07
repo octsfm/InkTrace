@@ -79,7 +79,6 @@ vi.mock('@/api', () => ({
     getAgentTraceSteps,
     getAgentTraceDetailView,
     getAIReview,
-
     getAISettings,
     getLatestInitialization,
     getContextPackReadiness,
@@ -95,7 +94,7 @@ describe('ReviewTab', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    vi.spyOn(window, 'prompt').mockReturnValue('已人工修改的记忆摘要')
+    vi.spyOn(window, 'prompt').mockReturnValue('人工修改后的摘要')
 
     ReviewTab = (await import('../ReviewTab.vue')).default
 
@@ -269,11 +268,11 @@ describe('ReviewTab', () => {
     })
 
     await flushPromises()
-    await wrapper.get('[data-test=\"candidate-start-continuation\"]').trigger('click')
-    await wrapper.get('[data-test=\"candidate-detail-cd_1\"]').trigger('click')
+    await wrapper.get('[data-test="candidate-start-continuation"]').trigger('click')
+    await wrapper.get('[data-test="candidate-detail-cd_1"]').trigger('click')
     await flushPromises()
 
-    await wrapper.get('[data-test=\"candidate-accept-cd_1\"]').trigger('click')
+    await wrapper.get('[data-test="candidate-accept-cd_1"]').trigger('click')
     expect(acceptCandidateDraft).toHaveBeenCalledWith('cd_1', expect.objectContaining({
       caller_type: 'user_action',
       user_action: true,
@@ -281,28 +280,28 @@ describe('ReviewTab', () => {
       idempotency_key: expect.any(String)
     }))
 
-    await wrapper.get('[data-test=\"candidate-version-detail-cd_1-ver_2\"]').trigger('click')
+    await wrapper.get('[data-test="candidate-version-detail-cd_1-ver_2"]').trigger('click')
     expect(getCandidateDraftVersion).toHaveBeenCalledWith('cd_1', 'ver_2')
 
-    await wrapper.get('[data-test=\"candidate-version-select-cd_1-ver_2\"]').trigger('click')
+    await wrapper.get('[data-test="candidate-version-select-cd_1-ver_2"]').trigger('click')
     expect(selectCandidateDraftVersion).toHaveBeenCalledWith('cd_1', 'ver_2', expect.objectContaining({
       caller_type: 'user_action',
       user_action: true
     }))
 
-    await wrapper.get('[data-test=\"candidate-version-diff-cd_1-ver_1-ver_2\"]').trigger('click')
+    await wrapper.get('[data-test="candidate-version-diff-cd_1-ver_1-ver_2"]').trigger('click')
     expect(getCandidateDraftVersionDiff).toHaveBeenCalledWith('cd_1', {
       from_version_id: 'ver_1',
       to_version_id: 'ver_2'
     })
 
-    await wrapper.get('[data-test=\"candidate-version-rewrite-review-cd_1-ver_2\"]').trigger('click')
+    await wrapper.get('[data-test="candidate-version-rewrite-review-cd_1-ver_2"]').trigger('click')
     expect(rewriteCandidateDraft).toHaveBeenCalledWith('cd_1', expect.objectContaining({
       source_version_id: 'ver_2',
       trigger_type: 'review_based'
     }))
 
-    await wrapper.get('[data-test=\"candidate-apply-cd_1\"]').trigger('click')
+    await wrapper.get('[data-test="candidate-apply-cd_1"]').trigger('click')
     expect(applyCandidateDraft).toHaveBeenCalledWith('cd_1', expect.objectContaining({
       expected_chapter_version: 9,
       caller_type: 'user_action',
@@ -317,40 +316,63 @@ describe('ReviewTab', () => {
 
     await flushPromises()
 
-    await wrapper.get('[data-test=\"suggestion-detail-ais_1\"]').trigger('click')
+    await wrapper.get('[data-test="suggestion-detail-ais_1"]').trigger('click')
     expect(getAISuggestion).toHaveBeenCalledWith('ais_1')
 
-    await wrapper.get('[data-test=\"suggestion-accept-ais_1\"]').trigger('click')
+    await wrapper.get('[data-test="suggestion-accept-ais_1"]').trigger('click')
     expect(acceptAISuggestion).toHaveBeenCalledWith('ais_1', expect.objectContaining({
       caller_type: 'user_action',
       user_action: true
     }))
 
-    await wrapper.get('[data-test=\"suggestion-convert-ais_1\"]').trigger('click')
+    await wrapper.get('[data-test="suggestion-convert-ais_1"]').trigger('click')
     expect(convertAISuggestion).toHaveBeenCalledWith('ais_1', expect.objectContaining({
       caller_type: 'user_action',
       user_action: true
     }))
 
-    await wrapper.get('[data-test=\"memory-approve-mg_1-mus_1\"]').trigger('click')
+    await wrapper.get('[data-test="memory-approve-mg_1-mus_1"]').trigger('click')
     expect(approveMemorySuggestion).toHaveBeenCalledWith('mg_1', 'mus_1', expect.objectContaining({
       caller_type: 'user_action',
       user_action: true
     }))
 
-    await wrapper.get('[data-test=\"memory-apply-mg_1\"]').trigger('click')
+    await wrapper.get('[data-test="memory-edit-approve-mg_1-mus_1"]').trigger('click')
+    expect(editApproveMemorySuggestion).toHaveBeenCalledWith('mg_1', 'mus_1', expect.objectContaining({
+      caller_type: 'user_action',
+      user_action: true,
+      proposed_value_summary: '人工修改后的摘要'
+    }))
+
+    await wrapper.get('[data-test="memory-apply-mg_1"]').trigger('click')
     expect(applyMemoryGate).toHaveBeenCalledWith('mg_1', expect.objectContaining({
       caller_type: 'user_action',
       user_action: true
     }))
 
-    await wrapper.get('[data-test=\"trace-steps-trace_1\"]').trigger('click')
+    await wrapper.get('[data-test="memory-revision-detail-mr_1"]').trigger('click')
+    expect(getMemoryRevision).toHaveBeenCalledWith('mr_1')
+
+    await wrapper.get('[data-test="memory-revision-rollback-mr_1"]').trigger('click')
+    expect(rollbackMemoryRevision).toHaveBeenCalledWith('mr_1', expect.objectContaining({
+      caller_type: 'user_action',
+      user_action: true
+    }))
+
+    await wrapper.get('[data-test="conflict-detail-cgr_1"]').trigger('click')
+    expect(getConflict).toHaveBeenCalledWith('cgr_1')
+
+    await wrapper.get('[data-test="conflict-ack-cgr_1"]').trigger('click')
+    expect(decideConflict).toHaveBeenCalledWith('cgr_1', expect.objectContaining({
+      caller_type: 'user_action',
+      user_action: true,
+      decision: 'acknowledged'
+    }))
+
+    await wrapper.get('[data-test="trace-steps-trace_1"]').trigger('click')
     expect(getAgentTraceSteps).toHaveBeenCalledWith('trace_1')
 
-    await wrapper.get('[data-test=\"trace-detail-trace_1\"]').trigger('click')
-    expect(getAgentTraceDetailView).toHaveBeenCalledWith('trace_1', {
-      detail: true,
-      developer_mode: true
-    })
+    await wrapper.get('[data-test="trace-detail-trace_1"]').trigger('click')
+    expect(getAgentTraceDetailView).toHaveBeenCalledWith('trace_1')
   })
 })

@@ -28,9 +28,9 @@
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="ghost-button" @click="$emit('cancel')">取消</button>
-        <button type="button" class="ghost-button" @click="$emit('discard')">放弃本地</button>
-        <button type="button" class="danger-button" @click="$emit('override')">覆盖云端</button>
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="$emit('cancel')">取消</button>
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="$emit('discard')">放弃本地</button>
+        <button type="button" class="ink-button ink-button--danger danger-button" @click="$emit('override')">覆盖云端</button>
       </div>
     </div>
   </div>
@@ -106,7 +106,7 @@ defineEmits(['cancel', 'discard', 'override'])
   display: grid;
   gap: 12px;
   padding: 24px;
-  color: #374151;
+  color: var(--ink-text-secondary);
   font-size: 14px;
   line-height: 1.8;
 }
@@ -141,7 +141,7 @@ defineEmits(['cancel', 'discard', 'override'])
 
 .compare-column h4 {
   margin: 0 0 8px;
-  color: #374151;
+  color: var(--ink-text-secondary);
   font-size: 13px;
 }
 
@@ -171,22 +171,7 @@ defineEmits(['cancel', 'discard', 'override'])
 
 .ghost-button,
 .danger-button {
-  border: 0;
-  border-radius: 999px;
-  padding: 10px 18px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.ghost-button {
-  background: var(--ink-surface-3);
-  color: var(--ink-text-primary);
-}
-
-.danger-button {
-  background: #dc2626;
-  color: var(--ink-surface-1);
+  min-width: 96px;
 }
 
 @media (max-width: 760px) {

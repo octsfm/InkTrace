@@ -21,11 +21,11 @@ describe('CreateWorkModal', () => {
     const wrapper = mount(CreateWorkModal, {
       props: {
         modelValue: true,
-        defaultTitle: '未命名作品 0429'
+        defaultTitle: '未命名作品0429'
       }
     })
 
-    expect(wrapper.find('.field-input').element.value).toBe('未命名作品 0429')
+    expect(wrapper.find('.field-input').element.value).toBe('未命名作品0429')
     await wrapper.find('.field-input').setValue('   ')
     await wrapper.find('.primary-button').trigger('click')
 
@@ -38,7 +38,7 @@ describe('CreateWorkModal', () => {
     const wrapper = mount(CreateWorkModal, {
       props: {
         modelValue: true,
-        defaultTitle: '未命名作品 0429'
+        defaultTitle: '未命名作品0429'
       }
     })
 

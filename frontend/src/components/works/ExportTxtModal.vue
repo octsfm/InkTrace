@@ -6,7 +6,7 @@
           <h3>导出 TXT</h3>
           <p>{{ work?.title || '当前作品' }}</p>
         </div>
-        <button type="button" class="ghost-button" @click="close">关闭</button>
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="close">关闭</button>
       </div>
 
       <div class="modal-body">
@@ -26,8 +26,8 @@
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="ghost-button" @click="close">取消</button>
-        <button type="button" class="primary-button" :disabled="submitting" @click="submit">
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="close">取消</button>
+        <button type="button" class="ink-button ink-button--primary primary-button" :disabled="submitting" @click="submit">
           {{ submitting ? '导出中...' : '导出 .txt' }}
         </button>
       </div>
@@ -214,24 +214,6 @@ watch(
 
 .ghost-button,
 .primary-button {
-  border: 1px solid var(--ink-border-strong);
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  background: var(--ink-surface-1);
-  color: var(--ink-text-secondary);
-}
-
-.primary-button {
-  border-color: var(--ink-accent);
-  background: var(--ink-accent);
-  color: var(--ink-surface-1);
-}
-
-.primary-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
+  min-width: 88px;
 }
 </style>

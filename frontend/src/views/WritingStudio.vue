@@ -80,7 +80,7 @@
           >
             <button
               type="button"
-              class="preference-toggle"
+              class="ink-button ink-button--ghost preference-toggle"
               data-test="writing-preference-toggle"
               @click="togglePreferencePanel"
             >
@@ -102,7 +102,7 @@
             :enabled="isFocusMode"
             @toggle="toggleFocusMode"
           />
-          <el-button class="studio-header-btn" v-show="!isFocusMode" type="primary" @click="goBack">返回书架</el-button>
+          <el-button class="ink-el-button ink-el-button--primary studio-header-btn" v-show="!isFocusMode" type="primary" @click="goBack">返回书架</el-button>
         </div>
       </div>
     </header>
@@ -1593,7 +1593,7 @@ const handleRenameChapter = async ({ chapterId = '', title = '' } = {}) => {
     chapterDataStore.clearChapterTitleDraft(id)
     ElMessage.success('章节标题已更新')
   } catch (error) {
-    console.error('閲嶅懡鍚嶇珷鑺傚け璐?', error)
+    console.error('重命名章节失败:', error)
   }
 }
 
@@ -1863,32 +1863,14 @@ const handleManualSync = async () => {
 }
 
 .header-actions :deep(.studio-header-btn.el-button) {
-  min-height: 42px;
-  border-radius: 999px;
-  font-weight: 600;
-  padding: 10px 16px;
-  --el-button-bg-color: var(--ink-accent);
-  --el-button-border-color: var(--ink-accent);
-  --el-button-text-color: #ffffff;
-  --el-button-hover-bg-color: color-mix(in srgb, var(--ink-accent) 88%, #ffffff 12%);
-  --el-button-hover-border-color: color-mix(in srgb, var(--ink-accent) 88%, #ffffff 12%);
-  --el-button-active-bg-color: color-mix(in srgb, var(--ink-accent) 78%, #000000 22%);
-  --el-button-active-border-color: color-mix(in srgb, var(--ink-accent) 78%, #000000 22%);
+  min-width: 112px;
 }
 
 .preference-toggle {
-  border: 1px solid var(--studio-border);
-  border-radius: 999px;
-  background: var(--studio-button-bg);
-  padding: 10px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--studio-text);
-  cursor: pointer;
+  min-width: 96px;
 }
 
 .preference-toggle:hover {
-  border-color: var(--ink-accent);
   color: var(--ink-accent);
 }
 

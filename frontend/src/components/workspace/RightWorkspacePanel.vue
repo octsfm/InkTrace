@@ -298,6 +298,12 @@ onBeforeUnmount(() => {
 }
 
 .right-workspace-panel__surface {
+  --studio-card-bg: var(--workspace-panel-bg);
+  --studio-bg-focus: var(--workspace-panel-bg-soft);
+  --studio-border: var(--workspace-panel-border);
+  --studio-title: var(--workspace-panel-title);
+  --studio-text: var(--workspace-panel-text);
+  --studio-muted: var(--workspace-panel-muted);
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

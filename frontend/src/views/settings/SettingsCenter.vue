@@ -77,7 +77,7 @@
                 </label>
               </div>
               <div class="provider-actions">
-                <button type="button" @click="testProvider(provider.provider_name)">测试连接</button>
+                <button type="button" class="ink-button ink-button--ghost" @click="testProvider(provider.provider_name)">测试连接</button>
                 <span v-if="provider.last_test_status">测试状态：{{ displayTestStatus(provider.last_test_status) }}</span>
                 <span v-if="provider.last_test_error_message" class="error-text">{{ provider.last_test_error_message }}</span>
               </div>
@@ -106,8 +106,8 @@
           </div>
 
           <div class="settings-actions">
-            <button type="button" @click="saveAISettings">保存 AI 配置</button>
-            <button type="button" @click="reloadAISettings">刷新</button>
+            <button type="button" class="ink-button ink-button--primary" @click="saveAISettings">保存 AI 配置</button>
+            <button type="button" class="ink-button ink-button--ghost" @click="reloadAISettings">刷新</button>
           </div>
           <p v-if="aiSaveMessage" class="save-message">{{ aiSaveMessage }}</p>
           <p v-if="aiErrorMessage" class="error-text">{{ aiErrorMessage }}</p>
@@ -296,7 +296,7 @@ const testProvider = async (providerName) => {
       base_url: String(provider.base_url || '').trim() || undefined,
       default_model: String(provider.default_model || '').trim() || undefined
     }
-    const result = unwrapData(await aiApi.testProvider(payload))
+    const result = unwrapData(await aiApi.testProvider(provider.provider_name, payload))
     provider.last_test_status = result.status || 'unknown'
     provider.last_test_error_message = result.error_message || ''
     if (result.status === 'ok' || result.status === 'passed') {
@@ -439,12 +439,7 @@ onMounted(async () => {
 
 .provider-actions button,
 .settings-actions button {
-  border: 1px solid var(--settings-border-strong);
-  border-radius: 999px;
-  background: var(--settings-input-bg);
-  color: var(--settings-title);
-  padding: 8px 14px;
-  cursor: pointer;
+  min-width: 96px;
 }
 
 .settings-actions {

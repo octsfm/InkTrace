@@ -5,7 +5,7 @@
         <h3>人物</h3>
         <p>支持人物姓名、别名和描述维护，编辑后需手动保存。</p>
       </div>
-      <button type="button" class="create-button" @click="handleCreate">
+      <button type="button" class="ink-button ink-button--primary create-button" @click="handleCreate">
         新建人物
       </button>
     </header>
@@ -101,7 +101,7 @@
           <div class="editor-actions">
             <button
               type="button"
-              class="ghost-button"
+              class="ink-button ink-button--ghost ghost-button"
               :disabled="!canDelete"
               @click="handleDelete"
             >
@@ -109,7 +109,7 @@
             </button>
             <button
               type="button"
-              class="save-button"
+              class="ink-button ink-button--primary save-button"
               :disabled="saveStatus === 'saving'"
               @click="handleSave"
             >
@@ -202,11 +202,11 @@ const showDuplicateWarning = computed(() => {
   })
 })
 const plotArcStatusMap = {
-  ready: '可继续（ready）',
-  degraded: '信息可能不足（degraded）',
-  blocked: '无法继续（blocked）',
-  pending: '待处理（pending）',
-  unknown: '未知（unknown）'
+  ready: '可继续',
+  degraded: '信息可能不足',
+  blocked: '无法继续',
+  pending: '待处理',
+  unknown: '未知'
 }
 const plotArcStatusLabel = computed(() => {
   const status = String(assetStore.contextPackReadiness?.status || 'unknown')
@@ -571,23 +571,7 @@ defineExpose({
 .create-button,
 .save-button,
 .ghost-button {
-  border: 0;
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.create-button,
-.save-button {
-  background: var(--panel-title);
-  color: var(--panel-surface);
-}
-
-.ghost-button {
-  background: var(--panel-button-bg);
-  color: var(--panel-title);
-  border: 1px solid var(--panel-border);
+  min-width: 88px;
 }
 
 .search-field,

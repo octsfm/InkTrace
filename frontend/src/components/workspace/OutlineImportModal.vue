@@ -7,7 +7,12 @@
           <h3>导入作品大纲</h3>
           <p>导入结果只会进入当前草稿，仍需手动保存作品大纲。</p>
         </div>
-        <button type="button" class="outline-import-modal__close" aria-label="关闭导入弹窗" @click="$emit('close')">
+        <button
+          type="button"
+          class="ink-button ink-button--ghost outline-import-modal__close"
+          aria-label="关闭导入弹窗"
+          @click="$emit('close')"
+        >
           关闭
         </button>
       </header>
@@ -75,10 +80,10 @@
       </div>
 
       <footer class="outline-import-modal__footer">
-        <button type="button" class="ghost-button" @click="$emit('close')">取消</button>
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="$emit('close')">取消</button>
         <button
           type="button"
-          class="save-button"
+          class="ink-button ink-button--primary save-button"
           data-testid="outline-import-confirm"
           :disabled="!canImport"
           @click="handleImport"
@@ -287,7 +292,7 @@ watch(
 
 .outline-import-modal__hint--warn,
 .outline-import-modal__error {
-  color: #b45309;
+  color: var(--ink-warning);
 }
 
 .outline-import-modal__textarea,
@@ -314,34 +319,14 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #374151;
+  color: var(--ink-text-secondary);
   font-size: 14px;
 }
 
 .outline-import-modal__close,
 .ghost-button,
 .save-button {
-  border: 0;
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.outline-import-modal__close,
-.ghost-button {
-  background: var(--ink-surface-3);
-  color: var(--ink-text-primary);
-}
-
-.save-button {
-  background: var(--ink-text-primary);
-  color: var(--ink-surface-1);
-}
-
-.save-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+  min-width: 96px;
 }
 
 @media (max-width: 760px) {

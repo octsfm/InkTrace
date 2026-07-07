@@ -6,7 +6,7 @@
           <h3>导入 TXT</h3>
           <p>选择本地 TXT 文件后，系统会创建作品并导入章节。</p>
         </div>
-        <button type="button" class="ghost-button" @click="close">关闭</button>
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="close">关闭</button>
       </div>
 
       <div class="modal-body">
@@ -19,7 +19,7 @@
               placeholder="请选择 TXT 文件"
               readonly
             />
-            <button type="button" class="select-button" :disabled="submitting" @click="selectFile">
+            <button type="button" class="ink-button ink-button--secondary select-button" :disabled="submitting" @click="selectFile">
               选择文件
             </button>
           </div>
@@ -37,8 +37,8 @@
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="ghost-button" @click="close">取消</button>
-        <button type="button" class="primary-button" :disabled="submitting" @click="submit">
+        <button type="button" class="ink-button ink-button--ghost ghost-button" @click="close">取消</button>
+        <button type="button" class="ink-button ink-button--primary primary-button" :disabled="submitting" @click="submit">
           {{ submitting ? '导入中...' : '开始导入' }}
         </button>
       </div>
@@ -234,19 +234,8 @@ watch(
 }
 
 .select-button {
-  border: 1px solid var(--ink-border-strong);
-  border-radius: 14px;
+  min-width: 96px;
   padding: 0 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  background: var(--ink-surface-1);
-  color: var(--ink-text-secondary);
-}
-
-.select-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
 }
 
 .modal-footer {
@@ -255,25 +244,7 @@ watch(
 
 .ghost-button,
 .primary-button {
-  border: 1px solid var(--ink-border-strong);
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  background: var(--ink-surface-1);
-  color: var(--ink-text-secondary);
-}
-
-.primary-button {
-  border-color: var(--ink-accent);
-  background: var(--ink-accent);
-  color: var(--ink-surface-1);
-}
-
-.primary-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
+  min-width: 88px;
 }
 
 .fallback-file-input {

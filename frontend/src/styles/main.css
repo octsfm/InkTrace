@@ -118,10 +118,116 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Global button consistency: all primary action buttons keep pill shape */
+/* Global button consistency: all action buttons keep the same visual grammar */
 .el-button {
   --el-button-border-radius: 999px;
   border-radius: 999px;
+}
+
+.ink-button {
+  min-height: 40px;
+  border: 1px solid var(--ink-border-strong);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--ink-surface-1);
+  color: var(--ink-text-secondary);
+}
+
+.ink-button:hover:not(:disabled) {
+  border-color: var(--ink-border);
+  transform: translateY(-1px);
+}
+
+.ink-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  transform: none;
+}
+
+.ink-button--primary {
+  border-color: var(--ink-accent);
+  background: var(--ink-accent);
+  color: #ffffff;
+}
+
+.ink-button--primary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--ink-accent) 88%, #ffffff 12%);
+  background: color-mix(in srgb, var(--ink-accent) 88%, #ffffff 12%);
+}
+
+.ink-button--secondary,
+.ink-button--ghost {
+  background: var(--ink-surface-1);
+  color: var(--ink-text-secondary);
+}
+
+.ink-button--secondary:hover:not(:disabled),
+.ink-button--ghost:hover:not(:disabled) {
+  background: var(--ink-surface-2);
+  color: var(--ink-text-primary);
+}
+
+.ink-button--soft {
+  border-color: var(--ink-accent-soft);
+  background: color-mix(in srgb, var(--ink-accent-soft) 72%, var(--ink-surface-1));
+  color: var(--ink-accent);
+}
+
+.ink-button--soft:hover:not(:disabled) {
+  border-color: var(--ink-accent);
+}
+
+.ink-button--danger {
+  border-color: var(--ink-danger-text);
+  background: var(--ink-danger-text);
+  color: #ffffff;
+}
+
+.ink-button--danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--ink-danger-text) 82%, #000000 18%);
+  background: color-mix(in srgb, var(--ink-danger-text) 82%, #000000 18%);
+}
+
+.ink-button--icon {
+  min-width: 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+}
+
+.ink-el-button.el-button {
+  min-height: 42px;
+  border-radius: 999px;
+  font-weight: 600;
+  padding: 10px 16px;
+}
+
+.ink-el-button--primary.el-button {
+  --el-button-bg-color: var(--ink-accent);
+  --el-button-border-color: var(--ink-accent);
+  --el-button-text-color: #ffffff;
+  --el-button-hover-bg-color: color-mix(in srgb, var(--ink-accent) 88%, #ffffff 12%);
+  --el-button-hover-border-color: color-mix(in srgb, var(--ink-accent) 88%, #ffffff 12%);
+  --el-button-active-bg-color: color-mix(in srgb, var(--ink-accent) 78%, #000000 22%);
+  --el-button-active-border-color: color-mix(in srgb, var(--ink-accent) 78%, #000000 22%);
+}
+
+.ink-el-button--secondary.el-button {
+  --el-button-bg-color: var(--ink-surface-1);
+  --el-button-border-color: var(--ink-border);
+  --el-button-text-color: var(--ink-text-primary);
+  --el-button-hover-bg-color: var(--ink-surface-2);
+  --el-button-hover-border-color: var(--ink-border-strong);
+  --el-button-hover-text-color: var(--ink-text-primary);
+  --el-button-active-bg-color: var(--ink-surface-3);
+  --el-button-active-border-color: var(--ink-border-strong);
+  --el-button-active-text-color: var(--ink-text-primary);
 }
 
 ::-webkit-scrollbar {

@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+﻿import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
 import MentionPopup from '../MentionPopup.vue'
@@ -57,8 +57,8 @@ describe('MentionPopup', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('试试其他关键词')
-    expect(wrapper.text()).toContain('新建角色')
+    expect(wrapper.text()).toContain('试试其他关键词，或')
+    expect(wrapper.text()).toContain('新建人物')
 
     await wrapper.get('[data-test="mention-popup-create-character"]').trigger('click')
 
