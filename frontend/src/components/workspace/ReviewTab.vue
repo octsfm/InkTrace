@@ -53,19 +53,39 @@
           </div>
 
           <div class="action-row">
-            <button type="button" :data-test="`candidate-detail-${item.candidate_draft_id}`" @click="loadCandidateDetail(item.candidate_draft_id)">
+            <button
+              type="button"
+              :data-test="`candidate-detail-${item.candidate_draft_id}`"
+              @click="loadCandidateDetail(item.candidate_draft_id)"
+            >
               查看详情
             </button>
-            <button type="button" :data-test="`candidate-accept-${item.candidate_draft_id}`" @click="handleAcceptCandidate(item.candidate_draft_id)">
+            <button
+              type="button"
+              :data-test="`candidate-accept-${item.candidate_draft_id}`"
+              @click="handleAcceptCandidate(item.candidate_draft_id)"
+            >
               接受当前版本
             </button>
-            <button type="button" :data-test="`candidate-reject-${item.candidate_draft_id}`" @click="handleRejectCandidate(item.candidate_draft_id)">
+            <button
+              type="button"
+              :data-test="`candidate-reject-${item.candidate_draft_id}`"
+              @click="handleRejectCandidate(item.candidate_draft_id)"
+            >
               拒绝当前版本
             </button>
-            <button type="button" :data-test="`candidate-apply-${item.candidate_draft_id}`" @click="handleApplyCandidate(item.candidate_draft_id)">
+            <button
+              type="button"
+              :data-test="`candidate-apply-${item.candidate_draft_id}`"
+              @click="handleApplyCandidate(item.candidate_draft_id)"
+            >
               应用到正文
             </button>
-            <button type="button" :data-test="`candidate-review-${item.candidate_draft_id}`" @click="handleReviewCandidate(item.candidate_draft_id)">
+            <button
+              type="button"
+              :data-test="`candidate-review-${item.candidate_draft_id}`"
+              @click="handleReviewCandidate(item.candidate_draft_id)"
+            >
               AI 审阅
             </button>
           </div>
@@ -73,7 +93,7 @@
           <div v-if="candidateDetails[item.candidate_draft_id]" class="detail-block">
             <pre class="detail-pre">{{ candidateDetails[item.candidate_draft_id].content }}</pre>
             <div class="detail-meta">
-              <span>已选择 {{ selectedVersionByDraft[item.candidate_draft_id] || '-' }}</span>
+              <span>当前版本 {{ selectedVersionByDraft[item.candidate_draft_id] || '-' }}</span>
               <span>已接受 {{ candidateDetails[item.candidate_draft_id].accepted_version_id || '-' }}</span>
               <span>已应用 {{ candidateDetails[item.candidate_draft_id].applied_version_id || '-' }}</span>
             </div>
@@ -109,7 +129,13 @@
                     v-if="index > 0"
                     type="button"
                     :data-test="`candidate-version-diff-${item.candidate_draft_id}-${candidateVersions[item.candidate_draft_id][index - 1].candidate_version_id}-${version.candidate_version_id}`"
-                    @click="handleCandidateVersionDiff(item.candidate_draft_id, candidateVersions[item.candidate_draft_id][index - 1].candidate_version_id, version.candidate_version_id)"
+                    @click="
+                      handleCandidateVersionDiff(
+                        item.candidate_draft_id,
+                        candidateVersions[item.candidate_draft_id][index - 1].candidate_version_id,
+                        version.candidate_version_id
+                      )
+                    "
                   >
                     查看差异
                   </button>
@@ -135,7 +161,9 @@
                     拒绝此版本
                   </button>
                 </div>
-                <pre v-if="candidateVersionDetails[version.candidate_version_id]" class="detail-pre">{{ candidateVersionDetails[version.candidate_version_id].content }}</pre>
+                <pre v-if="candidateVersionDetails[version.candidate_version_id]" class="detail-pre">{{
+                  candidateVersionDetails[version.candidate_version_id].content
+                }}</pre>
               </li>
             </ul>
 
@@ -147,7 +175,11 @@
             </div>
 
             <ul v-if="conflictsByDraft[item.candidate_draft_id]?.length" class="nested-list">
-              <li v-for="conflict in conflictsByDraft[item.candidate_draft_id]" :key="conflict.record_id" class="nested-card">
+              <li
+                v-for="conflict in conflictsByDraft[item.candidate_draft_id]"
+                :key="conflict.record_id"
+                class="nested-card"
+              >
                 <div class="entity-summary">
                   <strong>{{ conflict.title }}</strong>
                   <span>{{ displayConflictType(conflict.conflict_type) }}</span>
@@ -155,10 +187,18 @@
                   <span>{{ conflict.summary }}</span>
                 </div>
                 <div class="action-row">
-                  <button type="button" :data-test="`conflict-detail-${conflict.record_id}`" @click="handleConflictDetail(conflict.record_id)">
+                  <button
+                    type="button"
+                    :data-test="`conflict-detail-${conflict.record_id}`"
+                    @click="handleConflictDetail(conflict.record_id)"
+                  >
                     查看冲突
                   </button>
-                  <button type="button" :data-test="`conflict-ack-${conflict.record_id}`" @click="handleConflictDecision(conflict.record_id, 'acknowledged', 'manual acknowledge')">
+                  <button
+                    type="button"
+                    :data-test="`conflict-ack-${conflict.record_id}`"
+                    @click="handleConflictDecision(conflict.record_id, 'acknowledged', 'manual acknowledge')"
+                  >
                     我已知晓
                   </button>
                   <button
@@ -198,13 +238,25 @@
             <span>{{ item.summary }}</span>
           </div>
           <div class="action-row">
-            <button type="button" :data-test="`suggestion-detail-${item.suggestion_id}`" @click="handleSuggestionDetail(item.suggestion_id)">
+            <button
+              type="button"
+              :data-test="`suggestion-detail-${item.suggestion_id}`"
+              @click="handleSuggestionDetail(item.suggestion_id)"
+            >
               查看建议
             </button>
-            <button type="button" :data-test="`suggestion-accept-${item.suggestion_id}`" @click="handleAcceptSuggestion(item.suggestion_id)">
+            <button
+              type="button"
+              :data-test="`suggestion-accept-${item.suggestion_id}`"
+              @click="handleAcceptSuggestion(item.suggestion_id)"
+            >
               采纳建议
             </button>
-            <button type="button" :data-test="`suggestion-dismiss-${item.suggestion_id}`" @click="handleDismissSuggestion(item.suggestion_id)">
+            <button
+              type="button"
+              :data-test="`suggestion-dismiss-${item.suggestion_id}`"
+              @click="handleDismissSuggestion(item.suggestion_id)"
+            >
               忽略建议
             </button>
             <button
@@ -249,16 +301,32 @@
                 <span>{{ suggestion.proposed_value_summary }}</span>
               </div>
               <div class="action-row">
-                <button type="button" :data-test="`memory-approve-${gate.gate_id}-${suggestion.id}`" @click="handleApproveMemorySuggestion(gate.gate_id, suggestion.id)">
+                <button
+                  type="button"
+                  :data-test="`memory-approve-${gate.gate_id}-${suggestion.id}`"
+                  @click="handleApproveMemorySuggestion(gate.gate_id, suggestion.id)"
+                >
                   审批通过
                 </button>
-                <button type="button" :data-test="`memory-edit-approve-${gate.gate_id}-${suggestion.id}`" @click="handleEditApproveMemorySuggestion(gate.gate_id, suggestion)">
+                <button
+                  type="button"
+                  :data-test="`memory-edit-approve-${gate.gate_id}-${suggestion.id}`"
+                  @click="handleEditApproveMemorySuggestion(gate.gate_id, suggestion)"
+                >
                   修改后通过
                 </button>
-                <button type="button" :data-test="`memory-reject-${gate.gate_id}-${suggestion.id}`" @click="handleRejectMemorySuggestion(gate.gate_id, suggestion.id)">
+                <button
+                  type="button"
+                  :data-test="`memory-reject-${gate.gate_id}-${suggestion.id}`"
+                  @click="handleRejectMemorySuggestion(gate.gate_id, suggestion.id)"
+                >
                   拒绝建议
                 </button>
-                <button type="button" :data-test="`memory-defer-${gate.gate_id}-${suggestion.id}`" @click="handleDeferMemorySuggestion(gate.gate_id, suggestion.id)">
+                <button
+                  type="button"
+                  :data-test="`memory-defer-${gate.gate_id}-${suggestion.id}`"
+                  @click="handleDeferMemorySuggestion(gate.gate_id, suggestion.id)"
+                >
                   稍后处理
                 </button>
               </div>
@@ -278,7 +346,11 @@
                 <span>{{ displayStatus(memoryRevisionDetails[revisionId]?.status || 'revision') }}</span>
               </div>
               <div class="action-row">
-                <button type="button" :data-test="`memory-revision-detail-${revisionId}`" @click="handleMemoryRevisionDetail(revisionId)">
+                <button
+                  type="button"
+                  :data-test="`memory-revision-detail-${revisionId}`"
+                  @click="handleMemoryRevisionDetail(revisionId)"
+                >
                   查看修订详情
                 </button>
                 <button
@@ -390,11 +462,14 @@ const conflictsByDraft = computed(() => {
 })
 
 const conflictSummary = computed(() => {
-  return conflicts.value.reduce((summary, item) => {
-    if (item.severity === 'blocking') summary.blockingCount += 1
-    else if (item.severity === 'warning') summary.warningCount += 1
-    return summary
-  }, { blockingCount: 0, warningCount: 0 })
+  return conflicts.value.reduce(
+    (summary, item) => {
+      if (item.severity === 'blocking') summary.blockingCount += 1
+      else if (item.severity === 'warning') summary.warningCount += 1
+      return summary
+    },
+    { blockingCount: 0, warningCount: 0 }
+  )
 })
 
 const statusLabels = {
@@ -585,13 +660,15 @@ const selectedVersionIdOf = (candidateDraftId) => {
 const handleStartContinuation = async () => {
   candidateActionError.value = ''
   try {
-    continuationResult.value = unwrapData(await aiApi.startContinuation({
-      work_id: props.workId,
-      chapter_id: props.chapterId,
-      caller_type: 'user_action',
-      user_action: true,
-      idempotency_key: buildIdempotencyKey('candidate_start')
-    }))
+    continuationResult.value = unwrapData(
+      await aiApi.startContinuation({
+        work_id: props.workId,
+        chapter_id: props.chapterId,
+        caller_type: 'user_action',
+        user_action: true,
+        idempotency_key: buildIdempotencyKey('candidate_start')
+      })
+    )
     await loadCandidateDrafts()
   } catch (error) {
     candidateActionError.value = String(error?.userMessage || error?.message || '生成候选稿失败，请稍后重试。')
@@ -687,11 +764,13 @@ const handleCandidateVersionDetail = async (candidateDraftId, candidateVersionId
 const handleSelectCandidateVersion = async (candidateDraftId, candidateVersionId) => {
   candidateActionError.value = ''
   try {
-    const payload = unwrapData(await aiApi.selectCandidateDraftVersion(candidateDraftId, candidateVersionId, {
-      caller_type: 'user_action',
-      user_action: true,
-      idempotency_key: buildIdempotencyKey('candidate_select')
-    }))
+    const payload = unwrapData(
+      await aiApi.selectCandidateDraftVersion(candidateDraftId, candidateVersionId, {
+        caller_type: 'user_action',
+        user_action: true,
+        idempotency_key: buildIdempotencyKey('candidate_select')
+      })
+    )
     selectedVersionByDraft.value = { ...selectedVersionByDraft.value, [candidateDraftId]: candidateVersionId }
     candidateDetails.value = { ...candidateDetails.value, [candidateDraftId]: payload }
     await loadCandidateDrafts()
@@ -702,19 +781,22 @@ const handleSelectCandidateVersion = async (candidateDraftId, candidateVersionId
 }
 
 const handleCandidateVersionDiff = async (candidateDraftId, fromVersionId, toVersionId) => {
-  const payload = unwrapData(await aiApi.getCandidateDraftVersionDiff(candidateDraftId, {
-    from_version_id: fromVersionId,
-    to_version_id: toVersionId
-  }))
+  const payload = unwrapData(
+    await aiApi.getCandidateDraftVersionDiff(candidateDraftId, {
+      from_version_id: fromVersionId,
+      to_version_id: toVersionId
+    })
+  )
   candidateVersionDiffs.value = { ...candidateVersionDiffs.value, [candidateDraftId]: payload }
 }
 
 const handleRewriteCandidate = async (candidateDraftId, candidateVersionId, triggerType) => {
   candidateActionError.value = ''
   try {
-    const userInstruction = triggerType === 'user_instruction'
-      ? window.prompt('请输入本次重写要求', '请强化关键线索与人物动机。')
-      : ''
+    const userInstruction =
+      triggerType === 'user_instruction'
+        ? window.prompt('请输入本次重写要求', '请强化关键信索与人物动机。')
+        : ''
     if (triggerType === 'user_instruction' && userInstruction === null) return
     await aiApi.rewriteCandidateDraft(candidateDraftId, {
       caller_type: 'user_action',
@@ -777,11 +859,13 @@ const handleDismissSuggestion = async (suggestionId) => {
 }
 
 const handleConvertSuggestion = async (suggestionId) => {
-  const payload = unwrapData(await aiApi.convertAISuggestion(suggestionId, {
-    caller_type: 'user_action',
-    user_action: true,
-    idempotency_key: buildIdempotencyKey('suggestion_convert')
-  }))
+  const payload = unwrapData(
+    await aiApi.convertAISuggestion(suggestionId, {
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: buildIdempotencyKey('suggestion_convert')
+    })
+  )
   const actionRef = String(payload?.action?.action_payload_ref || '')
   if (actionRef.startsWith('conflict_guard:')) {
     const recordId = actionRef.split(':').slice(1).join(':')
@@ -874,13 +958,16 @@ const handleDeferMemorySuggestion = async (gateId, suggestionId) => {
 const handleApplyMemoryGate = async (gateId) => {
   memoryActionError.value = ''
   try {
-    const payload = unwrapData(await aiApi.applyMemoryGate(gateId, {
-      caller_type: 'user_action',
-      user_action: true,
-      idempotency_key: buildIdempotencyKey('memory_apply')
-    }))
-    for (const revisionId of payload.revision_ids || []) {
-      await handleMemoryRevisionDetail(revisionId)
+    const payload = unwrapData(
+      await aiApi.applyMemoryGate(gateId, {
+        caller_type: 'user_action',
+        user_action: true,
+        idempotency_key: buildIdempotencyKey('memory_apply')
+      })
+    )
+    const revisionId = String(payload?.revision_id || '')
+    if (revisionId) {
+      memoryRevisionDetails.value = { ...memoryRevisionDetails.value, [revisionId]: payload }
     }
     await loadMemoryGates()
     ElMessage.success('记忆修订已应用。')
@@ -897,12 +984,14 @@ const handleMemoryRevisionDetail = async (revisionId) => {
 const handleRollbackMemoryRevision = async (revisionId) => {
   memoryActionError.value = ''
   try {
-    const payload = unwrapData(await aiApi.rollbackMemoryRevision(revisionId, {
-      caller_type: 'user_action',
-      user_action: true,
-      decision_note: 'manual rollback',
-      idempotency_key: buildIdempotencyKey('memory_rollback')
-    }))
+    const payload = unwrapData(
+      await aiApi.rollbackMemoryRevision(revisionId, {
+        caller_type: 'user_action',
+        user_action: true,
+        decision_note: 'manual rollback',
+        idempotency_key: buildIdempotencyKey('memory_rollback')
+      })
+    )
     memoryRevisionDetails.value = { ...memoryRevisionDetails.value, [payload.revision_id]: payload }
     await loadMemoryGates()
     ElMessage.success('记忆修订已回滚。')
@@ -925,10 +1014,12 @@ const handleTraceSteps = async (traceId) => {
 const handleTraceDetail = async (traceId) => {
   traceActionError.value = ''
   try {
-    const payload = unwrapData(await aiApi.getAgentTraceDetailView(traceId, {
-      detail: true,
-      developer_mode: props.developerMode
-    }))
+    const payload = unwrapData(
+      await aiApi.getAgentTraceDetailView(traceId, {
+        detail: true,
+        developer_mode: props.developerMode
+      })
+    )
     agentTraceDetails.value = { ...agentTraceDetails.value, [traceId]: payload }
   } catch (error) {
     traceActionError.value = String(error?.userMessage || error?.message || '任务详细追踪加载失败，请稍后重试。')

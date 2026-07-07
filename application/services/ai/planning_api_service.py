@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from application.services.ai.tool_facade import CoreToolFacade, ToolExecutionContext
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
@@ -16,6 +18,7 @@ from domain.entities.ai.models import (
     PlanConfirmation,
     WorkflowType,
     WritingTask,
+    WritingTaskStatus,
 )
 from domain.repositories.ai.chapter_plan_repository import ChapterPlanRepository
 from domain.repositories.ai.direction_plan_repository import DirectionPlanRepository
@@ -297,6 +300,45 @@ class PlanningAPIService:
 
     def get_writing_task(self, writing_task_id: str) -> WritingTask:
         return self._direction_plan_repository.get_writing_task(writing_task_id)
+
+    def confirm_writing_task(
+        self,
+        *,
+        writing_task_id: str,
+        user_id: str,
+        request_id: str,
+        trace_id: str,
+        user_action: bool,
+        decision_note: str = "",
+    ) -> WritingTask:
+        task = self.get_writing_task(writing_task_id)
+        if task.status != WritingTaskStatus.READY:
+            raise ValueError("writing_task_not_ready")
+
+        metadata = dict(task.metadata or {})
+        if metadata.get("user_confirmed") and str(metadata.get("confirmed_by", "") or "") == user_id:
+            return task
+
+        metadata.update(
+            {
+                "user_confirmed": True,
+                "confirmed_by": user_id,
+                "confirmed_via": "writing_task_confirm_api",
+                "confirmed_request_id": request_id,
+                "confirmed_trace_id": trace_id,
+                "confirmation_note": decision_note or "",
+            }
+        )
+        updated = task.model_copy(
+            update={
+                "metadata": metadata,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "request_id": request_id or task.request_id,
+                "trace_id": trace_id or task.trace_id,
+            }
+        )
+        self._direction_plan_repository.save_writing_task(updated)
+        return self.get_writing_task(writing_task_id)
 
     def _direction_generation_context(self, work_id: str, chapter_id: str) -> dict[str, object]:
         readiness = self._context_pack_service.evaluate_readiness(work_id, chapter_id=chapter_id)

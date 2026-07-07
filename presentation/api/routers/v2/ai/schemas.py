@@ -175,6 +175,12 @@ class RejectChapterPlanRequest(V2AIOperationRequest):
     user_edit_notes: str = ""
 
 
+class ConfirmWritingTaskRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    decision_note: str = ""
+
+
 class MemorySuggestionDecisionRequest(V2AIOperationRequest):
     user_action: bool = False
     user_id: str = ""

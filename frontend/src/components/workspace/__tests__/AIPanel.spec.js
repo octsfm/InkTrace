@@ -36,6 +36,8 @@ const generateChapterPlan = vi.fn()
 const listChapterPlans = vi.fn()
 const confirmChapterPlan = vi.fn()
 const listWritingTasks = vi.fn()
+const getWritingTask = vi.fn()
+const confirmWritingTask = vi.fn()
 const runQuickTrial = vi.fn()
 const listPlotArcs = vi.fn()
 const getPlotArc = vi.fn()
@@ -123,6 +125,8 @@ vi.mock('@/api', () => ({
     listChapterPlans,
     confirmChapterPlan,
     listWritingTasks,
+    getWritingTask,
+    confirmWritingTask,
     runQuickTrial,
     listPlotArcs,
     getPlotArc,
@@ -268,6 +272,31 @@ describe('AIPanel', () => {
           writing_goal: '潜入灯塔档案室并锁定钟声来源',
           plan_summary: '未来三章围绕灯塔调查展开'
         }]
+      }
+    })
+
+    getWritingTask.mockResolvedValue({
+      data: {
+        writing_task_id: 'wt_1',
+        status: 'ready',
+        writing_goal: '??????????????',
+        must_include: ['??????'],
+        must_not_include: ['??????'],
+        plan_summary: '????????????',
+        metadata: {}
+      }
+    })
+
+    confirmWritingTask.mockResolvedValue({
+      data: {
+        writing_task_id: 'wt_1',
+        status: 'ready',
+        writing_goal: '??????????????',
+        plan_summary: '????????????',
+        metadata: {
+          user_confirmed: true,
+          confirmed_by: 'ui-user'
+        }
       }
     })
 
@@ -2927,6 +2956,17 @@ describe('AIPanel', () => {
       caller_type: 'user_action',
       user_action: true
     }))
+    await wrapper.get('[data-test="writing-task-detail-wt_1"]').trigger('click')
+    expect(getWritingTask).toHaveBeenCalledWith('wt_1')
+    expect(wrapper.text()).toContain('??????')
+
+    await wrapper.get('[data-test="writing-task-confirm-wt_1"]').trigger('click')
+    expect(confirmWritingTask).toHaveBeenCalledWith('wt_1', expect.objectContaining({
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user'
+    }))
+
 
     await wrapper.get('[data-test="quick-trial-run"]').trigger('click')
     expect(runQuickTrial).toHaveBeenCalled()

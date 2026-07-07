@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <div class="writing-studio" :class="[themeClass, { 'writing-studio--focus': isFocusMode }]">
     <VersionConflictModal
       :model-value="conflictModalVisible"
@@ -1742,15 +1742,15 @@ const handleManualSync = async () => {
 
 <style scoped>
 .writing-studio {
-  --studio-bg: #f8fafc;
-  --studio-bg-focus: #f8fafc;
-  --studio-card-bg: #ffffff;
-  --studio-border: #e5e7eb;
-  --studio-title: #111827;
-  --studio-text: #4b5563;
-  --studio-muted: #6b7280;
-  --studio-input-bg: #ffffff;
-  --studio-button-bg: #ffffff;
+  --studio-bg: var(--ink-bg-app);
+  --studio-bg-focus: var(--ink-bg-app);
+  --studio-card-bg: var(--ink-surface-1);
+  --studio-border: var(--ink-border);
+  --studio-title: var(--ink-text-primary);
+  --studio-text: var(--ink-text-secondary);
+  --studio-muted: var(--ink-text-muted);
+  --studio-input-bg: var(--ink-surface-1);
+  --studio-button-bg: var(--ink-surface-1);
 
   display: flex;
   flex-direction: column;
@@ -1765,53 +1765,27 @@ const handleManualSync = async () => {
 }
 
 .writing-studio--dark {
-  --studio-bg: #0f172a;
-  --studio-bg-focus: #0f172a;
-  --studio-card-bg: #111827;
-  --studio-border: #233044;
-  --studio-title: #e5e7eb;
-  --studio-text: #cbd5e1;
-  --studio-muted: #94a3b8;
-  --studio-input-bg: #111827;
-  --studio-button-bg: #111827;
+  --studio-bg: var(--ink-bg-app);
+  --studio-bg-focus: var(--ink-bg-app);
+  --studio-card-bg: var(--ink-surface-1);
+  --studio-border: var(--ink-border);
+  --studio-title: var(--ink-text-primary);
+  --studio-text: var(--ink-text-secondary);
+  --studio-muted: var(--ink-text-muted);
+  --studio-input-bg: var(--ink-surface-1);
+  --studio-button-bg: var(--ink-surface-1);
 }
 
 .writing-studio--warm {
-  --studio-bg: #fcf8f3;
-  --studio-bg-focus: #f7efe4;
-  --studio-card-bg: #fffdf9;
-  --studio-border: #e9ddcf;
-  --studio-title: #4a3420;
-  --studio-text: #6f4f33;
-  --studio-muted: #8b6e54;
-  --studio-input-bg: #fffdf9;
-  --studio-button-bg: #fffdf9;
-}
-
-
-/* Theme fallback: if route-level class is stale, inherit from global app theme */
-:global(html[data-app-theme='dark']) .writing-studio {
-  --studio-bg: #0f172a;
-  --studio-bg-focus: #0f172a;
-  --studio-card-bg: #111827;
-  --studio-border: #233044;
-  --studio-title: #e5e7eb;
-  --studio-text: #cbd5e1;
-  --studio-muted: #94a3b8;
-  --studio-input-bg: #111827;
-  --studio-button-bg: #111827;
-}
-
-:global(html[data-app-theme='warm']) .writing-studio {
-  --studio-bg: #fcf8f3;
-  --studio-bg-focus: #f7efe4;
-  --studio-card-bg: #fffdf9;
-  --studio-border: #e9ddcf;
-  --studio-title: #4a3420;
-  --studio-text: #6f4f33;
-  --studio-muted: #8b6e54;
-  --studio-input-bg: #fffdf9;
-  --studio-button-bg: #fffdf9;
+  --studio-bg: var(--ink-bg-app);
+  --studio-bg-focus: var(--ink-bg-app);
+  --studio-card-bg: var(--ink-surface-1);
+  --studio-border: var(--ink-border);
+  --studio-title: var(--ink-text-primary);
+  --studio-text: var(--ink-text-secondary);
+  --studio-muted: var(--ink-text-muted);
+  --studio-input-bg: var(--ink-surface-1);
+  --studio-button-bg: var(--ink-surface-1);
 }
 
 .studio-header {

@@ -298,6 +298,7 @@ export const aiApi = {
   rejectChapterPlan: (planId, payload) => api.post(`/v2/ai/chapter-plans/${encodeURIComponent(planId)}/reject`, payload),
   listWritingTasks: (params = {}) => api.get('/v2/ai/writing-tasks', { params }),
   getWritingTask: (writingTaskId) => api.get(`/v2/ai/writing-tasks/${encodeURIComponent(writingTaskId)}`),
+  confirmWritingTask: (writingTaskId, payload) => api.post(`/v2/ai/writing-tasks/${encodeURIComponent(writingTaskId)}/confirm`, payload),
 
   // Continuation / candidates
   startContinuation: (payload) => api.post('/v2/ai/continuations', payload),

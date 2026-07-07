@@ -20,6 +20,7 @@ from domain.entities.ai.models import (
 from presentation.api import dependencies
 from presentation.api.routers.v2.ai.response_utils import error_response, success_response
 from presentation.api.routers.v2.ai.schemas import (
+    ConfirmWritingTaskRequest,
     ConfirmChapterPlanRequest,
     GenerateChapterPlanRequest,
     GenerateDirectionProposalRequest,
@@ -494,4 +495,30 @@ def get_writing_task(writing_task_id: str, request: Request):
         task = dependencies.get_planning_api_service().get_writing_task(writing_task_id)
     except ValueError:
         return error_response(request, error_code="writing_task_not_found", status_code=404)
+    return success_response(request, data=_serialize_writing_task(task))
+
+
+@router.post("/api/v2/ai/writing-tasks/{writing_task_id}/confirm")
+def confirm_writing_task(writing_task_id: str, payload: ConfirmWritingTaskRequest, request: Request):
+    denied = _ensure_gate_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
+    if denied is not None:
+        return denied
+    try:
+        task = dependencies.get_planning_api_service().confirm_writing_task(
+            writing_task_id=writing_task_id,
+            user_id=payload.user_id,
+            decision_note=payload.decision_note,
+            request_id=getattr(request.state, "request_id", ""),
+            trace_id=request.headers.get("X-Trace-Id", "").strip(),
+            user_action=payload.user_action,
+        )
+    except ValueError as exc:
+        error_code = str(exc)
+        status_code = 404 if error_code == "writing_task_not_found" else 400
+        return error_response(request, error_code=error_code, status_code=status_code)
     return success_response(request, data=_serialize_writing_task(task))

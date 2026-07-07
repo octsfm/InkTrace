@@ -59,36 +59,17 @@ const themeClass = computed(() => `main-layout--theme-${String(appTheme.value ||
 
 <style scoped>
 .main-layout {
-  --layout-bg: #F8FAFC;
-  --layout-header-bg: rgba(248, 250, 252, 0.92);
-  --layout-header-border: #E5E7EB;
-  --layout-nav-bg: #FFFFFF;
-  --layout-nav-hover-bg: #F3F4F6;
-  --layout-nav-text: #6B7280;
-  --layout-nav-active-text: #111827;
-  --layout-brand-bg: #111827;
-  --layout-brand-icon: #FFFFFF;
-  --layout-brand-text: #111827;
-  --layout-brand-subtitle: #6B7280;
-
-  /* Unified app theme tokens (single source for all pages/components) */
-  --ink-bg-app: #F8FAFC;
-  --ink-surface-1: #FFFFFF;
-  --ink-surface-2: #F8FAFC;
-  --ink-surface-3: #F3F4F6;
-  --ink-border: #E5E7EB;
-  --ink-border-strong: #D1D5DB;
-  --ink-text-primary: #111827;
-  --ink-text-secondary: #4B5563;
-  --ink-text-muted: #6B7280;
-  --ink-accent: #2563EB;
-  --ink-accent-soft: #DBEAFE;
-  --ink-success-bg: #F0FDF4;
-  --ink-success-text: #15803D;
-  --ink-warning-bg: #FFF7ED;
-  --ink-warning-text: #C2410C;
-  --ink-danger-bg: #FFF7F7;
-  --ink-danger-text: #991B1B;
+  --layout-bg: var(--ink-bg-app);
+  --layout-header-bg: color-mix(in srgb, var(--ink-bg-app) 92%, transparent);
+  --layout-header-border: var(--ink-border);
+  --layout-nav-bg: var(--ink-surface-1);
+  --layout-nav-hover-bg: var(--ink-surface-3);
+  --layout-nav-text: var(--ink-text-muted);
+  --layout-nav-active-text: var(--ink-text-primary);
+  --layout-brand-bg: var(--ink-text-primary);
+  --layout-brand-icon: var(--ink-surface-1);
+  --layout-brand-text: var(--ink-text-primary);
+  --layout-brand-subtitle: var(--ink-text-muted);
 
   height: 100vh;
   overflow: hidden;
@@ -96,67 +77,13 @@ const themeClass = computed(() => `main-layout--theme-${String(appTheme.value ||
 }
 
 .main-layout--theme-warm {
-  --layout-bg: #FCF8F3;
-  --layout-header-bg: rgba(252, 248, 243, 0.92);
-  --layout-header-border: #E9DDCF;
-  --layout-nav-bg: #FFFDF9;
-  --layout-nav-hover-bg: #F7EFE4;
-  --layout-nav-text: #7A5C3E;
-  --layout-nav-active-text: #4A3420;
-  --layout-brand-bg: #6B4226;
-  --layout-brand-icon: #FFFFFF;
-  --layout-brand-text: #4A3420;
-  --layout-brand-subtitle: #8B6E54;
-
-  --ink-bg-app: #FCF8F3;
-  --ink-surface-1: #FFFDF9;
-  --ink-surface-2: #F7EFE4;
-  --ink-surface-3: #F2E7D8;
-  --ink-border: #E9DDCF;
-  --ink-border-strong: #D9C7AF;
-  --ink-text-primary: #4A3420;
-  --ink-text-secondary: #6F4F33;
-  --ink-text-muted: #8B6E54;
-  --ink-accent: #A46B2A;
-  --ink-accent-soft: #F5E6D3;
-  --ink-success-bg: #ECF8F1;
-  --ink-success-text: #1F6F4A;
-  --ink-warning-bg: #FFF3E4;
-  --ink-warning-text: #A55A17;
-  --ink-danger-bg: #FFF1F1;
-  --ink-danger-text: #A62A2A;
+  --layout-header-bg: color-mix(in srgb, var(--ink-bg-app) 92%, transparent);
 }
 
 .main-layout--theme-dark {
-  --layout-bg: #0F172A;
-  --layout-header-bg: rgba(15, 23, 42, 0.94);
-  --layout-header-border: #1E293B;
-  --layout-nav-bg: #111827;
-  --layout-nav-hover-bg: #1F2937;
-  --layout-nav-text: #9CA3AF;
-  --layout-nav-active-text: #F3F4F6;
-  --layout-brand-bg: #EFF6FF;
-  --layout-brand-icon: #1E293B;
-  --layout-brand-text: #E5E7EB;
-  --layout-brand-subtitle: #94A3B8;
-
-  --ink-bg-app: #0F172A;
-  --ink-surface-1: #111827;
-  --ink-surface-2: #0F172A;
-  --ink-surface-3: #1F2937;
-  --ink-border: #233044;
-  --ink-border-strong: #334155;
-  --ink-text-primary: #E5E7EB;
-  --ink-text-secondary: #CBD5E1;
-  --ink-text-muted: #94A3B8;
-  --ink-accent: #60A5FA;
-  --ink-accent-soft: #1E3A5F;
-  --ink-success-bg: #113B2B;
-  --ink-success-text: #8CE3BA;
-  --ink-warning-bg: #3D2F16;
-  --ink-warning-text: #FCD34D;
-  --ink-danger-bg: #3A1E1E;
-  --ink-danger-text: #FCA5A5;
+  --layout-header-bg: color-mix(in srgb, var(--ink-bg-app) 94%, transparent);
+  --layout-brand-bg: var(--ink-surface-1);
+  --layout-brand-icon: var(--ink-text-primary);
 }
 
 .header {

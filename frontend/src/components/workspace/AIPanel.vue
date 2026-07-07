@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
   <section class="ai-panel" data-test="ai-panel">
     <header class="ai-panel-header">
       <div>
@@ -17,14 +17,14 @@
 
     <template v-else>
       <div v-if="showAIMode" class="ai-section">
-      <h4>AI 设置状态</h4>
+      <h4>使用前检查</h4>
       <div class="ai-meta">
-        <span v-if="aiSettingsBlocked">未完成</span>
-        <span v-else>已完成</span>
-        <span>配置与模型服务商管理已迁移到“设置”页面</span>
+        <span v-if="aiSettingsBlocked">模型配置未完成</span>
+        <span v-else>模型配置已完成</span>
+        <span>详细配置与模型服务商管理请前往“设置”页面</span>
       </div>
       <div v-if="aiSettingsBlocked" class="settings-block-banner" data-test="ai-settings-blocked">
-        <strong>AI 设置未完成</strong>
+        <strong>暂时无法启动 AI 工作</strong>
         <span>{{ aiSettingsBlockMessage }}</span>
       </div>
       <div class="ai-actions">
@@ -85,7 +85,7 @@
       </div>
       <ul v-if="contextPackItems.length" class="ai-list">
         <li v-for="item in contextPackItems" :key="item.item_id || item.source_type">
-          {{ displayContextItemType(item.source_type || item.item_type) }} / {{ item.content_text || item.summary || 'summary' }}
+          {{ displayContextItemType(item.source_type || item.item_type) }} / {{ item.content_text || item.summary || '摘要' }}
         </li>
       </ul>
     </div>
@@ -558,12 +558,36 @@
     <div v-if="showAIMode" class="ai-section">
       <h4>写作任务</h4>
       <ul v-if="writingTasks.length" class="ai-list">
-        <li v-for="task in writingTasks" :key="task.writing_task_id">
+        <li v-for="task in writingTasks" :key="task.writing_task_id" class="planning-item">
           <div class="candidate-summary">
             <strong>{{ task.writing_task_id }}</strong>
             <span>{{ displayStatus(task.status) }}</span>
             <span>{{ task.writing_goal }}</span>
             <span>{{ task.plan_summary }}</span>
+            <span>{{ displayWritingTaskConfirmation(task) }}</span>
+          </div>
+          <div class="ai-actions">
+            <button
+              :data-test="`writing-task-detail-${task.writing_task_id}`"
+              type="button"
+              @click="handleWritingTaskDetail(task.writing_task_id)"
+            >
+              查看任务详情
+            </button>
+            <button
+              :data-test="`writing-task-confirm-${task.writing_task_id}`"
+              type="button"
+              :disabled="task.status !== 'ready' || isWritingTaskConfirmed(task) || writingTaskSubmittingId === task.writing_task_id"
+              @click="handleConfirmWritingTask(task.writing_task_id)"
+            >
+              {{ writingTaskSubmittingId === task.writing_task_id ? '确认中...' : isWritingTaskConfirmed(task) ? '已确认可执行' : '确认可执行' }}
+            </button>
+          </div>
+          <div v-if="writingTaskDetails[task.writing_task_id]" class="note-box">
+            <div>目标：{{ writingTaskDetails[task.writing_task_id].writing_goal || '未填写' }}</div>
+            <div>必须包含：{{ (writingTaskDetails[task.writing_task_id].must_include || []).join('；') || '无' }}</div>
+            <div>禁止事项：{{ (writingTaskDetails[task.writing_task_id].must_not_include || []).join('；') || '无' }}</div>
+            <div>计划摘要：{{ writingTaskDetails[task.writing_task_id].plan_summary || '无' }}</div>
           </div>
         </li>
       </ul>
@@ -855,7 +879,7 @@
     </div>
 
     <div v-if="false" class="ai-section">
-      <h4>任务追踪（Agent Trace）</h4>
+      <h4>任务追踪</h4>
       <ul v-if="agentTraces.length" class="ai-list">
         <li v-for="trace in agentTraces" :key="trace.trace_id" class="planning-item">
           <div class="candidate-summary">
@@ -1037,6 +1061,8 @@ const candidateActionError = ref('')
 const directionProposals = ref([])
 const chapterPlans = ref([])
 const writingTasks = ref([])
+const writingTaskDetails = ref({})
+const writingTaskSubmittingId = ref('')
 const planningActionError = ref('')
 const quickTrialResult = ref({})
 const styleDNADraftText = ref('')
@@ -1280,6 +1306,12 @@ const aiSettingsBlockMessage = computed(() => {
 const aiSettingsBlocked = computed(() => Boolean(aiSettingsBlockMessage.value))
 
 const unwrapData = (payload) => payload?.data ?? payload ?? {}
+const isWritingTaskConfirmed = (task) => Boolean(task?.metadata?.user_confirmed)
+const displayWritingTaskConfirmation = (task) => (
+  isWritingTaskConfirmed(task)
+    ? `已由 ${task?.metadata?.confirmed_by || '当前用户'} 确认可执行`
+    : '待确认可执行'
+)
 
 const statusLabelMap = {
   pending: '待处理（pending）',
@@ -2193,6 +2225,39 @@ const handleRejectPlan = async (planId) => {
     await loadPlanningData()
   } catch (error) {
     planningActionError.value = String(error?.userMessage || error?.message || '章节计划拒绝失败，请稍后重试')
+  }
+}
+
+const handleWritingTaskDetail = async (writingTaskId) => {
+  planningActionError.value = ''
+  try {
+    const payload = unwrapData(await aiApi.getWritingTask(writingTaskId))
+    writingTaskDetails.value = {
+      ...writingTaskDetails.value,
+      [writingTaskId]: payload
+    }
+  } catch (error) {
+    planningActionError.value = String(error?.userMessage || error?.message || '写作任务详情加载失败，请稍后重试')
+  }
+}
+
+const handleConfirmWritingTask = async (writingTaskId) => {
+  planningActionError.value = ''
+  writingTaskSubmittingId.value = writingTaskId
+  try {
+    await aiApi.confirmWritingTask(writingTaskId, {
+      caller_type: 'user_action',
+      user_action: true,
+      user_id: 'ui-user',
+      decision_note: 'manual confirm writing task ready',
+      idempotency_key: buildIdempotencyKey('writing_task_confirm')
+    })
+    await loadPlanningData()
+    await handleWritingTaskDetail(writingTaskId)
+  } catch (error) {
+    planningActionError.value = String(error?.userMessage || error?.message || '写作任务确认失败，请稍后重试')
+  } finally {
+    writingTaskSubmittingId.value = ''
   }
 }
 

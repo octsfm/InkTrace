@@ -118,6 +118,24 @@ def test_planning_api_generates_direction_and_plan_then_confirms_to_writing_task
     assert task_detail.status_code == 200
     assert task_detail.json()["data"]["writing_task_id"] == writing_task_id
 
+    confirm_task_response = client.post(
+        f"/api/v2/ai/writing-tasks/{writing_task_id}/confirm",
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "ui-user",
+            "decision_note": "ready for drafting",
+            "idempotency_key": "idem-writing-task-confirm-1",
+        },
+    )
+    assert confirm_task_response.status_code == 200
+    confirmed_task = confirm_task_response.json()["data"]
+    assert confirmed_task["writing_task_id"] == writing_task_id
+    assert confirmed_task["status"] == "ready"
+    assert confirmed_task["metadata"]["user_confirmed"] is True
+    assert confirmed_task["metadata"]["confirmed_by"] == "ui-user"
+    assert confirmed_task["metadata"]["confirmation_note"] == "ready for drafting"
+
 
 def test_planning_gate_api_requires_user_action_and_idempotency_key() -> None:
     work_id, chapter_id = _seed_initialized_work()
@@ -174,6 +192,64 @@ def test_planning_gate_api_requires_user_action_and_idempotency_key() -> None:
     )
     assert no_user_action.status_code == 403
     assert no_user_action.json()["error"]["error_code"] == "action_not_allowed"
+
+
+def test_writing_task_confirm_requires_gate_request_and_ready_status() -> None:
+    work_id, chapter_id = _seed_initialized_work()
+    client = TestClient(app)
+
+    proposal = client.post(
+        "/api/v2/ai/directions",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "caller_type": "user_action",
+            "idempotency_key": "idem-direction-generate-writing-task-1",
+        },
+    ).json()["data"]
+    option_id = proposal["options"][0]["option_id"]
+    client.post(
+        f"/api/v2/ai/directions/{proposal['direction_proposal_id']}/select",
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "ui-user",
+            "selected_option_id": option_id,
+            "idempotency_key": "idem-direction-select-writing-task-1",
+        },
+    )
+    plan = client.post(
+        "/api/v2/ai/chapter-plans",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "direction_proposal_id": proposal["direction_proposal_id"],
+            "caller_type": "user_action",
+            "idempotency_key": "idem-plan-generate-writing-task-1",
+        },
+    ).json()["data"]
+    confirmed_plan = client.post(
+        f"/api/v2/ai/chapter-plans/{plan['chapter_plan_id']}/confirm",
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "ui-user",
+            "idempotency_key": "idem-plan-confirm-writing-task-1",
+        },
+    ).json()["data"]
+    writing_task_id = confirmed_plan["writing_task"]["writing_task_id"]
+
+    forbidden = client.post(
+        f"/api/v2/ai/writing-tasks/{writing_task_id}/confirm",
+        json={
+            "caller_type": "workflow_compat",
+            "user_action": True,
+            "user_id": "ui-user",
+            "idempotency_key": "idem-writing-task-forbidden-1",
+        },
+    )
+    assert forbidden.status_code == 403
+    assert forbidden.json()["error"]["error_code"] == "caller_type_forbidden"
 
 
 def test_planning_api_rejects_chapter_plan_and_returns_confirmation_payload() -> None:
