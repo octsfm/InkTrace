@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿<template>
+<template>
   <aside
     class="right-workspace-panel"
     :class="{
@@ -47,7 +47,7 @@
       <div v-if="pendingAction" class="right-workspace-panel__dirty-guard" role="dialog" aria-modal="true">
         <div class="right-workspace-panel__dirty-card">
           <h4>存在未保存修改</h4>
-          <p>请先保存或放弃当前修改，再继续切换右侧工作区。</p>
+          <p>请先保存或放弃当前修改,再继续切换右侧工作区。</p>
           <div class="right-workspace-panel__dirty-actions">
             <button data-test="workspace-dirty-save" type="button" @click="confirmSave">保存</button>
             <button data-test="workspace-dirty-discard" type="button" @click="confirmDiscard">放弃</button>
@@ -225,107 +225,86 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .right-workspace-panel {
+  --workspace-panel-border: var(--studio-border, var(--ink-border, #e5e7eb));
   --workspace-panel-bg: var(--studio-card-bg, var(--ink-surface-1, #ffffff));
   --workspace-panel-bg-soft: var(--studio-bg-focus, var(--ink-surface-2, #f8fafc));
-  --workspace-panel-border: var(--studio-border, var(--ink-border, #e5e7eb));
   --workspace-panel-title: var(--studio-title, var(--ink-text-primary, #111827));
-  --workspace-panel-text: var(--studio-text, var(--ink-text-secondary, #4b5563));
-  --workspace-panel-muted: var(--studio-muted, var(--ink-text-muted, #6b7280));
-  --workspace-panel-accent: var(--ink-accent, #2563eb);
-  --workspace-panel-accent-soft: var(--ink-accent-soft, #dbeafe);
+  --workspace-panel-text: var(--studio-text, var(--ink-text-secondary, #6b7280));
+  --workspace-panel-muted: var(--studio-muted, var(--ink-text-muted, #9ca3af));
 
-  --workspace-panel-width: 48px;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr);
-  width: var(--workspace-panel-width);
-  min-width: 48px;
-  height: 100%;
+  width: var(--workspace-panel-width, 48px);
   border: 1px solid var(--workspace-panel-border);
-  border-radius: var(--radius-lg);
-  background: var(--workspace-panel-bg-soft);
+  border-radius: 22px;
+  background: var(--workspace-panel-bg);
   overflow: hidden;
-  transition: width 180ms ease;
-  contain: layout paint;
-}
-
-.right-workspace-panel--expanded {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.right-workspace-panel--expanded .right-workspace-panel__tab-rail {
-  display: none;
 }
 
 .right-workspace-panel--mobile {
-  width: min(100%, 100vw - var(--space-8));
+  width: 100%;
 }
 
 .right-workspace-panel__tab-rail {
-  display: grid;
-  align-content: start;
-  gap: var(--space-2);
-  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
   border-right: 1px solid var(--workspace-panel-border);
-  background: var(--workspace-panel-bg-soft);
+  background: var(--workspace-panel-bg);
 }
 
 .right-workspace-panel__tab-button {
+  width: 100%;
+  min-height: 52px;
   display: grid;
   place-items: center;
-  gap: var(--space-1);
-  min-height: 48px;
+  gap: 4px;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: 16px;
   background: transparent;
-  color: var(--workspace-panel-muted);
+  color: var(--workspace-panel-text);
   cursor: pointer;
-}
-
-.right-workspace-panel__tab-button.is-active {
-  border-color: var(--workspace-panel-accent);
-  background: var(--workspace-panel-accent-soft);
-  color: var(--workspace-panel-accent);
-}
-
-.right-workspace-panel__tab-icon {
-  font-size: var(--text-md);
-  font-weight: 700;
-}
-
-.right-workspace-panel__tab-label {
-  font-size: var(--text-xs);
+  font-size: 13px;
   font-weight: 600;
 }
 
+.right-workspace-panel__tab-button.is-active {
+  background: var(--workspace-panel-bg-soft);
+  border-color: var(--workspace-panel-border);
+  color: var(--workspace-panel-title);
+}
+
+.right-workspace-panel__tab-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.right-workspace-panel__tab-label {
+  font-size: 12px;
+}
+
 .right-workspace-panel__surface {
-  --studio-card-bg: var(--workspace-panel-bg);
-  --studio-bg-focus: var(--workspace-panel-bg-soft);
-  --studio-border: var(--workspace-panel-border);
-  --studio-title: var(--workspace-panel-title);
-  --studio-text: var(--workspace-panel-text);
-  --studio-muted: var(--workspace-panel-muted);
   position: relative;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   background: var(--workspace-panel-bg);
 }
 
 .right-workspace-panel__resizer {
   position: absolute;
-  left: 0;
   top: 0;
   bottom: 0;
-  width: 10px;
-  border: none;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--workspace-panel-accent) 28%, transparent) 0,
-    color-mix(in srgb, var(--workspace-panel-accent) 12%, transparent) 30%,
-    transparent 100%
-  );
+  left: 0;
+  width: 8px;
+  border: 0;
+  background: transparent;
   cursor: col-resize;
 }
 
@@ -334,7 +313,7 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 18px 16px 18px;
+  padding: 20px 18px 16px;
   border-bottom: 1px solid var(--workspace-panel-border);
 }
 
@@ -352,23 +331,22 @@ onBeforeUnmount(() => {
   color: var(--workspace-panel-text);
 }
 
-.right-workspace-panel__close,
-.right-workspace-panel__dirty-actions button {
+.right-workspace-panel__close {
   border: 1px solid var(--workspace-panel-border);
   border-radius: 999px;
   background: var(--workspace-panel-bg);
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
   color: var(--workspace-panel-title);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .right-workspace-panel__body {
-  min-width: 0;
   min-height: 0;
   overflow: auto;
   padding: 18px;
+  background: var(--workspace-panel-bg);
 }
 
 .right-workspace-panel__dirty-guard {
@@ -376,34 +354,48 @@ onBeforeUnmount(() => {
   inset: 0;
   display: grid;
   place-items: center;
-  border-radius: inherit;
-  background: rgba(17, 24, 39, 0.24);
+  background: rgba(15, 23, 42, 0.28);
+  padding: 20px;
 }
 
 .right-workspace-panel__dirty-card {
-  width: min(320px, calc(100% - 32px));
-  border-radius: 18px;
+  width: min(320px, 100%);
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: 20px;
   background: var(--workspace-panel-bg);
   padding: 18px;
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
 }
 
 .right-workspace-panel__dirty-card h4 {
   margin: 0;
   font-size: 16px;
+  font-weight: 700;
   color: var(--workspace-panel-title);
 }
 
 .right-workspace-panel__dirty-card p {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   font-size: 13px;
+  line-height: 1.7;
   color: var(--workspace-panel-text);
 }
 
 .right-workspace-panel__dirty-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-top: 16px;
+}
+
+.right-workspace-panel__dirty-actions button {
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: 999px;
+  background: var(--workspace-panel-bg-soft);
+  color: var(--workspace-panel-title);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 </style>

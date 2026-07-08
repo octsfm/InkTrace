@@ -110,7 +110,7 @@ def _reject_invalid_caller_type(request: Request, *, caller_type: str) -> JSONRe
     return None
 
 
-def _ensure_gate_request(request: Request, *, caller_type: str, user_action: bool, idempotency_key: str) -> JSONResponse | None:
+def _ensure_user_request(request: Request, *, caller_type: str, user_action: bool, idempotency_key: str) -> JSONResponse | None:
     denied = _reject_invalid_caller_type(request, caller_type=caller_type)
     if denied is not None:
         return denied
@@ -121,9 +121,23 @@ def _ensure_gate_request(request: Request, *, caller_type: str, user_action: boo
     return None
 
 
+def _ensure_gate_request(request: Request, *, caller_type: str, user_action: bool, idempotency_key: str) -> JSONResponse | None:
+    return _ensure_user_request(
+        request,
+        caller_type=caller_type,
+        user_action=user_action,
+        idempotency_key=idempotency_key,
+    )
+
+
 @router.post("/api/v2/ai/continuations")
 def start_continuation(payload: StartContinuationRequest, request: Request):
-    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    denied = _ensure_user_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
     if denied is not None:
         return denied
     workflow = dependencies.get_continuation_workflow()

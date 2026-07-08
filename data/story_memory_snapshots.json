@@ -2478,5 +2478,63 @@
     "stale_status": "fresh",
     "stale_reason": "",
     "created_at": "2026-05-26T03:30:45.993237+00:00"
+  },
+  "memory_7244408a656a": {
+    "snapshot_id": "memory_7244408a656a",
+    "work_id": "aed12b6a-86e5-4419-bd0b-733a27ab78ce",
+    "source_initialization_id": "init_052e12296bec",
+    "source_job_id": "job_53a17542fe16",
+    "source_chapter_ids": [
+      "8ed4f3a6-0026-4fb4-868c-539d50800b30"
+    ],
+    "source_chapter_versions": {
+      "8ed4f3a6-0026-4fb4-868c-539d50800b30": 2
+    },
+    "global_summary": "dbg 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:41字",
+    "chapter_summaries": [
+      {
+        "chapter_id": "8ed4f3a6-0026-4fb4-868c-539d50800b30",
+        "chapter_title": "c1",
+        "summary": "c1已完成最小分析；原文长度:41字"
+      }
+    ],
+    "characters": [],
+    "locations": [],
+    "plot_threads": [
+      "c1已完成最小分析；原文长度:41字"
+    ],
+    "scene_details": [],
+    "stale_status": "fresh",
+    "stale_reason": "",
+    "created_at": "2026-07-07T13:08:25.256379+00:00"
+  },
+  "memory_bd5c69d804a9": {
+    "snapshot_id": "memory_bd5c69d804a9",
+    "work_id": "1e1e27f4-bf7b-4725-b757-912a7ec7d1e8",
+    "source_initialization_id": "init_d2f103f06bca",
+    "source_job_id": "job_1d5c6ef803a1",
+    "source_chapter_ids": [
+      "4ae5e3cf-8dfa-4071-b511-93848189c065"
+    ],
+    "source_chapter_versions": {
+      "4ae5e3cf-8dfa-4071-b511-93848189c065": 2
+    },
+    "global_summary": "dbg2 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:87字",
+    "chapter_summaries": [
+      {
+        "chapter_id": "4ae5e3cf-8dfa-4071-b511-93848189c065",
+        "chapter_title": "c1",
+        "summary": "c1已完成最小分析；原文长度:87字"
+      }
+    ],
+    "characters": [],
+    "locations": [],
+    "plot_threads": [
+      "c1已完成最小分析；原文长度:87字"
+    ],
+    "scene_details": [],
+    "stale_status": "fresh",
+    "stale_reason": "",
+    "created_at": "2026-07-07T13:08:47.620064+00:00"
   }
 }

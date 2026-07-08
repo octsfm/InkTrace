@@ -794,7 +794,9 @@ const handleStartContinuation = async () => {
     await aiApi.startContinuation({
       work_id: props.workId,
       chapter_id: props.chapterId,
-      caller_type: 'user_action'
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: buildIdempotencyKey('candidate_start_continuation')
     })
     await loadCandidateDrafts()
   } catch (error) {
@@ -875,7 +877,9 @@ const handleReviewCandidate = async (candidateDraftId) => {
   candidateActionError.value = ''
   try {
     const reviewPayload = unwrapData(await aiApi.reviewCandidateDraft(candidateDraftId, {
-      caller_type: 'user_action'
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: buildIdempotencyKey('candidate_review')
     }))
     let detail = reviewPayload
     if (reviewPayload.review_id) {

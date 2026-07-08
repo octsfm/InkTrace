@@ -144,10 +144,10 @@ export const useMentionStore = defineStore('workbenchMention', () => {
     const currentName = String(summary?.entity_current_name || snapshotName || '')
     const summaryText = String(summary?.summary_text || '')
     if (status === 'broken') {
-      return '该 mention 已失效，历史数据仅供追溯。'
+      return '该提及已失效,历史数据仅供追溯。'
     }
     if (status === 'inactive_entity') {
-      return '该实体已删除，历史数据仅供追溯。'
+      return '该实体已删除,历史数据仅供追溯。'
     }
     if (status === 'stale' && snapshotName && currentName && snapshotName !== currentName) {
       return `${snapshotName} 已更名为 ${currentName}。${summaryText}`.trim()
@@ -285,3 +285,4 @@ export const useMentionStore = defineStore('workbenchMention', () => {
     saveMentions
   }
 })
+

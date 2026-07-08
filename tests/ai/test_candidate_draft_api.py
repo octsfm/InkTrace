@@ -1,10 +1,18 @@
-from __future__ import annotations
+﻿﻿from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
-from domain.entities.ai.models import AIProviderConfig, AISettings, CandidateDraftVersion, CandidateDraftVersionStatus, ModelSelection, WritingTask, WritingTaskStatus
+from domain.entities.ai.models import (
+    AIProviderConfig,
+    AISettings,
+    CandidateDraftVersion,
+    CandidateDraftVersionStatus,
+    ModelSelection,
+    WritingTask,
+    WritingTaskStatus,
+)
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from presentation.api import dependencies
 from presentation.api.app import app
@@ -35,12 +43,12 @@ def _seed_initialized_work() -> tuple[str, str]:
     chapter_repo = ChapterRepo()
     work_service = WorkService(work_repo=work_repo, chapter_repo=chapter_repo)
     chapter_service = ChapterService(chapter_repo=chapter_repo, work_repo=work_repo)
-    work = work_service.create_work("S5 API 作品", "作者")
+    work = work_service.create_work("S5 API 作品", "测试作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter = chapter_service.update_chapter(
         chapter.id.value,
         title="第一章",
-        content="顾迟在海边灯塔醒来，发现整个世界已不同。",
+        content="顾迟在海边灯塔醒来，发现整个世界已经不同。",
         expected_version=1,
     )
     dependencies.get_initialization_service().start_initialization(work.id, created_by="user_action")
@@ -57,6 +65,9 @@ def test_continuation_api_creates_candidate_and_candidate_api_controls_content_v
             "work_id": work_id,
             "chapter_id": chapter_id,
             "user_instruction": "继续写作",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "candidate-api-start-0",
         },
     )
     assert start_response.status_code == 200
@@ -88,7 +99,10 @@ def test_continuation_api_generates_citations_and_exposes_batch_query(monkeypatc
         json={
             "work_id": work_id,
             "chapter_id": chapter_id,
-            "user_instruction": "请引用第一章中顾迟发现海图的线索继续写作",
+            "user_instruction": "请引用第一章中顾迟发现海图的线索继续写作。",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "candidate-api-start-1",
         },
     )
     assert start_response.status_code == 200
@@ -111,9 +125,14 @@ def test_continuation_api_returns_blocked_when_context_pack_is_blocked() -> None
     chapter_repo = ChapterRepo()
     work_service = WorkService(work_repo=work_repo, chapter_repo=chapter_repo)
     chapter_service = ChapterService(chapter_repo=chapter_repo, work_repo=work_repo)
-    work = work_service.create_work("S5 blocked API 作品", "作者")
+    work = work_service.create_work("S5 blocked API 作品", "测试作者")
     chapter = chapter_service.list_chapters(work.id)[0]
-    chapter = chapter_service.update_chapter(chapter.id.value, title="第一章", content="未初始化正文。", expected_version=1)
+    chapter = chapter_service.update_chapter(
+        chapter.id.value,
+        title="第一章",
+        content="未初始化正文。",
+        expected_version=1,
+    )
     client = TestClient(app)
 
     response = client.post(
@@ -122,6 +141,9 @@ def test_continuation_api_returns_blocked_when_context_pack_is_blocked() -> None
             "work_id": work.id,
             "chapter_id": chapter.id.value,
             "user_instruction": "继续写作",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "candidate-api-start-2",
         },
     )
 
@@ -143,6 +165,8 @@ def test_continuation_api_rejects_non_user_action_caller_type() -> None:
             "chapter_id": chapter_id,
             "user_instruction": "继续写作",
             "caller_type": "workflow",
+            "user_action": False,
+            "idempotency_key": "candidate-api-bad-caller-1",
         },
     )
 
@@ -160,6 +184,9 @@ def test_candidate_draft_api_exposes_versions_and_supports_select_accept_apply_s
             "work_id": work_id,
             "chapter_id": chapter_id,
             "user_instruction": "继续写作",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "candidate-api-start-3",
         },
     )
     assert start_response.status_code == 200
@@ -271,6 +298,9 @@ def test_candidate_draft_api_supports_version_detail_diff_and_rewrite_flow() -> 
             "work_id": work_id,
             "chapter_id": chapter_id,
             "user_instruction": "继续写作",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "candidate-api-start-4",
         },
     )
     assert start_response.status_code == 200
@@ -282,7 +312,12 @@ def test_candidate_draft_api_supports_version_detail_diff_and_rewrite_flow() -> 
 
     review_response = client.post(
         f"/api/v2/ai/reviews/candidate-drafts/{candidate_draft_id}",
-        json={"user_instruction": ""},
+        json={
+            "user_instruction": "",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "candidate-review-1",
+        },
     )
     assert review_response.status_code == 200
     review_id = review_response.json()["data"]["review_id"]
@@ -318,6 +353,9 @@ def test_candidate_apply_with_direction_plan_warning_still_succeeds_and_records_
             "work_id": work_id,
             "chapter_id": chapter_id,
             "user_instruction": "继续写作",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "candidate-api-start-5",
         },
     )
     assert start_response.status_code == 200
@@ -334,22 +372,20 @@ def test_candidate_apply_with_direction_plan_warning_still_succeeds_and_records_
             status=WritingTaskStatus.READY,
             writing_goal="继续推进灯塔章节",
             must_include=["钟声"],
-            must_not_include=["直接揭晓终局"],
+            must_not_include=["直接揭晓结局"],
             required_beats=["发现旧标记"],
             created_by="planner_agent",
             created_at="2026-05-21T00:00:00+00:00",
             updated_at="2026-05-21T00:00:00+00:00",
         )
     )
-    draft = candidate_repo.save(
-        draft.model_copy(update={"writing_task_id": "wt_api_conflict_1"})
-    )
+    draft = candidate_repo.save(draft.model_copy(update={"writing_task_id": "wt_api_conflict_1"}))
     version = candidate_repo.list_versions(candidate_draft_id)[0]
     candidate_repo.save_version(
         version.model_copy(
             update={
-                "content": f"{version.content} 不要提前揭示父亲真相，现在直接揭晓终局。",
-                "content_summary": "直接揭晓终局",
+                "content": f"{version.content} 不要提前揭示父亲真相，现在直接揭晓结局。",
+                "content_summary": "直接揭晓结局",
             }
         )
     )
@@ -385,6 +421,9 @@ def test_continuation_start_triggers_async_conflict_detection_record() -> None:
             "work_id": work_id,
             "chapter_id": chapter_id,
             "user_instruction": "继续写作",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "candidate-api-start-6",
         },
     )
     assert start_response.status_code == 200
@@ -406,6 +445,9 @@ def test_candidate_draft_gate_api_requires_user_action_and_idempotency_key_for_a
             "work_id": work_id,
             "chapter_id": chapter_id,
             "user_instruction": "继续写作",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "candidate-api-start-7",
         },
     )
     assert start_response.status_code == 200

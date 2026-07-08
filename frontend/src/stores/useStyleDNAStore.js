@@ -238,12 +238,12 @@ export const useStyleDNAStore = defineStore('workbenchStyleDNA', () => {
       }
       await refreshProfiles(workId.value)
       if (resultSummary.warning_code === 'P2_STYLE_LOW_CONFIDENCE' || currentProfile.value?.confidence < 0.5) {
-        warningMessage.value = '风格画像置信度较低，建议补充更长的标杆文本。'
+        warningMessage.value = '风格画像置信度较低,建议补充更长的标杆文本。'
       }
       return
     }
     if (status === 'failed') {
-      errorMessage.value = '风格画像提取失败，请稍后重试。'
+      errorMessage.value = '风格画像提取失败,请稍后重试。'
       return
     }
     if (status === 'cancelled') {

@@ -170,6 +170,9 @@ def test_p1_mainline_e2e_runs_from_direction_to_apply_memory_and_trace(monkeypat
             "work_id": work_id,
             "chapter_id": chapter_id,
             "user_instruction": "继续写作，保留悬念，不要直接揭晓答案。",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p1-s12-continuation-start",
         },
     )
     assert continuation_response.status_code == 200
@@ -186,7 +189,12 @@ def test_p1_mainline_e2e_runs_from_direction_to_apply_memory_and_trace(monkeypat
 
     review_response = client.post(
         f"/api/v2/ai/reviews/candidate-drafts/{candidate_draft_id}",
-        json={"user_instruction": "优先检查一致性与风险。"},
+        json={
+            "user_instruction": "优先检查一致性与风险。",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p1-s12-candidate-review",
+        },
     )
     assert review_response.status_code == 200
     review_payload = review_response.json()["data"]
@@ -349,7 +357,12 @@ def test_p1_quick_trial_and_candidate_flow_keep_formal_content_isolated_until_ap
 
     quick_trial = client.post(
         "/api/v2/ai/quick-trials",
-        json={"model_role": "quick_trial_writer", "input_text": "试写灯塔门口的潮声。"},
+        json={
+            "model_role": "quick_trial_writer",
+            "input_text": "试写灯塔门口的潮声。",
+            "caller_type": "quick_trial",
+            "idempotency_key": "p1-s12-quick-trial",
+        },
     )
     assert quick_trial.status_code == 200
     assert quick_trial.json()["data"]["status"] == "succeeded"
@@ -363,7 +376,14 @@ def test_p1_quick_trial_and_candidate_flow_keep_formal_content_isolated_until_ap
 
     candidate_response = client.post(
         "/api/v2/ai/continuations",
-        json={"work_id": work_id, "chapter_id": chapter_id, "user_instruction": "继续写作"},
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "继续写作",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p1-s12-quick-path-continuation",
+        },
     )
     assert candidate_response.status_code == 200
     candidate_draft_id = candidate_response.json()["data"]["candidate_draft_id"]

@@ -1,10 +1,10 @@
-﻿<template>
+<template>
   <div class="works-page" :class="themeClass">
     <section class="hero-panel">
       <div class="hero-copy">
         <div class="hero-eyebrow">书架</div>
-        <h1 class="hero-title">选择作品，开始写作</h1>
-        <p class="hero-description">支持新建作品或导入 TXT，进入后即可继续创作。</p>
+        <h1 class="hero-title">选择作品,开始写作</h1>
+        <p class="hero-description">支持新建作品或导入 TXT,进入后即可继续创作。</p>
       </div>
       <div class="hero-actions">
         <el-button class="ink-el-button ink-el-button--primary hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">
@@ -47,8 +47,8 @@
     </section>
 
     <div v-else-if="works.length === 0" class="empty-container">
-      <el-empty description="你可以先新建空白作品，也可以直接导入 TXT。">
-        <p class="empty-hint">先创建一本空白作品开始写作，或者直接导入现有 TXT 稿件。</p>
+      <el-empty description="你可以先新建空白作品,也可以直接导入 TXT。">
+        <p class="empty-hint">先创建一本空白作品开始写作,或者直接导入现有 TXT 稿件。</p>
         <div class="empty-actions">
           <el-button class="ink-el-button ink-el-button--primary hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">新建作品</el-button>
           <el-button class="ink-el-button ink-el-button--secondary hero-btn hero-btn--secondary" plain @click="showImportModal = true">导入 TXT</el-button>
@@ -89,8 +89,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Upload } from '@element-plus/icons-vue'
-import { v1WorksApi } from '@/api'
 import { useRouter } from 'vue-router'
+
+import { v1WorksApi } from '@/api'
 import { usePreferenceStore } from '@/stores/preference'
 import WorkCard from '@/components/works/WorkCard.vue'
 import ImportModal from '@/components/works/ImportModal.vue'
@@ -118,7 +119,7 @@ const loadWorks = async () => {
   } catch (error) {
     console.error('加载作品列表失败:', error)
     works.value = []
-    errorMessage.value = '暂时无法读取作品列表，请检查后端服务是否已启动。'
+    errorMessage.value = '暂时无法读取作品列表,请检查后端服务是否已启动。'
   } finally {
     loading.value = false
   }
@@ -143,7 +144,7 @@ const handleDeleteWork = async (workId) => {
     ElMessage.success('作品已删除')
   } catch (error) {
     console.error('删除作品失败:', error)
-    ElMessage.error('删除作品失败，请稍后重试。')
+    ElMessage.error('删除作品失败,请稍后重试。')
   } finally {
     deletingWorkId.value = ''
   }
@@ -168,7 +169,7 @@ const handleRenameWork = async (work) => {
     ElMessage.success('作品已重命名')
   } catch (error) {
     console.error('重命名作品失败:', error)
-    ElMessage.error('重命名作品失败，请稍后重试。')
+    ElMessage.error('重命名作品失败,请稍后重试。')
   }
 }
 
@@ -181,7 +182,7 @@ const handleChangeAuthor = async (work) => {
     ElMessage.success('作者信息已更新')
   } catch (error) {
     console.error('修改作者失败:', error)
-    ElMessage.error('修改作者失败，请稍后重试。')
+    ElMessage.error('修改作者失败,请稍后重试。')
   }
 }
 
@@ -202,7 +203,7 @@ const buildDraftTitle = () => {
   const date = new Date()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
-  return `未命名作品${month}${day}`
+  return `未命名作品 ${month}${day}`
 }
 
 const formatNumber = (num) => Number(num || 0).toLocaleString('zh-CN')
@@ -262,7 +263,9 @@ onMounted(() => {
   background: linear-gradient(180deg, var(--page-card-bg) 0%, var(--page-card-bg-soft) 100%);
 }
 
-.hero-copy { max-width: 720px; }
+.hero-copy {
+  max-width: 720px;
+}
 
 .hero-eyebrow {
   font-size: 12px;
@@ -316,52 +319,108 @@ onMounted(() => {
   background-color: var(--page-card-bg);
 }
 
-.summary-label { font-size: 12px; color: var(--page-muted); }
-.summary-value { font-size: 24px; font-weight: 700; color: var(--page-title); }
+.summary-label {
+  font-size: 12px;
+  color: var(--page-muted);
+}
+
+.summary-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--page-title);
+}
 
 .loading-container,
-.empty-container {
-  padding: 72px 20px;
-  text-align: center;
+.empty-container,
+.error-panel {
+  margin-top: 24px;
+  padding: 28px;
+  border-radius: 24px;
+  border: 1px solid var(--page-border);
+  background: var(--page-card-bg);
 }
 
 .error-panel {
-  margin-top: 28px;
-  padding: 28px;
-  border: 1px solid var(--page-danger-border);
-  border-radius: 24px;
+  color: var(--page-danger-text);
   background: var(--page-danger-bg);
+  border-color: var(--page-danger-border);
 }
 
-.error-panel h2 { font-size: 20px; font-weight: 600; color: var(--page-danger-title); }
-.error-panel p { margin-top: 10px; font-size: 14px; color: var(--page-danger-text); }
+.error-panel h2 {
+  margin: 0 0 10px;
+  color: var(--page-danger-title);
+}
 
-.error-actions { display: flex; gap: 12px; margin-top: 18px; }
-.empty-hint { margin-bottom: 14px; font-size: 13px; color: var(--page-muted); }
-.empty-actions { display: flex; justify-content: center; gap: 12px; }
+.error-panel p {
+  margin: 0;
+  line-height: 1.7;
+}
 
-.works-section { margin-top: 28px; }
-.section-heading { margin-bottom: 16px; }
-.section-heading h2 { font-size: 20px; font-weight: 600; color: var(--page-title); }
-.section-heading p { margin-top: 6px; font-size: 14px; color: var(--page-muted); }
+.error-actions,
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.empty-hint {
+  margin-top: 12px;
+  color: var(--page-text);
+  line-height: 1.7;
+}
+
+.works-section {
+  margin-top: 28px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.section-heading h2 {
+  margin: 0;
+  color: var(--page-title);
+  font-size: 18px;
+}
+
+.section-heading p {
+  margin: 8px 0 0;
+  color: var(--page-text);
+}
 
 .works-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 18px;
 }
 
-@media (max-width: 960px) {
-  .hero-panel { flex-direction: column; align-items: flex-start; }
-  .summary-panel { grid-template-columns: 1fr; }
+@media (max-width: 900px) {
+  .hero-panel {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .summary-panel {
+    grid-template-columns: 1fr;
+  }
 }
 
-@media (max-width: 760px) {
-  .hero-actions,
-  .empty-actions,
-  .error-actions {
-    width: 100%;
-    flex-direction: column;
+@media (max-width: 640px) {
+  .works-page {
+    padding: 24px 16px 32px;
+  }
+
+  .hero-title {
+    font-size: 28px;
+  }
+
+  .works-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

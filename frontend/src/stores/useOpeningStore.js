@@ -5,7 +5,7 @@ import { aiApi } from '@/api'
 import { isP2FeatureEnabled } from '@/config/p2FeatureFlags'
 
 const buildDefaultAnalysis = () => ({
-  analysis_summary: '前三章快速建立悬念，并持续抛出新的未解问题。',
+  analysis_summary: '前三章快速建立悬念,并持续抛出新的未解问题。',
   hook_patterns: ['前 500 字引入异常事件'],
   conflict_patterns: ['主角被迫卷入核心冲突'],
   satisfaction_points: ['节奏快、线索密集'],
@@ -97,30 +97,16 @@ export const useOpeningStore = defineStore('workbenchOpening', () => {
   }
 
   const loadSnapshot = (payload = {}) => {
-    if (payload.analysis) {
-      setAnalysis(payload.analysis)
-    }
-    if (payload.strategy) {
-      setStrategy(payload.strategy)
-    }
-    if (payload.risk_report) {
-      setRiskLevel(payload.risk_report.risk_level)
-    }
-    if (Object.prototype.hasOwnProperty.call(payload, 'phase')) {
-      phase.value = String(payload.phase || '')
-    }
-    if (Object.prototype.hasOwnProperty.call(payload, 'status')) {
-      status.value = String(payload.status || '')
-    }
-    if (Array.isArray(payload.candidate_draft_ids)) {
-      candidateDraftIds.value = [...payload.candidate_draft_ids]
-    }
+    if (payload.analysis) setAnalysis(payload.analysis)
+    if (payload.strategy) setStrategy(payload.strategy)
+    if (payload.risk_report) setRiskLevel(payload.risk_report.risk_level)
+    if (Object.prototype.hasOwnProperty.call(payload, 'phase')) phase.value = String(payload.phase || '')
+    if (Object.prototype.hasOwnProperty.call(payload, 'status')) status.value = String(payload.status || '')
+    if (Array.isArray(payload.candidate_draft_ids)) candidateDraftIds.value = [...payload.candidate_draft_ids]
   }
 
   const loadOpeningSnapshot = async (targetWorkId = workId.value) => {
-    if (!featureEnabled.value || !targetWorkId) {
-      return false
-    }
+    if (!featureEnabled.value || !targetWorkId) return false
     try {
       const analysisPayload = unwrapData(await aiApi.getOpeningAnalysis(targetWorkId))
       const statusPayload = unwrapData(await aiApi.getOpeningStatus(targetWorkId))
@@ -147,9 +133,7 @@ export const useOpeningStore = defineStore('workbenchOpening', () => {
       resetPreview()
       return
     }
-    if (workId.value && workId.value !== nextWorkId) {
-      resetPreview()
-    }
+    if (workId.value && workId.value !== nextWorkId) resetPreview()
     workId.value = nextWorkId
   }
 

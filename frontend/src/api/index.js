@@ -51,13 +51,13 @@ const appendBatchSizeQuery = (basePath, batchSizeChapters) => {
 }
 
 const ERROR_MESSAGE_MAP = {
-  NOVEL_NOT_FOUND: '未找到对应作品，请先创建或导入。',
-  STRUCTURE_INPUT_INVALID: '故事结构整理失败，请检查内容后重试。',
-  STRUCTURE_INTERNAL_ERROR: '故事结构整理失败，请稍后再试。',
+  NOVEL_NOT_FOUND: '未找到对应作品,请先创建或导入。',
+  STRUCTURE_INPUT_INVALID: '故事结构整理失败,请检查内容后重试。',
+  STRUCTURE_INTERNAL_ERROR: '故事结构整理失败,请稍后再试。',
   MEMORY_REQUIRED: '请先整理故事结构后再继续创作。',
-  CONTINUE_FAILED: '当前章节创作失败，请调整目标后重试。',
-  CONTINUE_INPUT_INVALID: '续写参数有误，请检查后重试。',
-  CONTINUE_INTERNAL_ERROR: '续写失败，请稍后再试。',
+  CONTINUE_FAILED: '当前章节创作失败,请调整目标后重试。',
+  CONTINUE_INPUT_INVALID: '续写参数有误,请检查后重试。',
+  CONTINUE_INTERNAL_ERROR: '续写失败,请稍后再试。',
   P2_FEATURE_DISABLED: '这个功能暂未开启'
 }
 
@@ -81,7 +81,7 @@ const formatValidationErrors = (detail) => {
   if (!lines.length) {
     return ''
   }
-  return `参数校验失败：${lines.join('；')}`
+  return `参数校验失败:${lines.join(';')}`
 }
 
 const resolveErrorMessage = (error) => {

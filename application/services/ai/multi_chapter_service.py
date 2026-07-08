@@ -276,113 +276,176 @@ class MultiChapterContinuationService:
         thread.start()
 
     def _run_session_once(self, session_id: str) -> None:
-        session = self.get_session(session_id)
-        if session.status == MultiChapterStatus.CANCELLED:
-            return
-        job_id = str(session.metadata.get("job_id", ""))
-        if job_id:
-            try:
-                self._job_service.start_job(job_id)
-            except ValueError:
-                pass
-
-        if session.current_index <= 0:
-            session = session.model_copy(update={"current_index": 1})
-        if session.current_index > session.target_chapters:
-            return
-
-        chapter_index = session.current_index
-        step_id = self._get_job_step_id(job_id, chapter_index)
-        if step_id:
-            self._job_service.mark_step_running(job_id, step_id)
-
-        per_chapter_status = list(session.per_chapter_status)
-        current_entry = per_chapter_status[chapter_index - 1].model_copy(
-            update={"status": PerChapterStatus.GENERATING, "started_at": self._now()}
-        )
-        per_chapter_status[chapter_index - 1] = current_entry
-        session = session.model_copy(
-            update={
-                "status": MultiChapterStatus.RUNNING,
-                "started_at": session.started_at or self._now(),
-                "updated_at": self._now(),
-                "per_chapter_status": per_chapter_status,
-            }
-        )
-        session = self._multi_chapter_repository.save(session)
-
-        if chapter_index > 1:
-            self._update_inter_chapter_state(session, chapter_index - 1)
+        job_id = ""
+        step_id = ""
+        chapter_index = 0
+        try:
             session = self.get_session(session_id)
+            if session.status == MultiChapterStatus.CANCELLED:
+                return
+            job_id = str(session.metadata.get("job_id", ""))
+            if job_id:
+                try:
+                    self._job_service.start_job(job_id)
+                except ValueError:
+                    pass
 
-        target_chapter_id = session.per_chapter_status[chapter_index - 1].chapter_id
-        result = self._continuation_workflow.start_continuation(
-            session.work_id,
-            target_chapter_id,
-            user_instruction=str(session.metadata.get("user_instruction", "")),
-            created_by=session.created_by,
-        )
-        latest = self.get_session(session_id)
-        per_chapter_status = list(latest.per_chapter_status)
-        current_entry = per_chapter_status[chapter_index - 1]
+            if session.current_index <= 0:
+                session = session.model_copy(update={"current_index": 1})
+            if session.current_index > session.target_chapters:
+                return
 
-        if result.status == "pending_review":
-            draft = self._candidate_draft_repository.get(result.candidate_draft_id)
-            current_entry = current_entry.model_copy(
+            chapter_index = session.current_index
+            step_id = self._get_job_step_id(job_id, chapter_index)
+            if step_id:
+                self._job_service.mark_step_running(job_id, step_id)
+
+            per_chapter_status = list(session.per_chapter_status)
+            current_entry = per_chapter_status[chapter_index - 1].model_copy(
+                update={"status": PerChapterStatus.GENERATING, "started_at": self._now()}
+            )
+            per_chapter_status[chapter_index - 1] = current_entry
+            session = session.model_copy(
                 update={
-                    "candidate_draft_id": draft.candidate_draft_id,
-                    "status": PerChapterStatus.READY,
+                    "status": MultiChapterStatus.RUNNING,
+                    "started_at": session.started_at or self._now(),
+                    "updated_at": self._now(),
+                    "per_chapter_status": per_chapter_status,
+                }
+            )
+            session = self._multi_chapter_repository.save(session)
+
+            if chapter_index > 1:
+                self._update_inter_chapter_state(session, chapter_index - 1)
+                session = self.get_session(session_id)
+
+            if session.status == MultiChapterStatus.CANCELLED:
+                return
+
+            target_chapter_id = session.per_chapter_status[chapter_index - 1].chapter_id
+            result = self._continuation_workflow.start_continuation(
+                session.work_id,
+                target_chapter_id,
+                user_instruction=str(session.metadata.get("user_instruction", "")),
+                created_by=session.created_by,
+            )
+            latest = self.get_session(session_id)
+            if latest.status == MultiChapterStatus.CANCELLED:
+                return
+            per_chapter_status = list(latest.per_chapter_status)
+            current_entry = per_chapter_status[chapter_index - 1]
+
+            if result.status == "pending_review":
+                draft = self._candidate_draft_repository.get(result.candidate_draft_id)
+                current_entry = current_entry.model_copy(
+                    update={
+                        "candidate_draft_id": draft.candidate_draft_id,
+                        "status": PerChapterStatus.READY,
+                        "finished_at": self._now(),
+                    }
+                )
+                agent_ids = list(latest.agent_session_ids)
+                if draft.agent_session_id:
+                    agent_ids.append(draft.agent_session_id)
+                candidate_ids = list(latest.candidate_draft_ids)
+                candidate_ids.append(draft.candidate_draft_id)
+                per_chapter_status[chapter_index - 1] = current_entry
+                updated = latest.model_copy(
+                    update={
+                        "status": MultiChapterStatus.WAITING_USER_DECISION,
+                        "per_chapter_status": per_chapter_status,
+                        "agent_session_ids": agent_ids,
+                        "candidate_draft_ids": candidate_ids,
+                        "updated_at": self._now(),
+                    }
+                )
+                self._multi_chapter_repository.save(updated)
+                if step_id:
+                    self._job_service.mark_step_completed(job_id, step_id, summary=f"candidate:{draft.candidate_draft_id}")
+                if job_id:
+                    try:
+                        self._job_service.pause_job(job_id, reason="waiting_user_decision")
+                    except ValueError:
+                        pass
+                return
+
+            blocked_status = MultiChapterStatus.BLOCKED if result.status == "blocked" else MultiChapterStatus.FAILED
+            chapter_status = PerChapterStatus.BLOCKED if result.status == "blocked" else PerChapterStatus.FAILED
+            per_chapter_status[chapter_index - 1] = current_entry.model_copy(
+                update={
+                    "status": chapter_status,
+                    "error_code": result.error_code,
                     "finished_at": self._now(),
                 }
             )
-            agent_ids = list(latest.agent_session_ids)
-            if draft.agent_session_id:
-                agent_ids.append(draft.agent_session_id)
-            candidate_ids = list(latest.candidate_draft_ids)
-            candidate_ids.append(draft.candidate_draft_id)
-            per_chapter_status[chapter_index - 1] = current_entry
             updated = latest.model_copy(
                 update={
-                    "status": MultiChapterStatus.WAITING_USER_DECISION,
+                    "status": blocked_status,
                     "per_chapter_status": per_chapter_status,
-                    "agent_session_ids": agent_ids,
-                    "candidate_draft_ids": candidate_ids,
+                    "error_code": result.error_code,
+                    "error_message": result.error_message,
                     "updated_at": self._now(),
                 }
             )
             self._multi_chapter_repository.save(updated)
             if step_id:
-                self._job_service.mark_step_completed(job_id, step_id, summary=f"candidate:{draft.candidate_draft_id}")
+                self._job_service.mark_step_failed(
+                    job_id,
+                    step_id,
+                    error_code=result.error_code or "multi_chapter_failed",
+                    error_message=result.error_message or result.status,
+                )
+            if job_id:
+                self._job_service.mark_job_failed(
+                    job_id,
+                    error_code=result.error_code or "multi_chapter_failed",
+                    error_message=result.error_message or result.status,
+                )
+        except Exception as exc:
+            try:
+                latest = self.get_session(session_id)
+            except ValueError:
+                return
+            if latest.status == MultiChapterStatus.CANCELLED:
+                return
+            per_chapter_status = list(latest.per_chapter_status)
+            if chapter_index > 0 and chapter_index <= len(per_chapter_status):
+                per_chapter_status[chapter_index - 1] = per_chapter_status[chapter_index - 1].model_copy(
+                    update={
+                        "status": PerChapterStatus.FAILED,
+                        "error_code": "multi_chapter_runtime_error",
+                        "finished_at": self._now(),
+                    }
+                )
+            updated = latest.model_copy(
+                update={
+                    "status": MultiChapterStatus.FAILED,
+                    "per_chapter_status": per_chapter_status,
+                    "error_code": "multi_chapter_runtime_error",
+                    "error_message": str(exc),
+                    "updated_at": self._now(),
+                }
+            )
+            self._multi_chapter_repository.save(updated)
+            if step_id:
+                try:
+                    self._job_service.mark_step_failed(
+                        job_id,
+                        step_id,
+                        error_code="multi_chapter_runtime_error",
+                        error_message=str(exc),
+                    )
+                except Exception:
+                    pass
             if job_id:
                 try:
-                    self._job_service.pause_job(job_id, reason="waiting_user_decision")
-                except ValueError:
+                    self._job_service.mark_job_failed(
+                        job_id,
+                        error_code="multi_chapter_runtime_error",
+                        error_message=str(exc),
+                    )
+                except Exception:
                     pass
-            return
-
-        blocked_status = MultiChapterStatus.BLOCKED if result.status == "blocked" else MultiChapterStatus.FAILED
-        chapter_status = PerChapterStatus.BLOCKED if result.status == "blocked" else PerChapterStatus.FAILED
-        per_chapter_status[chapter_index - 1] = current_entry.model_copy(
-            update={
-                "status": chapter_status,
-                "error_code": result.error_code,
-                "finished_at": self._now(),
-            }
-        )
-        updated = latest.model_copy(
-            update={
-                "status": blocked_status,
-                "per_chapter_status": per_chapter_status,
-                "error_code": result.error_code,
-                "error_message": result.error_message,
-                "updated_at": self._now(),
-            }
-        )
-        self._multi_chapter_repository.save(updated)
-        if step_id:
-            self._job_service.mark_step_failed(job_id, step_id, error_code=result.error_code or "multi_chapter_failed", error_message=result.error_message or result.status)
-        if job_id:
-            self._job_service.mark_job_failed(job_id, error_code=result.error_code or "multi_chapter_failed", error_message=result.error_message or result.status)
 
     def _update_inter_chapter_state(self, session: MultiChapterSession, previous_index: int) -> None:
         previous_entry = session.per_chapter_status[previous_index - 1]

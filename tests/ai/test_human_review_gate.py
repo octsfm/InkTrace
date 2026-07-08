@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from infrastructure.database.repositories.ai.file_initialization_store import Fi
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 from presentation.api.app import app
+from tests.ai.support import save_fake_ai_settings
 
 
 class _CriticalAuditTraceStub:
@@ -313,6 +314,7 @@ def test_apply_modes_reject_whole_chapter_replace_and_validate_targets(tmp_path:
 
 def _api_seed_candidate() -> tuple[str, int]:
     client = TestClient(app)
+    save_fake_ai_settings(client)
     work_repo = WorkRepo()
     chapter_repo = ChapterRepo()
     work_service = WorkService(work_repo=work_repo, chapter_repo=chapter_repo)
@@ -325,7 +327,7 @@ def _api_seed_candidate() -> tuple[str, int]:
     dependencies.get_initialization_service().start_initialization(work.id, created_by="user_action")
     response = client.post(
         "/api/v2/ai/continuations",
-        json={"work_id": work.id, "chapter_id": chapter.id.value, "user_instruction": "continue"},
+        json={"work_id": work.id, "chapter_id": chapter.id.value, "user_instruction": "continue", "caller_type": "user_action", "user_action": True, "idempotency_key": "human-review-seed-start"},
     )
     assert response.status_code == 200
     return response.json()["data"]["candidate_draft_id"], chapter.version
@@ -458,3 +460,4 @@ def test_reject_api_does_not_write_and_no_ai_review_api_exists() -> None:
     routes = {route.path for route in app.routes}
     assert "/api/v2/ai/review" not in routes
     assert "/api/v2/ai/candidate-drafts/{candidate_draft_id}/whole_chapter_replace" not in routes
+

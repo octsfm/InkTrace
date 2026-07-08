@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from domain.entities.ai.models import CandidateDraft, CandidateDraftVersion, RewriteInstruction, RewriteRequest, RevisionRound
@@ -8,6 +9,10 @@ from domain.repositories.ai.candidate_draft_repository import CandidateDraftRepo
 from infrastructure.database.models import initialize_schema
 from infrastructure.database.session import get_database_path
 from infrastructure.database.v1 import connect
+
+
+_FILE_LOCKS: dict[str, threading.RLock] = {}
+_FILE_LOCKS_GUARD = threading.Lock()
 
 
 class FileCandidateDraftStore(CandidateDraftRepository):
@@ -19,107 +24,122 @@ class FileCandidateDraftStore(CandidateDraftRepository):
     ) -> None:
         self._file_path = Path(file_path) if file_path else get_database_path().with_name("candidate_drafts.json")
         self._database_path = Path(database_path).resolve() if database_path else get_database_path()
+        self._lock = self._get_lock(self._file_path)
 
     def save(self, draft: CandidateDraft) -> CandidateDraft:
-        payload = self._load_payload()
-        payload["drafts"][draft.candidate_draft_id] = draft.model_dump(mode="json")
-        self._save_payload(payload)
+        with self._lock:
+            payload = self._load_payload()
+            payload["drafts"][draft.candidate_draft_id] = draft.model_dump(mode="json")
+            self._save_payload(payload)
         self._project_draft_to_sqlite(draft)
         return draft
 
     def get(self, candidate_draft_id: str) -> CandidateDraft:
-        payload = self._load_payload()
-        raw = payload["drafts"].get(candidate_draft_id)
+        with self._lock:
+            payload = self._load_payload()
+            raw = payload["drafts"].get(candidate_draft_id)
         if raw is None:
             raise ValueError("candidate_draft_not_found")
         return CandidateDraft.model_validate(raw)
 
     def list_by_work(self, work_id: str, chapter_id: str = "") -> list[CandidateDraft]:
-        payload = self._load_payload()
-        items = [CandidateDraft.model_validate(item) for item in payload["drafts"].values() if item.get("work_id") == work_id]
+        with self._lock:
+            payload = self._load_payload()
+            items = [CandidateDraft.model_validate(item) for item in payload["drafts"].values() if item.get("work_id") == work_id]
         if chapter_id:
             items = [item for item in items if item.chapter_id == chapter_id]
         return sorted(items, key=lambda item: item.created_at, reverse=True)
 
     def save_version(self, version: CandidateDraftVersion) -> CandidateDraftVersion:
-        payload = self._load_payload()
-        payload["versions"][version.candidate_version_id] = version.model_dump(mode="json")
-        self._save_payload(payload)
+        with self._lock:
+            payload = self._load_payload()
+            payload["versions"][version.candidate_version_id] = version.model_dump(mode="json")
+            self._save_payload(payload)
         return version
 
     def get_version(self, candidate_version_id: str) -> CandidateDraftVersion:
-        payload = self._load_payload()
-        raw = payload["versions"].get(candidate_version_id)
+        with self._lock:
+            payload = self._load_payload()
+            raw = payload["versions"].get(candidate_version_id)
         if raw is None:
             raise ValueError("candidate_version_not_found")
         return CandidateDraftVersion.model_validate(raw)
 
     def list_versions(self, candidate_draft_id: str) -> list[CandidateDraftVersion]:
-        payload = self._load_payload()
-        items = [
-            CandidateDraftVersion.model_validate(item)
-            for item in payload["versions"].values()
-            if item.get("candidate_draft_id") == candidate_draft_id
-        ]
+        with self._lock:
+            payload = self._load_payload()
+            items = [
+                CandidateDraftVersion.model_validate(item)
+                for item in payload["versions"].values()
+                if item.get("candidate_draft_id") == candidate_draft_id
+            ]
         return sorted(items, key=lambda item: (item.version_no, item.created_at))
 
     def save_rewrite_request(self, request: RewriteRequest) -> RewriteRequest:
-        payload = self._load_payload()
-        payload["rewrite_requests"][request.rewrite_request_id] = request.model_dump(mode="json")
-        self._save_payload(payload)
+        with self._lock:
+            payload = self._load_payload()
+            payload["rewrite_requests"][request.rewrite_request_id] = request.model_dump(mode="json")
+            self._save_payload(payload)
         return request
 
     def get_rewrite_request(self, rewrite_request_id: str) -> RewriteRequest:
-        payload = self._load_payload()
-        raw = payload["rewrite_requests"].get(rewrite_request_id)
+        with self._lock:
+            payload = self._load_payload()
+            raw = payload["rewrite_requests"].get(rewrite_request_id)
         if raw is None:
             raise ValueError("rewrite_request_not_found")
         return RewriteRequest.model_validate(raw)
 
     def list_rewrite_requests(self, candidate_draft_id: str) -> list[RewriteRequest]:
-        payload = self._load_payload()
-        items = [
-            RewriteRequest.model_validate(item)
-            for item in payload["rewrite_requests"].values()
-            if item.get("candidate_draft_id") == candidate_draft_id
-        ]
+        with self._lock:
+            payload = self._load_payload()
+            items = [
+                RewriteRequest.model_validate(item)
+                for item in payload["rewrite_requests"].values()
+                if item.get("candidate_draft_id") == candidate_draft_id
+            ]
         return sorted(items, key=lambda item: item.created_at)
 
     def save_rewrite_instruction(self, instruction: RewriteInstruction) -> RewriteInstruction:
-        payload = self._load_payload()
-        payload["rewrite_instructions"][instruction.rewrite_instruction_id] = instruction.model_dump(mode="json")
-        self._save_payload(payload)
+        with self._lock:
+            payload = self._load_payload()
+            payload["rewrite_instructions"][instruction.rewrite_instruction_id] = instruction.model_dump(mode="json")
+            self._save_payload(payload)
         return instruction
 
     def list_rewrite_instructions(self, rewrite_request_id: str) -> list[RewriteInstruction]:
-        payload = self._load_payload()
-        items = [
-            RewriteInstruction.model_validate(item)
-            for item in payload["rewrite_instructions"].values()
-            if item.get("rewrite_request_id") == rewrite_request_id
-        ]
+        with self._lock:
+            payload = self._load_payload()
+            items = [
+                RewriteInstruction.model_validate(item)
+                for item in payload["rewrite_instructions"].values()
+                if item.get("rewrite_request_id") == rewrite_request_id
+            ]
         return sorted(items, key=lambda item: item.created_at)
 
     def save_revision_round(self, revision_round: RevisionRound) -> RevisionRound:
-        payload = self._load_payload()
-        payload["revision_rounds"][revision_round.revision_round_id] = revision_round.model_dump(mode="json")
-        self._save_payload(payload)
+        with self._lock:
+            payload = self._load_payload()
+            payload["revision_rounds"][revision_round.revision_round_id] = revision_round.model_dump(mode="json")
+            self._save_payload(payload)
         return revision_round
 
     def get_revision_round(self, revision_round_id: str) -> RevisionRound:
-        payload = self._load_payload()
-        raw = payload["revision_rounds"].get(revision_round_id)
+        with self._lock:
+            payload = self._load_payload()
+            raw = payload["revision_rounds"].get(revision_round_id)
         if raw is None:
             raise ValueError("revision_round_not_found")
         return RevisionRound.model_validate(raw)
 
     def list_revision_rounds(self, candidate_draft_id: str) -> list[RevisionRound]:
-        payload = self._load_payload()
-        items = [
-            RevisionRound.model_validate(item)
-            for item in payload["revision_rounds"].values()
-            if item.get("candidate_draft_id") == candidate_draft_id
-        ]
+        with self._lock:
+            payload = self._load_payload()
+            items = [
+                RevisionRound.model_validate(item)
+                for item in payload["revision_rounds"].values()
+                if item.get("candidate_draft_id") == candidate_draft_id
+            ]
         return sorted(items, key=lambda item: (item.round_no, item.created_at))
 
     def _load_payload(self) -> dict[str, dict[str, dict[str, object]]]:
@@ -150,7 +170,9 @@ class FileCandidateDraftStore(CandidateDraftRepository):
 
     def _save_payload(self, payload: dict[str, dict[str, dict[str, object]]]) -> None:
         self._file_path.parent.mkdir(parents=True, exist_ok=True)
-        self._file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp_path = self._file_path.with_suffix(f"{self._file_path.suffix}.tmp")
+        temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp_path.replace(self._file_path)
 
     def _project_draft_to_sqlite(self, draft: CandidateDraft) -> None:
         conn = connect(self._database_path)
@@ -185,3 +207,13 @@ class FileCandidateDraftStore(CandidateDraftRepository):
             conn.commit()
         finally:
             conn.close()
+
+    @staticmethod
+    def _get_lock(file_path: Path) -> threading.RLock:
+        normalized = str(file_path.resolve())
+        with _FILE_LOCKS_GUARD:
+            lock = _FILE_LOCKS.get(normalized)
+            if lock is None:
+                lock = threading.RLock()
+                _FILE_LOCKS[normalized] = lock
+            return lock

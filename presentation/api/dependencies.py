@@ -4,8 +4,12 @@ import os
 from pathlib import Path
 
 
-DB_PATH = os.getenv("INKTRACE_DB_PATH", str(Path("data") / "inktrace.db"))
-CHROMA_DIR = os.getenv("INKTRACE_CHROMA_DIR", str(Path("data") / "chroma"))
+def _current_db_path() -> str:
+    return os.getenv("INKTRACE_DB_PATH", str(Path("data") / "inktrace.db"))
+
+
+def _current_chroma_dir() -> str:
+    return os.getenv("INKTRACE_CHROMA_DIR", str(Path("data") / "chroma"))
 
 
 def warmup_singletons_for_startup() -> None:
@@ -315,8 +319,8 @@ def get_agent_orchestrator() -> AgentOrchestrator:
     )
 
 
-@lru_cache(maxsize=1)
-def get_initialization_service() -> InitializationApplicationService:
+@lru_cache(maxsize=8)
+def _build_initialization_service_for_runtime(db_path: str, chroma_dir: str) -> InitializationApplicationService:
     store = get_ai_job_store()
     return InitializationApplicationService(
         work_service=get_work_service(),
@@ -328,12 +332,16 @@ def get_initialization_service() -> InitializationApplicationService:
         story_memory_repository=get_story_memory_repository(),
         story_state_repository=get_story_state_repository(),
         plot_arc_repository=get_plot_arc_repository(),
-        vector_index_service=get_vector_index_service(),
+        vector_index_service=_build_vector_index_service_for_runtime(db_path, chroma_dir),
     )
 
 
-@lru_cache(maxsize=1)
-def get_context_pack_service() -> ContextPackService:
+def get_initialization_service() -> InitializationApplicationService:
+    return _build_initialization_service_for_runtime(_current_db_path(), _current_chroma_dir())
+
+
+@lru_cache(maxsize=8)
+def _build_context_pack_service_for_runtime(db_path: str, chroma_dir: str) -> ContextPackService:
     return ContextPackService(
         chapter_service=get_chapter_service(),
         initialization_repository=get_initialization_repository(),
@@ -341,34 +349,50 @@ def get_context_pack_service() -> ContextPackService:
         story_state_repository=get_story_state_repository(),
         context_pack_repository=get_context_pack_repository(),
         plot_arc_repository=get_plot_arc_repository(),
-        vector_recall_service=get_context_vector_recall_service(),
-        vector_index_repository=get_vector_index_repository(),
+        vector_recall_service=_build_context_vector_recall_service_for_runtime(chroma_dir),
+        vector_index_repository=_build_vector_index_repository_for_runtime(db_path),
         style_profile_repository=get_style_profile_repository(),
     )
 
 
-@lru_cache(maxsize=1)
-def get_context_vector_recall_service() -> ContextVectorRecallService:
+def get_context_pack_service() -> ContextPackService:
+    return _build_context_pack_service_for_runtime(_current_db_path(), _current_chroma_dir())
+
+
+@lru_cache(maxsize=8)
+def _build_context_vector_recall_service_for_runtime(chroma_dir: str) -> ContextVectorRecallService:
     return ContextVectorRecallService(
         chapter_service=get_chapter_service(),
         embedding_provider=get_embedding_provider(),
-        vector_store=get_vector_store(),
+        vector_store=_build_vector_store_for_runtime(chroma_dir),
     )
 
 
-@lru_cache(maxsize=1)
+def get_context_vector_recall_service() -> ContextVectorRecallService:
+    return _build_context_vector_recall_service_for_runtime(_current_chroma_dir())
+
+
+@lru_cache(maxsize=8)
+def _build_vector_index_repository_for_runtime(db_path: str) -> SQLiteVectorIndexRepository:
+    return SQLiteVectorIndexRepository(db_path)
+
+
 def get_vector_index_repository() -> SQLiteVectorIndexRepository:
-    return SQLiteVectorIndexRepository(DB_PATH)
+    return _build_vector_index_repository_for_runtime(_current_db_path())
 
 
-@lru_cache(maxsize=1)
-def get_vector_index_service() -> VectorIndexService:
+@lru_cache(maxsize=8)
+def _build_vector_index_service_for_runtime(db_path: str, chroma_dir: str) -> VectorIndexService:
     return VectorIndexService(
         chapter_service=get_chapter_service(),
         embedding_provider=get_embedding_provider(),
-        vector_store=get_vector_store(),
-        vector_index_repository=get_vector_index_repository(),
+        vector_store=_build_vector_store_for_runtime(chroma_dir),
+        vector_index_repository=_build_vector_index_repository_for_runtime(db_path),
     )
+
+
+def get_vector_index_service() -> VectorIndexService:
+    return _build_vector_index_service_for_runtime(_current_db_path(), _current_chroma_dir())
 
 
 @lru_cache(maxsize=1)
@@ -417,9 +441,45 @@ def get_embedding_provider() -> LocalEmbeddingProvider:
     return LocalEmbeddingProvider()
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)
+def _build_vector_store_for_runtime(chroma_dir: str) -> ChromaVectorStore:
+    return ChromaVectorStore(persist_directory=chroma_dir)
+
+
 def get_vector_store() -> ChromaVectorStore:
-    return ChromaVectorStore(persist_directory=CHROMA_DIR)
+    return _build_vector_store_for_runtime(_current_chroma_dir())
+
+
+def _clear_initialization_service_runtime_cache() -> None:
+    _build_initialization_service_for_runtime.cache_clear()
+
+
+def _clear_context_pack_service_runtime_cache() -> None:
+    _build_context_pack_service_for_runtime.cache_clear()
+
+
+def _clear_context_vector_recall_runtime_cache() -> None:
+    _build_context_vector_recall_service_for_runtime.cache_clear()
+
+
+def _clear_vector_index_repository_runtime_cache() -> None:
+    _build_vector_index_repository_for_runtime.cache_clear()
+
+
+def _clear_vector_index_service_runtime_cache() -> None:
+    _build_vector_index_service_for_runtime.cache_clear()
+
+
+def _clear_vector_store_runtime_cache() -> None:
+    _build_vector_store_for_runtime.cache_clear()
+
+
+get_initialization_service.cache_clear = _clear_initialization_service_runtime_cache  # type: ignore[attr-defined]
+get_context_pack_service.cache_clear = _clear_context_pack_service_runtime_cache  # type: ignore[attr-defined]
+get_context_vector_recall_service.cache_clear = _clear_context_vector_recall_runtime_cache  # type: ignore[attr-defined]
+get_vector_index_repository.cache_clear = _clear_vector_index_repository_runtime_cache  # type: ignore[attr-defined]
+get_vector_index_service.cache_clear = _clear_vector_index_service_runtime_cache  # type: ignore[attr-defined]
+get_vector_store.cache_clear = _clear_vector_store_runtime_cache  # type: ignore[attr-defined]
 
 
 @lru_cache(maxsize=1)

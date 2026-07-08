@@ -6,6 +6,7 @@
         <button
           data-test="outline-assist-refresh"
           type="button"
+          class="ink-button ink-button--ghost"
           :disabled="loading"
           @click="$emit('refresh')"
         >
@@ -26,7 +27,7 @@
         </button>
       </div>
       <p v-if="loading" class="ai-note" data-test="outline-assist-loading">正在加载建议…</p>
-      <p v-else-if="!suggestions.length" class="ai-note">当前模式下暂无建议，生成后会在这里展示。</p>
+      <p v-else-if="!suggestions.length" class="ai-note">当前模式下暂时没有建议,生成后会在这里展示。</p>
       <ul v-else class="ai-list">
         <li v-for="item in suggestions" :key="item.suggestion_id" class="planning-item">
           <div class="candidate-summary">
@@ -39,6 +40,7 @@
             <button
               :data-test="`suggestion-detail-${item.suggestion_id}`"
               type="button"
+              class="ink-button ink-button--ghost"
               @click="$emit('suggestion-detail', item.suggestion_id)"
             >
               查看建议
@@ -47,6 +49,7 @@
               v-if="canAcceptSuggestion(item)"
               :data-test="`suggestion-accept-${item.suggestion_id}`"
               type="button"
+              class="ink-button ink-button--primary"
               :disabled="submittingSuggestionId === item.suggestion_id"
               @click="$emit('suggestion-accept', item.suggestion_id)"
             >
@@ -56,6 +59,7 @@
               v-if="canApplySuggestion(item)"
               :data-test="`suggestion-apply-${item.suggestion_id}`"
               type="button"
+              class="ink-button ink-button--primary"
               :disabled="applySubmittingSuggestionId === item.suggestion_id"
               @click="$emit('suggestion-apply-open', item.suggestion_id)"
             >
@@ -65,6 +69,7 @@
               v-if="canResolveSuggestion(item)"
               :data-test="`suggestion-dismiss-${item.suggestion_id}`"
               type="button"
+              class="ink-button ink-button--ghost"
               :disabled="submittingSuggestionId === item.suggestion_id"
               @click="$emit('suggestion-dismiss', item.suggestion_id)"
             >
@@ -74,6 +79,7 @@
               v-if="canConvertSuggestion(item)"
               :data-test="`suggestion-convert-${item.suggestion_id}`"
               type="button"
+              class="ink-button ink-button--secondary"
               :disabled="submittingSuggestionId === item.suggestion_id"
               @click="$emit('suggestion-convert', item.suggestion_id)"
             >
@@ -85,42 +91,35 @@
             class="ai-note"
             :data-test="`suggestion-writing-task-hint-${item.suggestion_id}`"
           >
-            已进入写作任务确认链，待二次确认后才会进入 Writer 可消费状态。
+            已进入写作任务确认链,待二次确认后才会进入"写作任务已确认"状态。
           </p>
           <p
             v-if="String(item.status || '').toLowerCase() === 'generating'"
             class="ai-note"
             :data-test="`suggestion-generating-hint-${item.suggestion_id}`"
           >
-            建议生成中，请稍后刷新查看结果。
+            建议生成中,请稍后刷新查看结果。
           </p>
           <p
             v-if="String(item.status || '').toLowerCase() === 'failed'"
             class="ai-error"
             :data-test="`suggestion-failed-hint-${item.suggestion_id}`"
           >
-            建议生成失败，请稍后重试。
+            建议生成失败,请稍后重试。
           </p>
           <p
             v-if="isSelectionOnlySuggestion(item)"
             class="ai-note"
             :data-test="`suggestion-apply-hint-${item.suggestion_id}`"
           >
-            当前建议针对自由文本片段，需先选择目标大纲节点后才能应用。
+            当前建议针对自由文本片段,需要先选择目标大纲节点后才能应用。
           </p>
-          <div
-            v-if="isStaleSuggestion(item)"
-            class="ai-actions"
-          >
-            <p
-              class="ai-note"
-              :data-test="`suggestion-stale-hint-${item.suggestion_id}`"
-            >
-              大纲已被修改，建议可能已不适用。
-            </p>
+          <div v-if="isStaleSuggestion(item)" class="ai-actions">
+            <p class="ai-note" :data-test="`suggestion-stale-hint-${item.suggestion_id}`">大纲已被修改,当前建议可能已经过期。</p>
             <button
               :data-test="`suggestion-stale-refresh-${item.suggestion_id}`"
               type="button"
+              class="ink-button ink-button--ghost"
               :disabled="loading"
               @click="$emit('refresh')"
             >
@@ -132,12 +131,13 @@
             class="outline-apply-confirm"
             :data-test="`suggestion-apply-confirm-${item.suggestion_id}`"
           >
-            <strong>确定要将 1 条建议应用到大纲吗？</strong>
-            <span>这将会修改正式大纲内容。</span>
+            <strong>确定要将这条建议应用到正式大纲吗?</strong>
+            <span>这会修改正式大纲内容。</span>
             <div class="ai-actions">
               <button
                 :data-test="`suggestion-apply-cancel-${item.suggestion_id}`"
                 type="button"
+                class="ink-button ink-button--ghost"
                 :disabled="applySubmittingSuggestionId === item.suggestion_id"
                 @click="$emit('suggestion-apply-cancel')"
               >
@@ -146,6 +146,7 @@
               <button
                 :data-test="`suggestion-apply-confirm-submit-${item.suggestion_id}`"
                 type="button"
+                class="ink-button ink-button--primary"
                 :disabled="applySubmittingSuggestionId === item.suggestion_id"
                 @click="$emit('suggestion-apply-confirm-submit', item.suggestion_id)"
               >
@@ -162,7 +163,7 @@
       <div v-if="conflictSectionVisible" data-test="outline-assist-conflicts">
         <h5>大纲辅助冲突详情</h5>
         <p v-if="conflictLoading" class="ai-note">正在加载冲突详情…</p>
-        <p v-else-if="!conflictItems.length" class="ai-note">当前没有可展示的冲突，请刷新后重试。</p>
+        <p v-else-if="!conflictItems.length" class="ai-note">当前没有可展示的冲突,请刷新后重试。</p>
         <ul v-else class="ai-list">
           <li
             v-for="conflict in conflictItems"
@@ -243,41 +244,41 @@ const props = defineProps({
     type: String,
     default: ''
   },
-  canApplySuggestion: {
-    type: Function,
-    default: () => false
-  },
   canAcceptSuggestion: {
     type: Function,
-    default: () => false
+    required: true
   },
   canResolveSuggestion: {
     type: Function,
-    default: () => false
+    required: true
   },
   canConvertSuggestion: {
     type: Function,
-    default: () => false
+    required: true
+  },
+  canApplySuggestion: {
+    type: Function,
+    required: true
   },
   isAcceptedWritingTaskSuggestion: {
     type: Function,
-    default: () => false
+    required: true
   },
   isSelectionOnlySuggestion: {
     type: Function,
-    default: () => false
+    required: true
   },
   isStaleSuggestion: {
     type: Function,
-    default: () => false
+    required: true
   },
   displaySuggestionType: {
     type: Function,
-    default: (value) => String(value || '-')
+    required: true
   },
   displaySeverity: {
     type: Function,
-    default: (value) => String(value || '-')
+    required: true
   }
 })
 
@@ -293,3 +294,21 @@ defineEmits([
   'refresh'
 ])
 </script>
+
+<style scoped>
+.outline-assist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.outline-apply-confirm {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--ink-border);
+  border-radius: 16px;
+  background: var(--ink-surface-2);
+}
+</style>

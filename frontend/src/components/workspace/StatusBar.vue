@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
+<template>
   <div class="status-bar">
     <div v-if="offline" class="offline-banner">{{ offlineMessage }}</div>
 
@@ -19,7 +19,7 @@
         <button
           v-if="showManualRetry"
           type="button"
-          class="retry-button"
+          class="ink-button ink-button--ghost retry-button"
           @click="$emit('manual-retry')"
         >
           手动重试
@@ -55,7 +55,7 @@ const props = defineProps({
   },
   offlineMessage: {
     type: String,
-    default: '离线模式：当前网络离线，已开启本地缓存保护。'
+    default: '离线模式：当前网络不可用，已启用本地缓存保护。'
   },
   lastSyncedAt: {
     type: String,
@@ -194,14 +194,12 @@ const formattedNextRetryAt = computed(() => {
 }
 
 .retry-button {
-  border: 1px solid color-mix(in srgb, var(--ink-warning-text, #c2410c) 35%, transparent);
-  border-radius: 999px;
-  background: var(--ink-warning-bg, #fff7ed);
-  color: var(--ink-warning-text, #c2410c);
+  min-height: 28px;
   padding: 4px 10px;
+  color: var(--ink-warning-text, #c2410c);
   font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
+  border-color: color-mix(in srgb, var(--ink-warning-text, #c2410c) 35%, transparent);
+  background: var(--ink-warning-bg, #fff7ed);
 }
 
 @keyframes spin {

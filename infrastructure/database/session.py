@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import sqlite3
 from contextlib import contextmanager
-from functools import lru_cache
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -14,10 +13,16 @@ from infrastructure.persistence.sqlite_utils import connect_sqlite
 DEFAULT_DB_PATH = Path("data") / "inktrace.db"
 
 
-@lru_cache(maxsize=1)
 def get_database_path() -> Path:
     raw_path = os.getenv("INKTRACE_DB_PATH", str(DEFAULT_DB_PATH))
     return Path(raw_path).expanduser().resolve()
+
+
+def _clear_database_path_cache() -> None:
+    return None
+
+
+get_database_path.cache_clear = _clear_database_path_cache  # type: ignore[attr-defined]
 
 
 def ensure_database_directory(db_path: Optional[Path] = None) -> Path:

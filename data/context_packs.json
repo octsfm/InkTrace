@@ -777,5 +777,673 @@
     },
     "summary": "近期摘要: 钉耙已完成最小分析；角色:孔凡圣, 家法宝, 宗法器；地点:他的脑海, 一出山；存在待跟进线索；原文长度:2345字; 大阵，起！已完成最小分析；角色:山的路, 孔凡圣, 毕竟当；地点:苍; 当前序列目标: 等待章节计划确认后生成当前序列目标。\n关键事件: 钉耙已完成最小分析；角色:孔凡圣, 家法宝, 宗法器；地点:他的脑海, 一出山；存在待跟进线索；原文长度:2345字; 大阵，起！已完; 当前卷目标: 第144已完成最小分析；原文长度:2字\n当前卷冲突: pending_follow_up; 全文弧目标: 修仙从逃出生天开始 当前已确认 144 章，初始化基于已持久化章节生成最小分析结果。 前言已完成最小分析；角色:孔凡圣, 常浮现, 解读功；地点:仙山；原文长度:461字 跑已完成最小分; 当前故事位置: 第144已完成最小分析；原文长度:2字\n活跃角色: 孔凡圣, 家法宝, 宗法器, 包裹起, 于遥远, 山的路, 毕竟当, 山一战, 于孔凡\n活跃地点: 他的脑海, 一出山, 苍茫山, ; 章节标题: 第144\n正文概况: 已省略原文，仅保留章节定位与长度（2字）; ",
     "created_at": "2026-05-26T03:30:49.250264+00:00"
+  },
+  "cp_be434f649212": {
+    "context_pack_id": "cp_be434f649212",
+    "work_id": "aed12b6a-86e5-4419-bd0b-733a27ab78ce",
+    "chapter_id": "8ed4f3a6-0026-4fb4-868c-539d50800b30",
+    "source_initialization_id": "init_052e12296bec",
+    "source_story_memory_snapshot_id": "memory_7244408a656a",
+    "source_story_state_id": "state_776a3e864415",
+    "status": "degraded",
+    "blocked_reason": "",
+    "degraded_reason": "master_arc_inferred_without_outline; arc_placeholder_only; volume_arc_missing; sequence_arc_missing; immediate_window_partial",
+    "warnings": [
+      "master_arc_inferred_without_outline",
+      "arc_placeholder_only",
+      "volume_arc_missing",
+      "sequence_arc_missing",
+      "immediate_window_partial"
+    ],
+    "vector_recall_status": "ready",
+    "context_items": [
+      {
+        "item_id": "cp_be434f649212_plot_immediate",
+        "source_type": "plot_arc_immediate",
+        "source_id": "iw_cp_be434f649212",
+        "priority": 1,
+        "content_text": "近期摘要: c1已完成最小分析；原文长度:41字\n活跃线索: c1已完成最小分析；原文长度:41字",
+        "summary": "章节标题: c1\n正文概况: 已省略原文，仅保留章节定位与长度（41字）",
+        "token_estimate": 18,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "immediate_window_partial",
+        "metadata": {
+          "status": "degraded",
+          "quality_level": "minimal"
+        }
+      },
+      {
+        "item_id": "cp_be434f649212_plot_sequence",
+        "source_type": "plot_arc_sequence",
+        "source_id": "sa_aed12b6a-86e5-4419-bd0b-733a27ab78ce_1",
+        "priority": 2,
+        "content_text": "当前序列目标: 等待章节计划确认后生成当前序列目标。\n关键事件: c1已完成最小分析；原文长度:41字",
+        "summary": "等待章节计划确认后生成当前序列目标。",
+        "token_estimate": 18,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "arc_placeholder_only",
+        "metadata": {
+          "status": "pending",
+          "quality_level": "placeholder"
+        }
+      },
+      {
+        "item_id": "cp_be434f649212_plot_volume",
+        "source_type": "plot_arc_volume",
+        "source_id": "va_aed12b6a-86e5-4419-bd0b-733a27ab78ce_1",
+        "priority": 3,
+        "content_text": "当前卷目标: c1已完成最小分析；原文长度:41字\n当前卷冲突: 等待方向确认后补充当前卷冲突。",
+        "summary": "c1已完成最小分析；原文长度:41字",
+        "token_estimate": 16,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "arc_placeholder_only",
+        "metadata": {
+          "status": "pending",
+          "quality_level": "placeholder"
+        }
+      },
+      {
+        "item_id": "cp_be434f649212_plot_master",
+        "source_type": "plot_arc_master",
+        "source_id": "ma_aed12b6a-86e5-4419-bd0b-733a27ab78ce",
+        "priority": 4,
+        "content_text": "全文弧目标: dbg 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:41字\n当前阶段: c1已完成最小分析；原文长度:41字\n主题: 延续既有叙事基调",
+        "summary": "dbg 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:41字 / c1已完成最小分析；原文长度:41字",
+        "token_estimate": 37,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "master_arc_inferred_without_outline",
+        "metadata": {
+          "status": "degraded",
+          "quality_level": "minimal"
+        }
+      },
+      {
+        "item_id": "cp_be434f649212_instruction",
+        "source_type": "user_instruction",
+        "source_id": "",
+        "priority": 5,
+        "content_text": "用户续写意图已记录（长度 2 字）",
+        "summary": "",
+        "token_estimate": 7,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_be434f649212_state",
+        "source_type": "story_state",
+        "source_id": "state_776a3e864415",
+        "priority": 6,
+        "content_text": "当前故事位置: c1已完成最小分析；原文长度:41字\n活跃角色: \n活跃地点: \n未解决线索: ",
+        "summary": "",
+        "token_estimate": 20,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_be434f649212_chapter",
+        "source_type": "current_chapter",
+        "source_id": "8ed4f3a6-0026-4fb4-868c-539d50800b30",
+        "priority": 7,
+        "content_text": "章节标题: c1\n正文概况: 已省略原文，仅保留章节定位与长度（41字）",
+        "summary": "",
+        "token_estimate": 16,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_be434f649212_memory",
+        "source_type": "story_memory",
+        "source_id": "memory_7244408a656a",
+        "priority": 8,
+        "content_text": "全书进度摘要: dbg 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:41字\n角色: \n地点: \n剧情线索: c1已完成最小分析；原文长度:41字",
+        "summary": "",
+        "token_estimate": 42,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_be434f649212_recap_8ed4f3a6-0026-4fb4-868c-539d50800b30",
+        "source_type": "recent_chapter_summary",
+        "source_id": "8ed4f3a6-0026-4fb4-868c-539d50800b30",
+        "priority": 9,
+        "content_text": "章节 8ed4f3a6-0026-4fb4-868c-539d50800b30: c1已完成最小分析；原文长度:41字",
+        "summary": "",
+        "token_estimate": 28,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_be434f649212_plot_c1已完成最小分析；原文长度:41字",
+        "source_type": "plot_thread",
+        "source_id": "c1已完成最小分析；原文长度:41字",
+        "priority": 12,
+        "content_text": "剧情线索: c1已完成最小分析；原文长度:41字",
+        "summary": "",
+        "token_estimate": 12,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_be434f649212_note_0",
+        "source_type": "continuity_note",
+        "source_id": "state_776a3e864415",
+        "priority": 13,
+        "content_text": "baseline_source=confirmed_chapter_analysis",
+        "summary": "",
+        "token_estimate": 21,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_be434f649212_note_1",
+        "source_type": "continuity_note",
+        "source_id": "state_776a3e864415",
+        "priority": 13,
+        "content_text": "source_snapshot_id=memory_7244408a656a",
+        "summary": "",
+        "token_estimate": 19,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "recall_vec_chunk_0347c7c8d0954a04afad8faa47fce256",
+        "source_type": "vector_recall",
+        "source_id": "8ed4f3a6-0026-4fb4-868c-539d50800b30",
+        "priority": 14,
+        "content_text": "召回片段[c1]: hello world content for continuation test",
+        "summary": "",
+        "token_estimate": 20,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {
+          "score": 0.77,
+          "vector_id": "vec_chunk_0347c7c8d0954a04afad8faa47fce256",
+          "chunk_id": "chunk_0347c7c8d0954a04afad8faa47fce256",
+          "source": "confirmed_chapter",
+          "recall_backend": "vector_store_port"
+        }
+      }
+    ],
+    "token_budget": 4000,
+    "estimated_token_count": 274,
+    "trimmed_items": [],
+    "stale": false,
+    "stale_reason": "",
+    "source_chapter_versions": {
+      "8ed4f3a6-0026-4fb4-868c-539d50800b30": 2
+    },
+    "plot_arc_statuses": {
+      "master_arc": {
+        "status": "degraded",
+        "quality_level": "minimal",
+        "warning_codes": [
+          "master_arc_inferred_without_outline"
+        ]
+      },
+      "volume_arc": {
+        "status": "pending",
+        "quality_level": "placeholder",
+        "warning_codes": [
+          "arc_placeholder_only"
+        ]
+      },
+      "sequence_arc": {
+        "status": "pending",
+        "quality_level": "placeholder",
+        "warning_codes": [
+          "arc_placeholder_only"
+        ]
+      },
+      "immediate_window": {
+        "status": "degraded",
+        "quality_level": "minimal",
+        "warning_codes": [
+          "immediate_window_partial"
+        ]
+      }
+    },
+    "plot_arc_summary": {
+      "master_arc": {
+        "arc_title": "dbg",
+        "ultimate_goal": "dbg 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:41字",
+        "current_stage": "c1已完成最小分析；原文长度:41字",
+        "core_theme": "延续既有叙事基调"
+      },
+      "volume_arc": {
+        "stage_goal": "c1已完成最小分析；原文长度:41字",
+        "core_conflict": "等待方向确认后补充当前卷冲突。",
+        "stage_open_loops": [],
+        "key_characters": [],
+        "foreshadow_planted": [],
+        "foreshadow_resolved": []
+      },
+      "sequence_arc": {
+        "sequence_goal": "等待章节计划确认后生成当前序列目标。",
+        "key_events": [
+          "c1已完成最小分析；原文长度:41字"
+        ],
+        "turning_points": [
+          "c1已完成最小分析；原文长度:41字"
+        ],
+        "required_beats": [
+          "c1已完成最小分析；原文长度:41字"
+        ]
+      },
+      "immediate_window": {
+        "recent_chapters_summary": [
+          "c1已完成最小分析；原文长度:41字"
+        ],
+        "previous_chapter_hook": "c1已完成最小分析；原文长度:41字",
+        "active_plot_threads": [
+          "c1已完成最小分析；原文长度:41字"
+        ],
+        "scene_details": [],
+        "character_current_states": [],
+        "current_chapter_context": {
+          "chapter_id": "8ed4f3a6-0026-4fb4-868c-539d50800b30",
+          "chapter_no": 1,
+          "title": "c1",
+          "content_summary": "章节标题: c1\n正文概况: 已省略原文，仅保留章节定位与长度（41字）",
+          "writing_position": "c1已完成最小分析；原文长度:41字",
+          "unresolved_in_chapter": []
+        }
+      }
+    },
+    "summary": "近期摘要: c1已完成最小分析；原文长度:41字\n活跃线索: c1已完成最小分析；原文长度:41字; 当前序列目标: 等待章节计划确认后生成当前序列目标。\n关键事件: c1已完成最小分析；原文长度:41字; 当前卷目标: c1已完成最小分析；原文长度:41字\n当前卷冲突: 等待方向确认后补充当前卷冲突。; 全文弧目标: dbg 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:41字\n当前阶段: c1已完成最小分析；原文长度:41字\n主题: 延续既有叙事基调; 用户续写意图已记录（长度 2 字）; 当前故事位置: c1已完成最小分析；原文长度:41字\n活跃角色: \n活跃地点: \n未解决线索: ; 章节标题: c1\n正文概况: 已省略原文，仅保留章节定位与长度（41字）; 全书进度摘要: dbg 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:41字\n角色: \n地点: \n剧情线索: c1已完成最小分析；原文长度:41字; 章节 8ed4f3a6-0026-4fb4-868c-539d50800b30: ",
+    "created_at": "2026-07-07T13:08:25.660053+00:00"
+  },
+  "cp_f85d616eb504": {
+    "context_pack_id": "cp_f85d616eb504",
+    "work_id": "1e1e27f4-bf7b-4725-b757-912a7ec7d1e8",
+    "chapter_id": "4ae5e3cf-8dfa-4071-b511-93848189c065",
+    "source_initialization_id": "init_d2f103f06bca",
+    "source_story_memory_snapshot_id": "memory_bd5c69d804a9",
+    "source_story_state_id": "state_64bc1e70a5a6",
+    "status": "degraded",
+    "blocked_reason": "",
+    "degraded_reason": "master_arc_inferred_without_outline; arc_placeholder_only; volume_arc_missing; sequence_arc_missing; immediate_window_partial",
+    "warnings": [
+      "master_arc_inferred_without_outline",
+      "arc_placeholder_only",
+      "volume_arc_missing",
+      "sequence_arc_missing",
+      "immediate_window_partial"
+    ],
+    "vector_recall_status": "ready",
+    "context_items": [
+      {
+        "item_id": "cp_f85d616eb504_plot_immediate",
+        "source_type": "plot_arc_immediate",
+        "source_id": "iw_cp_f85d616eb504",
+        "priority": 1,
+        "content_text": "近期摘要: c1已完成最小分析；原文长度:87字\n活跃线索: c1已完成最小分析；原文长度:87字",
+        "summary": "章节标题: c1\n正文概况: 已省略原文，仅保留章节定位与长度（87字）",
+        "token_estimate": 18,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "immediate_window_partial",
+        "metadata": {
+          "status": "degraded",
+          "quality_level": "minimal"
+        }
+      },
+      {
+        "item_id": "cp_f85d616eb504_plot_sequence",
+        "source_type": "plot_arc_sequence",
+        "source_id": "sa_1e1e27f4-bf7b-4725-b757-912a7ec7d1e8_1",
+        "priority": 2,
+        "content_text": "当前序列目标: 等待章节计划确认后生成当前序列目标。\n关键事件: c1已完成最小分析；原文长度:87字",
+        "summary": "等待章节计划确认后生成当前序列目标。",
+        "token_estimate": 18,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "arc_placeholder_only",
+        "metadata": {
+          "status": "pending",
+          "quality_level": "placeholder"
+        }
+      },
+      {
+        "item_id": "cp_f85d616eb504_plot_volume",
+        "source_type": "plot_arc_volume",
+        "source_id": "va_1e1e27f4-bf7b-4725-b757-912a7ec7d1e8_1",
+        "priority": 3,
+        "content_text": "当前卷目标: c1已完成最小分析；原文长度:87字\n当前卷冲突: 等待方向确认后补充当前卷冲突。",
+        "summary": "c1已完成最小分析；原文长度:87字",
+        "token_estimate": 16,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "arc_placeholder_only",
+        "metadata": {
+          "status": "pending",
+          "quality_level": "placeholder"
+        }
+      },
+      {
+        "item_id": "cp_f85d616eb504_plot_master",
+        "source_type": "plot_arc_master",
+        "source_id": "ma_1e1e27f4-bf7b-4725-b757-912a7ec7d1e8",
+        "priority": 4,
+        "content_text": "全文弧目标: dbg2 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:87字\n当前阶段: c1已完成最小分析；原文长度:87字\n主题: 延续既有叙事基调",
+        "summary": "dbg2 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:87字 / c1已完成最小分析；原文长度:87字",
+        "token_estimate": 38,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "master_arc_inferred_without_outline",
+        "metadata": {
+          "status": "degraded",
+          "quality_level": "minimal"
+        }
+      },
+      {
+        "item_id": "cp_f85d616eb504_instruction",
+        "source_type": "user_instruction",
+        "source_id": "",
+        "priority": 5,
+        "content_text": "用户续写意图已记录（长度 2 字）",
+        "summary": "",
+        "token_estimate": 7,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_f85d616eb504_state",
+        "source_type": "story_state",
+        "source_id": "state_64bc1e70a5a6",
+        "priority": 6,
+        "content_text": "当前故事位置: c1已完成最小分析；原文长度:87字\n活跃角色: \n活跃地点: \n未解决线索: ",
+        "summary": "",
+        "token_estimate": 20,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_f85d616eb504_chapter",
+        "source_type": "current_chapter",
+        "source_id": "4ae5e3cf-8dfa-4071-b511-93848189c065",
+        "priority": 7,
+        "content_text": "章节标题: c1\n正文概况: 已省略原文，仅保留章节定位与长度（87字）",
+        "summary": "",
+        "token_estimate": 16,
+        "required": true,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_f85d616eb504_memory",
+        "source_type": "story_memory",
+        "source_id": "memory_bd5c69d804a9",
+        "priority": 8,
+        "content_text": "全书进度摘要: dbg2 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:87字\n角色: \n地点: \n剧情线索: c1已完成最小分析；原文长度:87字",
+        "summary": "",
+        "token_estimate": 43,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_f85d616eb504_recap_4ae5e3cf-8dfa-4071-b511-93848189c065",
+        "source_type": "recent_chapter_summary",
+        "source_id": "4ae5e3cf-8dfa-4071-b511-93848189c065",
+        "priority": 9,
+        "content_text": "章节 4ae5e3cf-8dfa-4071-b511-93848189c065: c1已完成最小分析；原文长度:87字",
+        "summary": "",
+        "token_estimate": 28,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_f85d616eb504_plot_c1已完成最小分析；原文长度:87字",
+        "source_type": "plot_thread",
+        "source_id": "c1已完成最小分析；原文长度:87字",
+        "priority": 12,
+        "content_text": "剧情线索: c1已完成最小分析；原文长度:87字",
+        "summary": "",
+        "token_estimate": 12,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_f85d616eb504_note_0",
+        "source_type": "continuity_note",
+        "source_id": "state_64bc1e70a5a6",
+        "priority": 13,
+        "content_text": "baseline_source=confirmed_chapter_analysis",
+        "summary": "",
+        "token_estimate": 21,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "cp_f85d616eb504_note_1",
+        "source_type": "continuity_note",
+        "source_id": "state_64bc1e70a5a6",
+        "priority": 13,
+        "content_text": "source_snapshot_id=memory_bd5c69d804a9",
+        "summary": "",
+        "token_estimate": 19,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {}
+      },
+      {
+        "item_id": "recall_vec_chunk_902dd93bf8d847abb69fe2132f246a29",
+        "source_type": "vector_recall",
+        "source_id": "4ae5e3cf-8dfa-4071-b511-93848189c065",
+        "priority": 14,
+        "content_text": "召回片段[c1]: hello world content for continuation test and enough words to satisfy validation length",
+        "summary": "",
+        "token_estimate": 43,
+        "required": false,
+        "included": true,
+        "trim_reason": "",
+        "filter_reason": "",
+        "stale_status": "fresh",
+        "warning": "",
+        "metadata": {
+          "score": 0.84,
+          "vector_id": "vec_chunk_902dd93bf8d847abb69fe2132f246a29",
+          "chunk_id": "chunk_902dd93bf8d847abb69fe2132f246a29",
+          "source": "confirmed_chapter",
+          "recall_backend": "vector_store_port"
+        }
+      }
+    ],
+    "token_budget": 4000,
+    "estimated_token_count": 299,
+    "trimmed_items": [],
+    "stale": false,
+    "stale_reason": "",
+    "source_chapter_versions": {
+      "4ae5e3cf-8dfa-4071-b511-93848189c065": 2
+    },
+    "plot_arc_statuses": {
+      "master_arc": {
+        "status": "degraded",
+        "quality_level": "minimal",
+        "warning_codes": [
+          "master_arc_inferred_without_outline"
+        ]
+      },
+      "volume_arc": {
+        "status": "pending",
+        "quality_level": "placeholder",
+        "warning_codes": [
+          "arc_placeholder_only"
+        ]
+      },
+      "sequence_arc": {
+        "status": "pending",
+        "quality_level": "placeholder",
+        "warning_codes": [
+          "arc_placeholder_only"
+        ]
+      },
+      "immediate_window": {
+        "status": "degraded",
+        "quality_level": "minimal",
+        "warning_codes": [
+          "immediate_window_partial"
+        ]
+      }
+    },
+    "plot_arc_summary": {
+      "master_arc": {
+        "arc_title": "dbg2",
+        "ultimate_goal": "dbg2 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:87字",
+        "current_stage": "c1已完成最小分析；原文长度:87字",
+        "core_theme": "延续既有叙事基调"
+      },
+      "volume_arc": {
+        "stage_goal": "c1已完成最小分析；原文长度:87字",
+        "core_conflict": "等待方向确认后补充当前卷冲突。",
+        "stage_open_loops": [],
+        "key_characters": [],
+        "foreshadow_planted": [],
+        "foreshadow_resolved": []
+      },
+      "sequence_arc": {
+        "sequence_goal": "等待章节计划确认后生成当前序列目标。",
+        "key_events": [
+          "c1已完成最小分析；原文长度:87字"
+        ],
+        "turning_points": [
+          "c1已完成最小分析；原文长度:87字"
+        ],
+        "required_beats": [
+          "c1已完成最小分析；原文长度:87字"
+        ]
+      },
+      "immediate_window": {
+        "recent_chapters_summary": [
+          "c1已完成最小分析；原文长度:87字"
+        ],
+        "previous_chapter_hook": "c1已完成最小分析；原文长度:87字",
+        "active_plot_threads": [
+          "c1已完成最小分析；原文长度:87字"
+        ],
+        "scene_details": [],
+        "character_current_states": [],
+        "current_chapter_context": {
+          "chapter_id": "4ae5e3cf-8dfa-4071-b511-93848189c065",
+          "chapter_no": 1,
+          "title": "c1",
+          "content_summary": "章节标题: c1\n正文概况: 已省略原文，仅保留章节定位与长度（87字）",
+          "writing_position": "c1已完成最小分析；原文长度:87字",
+          "unresolved_in_chapter": []
+        }
+      }
+    },
+    "summary": "近期摘要: c1已完成最小分析；原文长度:87字\n活跃线索: c1已完成最小分析；原文长度:87字; 当前序列目标: 等待章节计划确认后生成当前序列目标。\n关键事件: c1已完成最小分析；原文长度:87字; 当前卷目标: c1已完成最小分析；原文长度:87字\n当前卷冲突: 等待方向确认后补充当前卷冲突。; 全文弧目标: dbg2 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:87字\n当前阶段: c1已完成最小分析；原文长度:87字\n主题: 延续既有叙事基调; 用户续写意图已记录（长度 2 字）; 当前故事位置: c1已完成最小分析；原文长度:87字\n活跃角色: \n活跃地点: \n未解决线索: ; 章节标题: c1\n正文概况: 已省略原文，仅保留章节定位与长度（87字）; 全书进度摘要: dbg2 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:87字\n角色: \n地点: \n剧情线索: c1已完成最小分析；原文长度:87字; 章节 4ae5e3cf-8dfa-4071-b511-93848189c065",
+    "created_at": "2026-07-07T13:08:48.042644+00:00"
   }
 }

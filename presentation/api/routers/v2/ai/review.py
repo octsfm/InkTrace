@@ -16,6 +16,17 @@ def _reject_invalid_caller_type(request: Request, *, caller_type: str) -> JSONRe
     return None
 
 
+def _ensure_user_request(request: Request, *, caller_type: str, user_action: bool, idempotency_key: str) -> JSONResponse | None:
+    denied = _reject_invalid_caller_type(request, caller_type=caller_type)
+    if denied is not None:
+        return denied
+    if not user_action:
+        return error_response(request, error_code="action_not_allowed", status_code=403)
+    if not str(idempotency_key or "").strip():
+        return error_response(request, error_code="idempotency_key_required", status_code=400)
+    return None
+
+
 def _serialize_review_item(review) -> dict[str, object]:
     return {
         "review_id": review.review_id,
@@ -41,7 +52,12 @@ def _serialize_review_item(review) -> dict[str, object]:
 
 @router.post("/api/v2/ai/reviews/candidate-drafts/{candidate_draft_id}")
 def review_candidate_draft(candidate_draft_id: str, payload: ReviewCandidateDraftRequest, request: Request):
-    denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
+    denied = _ensure_user_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
     if denied is not None:
         return denied
     service = dependencies.get_ai_review_service()

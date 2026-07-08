@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div
     v-if="visible"
     class="selection-rewrite-toolbar"
@@ -128,7 +128,11 @@ const modeOptions = [
   border-radius: inherit;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--ink-accent, #4f7cff) 55%, white),
+    color-mix(
+      in srgb,
+      var(--ink-accent, #4f7cff) 55%,
+      var(--studio-card-bg, var(--ink-surface-1))
+    ),
     var(--ink-accent, #4f7cff)
   );
   animation: selection-rewrite-toolbar-pulse 1.2s ease-in-out infinite;

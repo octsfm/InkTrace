@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import OutlineImportModal from '../OutlineImportModal.vue'
@@ -22,7 +22,7 @@ describe('OutlineImportModal', () => {
 
     await wrapper.get('[data-testid="outline-import-paste"]').setValue('第一卷\n第二卷')
     expect(wrapper.get('[data-testid="outline-import-preview"]').text()).toContain('第一卷')
-    expect(wrapper.get('[data-testid="outline-import-char-count"]').text()).toContain('当前字符数：7')
+    expect(wrapper.get('[data-testid="outline-import-char-count"]').text()).toContain('当前字符数:7')
 
     await wrapper.get('[data-testid="outline-import-mode-append"]').setValue(true)
     await wrapper.get('[data-testid="outline-import-confirm"]').trigger('click')
@@ -71,7 +71,7 @@ describe('OutlineImportModal', () => {
     expect(wrapper.text()).toContain('建议控制在 20,000 字以内以获得更好编辑体验。')
 
     await wrapper.get('[data-testid="outline-import-paste"]').setValue('b'.repeat(50000))
-    expect(wrapper.text()).toContain('当前内容较大，可能影响编辑性能。')
+    expect(wrapper.text()).toContain('当前内容较大,可能影响编辑性能。')
   })
 
   it('blocks invalid file type and empty content import', async () => {

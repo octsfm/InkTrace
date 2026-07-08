@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
+<template>
   <section class="ai-panel" data-test="ai-panel">
     <header class="ai-panel-header">
       <div>
@@ -21,7 +21,7 @@
       <div class="ai-meta">
         <span v-if="aiSettingsBlocked">模型配置未完成</span>
         <span v-else>模型配置已完成</span>
-        <span>详细配置与模型服务商管理请前往“设置”页面</span>
+        <span>详细配置与模型服务商管理请前往"设置"页面</span>
       </div>
       <div v-if="aiSettingsBlocked" class="settings-block-banner" data-test="ai-settings-blocked">
         <strong>暂时无法启动 AI 工作</strong>
@@ -80,8 +80,8 @@
       </div>
       <div class="ai-meta">
         <span>状态 {{ displayStatus(contextPackReadiness.status || 'unknown') }}</span>
-        <span v-if="contextPackReadiness.blocked_reason">阻塞原因：{{ displayReadinessReason(contextPackReadiness.blocked_reason) }}</span>
-        <span v-if="contextPackReadiness.degraded_reason">降级原因：{{ displayReadinessReason(contextPackReadiness.degraded_reason) }}</span>
+        <span v-if="contextPackReadiness.blocked_reason">阻塞原因:{{ displayReadinessReason(contextPackReadiness.blocked_reason) }}</span>
+        <span v-if="contextPackReadiness.degraded_reason">降级原因:{{ displayReadinessReason(contextPackReadiness.degraded_reason) }}</span>
       </div>
       <ul v-if="contextPackItems.length" class="ai-list">
         <li v-for="item in contextPackItems" :key="item.item_id || item.source_type">
@@ -181,7 +181,7 @@
       >
         <h5>自动续写冲突详情</h5>
         <p v-if="autoQueueConflictLoading" class="ai-note">正在加载冲突详情…</p>
-        <p v-else-if="!autoQueueConflictItems.length" class="ai-note">当前没有可展示的阻断冲突，请刷新后重试。</p>
+        <p v-else-if="!autoQueueConflictItems.length" class="ai-note">当前没有可展示的阻断冲突,请刷新后重试。</p>
         <ul v-else class="ai-list">
           <li
             v-for="conflict in autoQueueConflictItems"
@@ -240,7 +240,7 @@
         data-test="opening-agent-view"
       >
         <h5>开篇助手</h5>
-        <p class="ai-note">导入参考、分析开篇特点、确认策略与风险后，再进入正式候选稿生成链路。</p>
+        <p class="ai-note">导入参考、分析开篇特点、确认策略与风险后,再进入正式候选稿生成链路。</p>
         <p class="ai-note" data-test="opening-agent-preview-status">
           {{ openingPreviewStatusHint }}
         </p>
@@ -329,7 +329,7 @@
     <div v-if="showAIMode" class="ai-section">
       <h4>向量索引</h4>
       <div v-if="vectorIndexNeedsAttention" class="settings-block-banner" data-test="vector-index-stale-banner">
-        <strong>索引已过期，点击重建</strong>
+        <strong>索引已过期,点击重建</strong>
         <span>{{ vectorIndexBannerMessage }}</span>
       </div>
       <div class="ai-actions">
@@ -584,17 +584,17 @@
             </button>
           </div>
           <div v-if="writingTaskDetails[task.writing_task_id]" class="note-box">
-            <div>目标：{{ writingTaskDetails[task.writing_task_id].writing_goal || '未填写' }}</div>
-            <div>必须包含：{{ (writingTaskDetails[task.writing_task_id].must_include || []).join('；') || '无' }}</div>
-            <div>禁止事项：{{ (writingTaskDetails[task.writing_task_id].must_not_include || []).join('；') || '无' }}</div>
-            <div>计划摘要：{{ writingTaskDetails[task.writing_task_id].plan_summary || '无' }}</div>
+            <div>目标:{{ writingTaskDetails[task.writing_task_id].writing_goal || '未填写' }}</div>
+            <div>必须包含:{{ (writingTaskDetails[task.writing_task_id].must_include || []).join(';') || '无' }}</div>
+            <div>禁止事项:{{ (writingTaskDetails[task.writing_task_id].must_not_include || []).join(';') || '无' }}</div>
+            <div>计划摘要:{{ writingTaskDetails[task.writing_task_id].plan_summary || '无' }}</div>
           </div>
         </li>
       </ul>
       <p v-if="planningActionError" class="ai-error">{{ planningActionError }}</p>
     </div>
 
-    <div v-if="false" class="ai-section">
+    <div v-if="showAIMode" class="ai-section">
       <h4>续写与候选稿</h4>
       <div v-if="aiSettingsBlocked" class="settings-block-banner">
         <strong>AI 设置未完成</strong>
@@ -610,8 +610,8 @@
         }"
       >
         <strong>{{ conflictSummary.blockingCount ? '资产冲突待处理' : '资产风险需确认' }}</strong>
-          <span v-if="conflictSummary.blockingCount">存在阻断项 {{ conflictSummary.blockingCount }}，应用前必须处理。</span>
-          <span v-else>存在警告 {{ conflictSummary.warningCount }}，继续应用代表你已知晓风险。</span>
+          <span v-if="conflictSummary.blockingCount">存在阻断项 {{ conflictSummary.blockingCount }},应用前必须处理。</span>
+          <span v-else>存在警告 {{ conflictSummary.warningCount }},继续应用代表你已知晓风险。</span>
       </div>
       <div class="ai-actions">
         <button
@@ -624,8 +624,8 @@
         </button>
       </div>
       <div class="ai-meta">
-        <span v-if="continuationResult.job_id">续写 job {{ continuationResult.job_id }}</span>
-        <span v-if="continuationResult.candidate_draft_id">candidate {{ continuationResult.candidate_draft_id }}</span>
+        <span v-if="continuationResult.job_id">续写任务 {{ continuationResult.job_id }}</span>
+        <span v-if="continuationResult.candidate_draft_id">候选稿 {{ continuationResult.candidate_draft_id }}</span>
       </div>
       <ul class="ai-list">
         <li v-for="item in candidateDrafts" :key="item.candidate_draft_id" class="candidate-item">
@@ -635,8 +635,8 @@
             <span>{{ displayValidationStatus(item.validation_status) }}</span>
             <span>{{ item.source_context_pack_id }}</span>
               <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.warning">警告 {{ conflictCountsByDraft[item.candidate_draft_id].warning }}</span>
-            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.blocking">阻断 blocking {{ conflictCountsByDraft[item.candidate_draft_id].blocking }}</span>
-            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.info">提示 info {{ conflictCountsByDraft[item.candidate_draft_id].info }}</span>
+            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.blocking">阻断冲突 {{ conflictCountsByDraft[item.candidate_draft_id].blocking }}</span>
+            <span v-if="conflictCountsByDraft[item.candidate_draft_id]?.info">一般提示 {{ conflictCountsByDraft[item.candidate_draft_id].info }}</span>
             <span v-if="item.selected_version_id">已选择版本 {{ item.selected_version_id }}</span>
             <span v-if="item.accepted_version_id">已接受版本 {{ item.accepted_version_id }}</span>
             <span v-if="item.applied_version_id">已应用版本 {{ item.applied_version_id }}</span>
@@ -887,7 +887,7 @@
             <span>{{ displayStatus(trace.status) }}</span>
             <span>{{ displayWorkflowType(trace.workflow_type) }}</span>
             <span>步骤数 {{ trace.total_steps || 0 }}</span>
-            <span>Token {{ trace.total_tokens || 0 }}</span>
+            <span>令牌 {{ trace.total_tokens || 0 }}</span>
           </div>
           <div class="ai-actions">
             <button
@@ -903,7 +903,7 @@
               type="button"
               @click="handleTraceDetail(trace.trace_id)"
             >
-              查看详细（Detail）
+              查看详细信息
             </button>
           </div>
           <ul v-if="agentTraceSteps[trace.trace_id]?.length" class="ai-list">
@@ -1133,7 +1133,7 @@ const panelDescription = computed(() => (
     ? '候选稿、审阅、冲突、记忆门控与任务追踪在此集中处理。'
     : props.mode === 'ai'
     ? '设置、初始化、写作上下文、剧情轨道、方向计划、会话进度与快速试写。'
-    : '最小集成入口：设置、初始化、写作上下文、续写、快速试写、AI审阅。'
+    : '最小集成入口:设置、初始化、写作上下文、续写、快速试写、AI审阅。'
 ))
 const aiHelperViews = computed(() => {
   const items = []
@@ -1151,38 +1151,38 @@ const aiHelperViews = computed(() => {
 const openingPreviewRiskLevel = computed(() => String(openingStore.riskLevel || 'warning').toLowerCase())
 const openingPreviewRiskBlocking = computed(() => ['high', 'blocking'].includes(openingPreviewRiskLevel.value))
 const openingPreviewRiskLabel = computed(() => ({
-  low: '低风险（low）',
-  medium: '中风险（medium）',
-  warning: '警告（warning）',
-  high: '高风险（high）',
-  blocking: '阻断（blocking）'
-}[openingPreviewRiskLevel.value] || '警告（warning）'))
+  low: '低风险',
+  medium: '中风险',
+  warning: '警告',
+  high: '高风险',
+  blocking: '阻断风险'
+}[openingPreviewRiskLevel.value] || '警告'))
 const openingPreviewRiskHint = computed(() => (
   openingPreviewRiskBlocking.value
-    ? '存在较高的模仿风险，建议返回修改策略后再生成。'
-    : '风险可控，确认版权与策略后可继续进入候选稿生成。'
+    ? '存在较高的模仿风险,建议返回修改策略后再生成。'
+    : '风险可控,确认版权与策略后可继续进入候选稿生成。'
 ))
 const openingPreviewStatusHint = computed(() => {
   if (openingInitialLoading.value) {
-    return '正在读取 Opening API 实时快照，请稍候。'
+    return '正在读取开篇助手的实时结果,请稍候。'
   }
   if (openingStore.snapshotLoaded) {
-    return '已读取 Opening API 实时快照，当前展示为最新只读 snapshot。'
+    return '已读取开篇助手的实时结果,当前展示为最新只读结果。'
   }
   if (openingStore.snapshotLoadFailed) {
-    return '当前显示为本地预览快照；opening snapshot 读取失败，暂回退到本地预览。'
+    return '当前显示为本地预览;开篇助手实时结果读取失败,暂回退到本地预览。'
   }
-  return '当前显示为本地预览快照；待后续接入 Opening API 实时结果后，再切换为联调数据。'
+  return '当前显示为本地预览;待后续接入开篇助手实时结果后,再切换为联调数据。'
 })
 const openingLastSnapshotResultHint = computed(() => ({
-  succeeded: '最近一次快照结果：读取成功。',
-  failed: '最近一次快照结果：已回退到本地预览。',
-  idle: '最近一次快照结果：尚未读取。'
-}[openingStore.lastSnapshotOutcome] || '最近一次快照结果：尚未读取。'))
+  succeeded: '最近一次读取结果:读取成功。',
+  failed: '最近一次读取结果:已回退到本地预览。',
+  idle: '最近一次读取结果:尚未读取。'
+}[openingStore.lastSnapshotOutcome] || '最近一次读取结果:尚未读取。'))
 const openingLastSnapshotUpdatedHint = computed(() => (
   openingStore.lastSnapshotAt
-    ? `最近更新时间：${openingStore.lastSnapshotAt}`
-    : '最近更新时间：尚无。'
+    ? `最近更新时间:${openingStore.lastSnapshotAt}`
+    : '最近更新时间:尚无。'
 ))
 const jobSteps = computed(() => polling.job.value?.steps || [])
 const jobStatusText = computed(() => String(polling.job.value?.status || ''))
@@ -1228,7 +1228,7 @@ const vectorIndexNeedsAttention = computed(() => (
 ))
 const vectorIndexBannerMessage = computed(() => (
   vectorIndexNeedsAttention.value
-    ? '当前索引可能已过期，建议尽快重建。重建期间续写仍可使用现有索引。'
+    ? '当前索引可能已过期,建议尽快重建。重建期间续写仍可使用现有索引。'
     : '当前索引可用于上下文召回。'
 ))
 const vectorIndexDisplayStatus = computed(() => (
@@ -1244,9 +1244,9 @@ const vectorIndexStatusHint = computed(() => {
   if (status === 'queued' || status === 'running') return '正在重建索引'
   if (status === 'completed') return '索引重建完成。'
   if (status === 'partial_success') {
-    return '索引部分重建成功，部分章节的索引可能不完整。可以针对失败章节单独重建。'
+    return '索引部分重建成功,部分章节的索引可能不完整。可以针对失败章节单独重建。'
   }
-  if (status === 'failed') return '索引重建失败，可以重试。'
+  if (status === 'failed') return '索引重建失败,可以重试。'
   if (status === 'cancelled') return '索引重建已取消。'
   return ''
 })
@@ -1287,7 +1287,7 @@ const providerNameOptions = computed(() => providerConfigs.value.map((item) => i
 const aiSettingsBlockMessage = computed(() => {
   const enabledProviders = providerConfigs.value.filter((provider) => provider.enabled)
   if (!enabledProviders.some((provider) => provider.key_configured || String(provider.api_key || '').trim())) {
-    return '请先配置可用模型服务 Key，并完成分析任务模型/写作任务模型配置。'
+    return '请先配置可用模型服务 Key,并完成分析任务模型/写作任务模型配置。'
   }
   const requiredRoles = ['analysis', 'writer']
   const missingCriticalRole = requiredRoles.some((role) => {
@@ -1299,7 +1299,7 @@ const aiSettingsBlockMessage = computed(() => {
     return !(provider.key_configured || String(provider.api_key || '').trim())
   })
   if (missingCriticalRole) {
-    return '请先配置可用模型服务 Key，并完成分析任务模型/写作任务模型配置。'
+    return '请先配置可用模型服务 Key,并完成分析任务模型/写作任务模型配置。'
   }
   return ''
 })
@@ -1506,18 +1506,18 @@ const memoryTargetTypeLabelMap = {
 }
 
 const stepActionLabelMap = {
-  prepare: '准备（prepare）',
-  execute: '执行（execute）',
-  observe: '观察（observe）',
-  decide: '决策（decide）',
-  tool_call: '工具调用（tool_call）'
+  prepare: '准备(prepare)',
+  execute: '执行(execute)',
+  observe: '观察(observe)',
+  decide: '决策(decide)',
+  tool_call: '工具调用(tool_call)'
 }
 
 const readinessReasonLabelMap = {
   missing_work_id: '缺少作品标识',
   missing_chapter_id: '缺少章节标识',
   master_arc_missing: '主线轨道缺失',
-  master_arc_inferred_without_outline: '主线轨道仅根据现有内容推测，可靠性不足',
+  master_arc_inferred_without_outline: '主线轨道仅根据现有内容推测,可靠性不足',
   arc_placeholder_only: '剧情轨道仍是占位信息',
   volume_arc_missing: '卷轨道缺失',
   sequence_arc_missing: '章节序列轨道缺失',
@@ -1585,14 +1585,14 @@ const handleCancelVectorReindex = async () => {
     clearPendingReindexRequest()
     reindexActionError.value = '索引重建已取消。'
   } catch (error) {
-    reindexActionError.value = String(error?.userMessage || error?.message || '索引取消失败，请稍后重试')
+    reindexActionError.value = String(error?.userMessage || error?.message || '索引取消失败,请稍后重试')
   }
 }
 
 const handleRetryVectorReindex = async () => {
   const baseRequest = lastReindexRequest.value || loadPendingReindexRequest()?.request
   if (!baseRequest) {
-    reindexActionError.value = '缺少可重试的索引请求，请重新发起重建。'
+    reindexActionError.value = '缺少可重试的索引请求,请重新发起重建。'
     return
   }
   const retryPayload = buildVectorReindexRequest(baseRequest.index_scope, {
@@ -1680,7 +1680,7 @@ const handleAutoQueueSaveConfig = async () => {
 const handleAutoQueueStart = async () => {
   if (!ensureAISettingsReady(planningActionError)) return
   if (!props.chapterId) {
-    autoQueueStore.errorMessage = '请先进入目标章节，再启动自动续写。'
+    autoQueueStore.errorMessage = '请先进入目标章节,再启动自动续写。'
     return
   }
   await handleAutoQueueSaveConfig()
@@ -1708,7 +1708,7 @@ const handleAutoQueueConfirmContinue = async () => {
 const handleAutoQueueDisableBudgetCheck = async () => {
   const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
     ? true
-    : window.confirm('关闭预算检查后，AI 功能将不再受预算限制。确定要关闭吗？')
+    : window.confirm('关闭预算检查后,AI 功能将不再受预算限制。确定要关闭吗?')
   if (!confirmed) return
   await autoQueueStore.saveConfig({
     queue_mode: autoQueueMode.value,
@@ -1735,7 +1735,7 @@ const handleAutoQueueViewConflicts = async () => {
 
 const handleOpeningGenerate = () => {
   openingWizardVisible.value = false
-  ElMessage.info('开篇助手入口已接入，正式生成链路待后续联调。')
+  ElMessage.info('开篇助手入口已接入,正式生成链路待后续联调。')
 }
 
 const handleOpeningRefresh = async () => {
@@ -1753,7 +1753,7 @@ const handleAutoQueueStop = async () => {
   if (!runId) return
   const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
     ? true
-    : window.confirm('确定要停止自动续写吗？已生成的候选稿会保留。')
+    : window.confirm('确定要停止自动续写吗?已生成的候选稿会保留。')
   if (!confirmed) return
   await autoQueueStore.stopQueue(runId)
 }
@@ -1794,9 +1794,9 @@ const buildVectorReindexRequest = (indexScope, overrides = {}) => {
 const buildReindexConfirmMessage = (payload) => {
   if (payload.index_scope === 'chapter') {
     const targetCount = Array.isArray(payload.target_chapter_ids) ? payload.target_chapter_ids.filter(Boolean).length : 0
-    return `将对已选的 ${targetCount} 个章节重建向量索引。确认开始？`
+    return `将对已选的 ${targetCount} 个章节重建向量索引。确认开始?`
   }
-  return '将重建全部已确认章节的向量索引。重建期间续写仍可使用现有索引。确认开始？'
+  return '将重建全部已确认章节的向量索引。重建期间续写仍可使用现有索引。确认开始?'
 }
 
 const syncReindexJobState = (payload) => {
@@ -1835,7 +1835,7 @@ const startVectorReindexFlow = async (payload, options = {}) => {
   const {
     skipConfirm = false,
     autoPoll = true,
-    successMessage = '索引重建已加入队列，即将开始。'
+    successMessage = '索引重建已加入队列,即将开始。'
   } = options
   reindexActionError.value = ''
   if (!ensureAISettingsReady(reindexActionError)) return
@@ -1866,7 +1866,7 @@ const startVectorReindexFlow = async (payload, options = {}) => {
       ElMessage.success(successMessage)
     }
   } catch (error) {
-    reindexActionError.value = String(error?.userMessage || error?.message || '索引重建失败，可以重试。')
+    reindexActionError.value = String(error?.userMessage || error?.message || '索引重建失败,可以重试。')
   } finally {
     reindexSubmitting.value = false
   }
@@ -2021,7 +2021,7 @@ const loadAISuggestions = async () => {
       chapterId: props.chapterId
     })
   } catch (error) {
-    outlineAssistStore.setActionError(String(error?.userMessage || '大纲建议加载失败，请稍后重试'))
+    outlineAssistStore.setActionError(String(error?.userMessage || '大纲建议加载失败,请稍后重试'))
   }
 }
 
@@ -2160,7 +2160,10 @@ const handleStartContinuation = async () => {
   if (!ensureAISettingsReady(candidateActionError)) return
   continuationResult.value = unwrapData(await aiApi.startContinuation({
     work_id: props.workId,
-    chapter_id: props.chapterId
+    chapter_id: props.chapterId,
+    caller_type: 'user_action',
+    user_action: true,
+    idempotency_key: buildIdempotencyKey('continuation_start')
   }))
   await loadCandidateDrafts()
 }
@@ -2178,7 +2181,7 @@ const handleGenerateDirections = async () => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '方向推演生成失败，请稍后重试')
+    planningActionError.value = String(error?.userMessage || error?.message || '方向推演生成失败,请稍后重试')
   }
 }
 
@@ -2194,7 +2197,7 @@ const handleSelectDirection = async (proposalId, optionId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '方向选择失败，请稍后重试')
+    planningActionError.value = String(error?.userMessage || error?.message || '方向选择失败,请稍后重试')
   }
 }
 
@@ -2211,7 +2214,7 @@ const handleGeneratePlan = async (proposalId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '章节计划生成失败，请稍后重试')
+    planningActionError.value = String(error?.userMessage || error?.message || '章节计划生成失败,请稍后重试')
   }
 }
 
@@ -2226,7 +2229,7 @@ const handleConfirmPlan = async (planId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '章节计划确认失败，请稍后重试')
+    planningActionError.value = String(error?.userMessage || error?.message || '章节计划确认失败,请稍后重试')
   }
 }
 
@@ -2242,7 +2245,7 @@ const handleRejectPlan = async (planId) => {
     })
     await loadPlanningData()
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '章节计划拒绝失败，请稍后重试')
+    planningActionError.value = String(error?.userMessage || error?.message || '章节计划拒绝失败,请稍后重试')
   }
 }
 
@@ -2255,7 +2258,7 @@ const handleWritingTaskDetail = async (writingTaskId) => {
       [writingTaskId]: payload
     }
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '写作任务详情加载失败，请稍后重试')
+    planningActionError.value = String(error?.userMessage || error?.message || '写作任务详情加载失败,请稍后重试')
   }
 }
 
@@ -2273,7 +2276,7 @@ const handleConfirmWritingTask = async (writingTaskId) => {
     await loadPlanningData()
     await handleWritingTaskDetail(writingTaskId)
   } catch (error) {
-    planningActionError.value = String(error?.userMessage || error?.message || '写作任务确认失败，请稍后重试')
+    planningActionError.value = String(error?.userMessage || error?.message || '写作任务确认失败,请稍后重试')
   } finally {
     writingTaskSubmittingId.value = ''
   }
@@ -2313,7 +2316,7 @@ const handleAcceptCandidate = async (candidateDraftId) => {
     await loadCandidateDetail(candidateDraftId)
     await loadAISuggestions()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿接受失败，请稍后重试')
+    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿接受失败,请稍后重试')
   }
 }
 
@@ -2332,7 +2335,7 @@ const handleRejectCandidate = async (candidateDraftId) => {
     await loadCandidateDetail(candidateDraftId)
     await loadAISuggestions()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿拒绝失败，请稍后重试')
+    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿拒绝失败,请稍后重试')
   }
 }
 
@@ -2343,12 +2346,12 @@ const handleApplyCandidate = async (candidateDraftId) => {
     const hasBlocking = draftConflicts.some((item) => item.severity === 'blocking')
     const warningItems = draftConflicts.filter((item) => item.severity === 'warning')
     if (hasBlocking) {
-      candidateActionError.value = 'blocking_conflict_unresolved'
+      candidateActionError.value = '存在未处理的阻断冲突,请先处理后再应用。'
       return
     }
     if (warningItems.length) {
       const confirmed = window.confirm(
-        `存在 ${warningItems.length} 条警告。继续应用代表你已知晓风险，是否继续？`
+        `存在 ${warningItems.length} 条警告。继续应用代表你已知晓风险,是否继续?`
       )
       if (!confirmed) return
     }
@@ -2374,13 +2377,20 @@ const handleRunQuickTrial = async () => {
   if (!ensureAISettingsReady(planningActionError)) return
   quickTrialResult.value = unwrapData(await aiApi.runQuickTrial({
     model_role: quickTrialForm.model_role,
-    input_text: quickTrialForm.input_text
+    input_text: quickTrialForm.input_text,
+    caller_type: 'quick_trial',
+    idempotency_key: buildIdempotencyKey('quick_trial_run')
   }))
 }
 
 const handleReviewCandidate = async (candidateDraftId) => {
   if (!ensureAISettingsReady(candidateActionError)) return
-  const payload = unwrapData(await aiApi.reviewCandidateDraft(candidateDraftId, { user_instruction: '' }))
+  const payload = unwrapData(await aiApi.reviewCandidateDraft(candidateDraftId, {
+    user_instruction: '',
+    caller_type: 'user_action',
+    user_action: true,
+    idempotency_key: buildIdempotencyKey('candidate_review')
+  }))
   let reviewDetail = payload
   if (payload.review_id) {
     try {
@@ -2425,7 +2435,7 @@ const handleSelectCandidateVersion = async (candidateDraftId, candidateVersionId
     await loadCandidateDrafts()
     await loadConflicts()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿应用失败，请稍后重试')
+    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿应用失败,请稍后重试')
   }
 }
 
@@ -2458,7 +2468,7 @@ const handleRewriteCandidate = async (candidateDraftId, candidateVersionId, trig
     await loadAISuggestions()
     await loadConflicts()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || '候选版本切换失败，请稍后重试')
+    candidateActionError.value = String(error?.userMessage || error?.message || '候选版本切换失败,请稍后重试')
   }
 }
 
@@ -2477,7 +2487,7 @@ const handleRejectCandidateVersion = async (candidateDraftId, candidateVersionId
     await loadAISuggestions()
     await loadConflicts()
   } catch (error) {
-    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿重写失败，请稍后重试')
+    candidateActionError.value = String(error?.userMessage || error?.message || '候选稿重写失败,请稍后重试')
   }
 }
 
@@ -2550,7 +2560,7 @@ const handleApproveMemorySuggestion = async (gateId, suggestionId) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议审批失败，请稍后重试')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议审批失败,请稍后重试')
   }
 }
 
@@ -2569,7 +2579,7 @@ const handleEditApproveMemorySuggestion = async (gateId, suggestion) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议编辑审批失败，请稍后重试')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议编辑审批失败,请稍后重试')
   }
 }
 
@@ -2585,7 +2595,7 @@ const handleRejectMemorySuggestion = async (gateId, suggestionId) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议拒绝失败，请稍后重试')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议拒绝失败,请稍后重试')
   }
 }
 
@@ -2601,7 +2611,7 @@ const handleDeferMemorySuggestion = async (gateId, suggestionId) => {
     })
     await loadMemoryGates()
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议暂缓失败，请稍后重试')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆建议暂缓失败,请稍后重试')
   }
 }
 
@@ -2647,9 +2657,9 @@ const handleRollbackMemoryRevision = async (revisionId) => {
       [payload.revision_id]: payload
     }
     await loadMemoryGates()
-    ElMessage.success('rollback 成功')
+    ElMessage.success('回滚成功')
   } catch (error) {
-    memoryActionError.value = String(error?.userMessage || error?.message || '记忆修订回滚失败，请稍后重试')
+    memoryActionError.value = String(error?.userMessage || error?.message || '记忆修订回滚失败,请稍后重试')
   }
 }
 
@@ -2759,7 +2769,7 @@ watch(() => String(reindexPolling.job.value?.status || ''), async (status) => {
     return
   }
   if (status === 'failed' && !reindexActionError.value) {
-    reindexActionError.value = '索引重建失败，可以重试。'
+    reindexActionError.value = '索引重建失败,可以重试。'
   }
   if (status === 'cancelled' && !reindexActionError.value) {
     reindexActionError.value = '索引重建已取消。'
@@ -2880,8 +2890,8 @@ watch(() => [autoQueueStore.config?.queue_mode, autoQueueStore.config?.target_ch
 }
 
 .ai-helper-tab--active {
-  border-color: color-mix(in srgb, var(--ink-accent, #2563eb) 70%, white);
-  background: color-mix(in srgb, var(--ink-accent-soft, #dbeafe) 65%, white);
+  border-color: color-mix(in srgb, var(--ink-accent, #2563eb) 70%, var(--ai-bg, #ffffff));
+  background: color-mix(in srgb, var(--ink-accent-soft, #dbeafe) 65%, var(--ai-bg, #ffffff));
   color: var(--ink-accent, #2563eb);
   font-weight: 600;
 }
@@ -3013,4 +3023,3 @@ watch(() => [autoQueueStore.config?.queue_mode, autoQueueStore.config?.target_ch
   color: var(--ai-text);
 }
 </style>
-

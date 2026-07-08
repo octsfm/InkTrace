@@ -572,10 +572,18 @@ class InitializationApplicationService:
         )
         self._job_service.mark_step_running(initialization.job_id, step_id)
         try:
-            result = self._vector_index_service.build_initial_index(
-                initialization.work_id,
-                should_continue=lambda: self._job_service.get_job(initialization.job_id).status.value != "cancelled",
-            )
+            should_continue = lambda: self._job_service.get_job(initialization.job_id).status.value != "cancelled"
+            build_initialization_index = getattr(self._vector_index_service, "build_initialization_index", None)
+            if callable(build_initialization_index):
+                result = build_initialization_index(
+                    initialization.work_id,
+                    should_continue=should_continue,
+                )
+            else:
+                result = self._vector_index_service.build_initial_index(
+                    initialization.work_id,
+                    should_continue=should_continue,
+                )
         except Exception as exc:
             self._job_service.mark_step_failed(
                 initialization.job_id,

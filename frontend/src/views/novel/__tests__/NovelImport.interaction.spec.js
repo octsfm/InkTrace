@@ -105,7 +105,7 @@ describe('NovelImport 整理进度与控制', () => {
     expect(text).toContain('取消整理')
   })
 
-  it('点击按钮会触发暂停继续取消接口', async () => {
+  it('点击控制按钮会触发暂停继续取消接口', async () => {
     const wrapper = await mountPage()
     wrapper.vm.createdNovelId = 'novel_1'
     await wrapper.vm.fetchOrganizeProgress()
@@ -133,8 +133,8 @@ describe('NovelImport 整理进度与控制', () => {
     expect(mockRetryOrganize).toHaveBeenCalledWith('novel_1', 'full_reanalyze', 3)
   })
 
-  it('整理失败时会弹出错误提示', async () => {
-    const errorMessage = 'Kimi API Key 无效或未配置，请在模型配置页更新后重新整理。'
+  it('整理失败时弹出后端 safe_message', async () => {
+    const errorMessage = '模型服务配置无效，请在设置中心更新后重新整理。'
     mockOrganizeProgress.mockResolvedValueOnce({
       status: 'error',
       stage: 'error',

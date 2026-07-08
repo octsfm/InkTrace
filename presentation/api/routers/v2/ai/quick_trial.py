@@ -11,7 +11,8 @@ router = APIRouter(tags=["v2-ai-quick-trial"])
 
 
 def _reject_invalid_caller_type(request: Request, *, caller_type: str) -> object | None:
-    if caller_type and caller_type != "user_action":
+    allowed = {"", "quick_trial", "user_action"}
+    if caller_type not in allowed:
         return error_response(request, error_code="caller_type_forbidden", status_code=403)
     return None
 
@@ -21,6 +22,8 @@ def run_quick_trial(payload: QuickTrialRunRequest, request: Request):
     denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
     if denied is not None:
         return denied
+    if not str(payload.idempotency_key or "").strip():
+        return error_response(request, error_code="idempotency_key_required", status_code=400)
     service = dependencies.get_quick_trial_service()
     try:
         result = service.run_quick_trial(

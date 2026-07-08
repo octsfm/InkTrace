@@ -118,9 +118,9 @@ describe('WorksList 页面', () => {
     }))
   })
 
-  it('renders hero actions and work list', async () => {
+  it('展示书架主入口与作品列表', async () => {
     const wrapper = await mountPage()
-    expect(wrapper.text()).toContain('选择作品，开始写作')
+    expect(wrapper.text()).toContain('选择作品,开始写作')
     expect(wrapper.text()).toContain('新建作品')
     expect(wrapper.text()).toContain('导入 TXT')
     expect(wrapper.text()).toContain('我的作品')
@@ -128,7 +128,7 @@ describe('WorksList 页面', () => {
     expect(wrapper.text()).toContain('32,000')
   })
 
-  it('opens create modal and navigates after creation', async () => {
+  it('打开新建作品弹窗并在创建后跳转', async () => {
     const wrapper = await mountPage()
     const createButton = wrapper.findAll('button').find((node) => node.text().includes('新建作品'))
     expect(createButton).toBeTruthy()
@@ -142,7 +142,7 @@ describe('WorksList 页面', () => {
     expect(mockPush).toHaveBeenCalledWith({ path: '/works/work-new' })
   })
 
-  it('opens import modal', async () => {
+  it('打开导入弹窗', async () => {
     const wrapper = await mountPage()
     const importButton = wrapper.findAll('button').find((node) => node.text().includes('导入 TXT'))
     expect(importButton).toBeTruthy()
@@ -151,7 +151,7 @@ describe('WorksList 页面', () => {
     expect(wrapper.find('.import-modal-stub').exists()).toBe(true)
   })
 
-  it('opens workspace when clicking a work card', async () => {
+  it('点击作品卡片时进入写作页', async () => {
     const wrapper = await mountPage()
     const card = wrapper.find('.work-card-shell')
     expect(card.exists()).toBe(true)
@@ -160,13 +160,13 @@ describe('WorksList 页面', () => {
     expect(mockPush).toHaveBeenCalledWith({ path: '/works/work-1' })
   })
 
-  it('deletes work after confirmation and updates the list', async () => {
+  it('确认后删除作品并更新列表', async () => {
     mockDelete.mockResolvedValueOnce({ ok: true, id: 'work-1' })
     const wrapper = await mountPage()
 
     await wrapper.find('.more-button').trigger('click')
     await wrapper.find('.menu-item.danger').trigger('click')
-    expect(wrapper.text()).toContain('此操作不可恢复，确认删除？')
+    expect(wrapper.text()).toContain('此操作不可恢复,确认删除?')
     await wrapper.find('.danger-button').trigger('click')
     await flushPromises()
 
@@ -176,7 +176,7 @@ describe('WorksList 页面', () => {
     expect(mockPush).not.toHaveBeenCalled()
   })
 
-  it('renames work from card operation menu', async () => {
+  it('从卡片菜单重命名作品', async () => {
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValueOnce('新标题')
     const wrapper = await mountPage()
 
@@ -189,7 +189,7 @@ describe('WorksList 页面', () => {
     expect(wrapper.text()).toContain('新标题')
   })
 
-  it('updates author from card operation menu', async () => {
+  it('从卡片菜单修改作者', async () => {
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValueOnce('新作者')
     const wrapper = await mountPage()
 
@@ -202,7 +202,7 @@ describe('WorksList 页面', () => {
     expect(wrapper.text()).toContain('新作者')
   })
 
-  it('opens export txt modal from card operation menu', async () => {
+  it('从卡片菜单打开导出弹窗', async () => {
     const wrapper = await mountPage()
 
     await wrapper.find('.more-button').trigger('click')
@@ -218,14 +218,14 @@ describe('WorksList 页面', () => {
     expect(wrapper.find('.export-modal-stub').exists()).toBe(false)
   })
 
-  it('shows empty onboarding when no works exist', async () => {
+  it('没有作品时展示空状态引导', async () => {
     mockList.mockResolvedValueOnce({ items: [], total: 0 })
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('先创建一本空白作品开始写作')
   })
 
-  it('shows error state and retries loading', async () => {
+  it('加载失败时展示错误态并允许重试', async () => {
     mockList
       .mockRejectedValueOnce(new Error('backend down'))
       .mockResolvedValueOnce({ items: [], total: 0 })

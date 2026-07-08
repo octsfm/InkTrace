@@ -38,6 +38,13 @@ class VectorIndexService:
             should_continue=should_continue,
         )
 
+    def build_initialization_index(self, work_id: str, should_continue=None) -> VectorIndexBuildResult:  # noqa: ANN001
+        return self._index_chapters(
+            work_id=work_id,
+            chapters=self._confirmed_chapters_for_initialization(work_id),
+            should_continue=should_continue,
+        )
+
     def mark_chapter_stale(self, work_id: str, chapter_id: str) -> int:
         stale_chunks = self._vector_index_repository.mark_chunks_stale_by_chapter(work_id, chapter_id)
         self._vector_index_repository.mark_embeddings_stale_by_chapter(work_id, chapter_id)
@@ -354,6 +361,15 @@ class VectorIndexService:
 
     def _published_chapters(self, work_id: str) -> list[object]:
         return [chapter for chapter in self._chapter_service.list_chapters(work_id) if chapter.is_published]
+
+    def _confirmed_chapters_for_initialization(self, work_id: str) -> list[object]:
+        chapters = []
+        for chapter in self._chapter_service.list_chapters(work_id):
+            content = str(getattr(chapter, "content", "") or "").strip()
+            if not content:
+                continue
+            chapters.append(chapter)
+        return chapters
 
     def _published_chapter(self, *, work_id: str, chapter_id: str) -> object | None:
         chapter = self._chapter_service.chapter_repo.find_by_id(chapter_id)

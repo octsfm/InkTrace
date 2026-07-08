@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
@@ -17,6 +17,9 @@ def test_conflicts_api_lists_detail_and_decide_with_gate_rules() -> None:
             "work_id": work_id,
             "chapter_id": chapter_id,
             "user_instruction": "继续写作",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "conflicts-api-start-1",
         },
     )
     assert start_response.status_code == 200
@@ -55,7 +58,7 @@ def test_conflicts_api_lists_detail_and_decide_with_gate_rules() -> None:
             "user_action": True,
             "user_id": "ui-user",
             "decision": "resolved",
-            "decision_note": "已人工处理",
+            "decision_note": "已人工处理。",
             "idempotency_key": "conflict-api-resolve-1",
         },
     )

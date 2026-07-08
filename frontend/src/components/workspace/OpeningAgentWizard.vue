@@ -5,9 +5,9 @@
       <header class="opening-agent-wizard__header">
         <div>
           <h4>开篇助手</h4>
-          <p>导入参考、确认策略与风险后，再进入正式候选稿生成链路。</p>
+          <p>导入参考、分析开篇特点、确认策略与风险后，再进入正式候选稿生成链路。</p>
         </div>
-        <button type="button" data-test="opening-close" @click="$emit('close')">关闭</button>
+        <button type="button" class="ink-button ink-button--ghost" data-test="opening-close" @click="$emit('close')">关闭</button>
       </header>
 
       <ol class="opening-agent-wizard__steps">
@@ -24,20 +24,16 @@
       <section class="opening-agent-wizard__content" data-test="opening-step">
         <template v-if="currentStep === 0">
           <h5>导入参考</h5>
-          <p class="opening-agent-wizard__note">请先确认你有权使用参考文本。未确认前不能进入下一步。</p>
+          <p class="opening-agent-wizard__note">请先确认你拥有参考文本的合法使用权，确认后才能进入下一步。</p>
           <label class="opening-agent-wizard__checkbox">
-            <input
-              data-test="opening-rights-confirm-step1"
-              type="checkbox"
-              v-model="rightsConfirmedStep1"
-            >
+            <input data-test="opening-rights-confirm-step1" type="checkbox" v-model="rightsConfirmedStep1">
             <span>我确认对参考文本拥有合法使用权</span>
           </label>
         </template>
 
         <template v-else-if="currentStep === 1">
           <h5>分析开篇特点</h5>
-          <p class="opening-agent-wizard__note">以下展示 Opening Analysis 的最小结果壳，不含参考全文。</p>
+          <p class="opening-agent-wizard__note">这里展示开篇分析的最小结果摘要，不展示参考全文。</p>
           <div class="opening-agent-wizard__card" data-test="opening-analysis-summary">
             <strong>分析摘要</strong>
             <span>{{ openingAnalysis.analysis_summary }}</span>
@@ -70,7 +66,7 @@
 
         <template v-else-if="currentStep === 2">
           <h5>选择策略</h5>
-          <p class="opening-agent-wizard__note">当前展示 Opening Strategy 的冻结字段摘要；确认后才允许进入风险确认。</p>
+          <p class="opening-agent-wizard__note">当前展示开篇策略的冻结摘要；确认后才允许进入风险确认。</p>
           <div class="opening-agent-wizard__card" data-test="opening-strategy-card">
             <strong>目标读者</strong>
             <span>{{ openingStrategy.target_audience }}</span>
@@ -92,11 +88,7 @@
             <span>{{ openingStrategy.forbidden_similarity_notes }}</span>
           </div>
           <label class="opening-agent-wizard__checkbox">
-            <input
-              data-test="opening-strategy-confirm"
-              type="checkbox"
-              v-model="strategyConfirmed"
-            >
+            <input data-test="opening-strategy-confirm" type="checkbox" v-model="strategyConfirmed">
             <span>我已确认当前开篇策略方向</span>
           </label>
         </template>
@@ -109,18 +101,11 @@
           >
             存在较高的模仿风险，建议返回修改策略后再生成。
           </p>
-          <p
-            v-else
-            class="opening-agent-wizard__risk"
-          >
+          <p v-else class="opening-agent-wizard__risk">
             {{ riskSummary }}
           </p>
           <label class="opening-agent-wizard__checkbox">
-            <input
-              data-test="opening-rights-confirm-step4"
-              type="checkbox"
-              v-model="rightsConfirmedStep4"
-            >
+            <input data-test="opening-rights-confirm-step4" type="checkbox" v-model="rightsConfirmedStep4">
             <span>我再次确认参考文本使用权与风险提示</span>
           </label>
         </template>
@@ -129,6 +114,7 @@
       <footer class="opening-agent-wizard__footer">
         <button
           type="button"
+          class="ink-button ink-button--ghost"
           data-test="opening-prev"
           :disabled="currentStep === 0"
           @click="currentStep -= 1"
@@ -139,6 +125,7 @@
         <button
           v-if="currentStep < steps.length - 1"
           type="button"
+          class="ink-button ink-button--primary"
           data-test="opening-next"
           :disabled="nextDisabled"
           @click="currentStep += 1"
@@ -149,6 +136,7 @@
         <button
           v-else-if="isHighRisk"
           type="button"
+          class="ink-button ink-button--ghost"
           data-test="opening-return-modify"
           @click="currentStep = 2"
         >
@@ -158,6 +146,7 @@
         <button
           v-else
           type="button"
+          class="ink-button ink-button--primary"
           data-test="opening-generate"
           :disabled="generateDisabled"
           @click="$emit('generate')"
@@ -206,18 +195,19 @@ const strategyConfirmed = ref(false)
 const rightsConfirmedStep4 = ref(false)
 
 const openingAnalysis = computed(() => ({
-  analysis_summary: '参考作通常在前三章快速建立悬念并维持连续推进。',
+  analysis_summary: '参考作通常在前三章快速建立悬念，并持续抛出新的未解问题。',
   hook_patterns: ['前 500 字引入异常事件'],
-  conflict_patterns: ['主角被迫卷入核心谜团'],
+  conflict_patterns: ['主角被迫卷入核心冲突'],
   satisfaction_points: ['节奏快、线索密集'],
-  chapter_end_hooks: ['章尾抛出新的未解问题'],
+  chapter_end_hooks: ['章尾抛出新的关键疑点'],
   ...(props.analysis || {})
 }))
+
 const openingStrategy = computed(() => ({
   target_audience: '签约向悬疑读者',
   genre_positioning: '都市悬疑',
   opening_hook: '用异常事件快速抓住读者',
-  first_three_chapter_goal: '三章内完成主角、核心冲突与主要悬念建立',
+  first_three_chapter_goal: '三章内建立主角、主冲突与核心悬念',
   protagonist_entry: '第一章前半段完成登场',
   conflict_entry: '第一章结尾抛出不可回避的主冲突',
   selling_points: ['节奏快', '悬念强'],
@@ -227,31 +217,37 @@ const openingStrategy = computed(() => ({
 
 const normalizedRiskLevel = computed(() => String(props.riskLevel || 'warning').toLowerCase())
 const isHighRisk = computed(() => ['high', 'blocking'].includes(normalizedRiskLevel.value))
-const riskSummary = computed(() => (
-  normalizedRiskLevel.value === 'low'
-    ? '风险较低，确认后可进入候选稿生成。'
-    : '检测到模仿风险提示，请确认后继续生成。'
-))
+
+const riskSummary = computed(() => {
+  if (normalizedRiskLevel.value === 'low') return '当前风险较低，确认后可以继续生成。'
+  if (normalizedRiskLevel.value === 'medium') return '当前存在中等风险，建议确认策略后再继续生成。'
+  return '当前存在提示级风险，请确认你已理解风险再继续生成。'
+})
+
 const nextDisabled = computed(() => {
   if (currentStep.value === 0) return !rightsConfirmedStep1.value
   if (currentStep.value === 2) return !strategyConfirmed.value
   return false
 })
-const generateDisabled = computed(() => !rightsConfirmedStep4.value || !strategyConfirmed.value)
-const generateLabel = computed(() => (
-  ['low', 'warning', 'medium'].includes(normalizedRiskLevel.value)
-    ? '了解风险，继续生成'
-    : '生成候选稿'
-))
 
-watch(() => props.visible, (visible) => {
-  if (!visible) {
-    currentStep.value = 0
-    rightsConfirmedStep1.value = false
-    strategyConfirmed.value = false
-    rightsConfirmedStep4.value = false
+const generateDisabled = computed(() => !rightsConfirmedStep4.value)
+const generateLabel = computed(() => '了解风险，继续生成')
+
+const resetWizard = () => {
+  currentStep.value = 0
+  rightsConfirmedStep1.value = false
+  strategyConfirmed.value = false
+  rightsConfirmedStep4.value = false
+}
+
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) {
+      resetWizard()
+    }
   }
-}, { immediate: true })
+)
 </script>
 
 <style scoped>
@@ -259,89 +255,89 @@ watch(() => props.visible, (visible) => {
   position: fixed;
   inset: 0;
   z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .opening-agent-wizard__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(15, 23, 42, 0.42);
 }
 
 .opening-agent-wizard__dialog {
   position: relative;
-  z-index: 1;
-  width: min(720px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  width: min(860px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  margin: 24px auto;
   overflow: auto;
-  border-radius: 16px;
-  border: 1px solid var(--ai-border);
-  background: var(--ai-bg);
-  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid var(--ink-border);
+  background: var(--ink-surface-1);
   box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
 }
 
 .opening-agent-wizard__header,
-.opening-agent-wizard__footer,
-.opening-agent-wizard__steps {
+.opening-agent-wizard__footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  padding: 20px 24px;
+}
+
+.opening-agent-wizard__header {
+  border-bottom: 1px solid var(--ink-border);
+}
+
+.opening-agent-wizard__header h4,
+.opening-agent-wizard__content h5 {
+  margin: 0;
+  color: var(--ink-text-primary);
+}
+
+.opening-agent-wizard__header p,
+.opening-agent-wizard__note,
+.opening-agent-wizard__risk,
+.opening-agent-wizard__card span,
+.opening-agent-wizard__card li {
+  color: var(--ink-text-secondary);
 }
 
 .opening-agent-wizard__steps {
-  margin: 16px 0;
-  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 16px 24px 0;
   list-style: none;
-  justify-content: flex-start;
-  flex-wrap: wrap;
 }
 
 .opening-agent-wizard__step {
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: var(--ai-bg-soft);
-  color: var(--ai-text-secondary);
-  font-size: 12px;
+  border: 1px solid var(--ink-border);
+  border-radius: 16px;
+  padding: 10px 12px;
+  color: var(--ink-text-muted);
+  background: var(--ink-surface-2);
 }
 
 .opening-agent-wizard__step--active {
-  background: color-mix(in srgb, var(--ink-accent-soft, #dbeafe) 70%, white);
-  color: var(--ink-accent, #2563eb);
-  font-weight: 600;
+  border-color: var(--ink-accent);
+  color: var(--ink-accent);
+  background: color-mix(in srgb, var(--ink-accent) 10%, var(--ink-surface-1));
 }
 
 .opening-agent-wizard__content {
   display: grid;
-  gap: 12px;
+  gap: 14px;
+  padding: 20px 24px;
 }
 
 .opening-agent-wizard__card {
   display: grid;
-  gap: 6px;
-  padding: 12px;
-  border: 1px solid var(--ai-border);
-  border-radius: 12px;
-  background: var(--ai-bg-soft);
-}
-
-.opening-agent-wizard__note,
-.opening-agent-wizard__risk {
-  margin: 0;
-  color: var(--ai-text-secondary);
-}
-
-.opening-agent-wizard__risk--high {
-  color: var(--ai-danger-text, #b91c1c);
-}
-
-.opening-agent-wizard__checkbox {
-  display: flex;
-  align-items: center;
   gap: 8px;
+  border: 1px solid var(--ink-border);
+  border-radius: 18px;
+  padding: 16px;
+  background: var(--ink-surface-2);
 }
 
 .opening-agent-wizard__list {
@@ -349,8 +345,19 @@ watch(() => props.visible, (visible) => {
   padding-left: 18px;
 }
 
+.opening-agent-wizard__checkbox {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--ink-text-secondary);
+}
+
+.opening-agent-wizard__risk--high {
+  color: var(--ink-danger-text);
+  font-weight: 600;
+}
+
 .opening-agent-wizard__footer {
-  margin-top: 20px;
-  justify-content: flex-end;
+  border-top: 1px solid var(--ink-border);
 }
 </style>

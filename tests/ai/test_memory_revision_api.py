@@ -6,11 +6,14 @@ from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from presentation.api.app import app
+from tests.ai.support import save_fake_ai_settings
 
 
 def _seed_review_generated_memory_gate() -> tuple[str, str, str]:
     from presentation.api import dependencies
 
+    client = TestClient(app)
+    save_fake_ai_settings(client)
     work_repo = WorkRepo()
     chapter_repo = ChapterRepo()
     work_service = WorkService(work_repo=work_repo, chapter_repo=chapter_repo)

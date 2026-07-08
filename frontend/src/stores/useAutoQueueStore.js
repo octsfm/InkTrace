@@ -73,15 +73,15 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
       return
     }
     if (stopReason === 'budget_exceeded') {
-      noteMessage.value = '预算已超出，自动续写已暂停。'
+      noteMessage.value = '预算已超出,自动续写已暂停。'
       return
     }
     if (stopReason === 'blocking_review_consecutive') {
-      noteMessage.value = '连续出现严重冲突，自动续写已停止。'
+      noteMessage.value = '连续出现严重冲突,自动续写已停止。'
       return
     }
     if (stopReason === 'user_manual_stop' || status === 'stopped') {
-      noteMessage.value = '自动续写已停止，已生成候选稿会保留。'
+      noteMessage.value = '自动续写已停止,已生成的候选稿会保留。'
       return
     }
     noteMessage.value = ''
@@ -314,3 +314,4 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
     selectRun
   }
 })
+

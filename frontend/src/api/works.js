@@ -121,3 +121,4 @@ export const v1WritingAssetsApi = {
   updateCharacter: (characterId, data) => v1Api.put(`/characters/${characterId}`, data),
   deleteCharacter: (characterId) => v1Api.delete(`/characters/${characterId}`)
 }
+

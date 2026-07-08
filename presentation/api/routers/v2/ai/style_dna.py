@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import threading
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from pydantic import Field
 
@@ -75,13 +74,13 @@ def _serialize_profile(profile) -> dict[str, object]:
 def _run_extract_async(
     job_id: str,
     *,
+    job_service,
+    style_service,
     work_id: str,
     source_text: str,
     source_type: str,
     source_ref: str,
 ) -> None:
-    job_service = dependencies.get_ai_job_service()
-    style_service = dependencies.get_style_dna_service()
     try:
         job_service.start_job(job_id)
         step = job_service.get_job_steps(job_id)[0]
@@ -138,7 +137,7 @@ def _run_extract_async(
 
 
 @router.post("/extract")
-def extract_style_dna(payload: ExtractStyleDNARequest, request: Request):
+def extract_style_dna(payload: ExtractStyleDNARequest, request: Request, background_tasks: BackgroundTasks):
     denied = _reject_invalid_caller_type(request, caller_type=payload.caller_type)
     if denied is not None:
         return denied
@@ -146,6 +145,7 @@ def extract_style_dna(payload: ExtractStyleDNARequest, request: Request):
         return error_response(request, error_code="style_dna_source_text_empty", status_code=400)
 
     job_service = dependencies.get_ai_job_service()
+    style_service = dependencies.get_style_dna_service()
     job = job_service.create_job(
         job_type="style_dna_extraction",
         work_id=payload.work_id,
@@ -163,17 +163,16 @@ def extract_style_dna(payload: ExtractStyleDNARequest, request: Request):
             }
         ],
     )
-    threading.Thread(
-        target=_run_extract_async,
-        args=(job.job_id,),
-        kwargs={
-            "work_id": payload.work_id,
-            "source_text": payload.source_text,
-            "source_type": payload.source_type,
-            "source_ref": payload.source_ref,
-        },
-        daemon=True,
-    ).start()
+    background_tasks.add_task(
+        _run_extract_async,
+        job.job_id,
+        job_service=job_service,
+        style_service=style_service,
+        work_id=payload.work_id,
+        source_text=payload.source_text,
+        source_type=payload.source_type,
+        source_ref=payload.source_ref,
+    )
     return JSONResponse(
         status_code=202,
         content=success_response(

@@ -1,10 +1,10 @@
-﻿<template>
+<template>
   <div v-if="modelValue" class="modal-mask" @click.self="close">
     <div class="modal-panel">
       <div class="modal-header">
         <div>
           <h3>新建作品</h3>
-          <p>填写作品标题和作者，创建后将直接进入写作页。</p>
+          <p>填写作品标题和作者，创建后将直接进入写作页面。</p>
         </div>
         <button type="button" class="ink-button ink-button--ghost ghost-button" @click="close">关闭</button>
       </div>
@@ -63,6 +63,7 @@ const syncDefaultTitle = () => {
 }
 
 const close = () => {
+  if (submitting.value) return
   emit('update:modelValue', false)
 }
 
@@ -72,6 +73,7 @@ const submit = async () => {
     ElMessage.warning('请输入作品标题')
     return
   }
+
   submitting.value = true
   try {
     const work = await v1WorksApi.create({
@@ -80,10 +82,10 @@ const submit = async () => {
     })
     ElMessage.success('已创建新作品')
     emit('created', work)
-    close()
+    emit('update:modelValue', false)
   } catch (error) {
     console.error('创建作品失败:', error)
-    ElMessage.error('创建作品失败，请稍后重试。')
+    ElMessage.error('创建作品失败，请稍后重试')
   } finally {
     submitting.value = false
   }
@@ -173,6 +175,7 @@ watch(
   padding: 12px 14px;
   font-size: 14px;
   color: var(--ink-text-primary);
+  background: var(--ink-surface-1);
   outline: none;
 }
 

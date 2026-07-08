@@ -1,9 +1,9 @@
-﻿﻿﻿﻿﻿﻿<template>
+<template>
   <section class="writing-preference-panel" data-test="writing-preference-panel">
     <div class="panel-header">
       <div>
         <h3>写作阅读偏好</h3>
-        <p>这里只调整正文阅读体验，包括字体、字号和行高，不会修改全局界面主题和正文内容。</p>
+        <p>这里只调整正文阅读体验,包括字体、字号和行高,不会修改全局界面主题和正文内容。</p>
       </div>
       <button type="button" class="close-button" @click="$emit('close')">关闭</button>
     </div>

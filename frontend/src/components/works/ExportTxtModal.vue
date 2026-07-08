@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div v-if="modelValue" class="modal-mask" @click.self="close">
     <div class="modal-panel">
       <div class="modal-header">
@@ -59,6 +59,7 @@ const gapLines = ref(1)
 const submitting = ref(false)
 
 const close = () => {
+  if (submitting.value) return
   emit('update:modelValue', false)
 }
 
@@ -106,11 +107,11 @@ const submit = async () => {
         : new Blob([blobSource || ''], { type: 'text/plain;charset=utf-8' })
     const responseFileName = resolveFileNameFromDisposition(response?.headers?.['content-disposition'])
     triggerDownload(blob, responseFileName || resolveExportFileName())
-    ElMessage.success('TXT 导出已开始')
+    ElMessage.success('TXT 导出已开始。')
     emit('exported', props.work)
-    close()
+    emit('update:modelValue', false)
   } catch (error) {
-    const detail = error?.response?.data?.detail || error?.message || '导出 TXT 失败，请稍后重试。'
+    const detail = error?.response?.data?.detail || error?.message || '导出 TXT 失败,请稍后重试。'
     ElMessage.error(detail)
     console.error('导出 TXT 失败:', error)
   } finally {

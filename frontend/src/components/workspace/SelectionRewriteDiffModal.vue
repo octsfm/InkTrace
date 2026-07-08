@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div
     v-if="modelValue"
     class="selection-rewrite-modal"
@@ -338,11 +338,19 @@ const rejectCurrent = () => {
   justify-content: space-between;
   gap: 12px;
   margin: 0 0 12px;
-  border: 1px solid color-mix(in srgb, var(--ink-warning, #ff9800) 74%, white);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--ink-warning, #ff9800) 74%,
+    var(--studio-card-bg, var(--ink-surface-1))
+  );
   border-radius: 12px;
-  background: color-mix(in srgb, var(--ink-warning, #ff9800) 14%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--ink-warning, #ff9800) 14%,
+    var(--studio-card-bg, var(--ink-surface-1))
+  );
   padding: 10px 12px;
-  color: color-mix(in srgb, var(--ink-warning, #ff9800) 80%, black);
+  color: color-mix(in srgb, var(--ink-warning, #ff9800) 80%, var(--studio-title, var(--ink-text-primary)));
   font-size: 13px;
   font-weight: 600;
 }
@@ -373,13 +381,13 @@ const rejectCurrent = () => {
 .selection-rewrite-modal__action--primary {
   border-color: var(--ink-accent, var(--ink-primary));
   background: var(--ink-accent, var(--ink-primary));
-  color: white;
+  color: #ffffff;
 }
 
 .selection-rewrite-modal__action--warning {
   border-color: var(--ink-warning, #ff9800);
   background: var(--ink-warning, #ff9800);
-  color: white;
+  color: #ffffff;
 }
 
 .selection-rewrite-modal__close {

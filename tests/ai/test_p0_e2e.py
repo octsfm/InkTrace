@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
@@ -43,7 +43,7 @@ def _configure_runtime(monkeypatch, tmp_path) -> TestClient:
 def _seed_work_with_two_chapters() -> tuple[str, str]:
     work_service = dependencies.get_work_service()
     chapter_service = dependencies.get_chapter_service()
-    work = work_service.create_work("P0 E2E 作品", "作者")
+    work = work_service.create_work("P0 E2E 作品", "测试作者")
     first = chapter_service.list_chapters(work.id)[0]
     chapter_service.update_chapter(
         first.id.value,
@@ -168,7 +168,14 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
 
     continuation_1 = client.post(
         "/api/v2/ai/continuations",
-        json={"work_id": work_id, "chapter_id": chapter_id, "user_instruction": "继续写下去，推进灯塔谜团。"},
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "继续写下去，推进灯塔谜团。",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p0-e2e-continuation-1",
+        },
     )
     assert continuation_1.status_code == 200
     continuation_data_1 = continuation_1.json()["data"]
@@ -190,7 +197,12 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
 
     review_response = client.post(
         f"/api/v2/ai/reviews/candidate-drafts/{candidate_1}",
-        json={"user_instruction": "只看一致性，不要自动应用。"},
+        json={
+            "user_instruction": "只看一致性，不要自动应用。",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p0-e2e-review-1",
+        },
     )
     assert review_response.status_code == 200
     review_data = review_response.json()["data"]
@@ -214,7 +226,14 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
 
     continuation_2 = client.post(
         "/api/v2/ai/continuations",
-        json={"work_id": work_id, "chapter_id": chapter_id, "user_instruction": "换一个方向继续写。"},
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "换一个方向继续写。",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p0-e2e-continuation-2",
+        },
     )
     assert continuation_2.status_code == 200
     candidate_2 = continuation_2.json()["data"]["candidate_draft_id"]
@@ -252,7 +271,12 @@ def test_p0_minimal_loop_runs_end_to_end_via_api(monkeypatch, tmp_path) -> None:
 
     quick_trial = client.post(
         "/api/v2/ai/quick-trials",
-        json={"model_role": "quick_trial_writer", "input_text": "试写一小段灯塔门口的风声。"},
+        json={
+            "model_role": "quick_trial_writer",
+            "input_text": "试写一小段灯塔门口的风声。",
+            "caller_type": "quick_trial",
+            "idempotency_key": "p0-e2e-quick-trial-1",
+        },
     )
     assert quick_trial.status_code == 200
     quick_trial_data = quick_trial.json()["data"]

@@ -269,6 +269,13 @@ describe('ReviewTab', () => {
 
     await flushPromises()
     await wrapper.get('[data-test="candidate-start-continuation"]').trigger('click')
+    expect(startContinuation).toHaveBeenCalledWith(expect.objectContaining({
+      work_id: 'work-1',
+      chapter_id: 'chapter-1',
+      caller_type: 'user_action',
+      user_action: true,
+      idempotency_key: expect.any(String)
+    }))
     await wrapper.get('[data-test="candidate-detail-cd_1"]').trigger('click')
     await flushPromises()
 

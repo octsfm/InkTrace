@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
@@ -45,7 +45,7 @@ def test_quick_trial_api_runs_and_hides_provider_secret(monkeypatch, tmp_path) -
                 "quick_trial_writer": {
                     "provider_name": "fake",
                     "model_name": "fake-chat",
-                }
+                },
             },
             "caller_type": "user_action",
             "user_action": True,
@@ -59,6 +59,8 @@ def test_quick_trial_api_runs_and_hides_provider_secret(monkeypatch, tmp_path) -
         json={
             "model_role": "quick_trial_writer",
             "input_text": "试写一小段灯塔夜景。",
+            "caller_type": "quick_trial",
+            "idempotency_key": "quick-trial-run-1",
         },
     )
 
@@ -84,6 +86,8 @@ def test_quick_trial_api_returns_error_for_empty_input(monkeypatch, tmp_path) ->
             "provider_name": "fake",
             "model_name": "fake-chat",
             "input_text": "",
+            "caller_type": "quick_trial",
+            "idempotency_key": "quick-trial-empty-1",
         },
     )
 
@@ -105,6 +109,7 @@ def test_quick_trial_api_rejects_non_user_action_caller_type(monkeypatch, tmp_pa
             "model_name": "fake-chat",
             "input_text": "测试",
             "caller_type": "workflow",
+            "idempotency_key": "quick-trial-bad-caller-1",
         },
     )
 

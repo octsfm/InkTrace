@@ -6,9 +6,7 @@ import OpeningAgentWizard from '../OpeningAgentWizard.vue'
 describe('OpeningAgentWizard', () => {
   it('requires copyright confirmation on step 1 before continuing', async () => {
     const wrapper = mount(OpeningAgentWizard, {
-      props: {
-        visible: true
-      }
+      props: { visible: true }
     })
 
     expect(wrapper.get('[data-test="opening-next"]').attributes('disabled')).toBeDefined()
@@ -20,10 +18,7 @@ describe('OpeningAgentWizard', () => {
 
   it('blocks generation on high risk and only allows return to modify', async () => {
     const wrapper = mount(OpeningAgentWizard, {
-      props: {
-        visible: true,
-        riskLevel: 'high'
-      }
+      props: { visible: true, riskLevel: 'high' }
     })
 
     await wrapper.get('[data-test="opening-rights-confirm-step1"]').setValue(true)
@@ -68,10 +63,8 @@ describe('OpeningAgentWizard', () => {
     await wrapper.get('[data-test="opening-rights-confirm-step1"]').setValue(true)
     await wrapper.get('[data-test="opening-next"]').trigger('click')
 
-    expect(wrapper.get('[data-test="opening-analysis-summary"]').text())
-      .toContain('参考作在前三章通过钟声与旧地图快速建立悬念')
-    expect(wrapper.get('[data-test="opening-analysis-hooks"]').text())
-      .toContain('前 500 字抛出异常钟声')
+    expect(wrapper.get('[data-test="opening-analysis-summary"]').text()).toContain('参考作在前三章通过钟声与旧地图快速建立悬念。')
+    expect(wrapper.get('[data-test="opening-analysis-hooks"]').text()).toContain('前 500 字抛出异常钟声')
 
     await wrapper.get('[data-test="opening-next"]').trigger('click')
 
@@ -91,10 +84,7 @@ describe('OpeningAgentWizard', () => {
 
   it('uses warning-style generate label for low risk before final confirmation', async () => {
     const wrapper = mount(OpeningAgentWizard, {
-      props: {
-        visible: true,
-        riskLevel: 'low'
-      }
+      props: { visible: true, riskLevel: 'low' }
     })
 
     await wrapper.get('[data-test="opening-rights-confirm-step1"]').setValue(true)

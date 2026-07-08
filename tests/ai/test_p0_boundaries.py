@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -7,26 +7,25 @@ from fastapi.testclient import TestClient
 
 from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.initialization_service import InitializationApplicationService
-from application.services.ai.quick_trial_service import QuickTrialApplicationService
 from application.services.ai.model_router import ModelRouter
 from application.services.ai.provider_registry import ProviderRegistry
+from application.services.ai.quick_trial_service import QuickTrialApplicationService
 from application.services.ai.security import SettingsCipher
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
 from domain.entities.ai.models import AIProviderConfig, AISettings, ContextPackBuildRequest, ModelSelection, QuickTrialRequest
 from infrastructure.ai.providers.fake_provider import FakeLLMProvider
-from infrastructure.database.session import get_database_path
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
-from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
 from infrastructure.database.repositories.ai.file_context_pack_store import FileContextPackStore
 from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
 from infrastructure.database.repositories.ai.file_llm_call_log_store import FileLLMCallLogStore
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
-from presentation.api.app import app
+from infrastructure.database.session import get_database_path
 from presentation.api import dependencies
+from presentation.api.app import app
 
 
 def _clear_p0_singletons() -> None:
@@ -121,7 +120,7 @@ def _build_quick_trial_service(tmp_path: Path) -> tuple[QuickTrialApplicationSer
 
 def test_context_pack_snapshot_does_not_store_full_chapter_text_or_prompt(tmp_path: Path) -> None:
     work_service, chapter_service, init_service, context_service = _build_context_services(tmp_path)
-    work = work_service.create_work("P0 Boundary 作品", "作者")
+    work = work_service.create_work("P0 Boundary 作品", "测试作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter_content = "顾迟在灯塔门口停下脚步。"
     user_instruction = "请完整沿用上一段节奏，继续写顾迟推门进入灯塔的一幕。"
@@ -195,7 +194,7 @@ def test_candidate_draft_list_requires_detail_for_full_content_and_no_streaming_
 
     work_service = dependencies.get_work_service()
     chapter_service = dependencies.get_chapter_service()
-    work = work_service.create_work("P0 Candidate 边界作品", "作者")
+    work = work_service.create_work("P0 Candidate 边界作品", "测试作者")
     chapter = chapter_service.list_chapters(work.id)[0]
     chapter_service.update_chapter(
         chapter.id.value,
@@ -207,7 +206,14 @@ def test_candidate_draft_list_requires_detail_for_full_content_and_no_streaming_
     dependencies.get_initialization_service().start_initialization(work.id, created_by="user_action")
     start = client.post(
         "/api/v2/ai/continuations",
-        json={"work_id": work.id, "chapter_id": chapter.id.value, "user_instruction": "继续写"},
+        json={
+            "work_id": work.id,
+            "chapter_id": chapter.id.value,
+            "user_instruction": "继续写",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "p0-boundary-continuation-1",
+        },
     )
     assert start.status_code == 200
     candidate_id = start.json()["data"]["candidate_draft_id"]

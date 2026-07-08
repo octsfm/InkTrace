@@ -444,8 +444,8 @@ describe('AIPanel', () => {
 
     await vi.runAllTimersAsync()
 
-    expect(wrapper.text()).toContain('AI 设置状态')
-    expect(wrapper.text()).toContain('配置与模型服务商管理已迁移到“设置”页面')
+    expect(wrapper.text()).toContain('使用前检查')
+    expect(wrapper.text()).toContain('详细配置与模型服务商管理请前往"设置"页面')
     expect(listCandidateDrafts).not.toHaveBeenCalled()
     expect(listAISuggestions).not.toHaveBeenCalled()
     expect(listMemoryGates).not.toHaveBeenCalled()
@@ -530,7 +530,7 @@ describe('AIPanel', () => {
     getAISuggestion.mockResolvedValue({
       data: {
         suggestion_id: 'sg_001',
-        summary: '建议先补侦查，再进入档案室。'
+        summary: '建议先补侦查,再进入档案室。'
       }
     })
     acceptAISuggestion.mockResolvedValue({ data: { suggestion_id: 'sg_001', status: 'accepted' } })
@@ -556,7 +556,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="suggestion-detail-sg_001"]').trigger('click')
     await flushPromises()
     expect(getAISuggestion).toHaveBeenCalledWith('sg_001')
-    expect(wrapper.get('[data-test="outline-assist-view"]').text()).toContain('建议先补侦查，再进入档案室。')
+    expect(wrapper.get('[data-test="outline-assist-view"]').text()).toContain('建议先补侦查,再进入档案室。')
 
     await wrapper.get('[data-test="suggestion-accept-sg_001"]').trigger('click')
     await flushPromises()
@@ -827,8 +827,8 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(applyOutlineAssistSuggestion).not.toHaveBeenCalled()
-    expect(wrapper.get('[data-test="suggestion-apply-confirm-sg_apply_001"]').text()).toContain('这将会修改正式大纲内容')
-    expect(wrapper.get('[data-test="suggestion-apply-confirm-sg_apply_001"]').text()).toContain('将 1 条建议应用到大纲')
+    expect(wrapper.get('[data-test="suggestion-apply-confirm-sg_apply_001"]').text()).toContain('这会修改正式大纲内容')
+    expect(wrapper.get('[data-test="suggestion-apply-confirm-sg_apply_001"]').text()).toContain('确定要将这条建议应用到正式大纲吗')
 
     await wrapper.get('[data-test="suggestion-apply-confirm-submit-sg_apply_001"]').trigger('click')
     await flushPromises()
@@ -1086,7 +1086,7 @@ describe('AIPanel', () => {
 
     expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新建议')
     expect(wrapper.get('[data-test="outline-assist-refresh"]').attributes('disabled')).toBeUndefined()
-    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
+    expect(wrapper.text()).toContain('大纲建议加载失败,请稍后重试')
   })
 
   it('shows generating and failed lifecycle hints for outline suggestions', async () => {
@@ -1282,7 +1282,7 @@ describe('AIPanel', () => {
           suggestion_type: 'outline_polish',
           severity: 'warning',
           status: 'accepted',
-          summary: '建议先润色这一段，再决定是否并入正式大纲。',
+          summary: '建议先润色这一段,再决定是否并入正式大纲。',
           payload_json: {
             target_kind: 'selection',
             target_id: null
@@ -1306,7 +1306,7 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-test="suggestion-apply-sg_selection_001"]').exists()).toBe(false)
-    expect(wrapper.get('[data-test="suggestion-apply-hint-sg_selection_001"]').text()).toContain('需先选择目标大纲节点')
+    expect(wrapper.get('[data-test="suggestion-apply-hint-sg_selection_001"]').text()).toContain('需要先选择目标大纲节点')
     expect(applyOutlineAssistSuggestion).not.toHaveBeenCalled()
   })
 
@@ -1338,7 +1338,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="suggestion-stale-hint-sg_stale_001"]').text()).toContain('大纲已被修改，建议可能已不适用')
+    expect(wrapper.get('[data-test="suggestion-stale-hint-sg_stale_001"]').text()).toContain('大纲已被修改,当前建议可能已经过期')
   })
 
   it('shows refresh action next to stale outline suggestion hint', async () => {
@@ -1419,7 +1419,7 @@ describe('AIPanel', () => {
           record_id: 'cg_outline_001',
           title: '正式大纲节点冲突',
           severity: 'blocking',
-          summary: '目标节点已被其他操作修改，请先确认差异。'
+          summary: '目标节点已被其他操作修改,请先确认差异。'
         }]
       }
     })
@@ -1427,7 +1427,7 @@ describe('AIPanel', () => {
       data: {
         record_id: 'cg_outline_001',
         title: '正式大纲节点冲突',
-        summary: '目标节点已被其他操作修改，请先确认差异。'
+        summary: '目标节点已被其他操作修改,请先确认差异。'
       }
     })
 
@@ -1457,7 +1457,7 @@ describe('AIPanel', () => {
       chapter_id: 'chapter-1'
     })
     expect(wrapper.get('[data-test="outline-assist-conflicts"]').text()).toContain('正式大纲节点冲突')
-    expect(wrapper.get('[data-test="outline-assist-conflicts"]').text()).toContain('目标节点已被其他操作修改，请先确认差异')
+    expect(wrapper.get('[data-test="outline-assist-conflicts"]').text()).toContain('目标节点已被其他操作修改,请先确认差异')
   })
 
   it('clears outline assist conflict handoff when chapter changes', async () => {
@@ -2137,7 +2137,7 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('上一章建议')
-    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
+    expect(wrapper.text()).toContain('大纲建议加载失败,请稍后重试')
   })
 
   it('clears outline assist load error after a successful reload for the same chapter', async () => {
@@ -2190,14 +2190,14 @@ describe('AIPanel', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
+    expect(wrapper.text()).toContain('大纲建议加载失败,请稍后重试')
 
     await wrapper.get('[data-test="ai-helper-tab-auto_queue"]').trigger('click')
     await flushPromises()
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('大纲建议加载失败，请稍后重试')
+    expect(wrapper.text()).not.toContain('大纲建议加载失败,请稍后重试')
     expect(wrapper.text()).toContain('重试成功建议')
   })
 
@@ -2262,8 +2262,8 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="opening-agent-summary"]').text()).toContain('通过海雾钟声建立开篇悬念')
-    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('当前显示为本地预览快照')
-    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('opening snapshot 读取失败')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('当前显示为本地预览')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('开篇助手实时结果读取失败')
     expect(wrapper.get('[data-test="opening-agent-strategy"]').text()).toContain('悬疑向女频读者')
     expect(wrapper.get('[data-test="opening-agent-strategy-details"]').text()).toContain('都市悬疑')
     expect(wrapper.get('[data-test="opening-agent-strategy-details"]').text()).toContain('三章内建立主角与旧案的强关联')
@@ -2317,8 +2317,8 @@ describe('AIPanel', () => {
 
     expect(getOpeningAnalysis).toHaveBeenCalledWith('work-1')
     expect(getOpeningStatus).toHaveBeenCalledWith('work-1')
-    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取 Opening API 实时快照')
-    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次快照结果：读取成功')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取开篇助手的实时结果')
+    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次读取结果:读取成功')
     expect(wrapper.get('[data-test="opening-agent-last-updated"]').text()).toContain('2026-07-02T10:47:00.000Z')
     expect(wrapper.get('[data-test="opening-agent-summary"]').text()).toContain('通过潮声和残页手记建立开篇悬念')
     expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('generate')
@@ -2366,8 +2366,8 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-opening_agent"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('opening snapshot 读取失败')
-    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次快照结果：已回退到本地预览')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('开篇助手实时结果读取失败')
+    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次读取结果:已回退到本地预览')
     expect(wrapper.get('[data-test="opening-agent-last-updated"]').text()).toContain('2026-07-02T10:48:00.000Z')
 
     vi.setSystemTime(new Date('2026-07-02T10:49:00.000Z'))
@@ -2376,8 +2376,8 @@ describe('AIPanel', () => {
 
     expect(getOpeningAnalysis).toHaveBeenCalledTimes(2)
     expect(getOpeningStatus).toHaveBeenCalledTimes(1)
-    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取 Opening API 实时快照')
-    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次快照结果：读取成功')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取开篇助手的实时结果')
+    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次读取结果:读取成功')
     expect(wrapper.get('[data-test="opening-agent-last-updated"]').text()).toContain('2026-07-02T10:49:00.000Z')
     expect(wrapper.get('[data-test="opening-agent-summary"]').text()).toContain('通过潮声和遗失手札更新开篇悬念')
     expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('3')
@@ -2442,7 +2442,7 @@ describe('AIPanel', () => {
 
     expect(wrapper.get('[data-test="opening-agent-refresh"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.get('[data-test="opening-agent-refresh"]').text()).toContain('刷新快照')
-    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取 Opening API 实时快照')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取开篇助手的实时结果')
   })
 
   it('shows loading hint while initializing opening snapshot on mount', async () => {
@@ -2473,7 +2473,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-opening_agent"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('正在读取 Opening API 实时快照')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('正在读取开篇助手的实时结果')
     expect(wrapper.get('[data-test="opening-agent-refresh"]').attributes('disabled')).toBeDefined()
 
     resolveInitialLoad({
@@ -2493,7 +2493,7 @@ describe('AIPanel', () => {
     await vi.runAllTimersAsync()
     await flushPromises()
 
-    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取 Opening API 实时快照')
+    expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取开篇助手的实时结果')
     expect(wrapper.get('[data-test="opening-agent-refresh"]').attributes('disabled')).toBeUndefined()
   })
 
@@ -2596,7 +2596,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="auto-queue-disable-budget-check"]').trigger('click')
     await flushPromises()
 
-    expect(confirmSpy).toHaveBeenCalledWith('关闭预算检查后，AI 功能将不再受预算限制。确定要关闭吗？')
+    expect(confirmSpy).toHaveBeenCalledWith('关闭预算检查后,AI 功能将不再受预算限制。确定要关闭吗?')
     expect(upsertAutoQueueConfig).toHaveBeenLastCalledWith({
       work_id: 'work-1',
       queue_mode: 'safe',
@@ -2790,7 +2790,7 @@ describe('AIPanel', () => {
 
     expect(wrapper.get('[data-test="auto-queue-progress"]').text()).toContain('5 / 10 章')
     expect(wrapper.text()).toContain('字数25,000 / 50,000')
-    expect(wrapper.text()).toContain('Token120K')
+    expect(wrapper.text()).toContain('令牌120K')
     expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('第3章')
     expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('生成中')
   })
@@ -2910,7 +2910,7 @@ describe('AIPanel', () => {
     await vi.advanceTimersByTimeAsync(1200)
 
     expect(getAIJob).toHaveBeenCalledTimes(2)
-    expect(wrapper.text()).toContain('已完成（completed）')
+    expect(wrapper.text()).toContain('已完成')
   })
 
   it('renders plot arc, session, planning, and quick-trial actions in ai mode', async () => {
@@ -2969,7 +2969,12 @@ describe('AIPanel', () => {
 
 
     await wrapper.get('[data-test="quick-trial-run"]').trigger('click')
-    expect(runQuickTrial).toHaveBeenCalled()
+    expect(runQuickTrial).toHaveBeenCalledWith(expect.objectContaining({
+      model_role: expect.any(String),
+      input_text: expect.any(String),
+      caller_type: 'quick_trial',
+      idempotency_key: expect.any(String)
+    }))
     expect(wrapper.text()).toContain('试跑输出')
   })
 
@@ -3035,7 +3040,7 @@ describe('AIPanel', () => {
       caller_type: 'user_action'
     }))
     expect(wrapper.text()).toContain('向量索引')
-    expect(wrapper.text()).toContain('索引已过期，点击重建')
+    expect(wrapper.text()).toContain('索引已过期,点击重建')
     expect(wrapper.text()).toContain('正在重建索引')
   })
 
@@ -3078,7 +3083,7 @@ describe('AIPanel', () => {
       work_id: 'work-1',
       idempotency_key: 'idem_restore_reindex'
     }))
-    expect(wrapper.text()).toContain('job job_restore_1')
+    expect(wrapper.text()).toContain('任务 job_restore_1')
   })
 
   it('cancels active vector reindex job from ai panel', async () => {
@@ -3134,6 +3139,6 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="vector-index-reindex-full-work"]').trigger('click')
     await vi.advanceTimersByTimeAsync(6200)
 
-    expect(wrapper.text()).toContain('索引部分重建成功，部分章节的索引可能不完整。可以针对失败章节单独重建。')
+    expect(wrapper.text()).toContain('索引部分重建成功,部分章节的索引可能不完整。可以针对失败章节单独重建。')
   })
 })

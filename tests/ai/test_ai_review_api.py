@@ -1,10 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
 from infrastructure.database.session import get_database_path
 from presentation.api import dependencies
 from presentation.api.app import app
+from tests.ai.support import save_fake_ai_settings
 
 
 def _clear_singletons() -> None:
@@ -17,19 +18,53 @@ def _clear_singletons() -> None:
     dependencies.get_ai_review_service.cache_clear()
 
 
+def _seed_initialized_work(client: TestClient) -> tuple[str, str]:
+    work_service = dependencies.get_work_service()
+    chapter_service = dependencies.get_chapter_service()
+    work = work_service.create_work("S8 API 作品", "测试作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(
+        chapter.id.value,
+        title="第一章",
+        content="测试正文。",
+        expected_version=1,
+    )
+    init = client.post("/api/v2/ai/initializations", json={"work_id": work.id})
+    assert init.status_code == 200
+    return work.id, chapter.id.value
+
+
 def test_ai_review_api_review_get_list(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
     get_database_path.cache_clear()
     _clear_singletons()
     client = TestClient(app)
+    save_fake_ai_settings(client)
 
-    # create candidate draft via continuation API (already uses FakeWriter, no external calls)
     work_id, chapter_id = _seed_initialized_work(client)
-    start = client.post("/api/v2/ai/continuations", json={"work_id": work_id, "chapter_id": chapter_id, "user_instruction": "继续"})
+    start = client.post(
+        "/api/v2/ai/continuations",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "继续",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "ai-review-start-1",
+        },
+    )
     assert start.status_code == 200
     candidate_id = start.json()["data"]["candidate_draft_id"]
 
-    review = client.post(f"/api/v2/ai/reviews/candidate-drafts/{candidate_id}", json={"user_instruction": "关注一致性"})
+    review = client.post(
+        f"/api/v2/ai/reviews/candidate-drafts/{candidate_id}",
+        json={
+            "user_instruction": "关注一致性",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "ai-review-run-1",
+        },
+    )
     assert review.status_code == 200
     payload = review.json()
     review_id = payload["data"]["review_id"]
@@ -53,18 +88,6 @@ def test_ai_review_api_review_get_list(monkeypatch, tmp_path) -> None:
     assert any(item["conflict_type"] == "timeline_conflict" for item in conflicts.json()["data"]["items"])
 
 
-def _seed_initialized_work(client: TestClient) -> tuple[str, str]:
-    # Create work/chapter with v1 services is too coupled to container here; reuse existing initialization API
-    work_service = dependencies.get_work_service()
-    chapter_service = dependencies.get_chapter_service()
-    work = work_service.create_work("S8 API 作品", "作者")
-    chapter = chapter_service.list_chapters(work.id)[0]
-    chapter = chapter_service.update_chapter(chapter.id.value, title="第一章", content="测试正文。", expected_version=1)
-    init = client.post("/api/v2/ai/initializations", json={"work_id": work.id})
-    assert init.status_code == 200
-    return work.id, chapter.id.value
-
-
 def test_ai_review_api_requires_work_id_for_list(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
     get_database_path.cache_clear()
@@ -80,15 +103,31 @@ def test_ai_review_api_rejects_non_user_action_caller_type(monkeypatch, tmp_path
     get_database_path.cache_clear()
     _clear_singletons()
     client = TestClient(app)
+    save_fake_ai_settings(client)
 
     work_id, chapter_id = _seed_initialized_work(client)
-    start = client.post("/api/v2/ai/continuations", json={"work_id": work_id, "chapter_id": chapter_id, "user_instruction": "继续"})
+    start = client.post(
+        "/api/v2/ai/continuations",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "继续",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "ai-review-start-2",
+        },
+    )
     assert start.status_code == 200
     candidate_id = start.json()["data"]["candidate_draft_id"]
 
     review = client.post(
         f"/api/v2/ai/reviews/candidate-drafts/{candidate_id}",
-        json={"user_instruction": "关注一致性", "caller_type": "workflow"},
+        json={
+            "user_instruction": "关注一致性",
+            "caller_type": "workflow",
+            "user_action": False,
+            "idempotency_key": "ai-review-bad-caller-1",
+        },
     )
     assert review.status_code == 403
     assert review.json()["error"]["error_code"] == "caller_type_forbidden"
@@ -99,8 +138,19 @@ def test_ai_review_api_rejects_invalid_caller_type_before_service_invocation(mon
     get_database_path.cache_clear()
     _clear_singletons()
     client = TestClient(app)
+    save_fake_ai_settings(client)
     work_id, chapter_id = _seed_initialized_work(client)
-    start = client.post("/api/v2/ai/continuations", json={"work_id": work_id, "chapter_id": chapter_id, "user_instruction": "继续"})
+    start = client.post(
+        "/api/v2/ai/continuations",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "继续",
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "ai-review-start-3",
+        },
+    )
     assert start.status_code == 200
     candidate_id = start.json()["data"]["candidate_draft_id"]
 
@@ -112,7 +162,12 @@ def test_ai_review_api_rejects_invalid_caller_type_before_service_invocation(mon
 
     review = client.post(
         f"/api/v2/ai/reviews/candidate-drafts/{candidate_id}",
-        json={"user_instruction": "关注一致性", "caller_type": "workflow"},
+        json={
+            "user_instruction": "关注一致性",
+            "caller_type": "workflow",
+            "user_action": False,
+            "idempotency_key": "ai-review-bad-caller-2",
+        },
     )
 
     assert review.status_code == 403

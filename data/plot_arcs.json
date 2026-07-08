@@ -44,6 +44,90 @@
       "updated_at": "2026-05-26T03:30:46.006882+00:00",
       "request_id": "",
       "trace_id": ""
+    },
+    "aed12b6a-86e5-4419-bd0b-733a27ab78ce": {
+      "master_arc_id": "ma_aed12b6a-86e5-4419-bd0b-733a27ab78ce",
+      "work_id": "aed12b6a-86e5-4419-bd0b-733a27ab78ce",
+      "arc_title": "dbg",
+      "version": 1,
+      "arc_logline": "dbg 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:41字",
+      "status": "degraded",
+      "quality_level": "minimal",
+      "ultimate_goal": "dbg 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:41字",
+      "protagonist_motivation": "c1已完成最小分析；原文长度:41字",
+      "current_stage": "c1已完成最小分析；原文长度:41字",
+      "stage_position": "c1已完成最小分析；原文长度:41字",
+      "core_theme": "延续既有叙事基调",
+      "final_conflict": "c1已完成最小分析；原文长度:41字",
+      "main_antagonist": "待补充",
+      "hard_constraints": [],
+      "forbidden_outcomes": [],
+      "key_milestones": [
+        "c1已完成最小分析；原文长度:41字"
+      ],
+      "endgame_foreshadows": [
+        "c1已完成最小分析；原文长度:41字"
+      ],
+      "source_initialization_id": "init_052e12296bec",
+      "source_outline_ref": "dbg",
+      "source_refs": [
+        "memory_7244408a656a",
+        "state_776a3e864415"
+      ],
+      "warning_codes": [
+        "master_arc_inferred_without_outline"
+      ],
+      "stale_status": "fresh",
+      "stale_reason": "",
+      "built_from_text_inference": true,
+      "built_by": "memory_agent",
+      "last_updated_by": "memory_agent",
+      "created_at": "2026-07-07T13:08:25.291917+00:00",
+      "updated_at": "2026-07-07T13:08:25.291917+00:00",
+      "request_id": "",
+      "trace_id": ""
+    },
+    "1e1e27f4-bf7b-4725-b757-912a7ec7d1e8": {
+      "master_arc_id": "ma_1e1e27f4-bf7b-4725-b757-912a7ec7d1e8",
+      "work_id": "1e1e27f4-bf7b-4725-b757-912a7ec7d1e8",
+      "arc_title": "dbg2",
+      "version": 1,
+      "arc_logline": "dbg2 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:87字",
+      "status": "degraded",
+      "quality_level": "minimal",
+      "ultimate_goal": "dbg2 当前已确认 1 章，初始化基于已持久化章节生成最小分析结果。 c1已完成最小分析；原文长度:87字",
+      "protagonist_motivation": "c1已完成最小分析；原文长度:87字",
+      "current_stage": "c1已完成最小分析；原文长度:87字",
+      "stage_position": "c1已完成最小分析；原文长度:87字",
+      "core_theme": "延续既有叙事基调",
+      "final_conflict": "c1已完成最小分析；原文长度:87字",
+      "main_antagonist": "待补充",
+      "hard_constraints": [],
+      "forbidden_outcomes": [],
+      "key_milestones": [
+        "c1已完成最小分析；原文长度:87字"
+      ],
+      "endgame_foreshadows": [
+        "c1已完成最小分析；原文长度:87字"
+      ],
+      "source_initialization_id": "init_d2f103f06bca",
+      "source_outline_ref": "dbg2",
+      "source_refs": [
+        "memory_bd5c69d804a9",
+        "state_64bc1e70a5a6"
+      ],
+      "warning_codes": [
+        "master_arc_inferred_without_outline"
+      ],
+      "stale_status": "fresh",
+      "stale_reason": "",
+      "built_from_text_inference": true,
+      "built_by": "memory_agent",
+      "last_updated_by": "memory_agent",
+      "created_at": "2026-07-07T13:08:47.657367+00:00",
+      "updated_at": "2026-07-07T13:08:47.657367+00:00",
+      "request_id": "",
+      "trace_id": ""
     }
   },
   "volume_arcs": {
@@ -91,6 +175,84 @@
       "last_updated_by": "planner_agent",
       "created_at": "2026-05-26T03:30:46.006882+00:00",
       "updated_at": "2026-05-26T03:30:46.006882+00:00",
+      "request_id": "",
+      "trace_id": ""
+    },
+    "va_aed12b6a-86e5-4419-bd0b-733a27ab78ce_1": {
+      "volume_arc_id": "va_aed12b6a-86e5-4419-bd0b-733a27ab78ce_1",
+      "work_id": "aed12b6a-86e5-4419-bd0b-733a27ab78ce",
+      "master_arc_id": "ma_aed12b6a-86e5-4419-bd0b-733a27ab78ce",
+      "version": 1,
+      "volume_no": 1,
+      "status": "pending",
+      "quality_level": "placeholder",
+      "stage_goal": "c1已完成最小分析；原文长度:41字",
+      "core_conflict": "等待方向确认后补充当前卷冲突。",
+      "climax_description": "等待方向选择与阶段目标确认后补充卷高潮。",
+      "resolution_condition": "等待方向确认后定义本卷收束条件。",
+      "stage_open_loops": [],
+      "key_characters": [],
+      "foreshadow_planted": [],
+      "foreshadow_resolved": [],
+      "forbidden_items": [],
+      "chapter_range": {
+        "from_chapter": 1,
+        "to_chapter_estimate": 1
+      },
+      "source_initialization_id": "init_052e12296bec",
+      "source_outline_ref": "dbg",
+      "source_refs": [
+        "memory_7244408a656a",
+        "state_776a3e864415"
+      ],
+      "warning_codes": [
+        "arc_placeholder_only"
+      ],
+      "stale_status": "fresh",
+      "stale_reason": "",
+      "built_by": "planner_agent",
+      "last_updated_by": "planner_agent",
+      "created_at": "2026-07-07T13:08:25.291917+00:00",
+      "updated_at": "2026-07-07T13:08:25.291917+00:00",
+      "request_id": "",
+      "trace_id": ""
+    },
+    "va_1e1e27f4-bf7b-4725-b757-912a7ec7d1e8_1": {
+      "volume_arc_id": "va_1e1e27f4-bf7b-4725-b757-912a7ec7d1e8_1",
+      "work_id": "1e1e27f4-bf7b-4725-b757-912a7ec7d1e8",
+      "master_arc_id": "ma_1e1e27f4-bf7b-4725-b757-912a7ec7d1e8",
+      "version": 1,
+      "volume_no": 1,
+      "status": "pending",
+      "quality_level": "placeholder",
+      "stage_goal": "c1已完成最小分析；原文长度:87字",
+      "core_conflict": "等待方向确认后补充当前卷冲突。",
+      "climax_description": "等待方向选择与阶段目标确认后补充卷高潮。",
+      "resolution_condition": "等待方向确认后定义本卷收束条件。",
+      "stage_open_loops": [],
+      "key_characters": [],
+      "foreshadow_planted": [],
+      "foreshadow_resolved": [],
+      "forbidden_items": [],
+      "chapter_range": {
+        "from_chapter": 1,
+        "to_chapter_estimate": 1
+      },
+      "source_initialization_id": "init_d2f103f06bca",
+      "source_outline_ref": "dbg2",
+      "source_refs": [
+        "memory_bd5c69d804a9",
+        "state_64bc1e70a5a6"
+      ],
+      "warning_codes": [
+        "arc_placeholder_only"
+      ],
+      "stale_status": "fresh",
+      "stale_reason": "",
+      "built_by": "planner_agent",
+      "last_updated_by": "planner_agent",
+      "created_at": "2026-07-07T13:08:47.657367+00:00",
+      "updated_at": "2026-07-07T13:08:47.657367+00:00",
       "request_id": "",
       "trace_id": ""
     }

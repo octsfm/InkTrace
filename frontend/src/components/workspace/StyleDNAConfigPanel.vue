@@ -3,11 +3,12 @@
     <div class="style-dna-panel__header">
       <div>
         <h4>风格画像</h4>
-        <p>上传标杆文本，提取结构化文风特征，并由你决定是否激活。</p>
+        <p>上传样章文本,提取结构化文风特征,并由你决定是否激活。</p>
       </div>
       <button
         data-test="style-dna-refresh"
         type="button"
+        class="ink-button ink-button--ghost"
         :disabled="loading || extracting"
         @click="$emit('refresh')"
       >
@@ -19,15 +20,17 @@
       <button
         data-test="style-dna-source-user-upload"
         type="button"
+        class="ink-button ink-button--ghost style-dna-panel__mode-button"
         :class="{ 'style-dna-panel__mode-button--active': sourceMode === 'user_upload' }"
         :disabled="extracting"
         @click="$emit('update:source-mode', 'user_upload')"
       >
-        上传标杆文本
+        上传样章文本
       </button>
       <button
         data-test="style-dna-source-chapter-reference"
         type="button"
+        class="ink-button ink-button--ghost style-dna-panel__mode-button"
         :class="{ 'style-dna-panel__mode-button--active': sourceMode === 'chapter_reference' }"
         :disabled="extracting"
         @click="$emit('update:source-mode', 'chapter_reference')"
@@ -38,7 +41,7 @@
 
     <div v-if="aiSettingsBlocked" class="style-dna-panel__banner style-dna-panel__banner--warning">
       <strong>AI 设置未完成</strong>
-      <span>请先配置可用模型服务与任务模型，再提取风格画像。</span>
+      <span>请先配置可用模型服务与任务模型,再提取风格画像。</span>
     </div>
 
     <div v-if="warningCopy" class="style-dna-panel__banner style-dna-panel__banner--warning">
@@ -52,20 +55,20 @@
     </div>
 
     <label v-if="sourceMode === 'user_upload'" class="style-dna-panel__field">
-      <span>标杆文本</span>
+      <span>样章文本</span>
       <textarea
         :value="draftText"
         data-test="style-dna-input"
         rows="6"
         :disabled="aiSettingsBlocked || extracting"
-        placeholder="粘贴已确认章节中的标杆正文，不会持久化完整文本。"
+        placeholder="粘贴已确认章节中的样章正文,不会持久化完整文本。"
         @input="$emit('update:draft-text', $event.target.value)"
       />
     </label>
 
     <div v-else class="style-dna-panel__field">
       <span>从已有章节选择</span>
-      <span class="style-dna-panel__hint">仅限已确认章节，最多选择 3 章；草稿章节不可作为标杆来源。</span>
+      <span class="style-dna-panel__hint">仅限已确认章节,最多选择 3 章;草稿章节不可作为样章来源。</span>
       <div v-if="chapterOptions.length" class="style-dna-panel__chapter-options">
         <label
           v-for="option in chapterOptions"
@@ -87,7 +90,7 @@
 
     <div class="style-dna-panel__meta">
       <span>字数 {{ characterCount }}</span>
-      <span v-if="extractJobActive">提取中，请稍候</span>
+      <span v-if="extractJobActive">提取中,请稍候</span>
       <span v-else-if="currentStatus">状态 {{ currentStatus }}</span>
       <span v-if="currentProfile?.confidence !== undefined">置信度 {{ confidenceLabel }}</span>
     </div>
@@ -96,6 +99,7 @@
       <button
         data-test="style-dna-extract"
         type="button"
+        class="ink-button ink-button--primary"
         :disabled="aiSettingsBlocked || extracting || !canExtract"
         @click="$emit('extract')"
       >
@@ -105,6 +109,7 @@
         v-if="currentProfile?.status === 'pending_confirm'"
         data-test="style-dna-confirm"
         type="button"
+        class="ink-button ink-button--secondary"
         :disabled="extracting"
         @click="$emit('confirm-profile', currentProfile.profile_id)"
       >
@@ -114,6 +119,7 @@
         v-if="activeProfile?.status === 'active'"
         data-test="style-dna-disable"
         type="button"
+        class="ink-button ink-button--ghost"
         :disabled="extracting"
         @click="$emit('disable-profile', activeProfile.profile_id)"
       >
@@ -123,6 +129,7 @@
         v-if="currentProfile?.status === 'pending_confirm'"
         data-test="style-dna-delete-pending"
         type="button"
+        class="ink-button ink-button--danger"
         :disabled="extracting"
         @click="$emit('delete-profile', currentProfile.profile_id)"
       >
@@ -150,7 +157,7 @@
         <span>时态偏好 {{ tenseLabel(currentProfile.tense_preference) }}</span>
       </div>
       <p v-if="currentProfile.low_confidence_reason" class="style-dna-panel__note">
-        低置信度原因：{{ currentProfile.low_confidence_reason }}
+        低置信度原因:{{ currentProfile.low_confidence_reason }}
       </p>
     </div>
 
@@ -281,10 +288,10 @@ const confidenceLabel = computed(() => {
 const warningCopy = computed(() => {
   if (props.warningMessage) return props.warningMessage
   if (props.currentProfile?.low_confidence_reason) {
-    return `当前画像置信度较低：${props.currentProfile.low_confidence_reason}`
+    return `当前画像置信度较低:${props.currentProfile.low_confidence_reason}`
   }
   if (props.activeProfile?.low_confidence_reason) {
-    return `当前画像置信度较低：${props.activeProfile.low_confidence_reason}`
+    return `当前画像置信度较低:${props.activeProfile.low_confidence_reason}`
   }
   return ''
 })
@@ -432,11 +439,11 @@ const toggleChapterSelection = (chapterId, checked) => {
 }
 
 .style-dna-panel__banner--warning {
-  background: color-mix(in srgb, var(--ai-warning-bg, #fff7ed) 85%, white);
+  background: color-mix(in srgb, var(--ai-warning-bg, #fff7ed) 85%, var(--ai-bg, #ffffff));
 }
 
 .style-dna-panel__banner--error {
-  background: color-mix(in srgb, var(--ai-danger-bg, #fef2f2) 85%, white);
+  background: color-mix(in srgb, var(--ai-danger-bg, #fef2f2) 85%, var(--ai-bg, #ffffff));
 }
 
 .style-dna-panel__tags {
@@ -497,7 +504,7 @@ const toggleChapterSelection = (chapterId, checked) => {
 
 .style-dna-panel__history-item--current {
   border-color: var(--ai-accent, #3b82f6);
-  background: color-mix(in srgb, var(--ai-accent-soft, #dbeafe) 40%, white);
+  background: color-mix(in srgb, var(--ai-accent-soft, #dbeafe) 40%, var(--ai-bg, #ffffff));
 }
 
 .style-dna-panel__history-item--active {

@@ -399,7 +399,7 @@ describe('WritingStudio layout contract', () => {
   it('keeps offline writing visible and replays drafts automatically after network recovery', () => {
     expect(source).toContain(':offline="offlineBannerVisible"')
     expect(source).toContain(':offline-message="offlineBannerText"')
-    expect(source).toContain("return '当前离线：内容已暂存本地，网络恢复后自动同步。'")
+    expect(source).toContain("return '当前离线:内容已暂存本地,网络恢复后自动同步。'")
     expect(source).toContain('const handleBrowserOffline = () =>')
     expect(source).toContain('const handleBrowserOnline = async () =>')
     expect(source).toContain('await replayOfflineDrafts()')
@@ -420,7 +420,7 @@ describe('WritingStudio layout contract', () => {
 
   it('shows a cache prune warning when local cache evicts older drafts', () => {
     expect(source).toContain('const handleCachePruned = () =>')
-    expect(source).toContain("ElMessage.warning('本地缓存空间不足，已自动清理较旧的暂存内容。')")
+    expect(source).toContain("ElMessage.warning('本地缓存空间不足,已自动清理较旧的暂存内容。')")
     expect(source).toContain("window.addEventListener('inktrace-cache-pruned', handleCachePruned)")
     expect(source).toContain("window.removeEventListener('inktrace-cache-pruned', handleCachePruned)")
   })
@@ -956,30 +956,30 @@ describe('WritingStudio focus mode', () => {
 
     selectionRewriteStore.activeRewriteId = 'srw_001'
     selectionRewriteStore.status = 'failed'
-    selectionRewriteStore.actionError = '选区改写生成失败，请稍后重试。'
+    selectionRewriteStore.actionError = '选区改写生成失败,请稍后重试。'
     await flushStudio()
 
     expect(elMessage.error).toHaveBeenCalledTimes(1)
     const failedToastPayload = elMessage.error.mock.calls[0][0]
     expect(failedToastPayload.duration).toBe(5000)
-    expect(failedToastPayload.message.children[0].children).toBe('选区改写生成失败，请稍后重试。')
+    expect(failedToastPayload.message.children[0].children).toBe('选区改写生成失败,请稍后重试。')
 
     selectionRewriteStore.actionError = ''
     await flushStudio()
-    selectionRewriteStore.actionError = '选区改写生成失败，请稍后重试。'
+    selectionRewriteStore.actionError = '选区改写生成失败,请稍后重试。'
     await flushStudio()
 
     expect(elMessage.error).toHaveBeenCalledTimes(1)
 
     selectionRewriteStore.status = 'conflicted'
-    selectionRewriteStore.actionError = '原文已变化，请重新选择。'
+    selectionRewriteStore.actionError = '原文已变化,请重新选择。'
     selectionRewriteStore.modalVisible = true
     selectionRewriteStore.selectionText = '月光落在窗台上'
     await flushStudio()
 
     expect(elMessage.error).toHaveBeenCalledTimes(1)
     expect(elMessage.warning).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('原文已变化，请重新选择。')
+    expect(wrapper.text()).toContain('原文已变化,请重新选择。')
 
     wrapper.unmount()
   })
@@ -1012,7 +1012,7 @@ describe('WritingStudio focus mode', () => {
     selectionRewriteStore.activeRewriteId = 'srw_001'
     selectionRewriteStore.requestId = 'job_001'
     selectionRewriteStore.status = 'conflicted'
-    selectionRewriteStore.actionError = '原文已变化，请重新选择。'
+    selectionRewriteStore.actionError = '原文已变化,请重新选择。'
     selectionRewriteStore.selectionText = '月光落在窗台上'
     selectionRewriteStore.selectionStart = 4
     selectionRewriteStore.selectionEnd = 12
@@ -1075,7 +1075,7 @@ describe('WritingStudio focus mode', () => {
     selectionRewriteStore.lastRequestedMode = 'polish'
     selectionRewriteStore.activeRewriteId = 'srw_001'
     selectionRewriteStore.status = 'failed'
-    selectionRewriteStore.actionError = '选区改写生成失败，请稍后重试。'
+    selectionRewriteStore.actionError = '选区改写生成失败,请稍后重试。'
     await flushStudio()
 
     const errorPayload = elMessage.error.mock.calls[0][0]
@@ -1134,7 +1134,7 @@ describe('WritingStudio focus mode', () => {
     const chapterStore = useChapterDataStore()
     const selectionRewriteStore = useSelectionRewriteStore()
 
-    chapterStore.updateChapterDraft('chapter-1', '这是旧文本，月光落在窗台上，风吹进来。')
+    chapterStore.updateChapterDraft('chapter-1', '这是旧文本,月光落在窗台上,风吹进来。')
     selectionRewriteStore.initializeContext({
       workId: 'work-1',
       chapterId: 'chapter-1',
@@ -1162,7 +1162,7 @@ describe('WritingStudio focus mode', () => {
     await undoButtonVNode.props.onClick()
     await flushStudio()
 
-    expect(chapterStore.activeChapterContent).toBe('这是旧文本，月光落在窗台上，风吹进来。')
+    expect(chapterStore.activeChapterContent).toBe('这是旧文本,月光落在窗台上,风吹进来。')
 
     wrapper.unmount()
   })
@@ -1227,7 +1227,7 @@ describe('WritingStudio focus mode', () => {
     await wrapper.vm.handleSelectionRewriteAccept({ finalText: '月光静静落在旧窗台上' })
     await flushStudio()
 
-    expect(elMessage.error).toHaveBeenCalledWith('改写结果已确认，但本地草稿应用失败，请手动重试。')
+    expect(elMessage.error).toHaveBeenCalledWith('改写结果已确认,但本地草稿应用失败,请手动重试。')
     expect(chapterStore.activeChapterContent).toBe(originalDraft)
     expect(selectionRewriteStore.modalVisible).toBe(true)
 

@@ -6,7 +6,7 @@
 
     <el-card class="import-card">
       <el-alert
-        title="单章导入请在作品详情页或章节编辑页执行，这里用于新建作品或整本导入。"
+        title="单章导入请在作品详情页或章节编辑页执行,这里用于新建作品或整本导入。"
         type="info"
         :closable="false"
         style="margin-bottom: 12px;"
@@ -55,17 +55,17 @@
             v-model="form.intro"
             type="textarea"
             :rows="3"
-            placeholder="可选，输入小说简介"
+            placeholder="可选,输入小说简介"
           />
         </el-form-item>
 
         <el-form-item label="标签">
-          <el-input v-model="form.tagsText" placeholder="可选，多个标签请用逗号分隔" />
+          <el-input v-model="form.tagsText" placeholder="可选,多个标签请用逗号分隔" />
         </el-form-item>
 
         <el-form-item label="整理批次">
           <el-select v-model="form.batch_size_chapters" style="width: 100%">
-            <el-option :value="null" label="自动（推荐）" />
+            <el-option :value="null" label="自动(推荐)" />
             <el-option :value="3" label="每批 3 章" />
             <el-option :value="5" label="每批 5 章" />
           </el-select>
@@ -74,36 +74,36 @@
         <el-form-item v-if="form.import_mode !== 'empty'" label="小说文件" prop="file_path">
           <el-input v-model="form.file_path" placeholder="请输入小说文件路径">
             <template #append>
-              <el-button @click="selectFile">选择文件</el-button>
+              <el-button class="ink-el-button ink-el-button--secondary" @click="selectFile">选择文件</el-button>
             </template>
           </el-input>
           <input
             ref="fileInput"
             type="file"
             style="display: none"
-            accept=".txt"
+            accept=".txt,.md"
             @change="handleFileSelect"
           />
-          <div class="file-tip">支持 `.txt` 格式，系统会尝试自动识别章节结构。</div>
+          <div class="file-tip">支持 `.txt` 与 `.md`,系统会尝试自动识别章节结构。</div>
         </el-form-item>
 
         <el-form-item label="大纲文件">
-          <el-input v-model="form.outline_path" placeholder="可选，输入大纲文件路径">
+          <el-input v-model="form.outline_path" placeholder="可选,输入大纲文件路径">
             <template #append>
-              <el-button @click="selectOutline">选择文件</el-button>
+              <el-button class="ink-el-button ink-el-button--secondary" @click="selectOutline">选择文件</el-button>
             </template>
           </el-input>
           <input
             ref="outlineInput"
             type="file"
             style="display: none"
-            accept=".txt"
+            accept=".txt,.md"
             @change="handleOutlineSelect"
           />
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" :loading="importing" @click="handleImport">
+          <el-button class="ink-el-button ink-el-button--primary" type="primary" :loading="importing" @click="handleImport">
             开始导入
           </el-button>
         </el-form-item>
@@ -122,25 +122,25 @@
         <el-step title="完成" />
       </el-steps>
 
-      <div v-if="organizeProgress.total > 0" class="organize-progress">
+      <div v-if="organizeProgress.total > 0 || organizeProgress.message" class="organize-progress">
         <div class="organize-progress-text">{{ organizeProgress.message }}</div>
         <div class="organize-progress-meta">
-          <span>状态：{{ formatOrganizeStatus(organizeProgress.status) }}</span>
-          <span>阶段：{{ organizeProgress.stage || '暂无' }}</span>
-          <span>策略：{{ organizeProgress.strategy || 'chapter_first' }}</span>
-          <span>进度：{{ organizeProgress.current || 0 }} / {{ organizeProgress.total || 0 }}</span>
-          <span>百分比：{{ organizeProgress.percent || 0 }}%</span>
+          <span>状态:{{ formatOrganizeStatus(organizeProgress.status) }}</span>
+          <span>阶段:{{ organizeProgress.stage || '暂无' }}</span>
+          <span>策略:{{ organizeProgress.strategy || 'chapter_first' }}</span>
+          <span>进度:{{ organizeProgress.current || 0 }} / {{ organizeProgress.total || 0 }}</span>
+          <span>百分比:{{ organizeProgress.percent || 0 }}%</span>
           <span v-if="organizeProgress.effective_batch_size > 0">
-            实际批次：{{ organizeProgress.effective_batch_size }}
+            实际批次:{{ organizeProgress.effective_batch_size }}
           </span>
           <span v-if="organizeProgress.batch_total > 0">
-            当前批次：{{ organizeProgress.batch_no || 0 }} / {{ organizeProgress.batch_total || 0 }}
+            当前批次:{{ organizeProgress.batch_no || 0 }} / {{ organizeProgress.batch_total || 0 }}
           </span>
           <span v-if="organizeProgress.chunked_chapter_count > 0">
-            分块章节：{{ organizeProgress.chunked_chapter_count }}
+            分块章节:{{ organizeProgress.chunked_chapter_count }}
           </span>
           <span v-if="organizeProgress.current_chapter_title">
-            当前章节：{{ organizeProgress.current_chapter_title }}
+            当前章节:{{ organizeProgress.current_chapter_title }}
           </span>
         </div>
         <el-progress :percentage="organizeProgress.percent" :stroke-width="10" />
@@ -155,6 +155,7 @@
 
         <div class="progress-actions">
           <el-button
+            class="ink-el-button ink-el-button--secondary"
             size="small"
             :disabled="!['running', 'resume_requested'].includes(organizeProgress.status)"
             @click="pauseOrganize"
@@ -162,6 +163,7 @@
             暂停整理
           </el-button>
           <el-button
+            class="ink-el-button ink-el-button--secondary"
             size="small"
             :disabled="!['paused', 'pause_requested'].includes(organizeProgress.status)"
             @click="resumeOrganize"
@@ -169,6 +171,7 @@
             继续整理
           </el-button>
           <el-button
+            class="ink-el-button ink-el-button--secondary"
             size="small"
             :disabled="!['running', 'paused', 'pause_requested', 'resume_requested'].includes(organizeProgress.status)"
             @click="cancelOrganize"
@@ -176,20 +179,21 @@
             取消整理
           </el-button>
           <el-button
+            class="ink-el-button ink-el-button--secondary"
             size="small"
             :disabled="!['done', 'error', 'cancelled', 'paused'].includes(organizeProgress.status)"
             @click="retryOrganize"
           >
             重试整理
           </el-button>
-          <el-button size="small" @click="goToDetail">查看作品详情</el-button>
+          <el-button class="ink-el-button ink-el-button--secondary" size="small" @click="goToDetail">查看作品详情</el-button>
         </div>
       </div>
     </el-card>
 
     <el-card v-if="chapterPreview.length > 0" class="import-card">
       <template #header>
-        <span>导入预览（共 {{ chapterPreview.length }} 章）</span>
+        <span>导入预览(共 {{ chapterPreview.length }} 章)</span>
       </template>
       <el-table :data="chapterPreview" size="small">
         <el-table-column prop="number" label="章号" width="90" />
@@ -203,10 +207,10 @@
         <span>导入说明</span>
       </template>
       <ul class="tip-list">
-        <li>支持 TXT 格式的小说文件。</li>
-        <li>系统会尝试自动识别“第一章”“第 1 章”“Chapter 1”等章节标题。</li>
+        <li>支持 TXT 或 Markdown 格式的小说文件。</li>
+        <li>系统会尝试自动识别"第一章""第 1 章""Chapter 1"等章节标题。</li>
         <li>大纲文件可包含人物设定、背景说明和故事规划。</li>
-        <li>导入完成后会进入整理流程，随后可以进入写作工作台继续创作。</li>
+        <li>导入完成后会进入整理流程,随后可以进入写作工作台继续创作。</li>
       </ul>
     </el-card>
   </div>
@@ -324,7 +328,7 @@ const selectFile = async () => {
     const result = await window.electronAPI.selectFile({
       title: '选择小说文件',
       filters: [
-        { name: '文本文件', extensions: ['txt'] },
+        { name: '文本文件', extensions: ['txt', 'md'] },
         { name: '所有文件', extensions: ['*'] }
       ]
     })
@@ -342,7 +346,7 @@ const selectOutline = async () => {
     const result = await window.electronAPI.selectFile({
       title: '选择大纲文件',
       filters: [
-        { name: '文本文件', extensions: ['txt'] },
+        { name: '文本文件', extensions: ['txt', 'md'] },
         { name: '所有文件', extensions: ['*'] }
       ]
     })
@@ -520,7 +524,7 @@ const retryOrganize = async () => {
 
 const createTags = () => (
   String(form.tagsText || '')
-    .split(/[，,]/)
+    .split(/[,,]/)
     .map((item) => item.trim())
     .filter(Boolean)
 )
@@ -561,7 +565,9 @@ const handleImport = async () => {
     }
 
     currentStep.value = 2
-    ElMessage.info('正在整理故事结构...')
+    if (ElMessage.info) {
+      ElMessage.info('正在整理故事结构...')
+    }
 
     if (!window.electronAPI && form.selectedFile) {
       const formData = new FormData()
@@ -602,17 +608,18 @@ const handleImport = async () => {
     }
 
     currentStep.value = 3
-    ElMessage.success('导入完成，已开始整理结构')
+    ElMessage.success('导入完成,已开始整理结构')
     sessionStorage.setItem(
       'inktrace_continue_hint',
       JSON.stringify({
         novelId: createdNovelId.value,
-        message: '已完成分析，是否继续创作下一章？',
-        defaultGoal: '下一章：承接上一章推进主线。'
+        message: '已完成分析,是否继续创作下一章?',
+        defaultGoal: '下一章:承接上一章推进主线。'
       })
     )
   } catch (error) {
     console.error('导入失败:', error)
+    ElMessage.error(String(error?.userMessage || error?.message || '导入失败,请稍后重试。'))
   } finally {
     importing.value = false
   }
@@ -653,6 +660,74 @@ onBeforeUnmount(() => {
   max-width: 800px;
   margin-bottom: 20px;
   border-radius: 20px;
+}
+
+.novel-import :deep(.el-card) {
+  border-color: var(--import-border);
+  border-radius: 20px;
+  background: var(--import-surface);
+  color: var(--import-text);
+  box-shadow: none;
+}
+
+.novel-import :deep(.el-card__header) {
+  border-bottom-color: var(--import-border);
+  color: var(--import-title);
+  background: var(--import-surface);
+}
+
+.novel-import :deep(.el-card__body) {
+  background: var(--import-surface);
+  color: var(--import-text);
+}
+
+.novel-import :deep(.el-form-item__label),
+.novel-import :deep(.el-radio),
+.novel-import :deep(.el-radio__label),
+.novel-import :deep(.el-select__placeholder),
+.novel-import :deep(.el-input__wrapper),
+.novel-import :deep(.el-textarea__inner),
+.novel-import :deep(.el-input__inner),
+.novel-import :deep(.el-input-number__decrease),
+.novel-import :deep(.el-input-number__increase),
+.novel-import :deep(.el-table),
+.novel-import :deep(.el-table th.el-table__cell),
+.novel-import :deep(.el-table tr),
+.novel-import :deep(.el-table td.el-table__cell),
+.novel-import :deep(.el-empty__description),
+.novel-import :deep(.el-alert__title),
+.novel-import :deep(.el-alert__description),
+.novel-import :deep(.el-step__title),
+.novel-import :deep(.el-step__description) {
+  color: var(--import-text);
+}
+
+.novel-import :deep(.el-input__wrapper),
+.novel-import :deep(.el-textarea__inner),
+.novel-import :deep(.el-select__wrapper),
+.novel-import :deep(.el-input-number),
+.novel-import :deep(.el-input-group__append) {
+  background: var(--import-surface-soft);
+  box-shadow: 0 0 0 1px var(--import-border) inset;
+}
+
+.novel-import :deep(.el-input-group__append) {
+  border-left: 1px solid var(--import-border);
+}
+
+.novel-import :deep(.el-table),
+.novel-import :deep(.el-table__inner-wrapper),
+.novel-import :deep(.el-table__header-wrapper),
+.novel-import :deep(.el-table__body-wrapper),
+.novel-import :deep(.el-table__body),
+.novel-import :deep(.el-table__row),
+.novel-import :deep(.el-table__cell) {
+  background: var(--import-surface);
+  border-color: var(--import-border);
+}
+
+.novel-import :deep(.el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell) {
+  background: var(--import-surface-soft);
 }
 
 .file-tip {

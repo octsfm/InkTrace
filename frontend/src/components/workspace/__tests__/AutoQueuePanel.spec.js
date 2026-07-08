@@ -248,8 +248,7 @@ describe('AutoQueuePanel', () => {
       }
     })
 
-    expect(wrapper.get('[data-test="auto-queue-banner"]').classes())
-      .toContain('auto-queue-panel__banner--info')
+    expect(wrapper.get('[data-test="auto-queue-banner"]').classes()).toContain('auto-queue-panel__banner--info')
 
     await wrapper.setProps({
       currentRun: {
@@ -267,9 +266,8 @@ describe('AutoQueuePanel', () => {
       noteMessage: ''
     })
 
-    expect(wrapper.get('[data-test="auto-queue-banner"]').classes())
-      .toContain('auto-queue-panel__banner--error')
-    expect(wrapper.text()).toContain('已使用约 128000 tokens')
+    expect(wrapper.get('[data-test="auto-queue-banner"]').classes()).toContain('auto-queue-panel__banner--error')
+    expect(wrapper.text()).toContain('已使用约 128000 令牌')
     expect(wrapper.get('[data-test="auto-queue-stop-record"]').text()).toContain('停止原因：预算已超出')
     expect(wrapper.get('[data-test="auto-queue-stop-record"]').text()).toContain('建议操作：提高预算或关闭预算检查')
   })
@@ -307,9 +305,9 @@ describe('AutoQueuePanel', () => {
 
     expect(wrapper.get('[data-test="auto-queue-progress"]').text()).toContain('5 / 10 章')
     expect(wrapper.text()).toContain('字数25,000 / 50,000')
-    expect(wrapper.text()).toContain('Token120K')
+    expect(wrapper.text()).toContain('令牌120K')
     expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('第1章')
-    expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('审稿通过')
+    expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('审阅通过')
     expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('生成中')
     expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('等待中')
   })
@@ -349,7 +347,7 @@ describe('AutoQueuePanel', () => {
     })
 
     const historyText = wrapper.get('[data-test="auto-queue-history-aqr_009"]').text()
-    expect(historyText).toContain('连续 blocking 审稿')
+    expect(historyText).toContain('连续出现阻断冲突')
     expect(historyText).toContain('先查看并处理冲突详情')
   })
 
@@ -401,7 +399,7 @@ describe('AutoQueuePanel', () => {
     expect(wrapper.get('[data-test="auto-queue-stop-foreshadow"]').element.checked).toBe(true)
   })
 
-  it('allows safe mode to save and start with only target word count enabled', async () => {
+  it('allows safe mode to save and start with only target word count enabled', () => {
     const wrapper = mount(AutoQueuePanel, {
       props: {
         featureEnabled: true,
@@ -421,7 +419,7 @@ describe('AutoQueuePanel', () => {
     expect(wrapper.get('[data-test="auto-queue-start"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('keeps continuous mode blocked when target chapters is zero', async () => {
+  it('keeps continuous mode blocked when target chapters is zero', () => {
     const wrapper = mount(AutoQueuePanel, {
       props: {
         featureEnabled: true,
@@ -440,7 +438,6 @@ describe('AutoQueuePanel', () => {
     expect(wrapper.get('[data-test="auto-queue-save-config"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-test="auto-queue-start"]').attributes('disabled')).toBeDefined()
   })
-
 
   it('shows running and completed banner copy from current run status', async () => {
     const wrapper = mount(AutoQueuePanel, {
@@ -551,7 +548,7 @@ describe('AutoQueuePanel', () => {
     })
 
     expect(wrapper.text()).toContain('状态 正在停止')
-    expect(wrapper.get('[data-test="auto-queue-banner"]').text()).toContain('已使用约 520000 / 预算 500000 tokens')
+    expect(wrapper.get('[data-test="auto-queue-banner"]').text()).toContain('已使用约 520000 / 预算 500000 令牌')
     expect(wrapper.get('.auto-queue-panel__summary').text()).toBe('当前队列正在停止，等待当前章节处理完成后结束。')
   })
 

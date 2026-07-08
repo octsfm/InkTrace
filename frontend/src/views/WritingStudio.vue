@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<template>
+<template>
   <div class="writing-studio" :class="[themeClass, { 'writing-studio--focus': isFocusMode }]">
     <VersionConflictModal
       :model-value="conflictModalVisible"
@@ -429,13 +429,13 @@ const displaySaveStatus = computed(() => {
 const offlineBannerVisible = computed(() => isOfflineMode.value)
 const offlineBannerText = computed(() => {
   if (saveStateStore.hasPendingDrafts) {
-    return '当前离线：内容已暂存本地，网络恢复后自动同步。'
+    return '当前离线:内容已暂存本地,网络恢复后自动同步。'
   }
-  return '当前离线：本章内容仅保存在本地。'
+  return '当前离线:本章内容仅保存在本地。'
 })
 const statusDetail = computed(() => {
   if (conflictModalVisible.value) {
-    return '检测到版本冲突，请先处理冲突。'
+    return '检测到版本冲突,请先处理冲突。'
   }
   if (isOfflineMode.value && saveStateStore.hasPendingDrafts) {
     return `正在同步 ${saveStateStore.pendingQueue.length} 条草稿`
@@ -444,10 +444,10 @@ const statusDetail = computed(() => {
     return `正在同步 ${saveStateStore.pendingQueue.length} 条草稿`
   }
   if (saveStateStore.saveStatus === 'error' && saveStateStore.nextRetryAt) {
-    return '同步失败，等待重试。'
+    return '同步失败,等待重试。'
   }
   if (showManualRetry.value) {
-    return '同步失败，等待重试。'
+    return '同步失败,等待重试。'
   }
   return ''
 })
@@ -471,7 +471,7 @@ const conflictDescription = computed(() => {
     buildChapterLabel(chapterDataStore.activeChapter, '') ||
     '当前章节'
   )
-  return `${chapterTitle} 存在服务器新版本，请选择冲突处理方式。`
+  return `${chapterTitle} 存在服务器新版本,请选择冲突处理方式。`
 })
 const conflictLocalContent = computed(() => String(conflictPayload.value?.content || ''))
 const conflictServerContent = computed(() => String(
@@ -685,7 +685,7 @@ const primeTodayWordBaselines = () => {
 
 const blockSidebarMutation = () => {
   if (saveStateStore.saveStatus === 'saving') {
-    ElMessage.warning('正在保存中，请稍后再操作章节。')
+    ElMessage.warning('正在保存中,请稍后再操作章节。')
     return true
   }
   return false
@@ -729,7 +729,7 @@ const loadChapters = async () => {
     return await v1ChaptersApi.list(workId.value)
   } catch (error) {
     console.error('加载章节列表失败:', error)
-    ElMessage.error('加载章节失败，请稍后重试。')
+    ElMessage.error('加载章节失败,请稍后重试。')
     return []
   } finally {
     chaptersLoading.value = false
@@ -886,7 +886,7 @@ const flushDraftQueue = async ({ retryAttempt = 0, manual = false } = {}) => {
         ...currentDraft,
         title: String(currentDraft.title || ''),
         chapterTitle: String(currentDraft.title || chapter?.title || '')
-      }, String(error.userMessage || '草稿与服务器版本冲突，请处理后再继续。'))
+      }, String(error.userMessage || '草稿与服务器版本冲突,请处理后再继续。'))
       saveStateStore.setRetrySchedule({ retryCount: retryAttempt, nextRetryAt: '' })
     } else {
       if (currentDraft) {
@@ -958,7 +958,7 @@ const handleBrowserOnline = async () => {
 }
 
 const handleCachePruned = () => {
-  ElMessage.warning('本地缓存空间不足，已自动清理较旧的暂存内容。')
+  ElMessage.warning('本地缓存空间不足,已自动清理较旧的暂存内容。')
 }
 
 const syncWorkspaceViewport = () => {
@@ -1266,7 +1266,7 @@ const submitWorkTitleEditing = async () => {
     console.error('更新作品标题失败:', error)
     workTitleEditing.value = false
     workTitleDraft.value = currentTitle
-    ElMessage.error('更新作品标题失败，请稍后重试。')
+    ElMessage.error('更新作品标题失败,请稍后重试。')
   } finally {
     await focusEditor()
   }
@@ -1406,7 +1406,7 @@ const handleSelectionRewriteMode = async (mode) => {
     syncSelectionRewriteContext()
     await selectionRewriteStore.createRewrite(mode)
   } catch (error) {
-    ElMessage.error(selectionRewriteStore.actionError || '选区改写生成失败，请稍后重试。')
+    ElMessage.error(selectionRewriteStore.actionError || '选区改写生成失败,请稍后重试。')
   }
 }
 
@@ -1433,7 +1433,7 @@ const handleRetrySelectionRewrite = async () => {
   try {
     await selectionRewriteStore.retryLastRewrite()
   } catch (error) {
-    ElMessage.error(selectionRewriteStore.actionError || '选区改写生成失败，请稍后重试。')
+    ElMessage.error(selectionRewriteStore.actionError || '选区改写生成失败,请稍后重试。')
   }
 }
 
@@ -1454,7 +1454,7 @@ const handleSelectionRewriteClearHistory = async () => {
     const result = await selectionRewriteStore.clearChapterHistory()
     ElMessage.success(`已清除 ${Number(result?.cleared_count || 0)} 条历史改写。`)
   } catch (error) {
-    ElMessage.error(selectionRewriteStore.actionError || '清除历史改写失败，请稍后重试。')
+    ElMessage.error(selectionRewriteStore.actionError || '清除历史改写失败,请稍后重试。')
   }
 }
 
@@ -1483,7 +1483,7 @@ const handleSelectionRewriteAccept = async ({ finalText = '' } = {}) => {
       ])
     })
   } catch (error) {
-    ElMessage.error(selectionRewriteStore.actionError || '选区改写应用失败，请重新尝试。')
+    ElMessage.error(selectionRewriteStore.actionError || '选区改写应用失败,请重新尝试。')
   }
 }
 
@@ -1496,7 +1496,7 @@ const handleSelectionRewriteReject = async () => {
       message: '已拒绝'
     })
   } catch (error) {
-    ElMessage.error(selectionRewriteStore.actionError || '选区改写拒绝失败，请稍后重试。')
+    ElMessage.error(selectionRewriteStore.actionError || '选区改写拒绝失败,请稍后重试。')
   }
 }
 
@@ -1600,7 +1600,7 @@ const handleRenameChapter = async ({ chapterId = '', title = '' } = {}) => {
 const handleDeleteChapter = async (chapterId) => {
   const id = String(chapterId || '')
   if (!id || blockSidebarMutation()) return
-  if (!window.confirm('确认删除该章节吗？')) return
+  if (!window.confirm('确认删除该章节吗?')) return
   const wasActive = id === chapterDataStore.activeChapterId
   const nextActiveIdFallback = wasActive
     ? ''

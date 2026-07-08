@@ -40,5 +40,45 @@
     "stale_status": "fresh",
     "stale_reason": "",
     "created_at": "2026-05-26T03:30:46.002266+00:00"
+  },
+  "state_776a3e864415": {
+    "story_state_id": "state_776a3e864415",
+    "work_id": "aed12b6a-86e5-4419-bd0b-733a27ab78ce",
+    "source_initialization_id": "init_052e12296bec",
+    "source_job_id": "job_53a17542fe16",
+    "latest_chapter_id": "8ed4f3a6-0026-4fb4-868c-539d50800b30",
+    "latest_chapter_version": 2,
+    "current_position_summary": "c1已完成最小分析；原文长度:41字",
+    "active_characters": [],
+    "active_locations": [],
+    "unresolved_threads": [],
+    "continuity_notes": [
+      "baseline_source=confirmed_chapter_analysis",
+      "source_snapshot_id=memory_7244408a656a"
+    ],
+    "source_snapshot_id": "memory_7244408a656a",
+    "stale_status": "fresh",
+    "stale_reason": "",
+    "created_at": "2026-07-07T13:08:25.282655+00:00"
+  },
+  "state_64bc1e70a5a6": {
+    "story_state_id": "state_64bc1e70a5a6",
+    "work_id": "1e1e27f4-bf7b-4725-b757-912a7ec7d1e8",
+    "source_initialization_id": "init_d2f103f06bca",
+    "source_job_id": "job_1d5c6ef803a1",
+    "latest_chapter_id": "4ae5e3cf-8dfa-4071-b511-93848189c065",
+    "latest_chapter_version": 2,
+    "current_position_summary": "c1已完成最小分析；原文长度:87字",
+    "active_characters": [],
+    "active_locations": [],
+    "unresolved_threads": [],
+    "continuity_notes": [
+      "baseline_source=confirmed_chapter_analysis",
+      "source_snapshot_id=memory_bd5c69d804a9"
+    ],
+    "source_snapshot_id": "memory_bd5c69d804a9",
+    "stale_status": "fresh",
+    "stale_reason": "",
+    "created_at": "2026-07-07T13:08:47.647429+00:00"
   }
 }

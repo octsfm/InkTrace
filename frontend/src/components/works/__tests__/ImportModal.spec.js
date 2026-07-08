@@ -1,4 +1,4 @@
-﻿import { readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -26,11 +26,11 @@ describe('ImportModal contract', () => {
   })
 
   it('shows explicit warning and error feedback', () => {
-    expect(source).toContain("ElMessage.warning('请先选择 TXT 文件。')")
+    expect(source).toContain("ElMessage.warning('请先选择 TXT 文件')")
     expect(source).toContain('normalizeImportErrorMessage')
-    expect(source).toContain('文件过大，请拆分后导入（上限 20MB）。')
-    expect(source).toContain('文件编码无法识别，请转换为 UTF-8 后重试。')
-    expect(source).toContain('TXT 导入失败，请检查文件编码或大小后重试。')
+    expect(source).toContain('文件过大，请拆分后导入（上限 20MB）')
+    expect(source).toContain('文件编码无法识别，请转换为 UTF-8 后重试')
+    expect(source).toContain('TXT 导入失败，请检查文件编码或大小后重试')
     expect(source).toContain('ElMessage.error(normalizeImportErrorMessage(error))')
   })
 })

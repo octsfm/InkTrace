@@ -61,6 +61,7 @@ class StartContinuationRequest(V2AIOperationRequest):
     work_id: str
     chapter_id: str
     user_instruction: str = ""
+    user_action: bool = False
 
 
 class StartMultiChapterRequest(V2AIOperationRequest):
@@ -139,6 +140,7 @@ class ConflictDecisionRequest(V2AIOperationRequest):
 
 class ReviewCandidateDraftRequest(V2AIOperationRequest):
     user_instruction: str = ""
+    user_action: bool = False
 
 
 class GenerateDirectionProposalRequest(V2AIOperationRequest):

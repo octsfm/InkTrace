@@ -28,7 +28,7 @@ const decodeOutlineImportBuffer = (buffer) => {
     const decoder = new TextDecoder('utf-8', { fatal: true })
     return stripUtf8Bom(decoder.decode(buffer))
   } catch (error) {
-    throw new Error('文件编码不受支持，请使用 UTF-8 或 UTF-8 with BOM。')
+    throw new Error('文件编码不受支持,请使用 UTF-8 或 UTF-8 with BOM。')
   }
 }
 

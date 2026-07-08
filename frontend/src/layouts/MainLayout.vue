@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="main-layout" :class="themeClass">
     <header class="header">
       <div class="header-shell">
