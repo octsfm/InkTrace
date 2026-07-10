@@ -25,6 +25,9 @@ class ModelRole(StrEnum):
     DIALOGUE_WRITER = "dialogue_writer"
     SCENE_GENERATOR = "scene_generator"
     QUICK_TRIAL_WRITER = "quick_trial_writer"
+    OPENING_STRATEGY_PLANNER = "opening_strategy_planner"
+    OPENING_WRITER = "opening_writer"
+    OPENING_RISK_CHECKER = "opening_risk_checker"
 
 
 class AIProviderTestStatus(StrEnum):

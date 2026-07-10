@@ -195,6 +195,8 @@ class CandidateReviewService:
             raise ValueError("candidate_already_applied")
         if draft.status not in {CandidateDraftStatus.PENDING_REVIEW, CandidateDraftStatus.ACCEPTED}:
             raise ValueError("candidate_status_invalid")
+        if str(draft.metadata.get("opening_originality_status", "")) == "blocked":
+            raise ValueError("P2_OPENING_DRAFT_ORIGINALITY_REVIEW_REQUIRED")
         version = self._resolve_target_version(draft, candidate_version_id=candidate_version_id)
         target_content = version.content if version is not None else draft.content
         target_version_id = version.candidate_version_id if version is not None else ""

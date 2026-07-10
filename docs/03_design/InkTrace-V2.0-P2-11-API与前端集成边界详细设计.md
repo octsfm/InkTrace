@@ -1,7 +1,7 @@
 # InkTrace V2.0-P2-11 API 与前端集成边界详细设计
 
-版本：v1.2 / P2 模块级详细设计候选冻结版
-状态：候选冻结
+版本：v2.0 / P2 模块级详细设计冻结版（Opening Agent API 已同步）
+状态：冻结生效
 所属阶段：InkTrace V2.0 P2 集成
 设计范围：P2 全部 API 路由注册、前端路由与组件集成边界、Feature Flag 体系、分期落地策略
 
@@ -134,16 +134,46 @@ app.include_router(mentions.router, prefix="/api/v2")
 | `POST /style-dna/{id}/confirm` | 确认风格画像 | 用户确认后才能生效 |
 | `POST /style-dna/{id}/disable` | 禁用风格画像 | 用户操作 |
 | `POST /auto-queues/{id}/confirm-continue` | 安全模式继续 | 用户逐章确认（不可被 Agent 自动推进） |
-| `POST /opening/strategies/{strategy_id}/confirm` | 确认开篇策略 | P2-06 strategy confirm |
-| `POST /opening/strategies/{strategy_id}/reject` | 拒绝开篇策略 | P2-06 strategy reject |
+| `POST /opening/directions/{direction_id}:confirm` | 确认开篇方向 | P2-06 direction confirm |
+| `POST /opening/draft-batches/{batch_id}:stop` | 停止开篇候选稿生成 | 用户主动停止，保留已完成候选稿 |
 | `POST /outline-assist/*/apply` | 应用大纲辅助 | 用户确认大纲建议 |
 | `POST /selection-rewrite/*/apply` | 应用选区改写 | 用户确认改写结果 |
 | `POST /auto-queues/{id}/stop` | 手动停止队列 | 用户操作 |
 
-> **注**：Opening Agent 不新增独立的正式正文 apply 端点。CandidateDraft 的 apply 仍走 P0/P1 标准 HumanReviewGate / CandidateDraft apply 链路，不在 P2-06 中额外暴露。Opening 的 user_action 校验只针对 strategy confirm/reject 操作。
+> **注**：开篇助手不新增独立的正式正文 apply 端点。CandidateDraft apply 仍走 P0/P1 标准 HumanReviewGate。方向确认、停止生成和候选稿 apply 都必须由真实 user_action 触发。
 **原则**：凡是会导致正式数据变更（apply/confirm/accept）或推进工作流越过用户确认门（advance/confirm-continue）的端点，必须校验 `caller_type=user_action`。
 
 - API 层不承载业务逻辑，不直接访问 Provider/Repository/ModelRouter。
+
+### 2.4 Opening Agent v2.0 冻结 API
+
+开篇助手使用分段短用例，不以一个长生命周期 Job 跨越用户确认：
+
+```text
+POST /api/v2/ai/opening/briefs
+POST /api/v2/ai/opening/briefs/{brief_id}/references
+POST /api/v2/ai/opening/briefs/{brief_id}/directions:generate
+GET  /api/v2/ai/opening/direction-batches/{batch_id}
+POST /api/v2/ai/opening/directions/{direction_id}:confirm
+POST /api/v2/ai/opening/directions/{direction_id}:revise
+POST /api/v2/ai/opening/directions/{direction_id}/drafts:generate
+GET  /api/v2/ai/opening/draft-batches/{batch_id}
+POST /api/v2/ai/opening/draft-batches/{batch_id}:stop
+GET  /api/v2/ai/opening/works/{work_id}/latest
+```
+
+冻结规则：
+
+- `briefs` 不要求参考文本；无参考是正式主路径。
+- 完整参考文本只进入 `TemporarySensitiveTextStore`，不得进入 AIJob.context、API response、Trace 或日志。
+- `directions:generate` 返回短任务引用；方向批次查询返回三个方向及状态。
+- `direction:confirm` 必须携带 `caller_type=user_action`、`user_action=true`、`user_id`、`idempotency_key`。
+- `drafts:generate` 后端校验 direction 已确认且策略相似风险未阻断。
+- `draft-batches` 返回逐章状态和有效 CandidateDraft 引用；`partial_success` 必须至少包含一个 result_ref。
+- `draft-batches:stop` 必须为 user_action，且保留已完成 CandidateDraft。
+- 稿件原创性 high 时，现有 CandidateDraft apply 用例返回 blocked，并提供安全中文提示。
+
+Opening v1.x 的 `/import-reference`、`/analyze`、`/strategies/*`、`/generate` 与按 work 查询长 Job 状态方案废止，不得新增兼容旁路。
 
 ---
 
@@ -286,7 +316,8 @@ P2 默认继续使用**轮询**（与 P1 一致）。
 |---|---|---|---|
 | `/multi-chapter/{id}/progress` | P2-01 | 多章续写进度 | 1.5-2s（短）/ 3-5s（长生成） |
 | `/auto-queues/{id}/status` | P2-04 | 自动队列状态（安全模式等待） | 2-3s（运行中）/ 5s（等待用户） |
-| `/opening/{id}/status` | P2-06 | 开篇分析进度 | 1.5-2s |
+| `/opening/direction-batches/{batch_id}` | P2-06 | 开篇方向生成 | 1.5-2s |
+| `/opening/draft-batches/{batch_id}` | P2-06 | 分章候选稿生成 | 1.5-2s |
 | `/style-dna/{id}` | P2-03 | 风格画像提取状态 | 3-5s（提取中） |
 | `/api/v2/ai/suggestions/{suggestion_id}` | P2-07 | 大纲辅助建议生成状态 | 2-3s |
 | `/selection-rewrite/{rewrite_id}` | P2-08 | 选区改写候选生成状态 | 2-3s |
@@ -324,7 +355,8 @@ P2 默认继续使用**轮询**（与 P1 一致）。
 | `P2_STYLE_LOW_CONFIDENCE` | 200† | 风格画像低置信度（非错误，warning 级） | P2-03 |
 | `P2_STYLE_NO_ACTIVE_PROFILE` | 200† | 无活跃 StyleProfile（降级展示） | P2-10 |
 | `P2_COPYRIGHT_NOT_CONFIRMED` | 400 | 版权未确认 | P2-06 |
-| `P2_IMITATION_RISK_HIGH` | 400 | 过度模仿风险高 | P2-06 |
+| `P2_OPENING_STRATEGY_SIMILARITY_BLOCKED` | 409 | 开篇方向与参考作品关键安排过于相似，需先修改方向 | P2-06 |
+| `P2_OPENING_DRAFT_ORIGINALITY_REVIEW_REQUIRED` | 409 | 候选稿原创性风险未处理，暂不可 apply | P2-06 |
 | `P2_STRATEGY_NOT_CONFIRMED` | 400 | 开篇策略未确认 | P2-06 |
 | `P2_RIGHTS_NOT_CONFIRMED` | 400 | 权利声明未确认 | P2-06 |
 | `P2_SELECTION_EMPTY` | 400 | 选区为空 | P2-08 |

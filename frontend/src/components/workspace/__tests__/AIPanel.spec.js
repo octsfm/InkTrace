@@ -2502,19 +2502,7 @@ describe('AIPanel', () => {
     expect(wrapper.get('[data-test="opening-agent-refresh"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('passes opening preview data from store into wizard', async () => {
-    const { useOpeningStore } = await import('@/stores/useOpeningStore')
-    const store = useOpeningStore()
-    store.hydratePreview({
-      analysis: {
-        analysis_summary: '通过灯塔钟声建立开篇悬念。'
-      },
-      strategy: {
-        target_audience: '女性悬疑读者'
-      },
-      riskLevel: 'high'
-    })
-
+  it('opens the human-centered story-first opening wizard', async () => {
     const wrapper = mount(AIPanel, {
       props: {
         workId: 'work-1',
@@ -2530,16 +2518,9 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="opening-agent-open"]').trigger('click')
     await flushPromises()
 
-    await wrapper.get('[data-test="opening-rights-confirm-step1"]').setValue(true)
-    await wrapper.get('[data-test="opening-next"]').trigger('click')
-    expect(wrapper.get('[data-test="opening-analysis-summary"]').text()).toContain('通过灯塔钟声建立开篇悬念')
-
-    await wrapper.get('[data-test="opening-next"]').trigger('click')
-    expect(wrapper.get('[data-test="opening-strategy-card"]').text()).toContain('女性悬疑读者')
-
-    await wrapper.get('[data-test="opening-strategy-confirm"]').setValue(true)
-    await wrapper.get('[data-test="opening-next"]').trigger('click')
-    expect(wrapper.get('[data-test="opening-return-modify"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="opening-step"]').text()).toContain('先说说你的故事')
+    expect(wrapper.get('[data-test="opening-step"]').text()).toContain('添加灵感参考（可跳过）')
+    expect(wrapper.find('[data-test="opening-rights-confirm-step1"]').exists()).toBe(false)
   })
 
   it('confirms before disabling auto queue budget check', async () => {

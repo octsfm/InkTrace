@@ -43,6 +43,7 @@ from presentation.api.routers.v2.ai import conflicts as ai_conflicts_v2
 from presentation.api.routers.v2.ai import context_pack as ai_context_pack_v2
 from presentation.api.routers.v2.ai import initialization as ai_initialization_v2
 from presentation.api.routers.v2.ai import memory as ai_memory_v2
+from presentation.api.routers.v2.ai import opening as ai_opening_v2
 from presentation.api.routers.v2.ai import plot_arcs as ai_plot_arcs_v2
 from presentation.api.routers.v2.ai import sessions as ai_sessions_v2
 from presentation.api.routers.v2.ai import traces as ai_traces_v2
@@ -221,6 +222,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_sessions_v2.router)
     app.include_router(ai_suggestions_v2.router)
     app.include_router(ai_memory_v2.router)
+    app.include_router(ai_opening_v2.router)
     app.include_router(ai_traces_v2.router)
     logger.info("routers registered", extra=build_log_context(event="app_router_registered", module="app", version=APP_VERSION))
 

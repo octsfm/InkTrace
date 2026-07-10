@@ -59,39 +59,16 @@ describe('P0 AI API client', () => {
       caller_type: 'user_action',
       idempotency_key: 'idem-style-1'
     })
-    await api.aiApi.importOpeningReference({
-      work_id: 'work-1',
-      title: '标杆开篇',
-      chapters_text: ['第一章文本'],
-      rights_confirmed: true,
-      rights_confirmation_text_version: 'v1'
-    })
-    await api.aiApi.analyzeOpening({
-      work_id: 'work-1',
-      analysis_id: 'oa-1',
-      job_id: 'job-opening-1'
-    })
-    await api.aiApi.getOpeningStrategy('work-1')
-    await api.aiApi.confirmOpeningStrategy('st-1', {
-      caller_type: 'user_action',
-      user_action: true,
-      idempotency_key: 'opening-confirm-1'
-    })
-    await api.aiApi.rejectOpeningStrategy('st-1', {
-      caller_type: 'user_action',
-      user_action: true,
-      idempotency_key: 'opening-reject-1',
-      reason: '请降低相似度'
-    })
-    await api.aiApi.generateOpeningDrafts({
-      work_id: 'work-1',
-      analysis_id: 'oa-1',
-      strategy_id: 'st-1',
-      job_id: 'job-opening-1'
-    })
-    await api.aiApi.getOpeningStatus('work-1')
-    await api.aiApi.getOpeningAnalysis('work-1')
-    await api.aiApi.getOpeningDrafts('work-1')
+    await api.aiApi.createOpeningBrief({ work_id: 'work-1', story_premise: '悬疑故事', protagonist_desire: '找真相', third_chapter_expectation: '期待反转', idempotency_key: 'brief-1' })
+    await api.aiApi.addOpeningReferences('ob-1', { references: [], rights_confirmed: true, rights_text_version: 'v1', idempotency_key: 'ref-1' })
+    await api.aiApi.generateOpeningDirections('ob-1', { idempotency_key: 'dir-1' })
+    await api.aiApi.getOpeningDirectionBatch('odb-1')
+    await api.aiApi.confirmOpeningDirection('od-1', { caller_type: 'user_action', user_action: true, user_id: 'u1', idempotency_key: 'confirm-1' })
+    await api.aiApi.reviseOpeningDirection('od-1', { name: '我的方向', idempotency_key: 'revise-1' })
+    await api.aiApi.generateOpeningDrafts('od-1', { idempotency_key: 'draft-1' })
+    await api.aiApi.getOpeningDraftBatch('db-1')
+    await api.aiApi.stopOpeningDraftBatch('db-1', { caller_type: 'user_action', user_action: true, user_id: 'u1', idempotency_key: 'stop-1' })
+    await api.aiApi.getLatestOpening('work-1')
     await api.aiApi.getStyleProfile('sp-1')
     await api.aiApi.getActiveStyleProfile('work-1')
     await api.aiApi.getStyleProfileHistory('work-1')
@@ -189,39 +166,16 @@ describe('P0 AI API client', () => {
       caller_type: 'user_action',
       idempotency_key: 'idem-style-1'
     })
-    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/import-reference', {
-      work_id: 'work-1',
-      title: '标杆开篇',
-      chapters_text: ['第一章文本'],
-      rights_confirmed: true,
-      rights_confirmation_text_version: 'v1'
-    })
-    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/analyze', {
-      work_id: 'work-1',
-      analysis_id: 'oa-1',
-      job_id: 'job-opening-1'
-    })
-    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/work-1/strategy')
-    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/strategies/st-1/confirm', {
-      caller_type: 'user_action',
-      user_action: true,
-      idempotency_key: 'opening-confirm-1'
-    })
-    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/strategies/st-1/reject', {
-      caller_type: 'user_action',
-      user_action: true,
-      idempotency_key: 'opening-reject-1',
-      reason: '请降低相似度'
-    })
-    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/generate', {
-      work_id: 'work-1',
-      analysis_id: 'oa-1',
-      strategy_id: 'st-1',
-      job_id: 'job-opening-1'
-    })
-    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/work-1/status')
-    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/work-1/analysis')
-    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/work-1/drafts')
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/briefs', expect.objectContaining({ work_id: 'work-1' }))
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/briefs/ob-1/references', expect.objectContaining({ idempotency_key: 'ref-1' }))
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/briefs/ob-1/directions:generate', { idempotency_key: 'dir-1' })
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/direction-batches/odb-1')
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/directions/od-1:confirm', expect.objectContaining({ user_action: true }))
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/directions/od-1:revise', { name: '我的方向', idempotency_key: 'revise-1' })
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/directions/od-1/drafts:generate', { idempotency_key: 'draft-1' })
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/draft-batches/db-1')
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/opening/draft-batches/db-1:stop', expect.objectContaining({ user_action: true }))
+    expect(mockGet).toHaveBeenCalledWith('/v2/ai/opening/works/work-1/latest')
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/style-dna/profiles/sp-1')
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/style-dna/work-1/active')
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/style-dna/work-1/history')

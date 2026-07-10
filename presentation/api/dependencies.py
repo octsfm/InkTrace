@@ -37,6 +37,12 @@ from application.services.ai.selection_rewrite_service import SelectionRewriteSe
 from application.services.ai.citation_vector_recall_service import CitationVectorRecallService
 from application.services.ai.multi_chapter_service import MultiChapterContinuationService
 from application.services.ai.memory_review_gate_service import MemoryReviewGateService
+from application.services.ai.opening_agent_service import (
+    ModelRouterOpeningDirectionGenerator,
+    ModelRouterOpeningDraftGenerator,
+    ModelRouterOpeningOriginalityChecker,
+    OpeningAgentService,
+)
 from application.services.ai.planning_api_service import PlanningAPIService
 from application.services.ai.plot_arc_service import PlotArcQueryService
 from application.services.ai.ai_settings_service import AISettingsService
@@ -88,6 +94,8 @@ from infrastructure.persistence.sqlite_style_profile_repo import SQLiteStyleProf
 from infrastructure.persistence.chroma_vector_store import ChromaVectorStore
 from infrastructure.persistence.sqlite_multi_chapter_session_repo import SQLiteMultiChapterSessionRepository
 from infrastructure.persistence.sqlite_vector_index_repo import SQLiteVectorIndexRepository
+from infrastructure.persistence.sqlite_opening_repo import SQLiteOpeningRepository
+from infrastructure.security.temporary_sensitive_text_store import EncryptedTemporarySensitiveTextStore
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
 from application.services.v1.service_factory import build_writing_asset_service
@@ -202,6 +210,20 @@ def get_auto_queue_config_repository() -> SQLiteAutoQueueConfigRepository:
 @lru_cache(maxsize=1)
 def get_auto_queue_run_repository() -> SQLiteAutoQueueRunRepository:
     return SQLiteAutoQueueRunRepository()
+
+
+@lru_cache(maxsize=1)
+def get_opening_repository() -> SQLiteOpeningRepository:
+    return SQLiteOpeningRepository()
+
+
+@lru_cache(maxsize=1)
+def get_opening_temporary_text_store() -> EncryptedTemporarySensitiveTextStore:
+    return EncryptedTemporarySensitiveTextStore(
+        Path(_current_db_path()).resolve().parent / "opening-secrets",
+        secret=os.getenv("INKTRACE_AI_SETTINGS_SECRET", "inktrace-local-dev-secret"),
+        ttl_seconds=1800,
+    )
 
 
 @lru_cache(maxsize=1)
@@ -403,6 +425,19 @@ def get_style_dna_service() -> StyleDNAExtractionService:
         prompt_registry=get_prompt_registry(),
         output_validator=get_output_validation_service(),
         trace_service=get_agent_trace_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_opening_agent_service() -> OpeningAgentService:
+    model_router = get_model_router()
+    return OpeningAgentService(
+        repository=get_opening_repository(),
+        temporary_text_store=get_opening_temporary_text_store(),
+        direction_generator=ModelRouterOpeningDirectionGenerator(model_router),
+        draft_generator=ModelRouterOpeningDraftGenerator(model_router),
+        originality_checker=ModelRouterOpeningOriginalityChecker(model_router),
+        candidate_draft_repository=get_candidate_draft_repository(),
     )
 
 

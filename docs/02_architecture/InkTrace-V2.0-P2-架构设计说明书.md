@@ -2,7 +2,7 @@
 
 版本：v2.0-p2-architecture
 更新时间：2026-06-08
-状态：候选冻结（已通过架构评审，11 项关键决策已冻结）
+状态：冻结生效（Opening Agent 已同步 v2.0 人本化裁决）
 
 依据文档：
 
@@ -266,7 +266,7 @@ application/services/ai/
   style_dna_service.py            # StyleDNAExtractionService
   citation_link_service.py        # CitationLinkService
   mention_service.py              # MentionService（@联想/mentions CRUD）
-  opening_agent_service.py        # OpeningAgentService（编排五阶段）
+  opening_agent_service.py        # OpeningAgentService（编排分段短用例）
   outline_assist_service.py       # OutlineAssistService
   selection_rewrite_service.py    # SelectionRewriteService
   cost_dashboard_service.py       # CostDashboardService
@@ -626,51 +626,46 @@ sequenceDiagram
 
 ### 4.6 Opening Agent（P2-S2）
 
-**复用关系**：作为 P2 唯一新增 Agent 类型，复用 P1 Agent Runtime (PPAO) + Tool Facade。
+**产品定位**：产品内统一称“开篇助手”。面向普通小说作者，默认不要求参考作品，也不暴露 Agent、Job、Session、Prompt 等技术概念。
 
-**五阶段 Workflow**：
+**复用关系**：复用 P1 Agent Runtime 的短任务执行能力、Tool Facade、ContextPack、WritingTask、Reviewer、CandidateDraft 与 HumanReviewGate；不使用跨用户确认的长生命周期 AIJob。
+
+**用户四步流程**：
 
 ```mermaid
-flowchart TB
-    P1["Phase 1: 参考分析\n导入参考小说前1-3章\n提取平台开篇规律"] -->
-    P2["Phase 2: 开篇策略\n结合用户题材/大纲/设定\n制定开篇策略"] -->
-    P3["Phase 3: 候选稿生成\n生成第1-3章候选稿\n(每章独立 CandidateDraft)"] -->
-    P4["Phase 4: 签约向审稿\n检查签约要素完成度\n(钩子/冲突/爽点/悬念)"] -->
-    P5["Phase 5: 过度模仿检测\n对比参考小说相似度\n输出 ImitationRiskReport"]
-
-    P3 -. "逐章走 HumanReviewGate\n不自动创建正式章节" .-> P3
+flowchart LR
+    B["说说你的故事"] --> D["选择开篇方向"]
+    D --> G["生成前三章候选稿"]
+    G --> R["逐章阅读与决定"]
+    REF["可选：添加灵感参考"] -.-> B
 ```
 
-**Agent 定义**：
+**后台短用例**：
 
-| 属性 | 值 |
-|---|---|
-| AgentType | `AgentType.OPENING` |
-| model_role（分析/规划） | `opening_agent` → Kimi |
-| model_role（生成） | `writer` → DeepSeek（复用） |
-| side_effect_level | candidate_write + review_write |
-| 可调用 Tool | get_work_outline, get_chapter_context, get_story_memory, get_story_state, build_context_pack, create_writing_task, create_candidate_draft, create_review_report, import_reference_novel, analyze_opening_patterns, generate_opening_drafts, check_imitation_risk, write_agent_trace, update_ai_job_progress |
-| 禁止 Tool | update_official_chapter_content, create_official_chapter_directly, accept_suggestion_as_user, bypass_human_review_gate |
-| 绝对禁止 | 创建正式章节、生成超过 3 章、未经版权确认导入参考文 |
-
-**新增 Tool（仅 Opening Agent 可调用）**：
-
-Tool 命名必须表达**业务用例**，不表达"调用模型"。模型调用由 Tool 背后的 Application Service 通过 ModelRouter 间接触发。
-
-| Tool | 功能 | 内部调用链 |
+| Use Case | 职责 | 是否等待用户 |
 |---|---|---|
-| `import_reference_novel` | 导入参考小说前 1-3 章。弹版权确认→存储分析摘要（不存完整文本） | OpeningAgentService → FileAdapter |
-| `analyze_opening_patterns` | 分析开篇规律→OpeningAnalysis | OpeningAgentService → ModelRouter(Kimi) |
-| `generate_opening_drafts` | 生成前三章候选稿→每章独立 CandidateDraft | OpeningAgentService → ModelRouter(DeepSeek) → CandidateDraftService |
-| `check_imitation_risk` | 过度模仿检测→ImitationRiskReport | OpeningAgentService → ModelRouter(Kimi) |
-| `create_opening_strategy` | 创建开篇策略→AI Suggestion | OpeningAgentService → AISuggestionService |
+| `prepare_opening_brief` | 汇总作者回答与作品已有大纲/人物/设定 | 否 |
+| `analyze_opening_references` | 可选参考分析，完成后立即清理完整原文 | 否 |
+| `generate_opening_directions` | 生成三个白话、差异明确的开篇方向 | 否 |
+| `confirm_opening_direction` | 真实用户确认唯一方向 | 是，业务状态等待，不保持运行中 Job |
+| `generate_opening_drafts` | 按章生成 1–3 章 CandidateDraft，并委托 Reviewer 审稿 | 否 |
+
+**风险双门控**：
+
+- 生成前检查方向与参考分析摘要的策略相似风险；high 时后端阻止生成。
+- 每章生成后检查稿件原创性；high 时保留 CandidateDraft，但后端阻止 apply，P2 初期不提供 override。
+
+**参考文本边界**：完整参考文本不得进入通用 AIJob.context 或业务表。跨请求临时保存必须通过 `TemporarySensitiveTextStore` Port，本地加密、默认 TTL 30 分钟、分析完成立即删除、启动时清理过期残留。
+
+**领域关系**：OpeningBrief → OpeningDirectionBatch/Direction → OpeningDraftBatch → CandidateDraft → OriginalityReport。历史记录版本化保留，不按 work_id 覆盖旧主键。
 
 **安全约束**：
 
-- 导入参考文本前**强制弹窗**："请确认您有权使用这些文本进行风格分析。"
-- 参考文本**不持久化完整内容**，只存分析摘要。
-- 模仿风险 high 时：候选稿仍生成但**显著标注风险警告**，提示用户修改。
-- 前三章候选稿逐章走 HumanReviewGate。
+- 无参考作品是正式主路径；参考作品为可选增强。
+- 生成不超过三章，每章独立 CandidateDraft。
+- 不创建或覆盖正式章节，不提供“一键全部应用”。
+- 方向确认、停止生成、候选稿 apply 均必须由真实 `user_action` 触发。
+- 普通日志不记录完整参考文本、Prompt、ContextPack、正文或候选稿。
 
 ---
 
@@ -962,8 +957,11 @@ class TraceEventType(StrEnum):
 | style_profiles | Style DNA | AI 分析 | 正式化需确认 |
 | citation_links | Citation Link | 元数据 | - |
 | chapter_mentions | @ 标签引用 | 用户数据 + AI 建议 | 采纳时确认 |
-| opening_analyses | Opening Agent | AI 分析 | - |
-| opening_strategies | Opening Agent | AI 建议 | 需要 |
+| opening_briefs | 开篇助手 | 作者故事说明与作品信息引用，版本化保留 | 用户输入 |
+| opening_reference_sessions | 开篇助手 | 可选参考摘要、版权确认与临时敏感存储引用 | 用户确认 |
+| opening_direction_batches / opening_directions | 开篇助手 | 三个开篇方向、版本与唯一确认结果 | 需要 user_action |
+| opening_draft_batches | 开篇助手 | 分章生成状态与 CandidateDraft result_ref | 用户可停止 |
+| opening_originality_reports | 开篇助手 | 策略级/稿件级原创性检查，关联具体方向和候选稿 | - |
 | selection_rewrite_candidates | 选区改写 | 候选数据 | 接受才替换 |
 | cost_budgets | 成本看板 | 配置 | 需要 |
 | cost_aggregation_cache | 成本看板 | 聚合缓存（可选，详细设计决策） | - |
@@ -1018,10 +1016,12 @@ PUT    /api/v2/chapters/{id}/mentions             # 更新章节 mentions
 GET    /api/v2/mentions/{id}/summary              # 悬停摘要
 
 # Opening Agent
-POST   /api/v2/ai/opening/import-reference        # 导入参考小说
-POST   /api/v2/ai/opening/analyze                 # 触发开篇分析
-POST   /api/v2/ai/opening/generate                # 生成前三章候选稿
-GET    /api/v2/ai/opening/{work_id}/status         # 状态查询
+POST   /api/v2/ai/opening/briefs                                      # 保存作者的故事说明
+POST   /api/v2/ai/opening/briefs/{brief_id}/references                # 可选：添加灵感参考
+POST   /api/v2/ai/opening/briefs/{brief_id}/directions:generate       # 生成三个开篇方向
+POST   /api/v2/ai/opening/directions/{direction_id}:confirm           # 用户确认方向
+POST   /api/v2/ai/opening/directions/{direction_id}/drafts:generate   # 分章生成候选稿
+GET    /api/v2/ai/opening/draft-batches/{batch_id}                    # 查询分章结果
 
 # 选区改写
 POST   /api/v2/ai/selection-rewrite               # 触发改写
@@ -1201,7 +1201,7 @@ GET    /api/v2/ai/analysis-dashboard/ai-usage?work_id=
 
 1. **Style DNA 标杆文本来源**：仅上传还是可从已有章节指定？建议两者都支持。
 2. **Citation Link 引用粒度**：片段级（逐句）还是章节级？建议 P2 先做章节级，片段级留 P3。
-3. **Opening Agent 参考文本摘要**：持久化到 opening_analyses 表还是仅内存？建议持久化分析摘要，不存完整文本。
+3. **Opening Agent 参考文本摘要（已由 P2-06 v2.0 裁决）**：持久化结构化摘要、范围、字数与不可逆 hash；完整原文只进入加密 `TemporarySensitiveTextStore`，分析完成立即删除。
 4. **选区改写 diff**：是否需要逐句/逐词对比？建议 P2 先做全文 diff 摘要，精细 diff 留 P3。
 5. **成本看板单价配置**：全局默认+作品可覆盖。
 6. **分析看板计算策略**：建议 ≤30 万字实时，>30 万字每日批量。

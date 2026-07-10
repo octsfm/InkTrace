@@ -240,7 +240,7 @@
         data-test="opening-agent-view"
       >
         <h5>开篇助手</h5>
-        <p class="ai-note">导入参考、分析开篇特点、确认策略与风险后，再进入正式候选稿生成链路。</p>
+          <p class="ai-note">先说说你的故事，选择一个开篇方向，再生成前三章候选稿。参考作品可以跳过。</p>
         <p class="ai-note" data-test="opening-agent-preview-status">
           {{ openingPreviewStatusHint }}
         </p>
@@ -319,11 +319,17 @@
 
     <OpeningAgentWizard
       :visible="openingWizardVisible"
-      :analysis="openingStore.analysis"
-      :strategy="openingStore.strategy"
-      :risk-level="openingStore.riskLevel"
+      :directions="openingStore.directionBatch?.directions || []"
+      :selected-direction="openingStore.selectedDirection"
+      :draft-batch="openingStore.draftBatch"
+      :busy="openingStore.loading"
+      :error-message="openingStore.actionError"
       @close="openingWizardVisible = false"
-      @generate="handleOpeningGenerate"
+      @create-directions="handleOpeningCreateDirections"
+      @refresh-directions="handleOpeningRefreshDirections"
+      @revise-direction="handleOpeningReviseDirection"
+      @confirm-direction="handleOpeningConfirmDirection"
+      @generate-drafts="handleOpeningGenerate"
     />
 
     <div v-if="showAIMode" class="ai-section">
@@ -1763,9 +1769,29 @@ const handleAutoQueueViewConflicts = async () => {
   }
 }
 
-const handleOpeningGenerate = () => {
-  openingWizardVisible.value = false
-  ElMessage.info('开篇助手入口已接入，正式生成链路待后续联调。')
+const handleOpeningCreateDirections = async (form) => {
+  await openingStore.createBrief(form)
+  if (form.references?.length) {
+    await openingStore.addReferences(form.references, form.rightsConfirmed)
+  }
+  await openingStore.generateDirections()
+}
+
+const handleOpeningConfirmDirection = async (directionId) => {
+  await openingStore.confirmDirection(directionId)
+}
+
+const handleOpeningRefreshDirections = async () => {
+  await openingStore.generateDirections()
+}
+
+const handleOpeningReviseDirection = async (form) => {
+  await openingStore.reviseDirection(form.directionId, form)
+}
+
+const handleOpeningGenerate = async () => {
+  await openingStore.generateDrafts()
+  ElMessage.success('前三章候选稿已准备好，请逐章查看。')
 }
 
 const handleOpeningRefresh = async () => {

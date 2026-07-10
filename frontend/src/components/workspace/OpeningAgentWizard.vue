@@ -1,363 +1,183 @@
 <template>
-  <div v-if="visible" class="opening-agent-wizard" data-test="opening-agent-wizard">
-    <div class="opening-agent-wizard__backdrop" @click="$emit('close')"></div>
-    <div class="opening-agent-wizard__dialog" role="dialog" aria-modal="true">
-      <header class="opening-agent-wizard__header">
-        <div>
-          <h4>开篇助手</h4>
-          <p>导入参考、分析开篇特点、确认策略与风险后，再进入正式候选稿生成链路。</p>
-        </div>
+  <div v-if="visible" class="opening-wizard" data-test="opening-agent-wizard">
+    <div class="opening-wizard__backdrop" @click="$emit('close')"></div>
+    <div class="opening-wizard__dialog" role="dialog" aria-modal="true" aria-label="开篇助手">
+      <header class="opening-wizard__header">
+        <div><h4>开篇助手</h4><p>把你的故事想法整理成前三章候选稿，是否采用始终由你决定。</p></div>
         <button type="button" class="ink-button ink-button--ghost" data-test="opening-close" @click="$emit('close')">关闭</button>
       </header>
 
-      <ol class="opening-agent-wizard__steps">
-        <li
-          v-for="(step, index) in steps"
-          :key="step.id"
-          class="opening-agent-wizard__step"
-          :class="{ 'opening-agent-wizard__step--active': currentStep === index }"
-        >
-          {{ index + 1 }}. {{ step.label }}
-        </li>
+      <ol class="opening-wizard__steps">
+        <li v-for="(item, index) in steps" :key="item" :class="{ active: step === index }">{{ index + 1 }}. {{ item }}</li>
       </ol>
 
-      <section class="opening-agent-wizard__content" data-test="opening-step">
-        <template v-if="currentStep === 0">
-          <h5>导入参考</h5>
-          <p class="opening-agent-wizard__note">请先确认你拥有参考文本的合法使用权，确认后才能进入下一步。</p>
-          <label class="opening-agent-wizard__checkbox">
-            <input data-test="opening-rights-confirm-step1" type="checkbox" v-model="rightsConfirmedStep1">
-            <span>我确认对参考文本拥有合法使用权</span>
-          </label>
+      <section class="opening-wizard__content" data-test="opening-step">
+        <template v-if="step === 0">
+          <h5>先说说你的故事</h5>
+          <p class="note">不用写得完整，一两句话就够。已有大纲和人物设定会自动参考。</p>
+          <label>这是一个什么故事？<textarea v-model.trim="form.storyPremise" data-test="opening-story-premise" /></label>
+          <label>主角现在最想要什么？<input v-model.trim="form.protagonistDesire" data-test="opening-protagonist-desire" /></label>
+          <label>希望读者看完第三章时最期待什么？<input v-model.trim="form.thirdChapterExpectation" data-test="opening-third-chapter-expectation" /></label>
+          <details>
+            <summary>添加灵感参考（可跳过）</summary>
+            <p class="note">请只添加你有权使用的内容。系统不会把参考原文加入你的小说，也不会长期保存原文。</p>
+            <button v-if="references.length < 3" type="button" class="ink-button ink-button--ghost" data-test="opening-add-reference" @click="addReference">添加一部参考</button>
+            <div v-for="(reference, index) in references" :key="reference.localId" class="reference-card">
+              <label>作品名称<input v-model.trim="reference.title" :data-test="`opening-reference-title-${index}`" /></label>
+              <label>前 1–3 章文本<textarea v-model="reference.text" :data-test="`opening-reference-text-${index}`" /></label>
+              <div class="reference-meta"><span>{{ reference.text.length }} / 30,000 字</span><button type="button" class="ink-button ink-button--ghost" @click="removeReference(index)">移除</button></div>
+            </div>
+            <label v-if="references.length" class="checkbox"><input v-model="rightsConfirmed" type="checkbox" data-test="opening-rights-confirm" />我确认有权将这些内容用于个人创作分析</label>
+          </details>
         </template>
 
-        <template v-else-if="currentStep === 1">
-          <h5>分析开篇特点</h5>
-          <p class="opening-agent-wizard__note">这里展示开篇分析的最小结果摘要，不展示参考全文。</p>
-          <div class="opening-agent-wizard__card" data-test="opening-analysis-summary">
-            <strong>分析摘要</strong>
-            <span>{{ openingAnalysis.analysis_summary }}</span>
+        <template v-else-if="step === 1">
+          <h5>选择一个开篇方向</h5>
+          <p class="note">这里只是在定开篇思路，还不会修改你的章节。</p>
+          <div v-if="!directions.length" class="empty">正在整理三个开篇方向…</div>
+          <button v-for="item in directions" :key="item.direction_id" type="button" class="direction-card"
+            :class="{ selected: selectedId === item.direction_id }" :data-test="`opening-direction-${item.direction_id}`"
+            @click="selectedId = item.direction_id">
+            <strong>{{ item.name }}</strong><span>{{ item.summary }}</span>
+            <small>{{ (item.chapter_goals || []).join(' → ') }}</small>
+          </button>
+          <div class="direction-actions">
+            <button type="button" class="ink-button ink-button--ghost" data-test="opening-edit-direction" :disabled="!selectedId || busy" @click="startEditing(false)">改一改这个方向</button>
+            <button type="button" class="ink-button ink-button--ghost" data-test="opening-write-direction" :disabled="!directions.length || busy" @click="startEditing(true)">我自己写方向</button>
+            <button type="button" class="ink-button ink-button--ghost" data-test="opening-new-batch" :disabled="busy" @click="emit('refresh-directions')">这批不合适，换一批</button>
           </div>
-          <div class="opening-agent-wizard__card" data-test="opening-analysis-hooks">
-            <strong>钩子模式</strong>
-            <ul class="opening-agent-wizard__list">
-              <li v-for="item in openingAnalysis.hook_patterns" :key="item">{{ item }}</li>
-            </ul>
-          </div>
-          <div class="opening-agent-wizard__card">
-            <strong>冲突模式</strong>
-            <ul class="opening-agent-wizard__list">
-              <li v-for="item in openingAnalysis.conflict_patterns" :key="item">{{ item }}</li>
-            </ul>
-          </div>
-          <div class="opening-agent-wizard__card">
-            <strong>爽点分布</strong>
-            <ul class="opening-agent-wizard__list">
-              <li v-for="item in openingAnalysis.satisfaction_points" :key="item">{{ item }}</li>
-            </ul>
-          </div>
-          <div class="opening-agent-wizard__card">
-            <strong>章尾悬念</strong>
-            <ul class="opening-agent-wizard__list">
-              <li v-for="item in openingAnalysis.chapter_end_hooks" :key="item">{{ item }}</li>
-            </ul>
+          <div v-if="editingDirection" class="direction-editor">
+            <h6>{{ writingOwnDirection ? '写下你的开篇方向' : '把这个方向改成你想要的样子' }}</h6>
+            <label>方向名称<input v-model.trim="directionForm.name" data-test="opening-direction-name-input" /></label>
+            <label>开篇思路<textarea v-model.trim="directionForm.summary" data-test="opening-direction-summary-input" /></label>
+            <label v-for="(_, index) in directionForm.chapterGoals" :key="index">
+              第 {{ index + 1 }} 章要发生什么？
+              <input v-model.trim="directionForm.chapterGoals[index]" :data-test="`opening-direction-goal-${index}`" />
+            </label>
+            <div class="direction-actions">
+              <button type="button" class="ink-button ink-button--ghost" @click="editingDirection = false">取消</button>
+              <button type="button" class="ink-button ink-button--primary" data-test="opening-save-direction" :disabled="!directionFormReady || busy" @click="saveDirection">保存为新方向</button>
+            </div>
           </div>
         </template>
 
-        <template v-else-if="currentStep === 2">
-          <h5>选择策略</h5>
-          <p class="opening-agent-wizard__note">当前展示开篇策略的冻结摘要；确认后才允许进入风险确认。</p>
-          <div class="opening-agent-wizard__card" data-test="opening-strategy-card">
-            <strong>目标读者</strong>
-            <span>{{ openingStrategy.target_audience }}</span>
-            <strong>类型定位</strong>
-            <span>{{ openingStrategy.genre_positioning }}</span>
-            <strong>开篇钩子</strong>
-            <span>{{ openingStrategy.opening_hook }}</span>
-            <strong>前三章目标</strong>
-            <span>{{ openingStrategy.first_three_chapter_goal }}</span>
-            <strong>主角登场</strong>
-            <span>{{ openingStrategy.protagonist_entry }}</span>
-            <strong>冲突引入</strong>
-            <span>{{ openingStrategy.conflict_entry }}</span>
-            <strong>签约卖点</strong>
-            <ul class="opening-agent-wizard__list">
-              <li v-for="item in openingStrategy.selling_points" :key="item">{{ item }}</li>
-            </ul>
-            <strong>禁止模仿点</strong>
-            <span>{{ openingStrategy.forbidden_similarity_notes }}</span>
-          </div>
-          <label class="opening-agent-wizard__checkbox">
-            <input data-test="opening-strategy-confirm" type="checkbox" v-model="strategyConfirmed">
-            <span>我已确认当前开篇策略方向</span>
-          </label>
+        <template v-else-if="step === 2">
+          <h5>生成前三章候选稿</h5>
+          <p>接下来只会生成候选稿，不会创建或覆盖正式章节。你可以逐章修改、采用或丢弃。</p>
+          <div class="summary-card"><strong>{{ selectedDirection?.name }}</strong><span>{{ selectedDirection?.summary }}</span></div>
         </template>
 
         <template v-else>
-          <h5>风险确认</h5>
-          <p
-            v-if="isHighRisk"
-            class="opening-agent-wizard__risk opening-agent-wizard__risk--high"
-          >
-            存在较高的模仿风险，建议返回修改策略后再生成。
-          </p>
-          <p v-else class="opening-agent-wizard__risk">
-            {{ riskSummary }}
-          </p>
-          <label class="opening-agent-wizard__checkbox">
-            <input data-test="opening-rights-confirm-step4" type="checkbox" v-model="rightsConfirmedStep4">
-            <span>我再次确认参考文本使用权与风险提示</span>
-          </label>
+          <h5>候选稿已经准备好</h5>
+          <p>请到候选稿区逐章阅读和决定。不会一次性应用三章。</p>
+          <ul><li v-for="item in chapterResults" :key="item.chapter_no">第 {{ item.chapter_no }} 章：{{ chapterStatus(item.status) }}</li></ul>
         </template>
+        <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
       </section>
 
-      <footer class="opening-agent-wizard__footer">
-        <button
-          type="button"
-          class="ink-button ink-button--ghost"
-          data-test="opening-prev"
-          :disabled="currentStep === 0"
-          @click="currentStep -= 1"
-        >
-          上一步
-        </button>
-
-        <button
-          v-if="currentStep < steps.length - 1"
-          type="button"
-          class="ink-button ink-button--primary"
-          data-test="opening-next"
-          :disabled="nextDisabled"
-          @click="currentStep += 1"
-        >
-          下一步
-        </button>
-
-        <button
-          v-else-if="isHighRisk"
-          type="button"
-          class="ink-button ink-button--ghost"
-          data-test="opening-return-modify"
-          @click="currentStep = 2"
-        >
-          返回修改
-        </button>
-
-        <button
-          v-else
-          type="button"
-          class="ink-button ink-button--primary"
-          data-test="opening-generate"
-          :disabled="generateDisabled"
-          @click="$emit('generate')"
-        >
-          {{ generateLabel }}
-        </button>
+      <footer class="opening-wizard__footer">
+        <button type="button" class="ink-button ink-button--ghost" :disabled="step === 0 || busy" @click="step -= 1">上一步</button>
+        <button v-if="step === 0" type="button" class="ink-button ink-button--primary" data-test="opening-create-directions" :disabled="!briefReady || busy" @click="submitBrief">看看开篇方向</button>
+        <button v-else-if="step === 1" type="button" class="ink-button ink-button--primary" data-test="opening-confirm-direction" :disabled="!selectedId || busy" @click="confirmSelected">就选这个</button>
+        <button v-else-if="step === 2" type="button" class="ink-button ink-button--primary" data-test="opening-generate" :disabled="busy" @click="generateDrafts">生成前三章候选稿</button>
+        <button v-else type="button" class="ink-button ink-button--primary" data-test="opening-finish" @click="$emit('close')">去看候选稿</button>
       </footer>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 const props = defineProps({
-  visible: {
-    type: Boolean,
-    default: false
-  },
-  riskLevel: {
-    type: String,
-    default: 'warning'
-  },
-  analysis: {
-    type: Object,
-    default: () => ({})
-  },
-  strategy: {
-    type: Object,
-    default: () => ({})
-  }
+  visible: { type: Boolean, default: false },
+  directions: { type: Array, default: () => [] },
+  selectedDirection: { type: Object, default: null },
+  draftBatch: { type: Object, default: null },
+  busy: { type: Boolean, default: false },
+  errorMessage: { type: String, default: '' },
+  analysis: { type: Object, default: () => ({}) },
+  strategy: { type: Object, default: () => ({}) },
+  riskLevel: { type: String, default: 'low' }
 })
+const emit = defineEmits(['close', 'create-directions', 'refresh-directions', 'revise-direction', 'confirm-direction', 'generate-drafts'])
+const steps = ['说说故事', '选择方向', '生成候选稿', '逐章决定']
+const step = ref(0)
+const selectedId = ref('')
+const rightsConfirmed = ref(false)
+const references = ref([])
+const editingDirection = ref(false)
+const writingOwnDirection = ref(false)
+const form = reactive({ storyPremise: '', protagonistDesire: '', thirdChapterExpectation: '' })
+const directionForm = reactive({ name: '', summary: '', chapterGoals: ['', '', ''], advantages: [], risks: [] })
+const referencesReady = computed(() => !references.value.length || (
+  rightsConfirmed.value && references.value.every((item) => item.title && item.text && item.text.length <= 30000)
+))
+const briefReady = computed(() => form.storyPremise && form.protagonistDesire && form.thirdChapterExpectation && referencesReady.value)
+const chapterResults = computed(() => props.draftBatch?.chapter_results || [])
+const directionFormReady = computed(() => directionForm.name && directionForm.summary && directionForm.chapterGoals.every(Boolean))
 
-defineEmits(['close', 'generate'])
-
-const steps = [
-  { id: 'import', label: '导入参考' },
-  { id: 'analyze', label: '分析特点' },
-  { id: 'strategy', label: '选择策略' },
-  { id: 'risk', label: '风险确认' }
-]
-
-const currentStep = ref(0)
-const rightsConfirmedStep1 = ref(false)
-const strategyConfirmed = ref(false)
-const rightsConfirmedStep4 = ref(false)
-
-const openingAnalysis = computed(() => ({
-  analysis_summary: '参考作通常在前三章快速建立悬念，并持续抛出新的未解问题。',
-  hook_patterns: ['前 500 字引入异常事件'],
-  conflict_patterns: ['主角被迫卷入核心冲突'],
-  satisfaction_points: ['节奏快、线索密集'],
-  chapter_end_hooks: ['章尾抛出新的关键疑点'],
-  ...(props.analysis || {})
-}))
-
-const openingStrategy = computed(() => ({
-  target_audience: '签约向悬疑读者',
-  genre_positioning: '都市悬疑',
-  opening_hook: '用异常事件快速抓住读者',
-  first_three_chapter_goal: '三章内建立主角、主冲突与核心悬念',
-  protagonist_entry: '第一章前半段完成登场',
-  conflict_entry: '第一章结尾抛出不可回避的主冲突',
-  selling_points: ['节奏快', '悬念强'],
-  forbidden_similarity_notes: '避免直接复用参考作的关键设定与场景编排',
-  ...(props.strategy || {})
-}))
-
-const normalizedRiskLevel = computed(() => String(props.riskLevel || 'warning').toLowerCase())
-const isHighRisk = computed(() => ['high', 'blocking'].includes(normalizedRiskLevel.value))
-
-const riskSummary = computed(() => {
-  if (normalizedRiskLevel.value === 'low') return '当前风险较低，确认后可以继续生成。'
-  if (normalizedRiskLevel.value === 'medium') return '当前存在中等风险，建议确认策略后再继续生成。'
-  return '当前存在提示级风险，请确认你已理解风险再继续生成。'
+const addReference = () => { if (references.value.length < 3) references.value.push({ localId: Date.now() + Math.random(), title: '', text: '' }) }
+const removeReference = (index) => { references.value.splice(index, 1); if (!references.value.length) rightsConfirmed.value = false }
+const submitBrief = () => emit('create-directions', {
+  ...form,
+  rightsConfirmed: rightsConfirmed.value,
+  references: references.value.map((item) => ({ title: item.title, chaptersText: [item.text] }))
 })
-
-const nextDisabled = computed(() => {
-  if (currentStep.value === 0) return !rightsConfirmedStep1.value
-  if (currentStep.value === 2) return !strategyConfirmed.value
-  return false
-})
-
-const generateDisabled = computed(() => !rightsConfirmedStep4.value)
-const generateLabel = computed(() => '了解风险，继续生成')
-
-const resetWizard = () => {
-  currentStep.value = 0
-  rightsConfirmedStep1.value = false
-  strategyConfirmed.value = false
-  rightsConfirmedStep4.value = false
+const confirmSelected = () => emit('confirm-direction', selectedId.value)
+const startEditing = (writeOwn) => {
+  const source = props.directions.find((item) => item.direction_id === selectedId.value) || props.directions[0]
+  if (!source) return
+  selectedId.value = source.direction_id
+  writingOwnDirection.value = writeOwn
+  directionForm.name = writeOwn ? '' : source.name || ''
+  directionForm.summary = writeOwn ? '' : source.summary || ''
+  directionForm.chapterGoals = writeOwn ? ['', '', ''] : [...(source.chapter_goals || []).slice(0, 3)]
+  while (directionForm.chapterGoals.length < 3) directionForm.chapterGoals.push('')
+  directionForm.advantages = writeOwn ? [] : [...(source.advantages || [])]
+  directionForm.risks = writeOwn ? [] : [...(source.risks || [])]
+  editingDirection.value = true
 }
+const saveDirection = () => {
+  emit('revise-direction', {
+    directionId: selectedId.value, name: directionForm.name, summary: directionForm.summary,
+    chapterGoals: [...directionForm.chapterGoals], advantages: [...directionForm.advantages], risks: [...directionForm.risks]
+  })
+  editingDirection.value = false
+}
+const generateDrafts = () => emit('generate-drafts')
+const chapterStatus = (value) => value === 'waiting_review' ? '等你查看' : value === 'failed' ? '生成失败，可以重试' : '已保留'
 
-watch(
-  () => props.visible,
-  (visible) => {
-    if (visible) {
-      resetWizard()
-    }
-  }
-)
+watch(() => props.directions, (value) => { if (value.length && step.value === 0) step.value = 1 }, { deep: true, immediate: true })
+watch(() => props.selectedDirection, (value) => { if (value?.direction_id) { selectedId.value = value.direction_id; step.value = 2 } })
+watch(() => props.draftBatch, (value) => { if (value?.draft_batch_id) step.value = 3 })
+watch(() => props.visible, (visible) => { if (visible && !props.draftBatch) step.value = props.selectedDirection ? 2 : props.directions.length ? 1 : 0 })
 </script>
 
 <style scoped>
-.opening-agent-wizard {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-}
-
-.opening-agent-wizard__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.42);
-}
-
-.opening-agent-wizard__dialog {
-  position: relative;
-  width: min(860px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
-  margin: 24px auto;
-  overflow: auto;
-  border-radius: 24px;
-  border: 1px solid var(--ink-border);
-  background: var(--ink-surface-1);
-  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
-}
-
-.opening-agent-wizard__header,
-.opening-agent-wizard__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 20px 24px;
-}
-
-.opening-agent-wizard__header {
-  border-bottom: 1px solid var(--ink-border);
-}
-
-.opening-agent-wizard__header h4,
-.opening-agent-wizard__content h5 {
-  margin: 0;
-  color: var(--ink-text-primary);
-}
-
-.opening-agent-wizard__header p,
-.opening-agent-wizard__note,
-.opening-agent-wizard__risk,
-.opening-agent-wizard__card span,
-.opening-agent-wizard__card li {
-  color: var(--ink-text-secondary);
-}
-
-.opening-agent-wizard__steps {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0;
-  padding: 16px 24px 0;
-  list-style: none;
-}
-
-.opening-agent-wizard__step {
-  border: 1px solid var(--ink-border);
-  border-radius: 16px;
-  padding: 10px 12px;
-  color: var(--ink-text-muted);
-  background: var(--ink-surface-2);
-}
-
-.opening-agent-wizard__step--active {
-  border-color: var(--ink-accent);
-  color: var(--ink-accent);
-  background: color-mix(in srgb, var(--ink-accent) 10%, var(--ink-surface-1));
-}
-
-.opening-agent-wizard__content {
-  display: grid;
-  gap: 14px;
-  padding: 20px 24px;
-}
-
-.opening-agent-wizard__card {
-  display: grid;
-  gap: 8px;
-  border: 1px solid var(--ink-border);
-  border-radius: 18px;
-  padding: 16px;
-  background: var(--ink-surface-2);
-}
-
-.opening-agent-wizard__list {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.opening-agent-wizard__checkbox {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  color: var(--ink-text-secondary);
-}
-
-.opening-agent-wizard__risk--high {
-  color: var(--ink-danger-text);
-  font-weight: 600;
-}
-
-.opening-agent-wizard__footer {
-  border-top: 1px solid var(--ink-border);
-}
+.opening-wizard { position: fixed; inset: 0; z-index: 60; }
+.opening-wizard__backdrop { position: absolute; inset: 0; background: rgba(15, 23, 42, .48); }
+.opening-wizard__dialog { position: relative; width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; margin: 24px auto; padding: 20px; border-radius: 16px; background: var(--ink-surface, #fff); box-shadow: 0 24px 64px rgba(15, 23, 42, .22); }
+.opening-wizard__header, .opening-wizard__footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.opening-wizard__header h4 { margin: 0 0 4px; font-size: 20px; }
+.opening-wizard__header p, .note { margin: 0; color: #64748b; font-size: 13px; }
+.opening-wizard__steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 20px 0; padding: 0; list-style: none; font-size: 12px; color: #94a3b8; }
+.opening-wizard__steps li { padding: 8px; border-radius: 8px; background: #f1f5f9; text-align: center; }
+.opening-wizard__steps li.active { color: #2563eb; background: #eff6ff; font-weight: 700; }
+.opening-wizard__content { display: grid; gap: 14px; min-height: 280px; }
+.opening-wizard__content label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
+textarea, input { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 10px; font: inherit; }
+textarea { min-height: 80px; resize: vertical; }
+.checkbox { grid-template-columns: auto 1fr !important; align-items: center; font-weight: 400 !important; }
+.checkbox input { width: auto; }
+.reference-card { display: grid; gap: 10px; margin-top: 10px; padding: 12px; border: 1px solid #dbe3ee; border-radius: 10px; }
+.reference-meta { display: flex; align-items: center; justify-content: space-between; color: #64748b; font-size: 12px; }
+.direction-card, .summary-card { display: grid; gap: 6px; width: 100%; padding: 14px; border: 1px solid #dbe3ee; border-radius: 12px; background: #fff; text-align: left; }
+.direction-card.selected { border-color: #2563eb; background: #eff6ff; }
+.direction-card span, .direction-card small, .summary-card span { color: #64748b; }
+.direction-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.direction-editor { display: grid; gap: 10px; padding: 14px; border: 1px solid #bfdbfe; border-radius: 12px; background: #eff6ff; }
+.direction-editor h6 { margin: 0; font-size: 15px; }
+.opening-wizard__footer { margin-top: 20px; }
+.error { color: #dc2626; }
 </style>
