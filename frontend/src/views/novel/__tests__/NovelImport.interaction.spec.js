@@ -99,10 +99,13 @@ describe('NovelImport 整理进度与控制', () => {
     const text = wrapper.text()
     expect(text).toContain('整理任务已暂停')
     expect(text).toContain('状态：已暂停')
-    expect(text).toContain('阶段：paused')
+    expect(text).toContain('阶段：已暂停')
+    expect(text).toContain('策略：按章节优先')
     expect(text).toContain('暂停整理')
     expect(text).toContain('继续整理')
     expect(text).toContain('取消整理')
+    expect(text).not.toContain('阶段：paused')
+    expect(text).not.toContain('策略:chapter_first')
   })
 
   it('点击控制按钮会触发暂停继续取消接口', async () => {
@@ -152,5 +155,12 @@ describe('NovelImport 整理进度与控制', () => {
     await flushPromises()
 
     expect(ElMessage.error).toHaveBeenCalledWith(errorMessage)
+  })
+
+  it('展示导入说明时使用中文标点', async () => {
+    const wrapper = await mountPage()
+
+    expect(wrapper.text()).toContain('导入完成后会进入整理流程，随后可以进入写作工作台继续创作。')
+    expect(wrapper.text()).not.toContain('导入完成后会进入整理流程,随后可以进入写作工作台继续创作。')
   })
 })

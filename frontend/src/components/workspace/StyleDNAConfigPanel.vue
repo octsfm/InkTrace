@@ -3,7 +3,7 @@
     <div class="style-dna-panel__header">
       <div>
         <h4>风格画像</h4>
-        <p>上传样章文本,提取结构化文风特征,并由你决定是否激活。</p>
+        <p>上传样章文本，提取结构化文风特征，并由你决定是否激活。</p>
       </div>
       <button
         data-test="style-dna-refresh"
@@ -41,7 +41,7 @@
 
     <div v-if="aiSettingsBlocked" class="style-dna-panel__banner style-dna-panel__banner--warning">
       <strong>AI 设置未完成</strong>
-      <span>请先配置可用模型服务与任务模型,再提取风格画像。</span>
+      <span>请先配置可用模型服务与任务模型，再提取风格画像。</span>
     </div>
 
     <div v-if="warningCopy" class="style-dna-panel__banner style-dna-panel__banner--warning">
@@ -61,14 +61,14 @@
         data-test="style-dna-input"
         rows="6"
         :disabled="aiSettingsBlocked || extracting"
-        placeholder="粘贴已确认章节中的样章正文,不会持久化完整文本。"
+        placeholder="粘贴已确认章节中的样章正文，不会持久化完整文本。"
         @input="$emit('update:draft-text', $event.target.value)"
       />
     </label>
 
     <div v-else class="style-dna-panel__field">
       <span>从已有章节选择</span>
-      <span class="style-dna-panel__hint">仅限已确认章节,最多选择 3 章;草稿章节不可作为样章来源。</span>
+      <span class="style-dna-panel__hint">仅限已确认章节，最多选择 3 章；草稿章节不可作为样章来源。</span>
       <div v-if="chapterOptions.length" class="style-dna-panel__chapter-options">
         <label
           v-for="option in chapterOptions"
@@ -90,7 +90,7 @@
 
     <div class="style-dna-panel__meta">
       <span>字数 {{ characterCount }}</span>
-      <span v-if="extractJobActive">提取中,请稍候</span>
+      <span v-if="extractJobActive">提取中，请稍候</span>
       <span v-else-if="currentStatus">状态 {{ currentStatus }}</span>
       <span v-if="currentProfile?.confidence !== undefined">置信度 {{ confidenceLabel }}</span>
     </div>
@@ -157,7 +157,7 @@
         <span>时态偏好 {{ tenseLabel(currentProfile.tense_preference) }}</span>
       </div>
       <p v-if="currentProfile.low_confidence_reason" class="style-dna-panel__note">
-        低置信度原因:{{ currentProfile.low_confidence_reason }}
+        低置信度原因：{{ currentProfile.low_confidence_reason }}
       </p>
     </div>
 
@@ -177,6 +177,9 @@
         <span>叙述视角 {{ perspectiveLabel(activeProfile.narrative_perspective) }}</span>
         <span>时态偏好 {{ tenseLabel(activeProfile.tense_preference) }}</span>
       </div>
+      <p v-if="activeProfile.low_confidence_reason" class="style-dna-panel__note">
+        低置信度原因：{{ activeProfile.low_confidence_reason }}
+      </p>
     </div>
 
     <div v-if="historyProfiles.length" class="style-dna-panel__history">
@@ -288,10 +291,10 @@ const confidenceLabel = computed(() => {
 const warningCopy = computed(() => {
   if (props.warningMessage) return props.warningMessage
   if (props.currentProfile?.low_confidence_reason) {
-    return `当前画像置信度较低:${props.currentProfile.low_confidence_reason}`
+    return `当前画像置信度较低：${props.currentProfile.low_confidence_reason}`
   }
   if (props.activeProfile?.low_confidence_reason) {
-    return `当前画像置信度较低:${props.activeProfile.low_confidence_reason}`
+    return `当前画像置信度较低：${props.activeProfile.low_confidence_reason}`
   }
   return ''
 })

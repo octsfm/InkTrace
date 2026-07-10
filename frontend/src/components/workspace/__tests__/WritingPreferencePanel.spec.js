@@ -17,6 +17,8 @@ describe('WritingPreferencePanel', () => {
 
     await wrapper.get('[data-test="font-monospace"]').trigger('click')
 
+    expect(wrapper.text()).toContain('这里只调整正文阅读体验，包括字体、字号和行高，不会修改全局界面主题和正文内容。')
+    expect(wrapper.text()).not.toContain('这里只调整正文阅读体验,包括字体、字号和行高,不会修改全局界面主题和正文内容。')
     expect(wrapper.emitted('update-preferences')).toEqual([
       [{ fontFamily: 'monospace' }]
     ])

@@ -3,7 +3,7 @@
     <div class="auto-queue-panel__header">
       <div>
         <h4>自动续写</h4>
-        <p>为当前作品配置自动续写队列;安全模式逐章确认,连续模式在通过审阅后自动推进。</p>
+        <p>为当前作品配置自动续写队列；安全模式逐章确认，连续模式在通过审阅后自动推进。</p>
       </div>
       <button
         data-test="auto-queue-refresh"
@@ -18,7 +18,7 @@
 
     <div v-if="aiSettingsBlocked" class="auto-queue-panel__banner auto-queue-panel__banner--warning">
       <strong>AI 设置未完成</strong>
-      <span>请先配置可用模型服务与任务模型,再启动自动续写。</span>
+      <span>请先配置可用模型服务与任务模型，再启动自动续写。</span>
     </div>
 
     <div v-else-if="errorMessage" class="auto-queue-panel__banner auto-queue-panel__banner--error">
@@ -61,7 +61,7 @@
     </div>
 
     <p class="auto-queue-panel__hint">
-      {{ queueMode === 'safe' ? '安全模式:每章完成后暂停,等你确认后继续。' : '连续模式:审阅通过后自动继续,但遇到阻断冲突仍会暂停。' }}
+      {{ queueMode === 'safe' ? '安全模式：每章完成后暂停，等你确认后继续。' : '连续模式：审阅通过后自动继续，但遇到阻断冲突仍会暂停。' }}
     </p>
 
     <label class="auto-queue-panel__field">
@@ -306,8 +306,8 @@
         class="auto-queue-panel__stop-record"
         data-test="auto-queue-stop-record"
       >
-        <span v-if="currentRunStopReasonCopy">停止原因:{{ currentRunStopReasonCopy }}</span>
-        <span v-if="currentRunSuggestedActionCopy">建议操作:{{ currentRunSuggestedActionCopy }}</span>
+                <span v-if="currentRunStopReasonCopy">停止原因：{{ currentRunStopReasonCopy }}</span>
+        <span v-if="currentRunSuggestedActionCopy">建议操作：{{ currentRunSuggestedActionCopy }}</span>
       </div>
       <div
         v-if="perChapterItems.length"
@@ -426,11 +426,11 @@ const showViewConflicts = computed(() => String(props.currentRun?.stop_record?.s
 const displayNote = computed(() => {
   const status = String(props.currentRun?.status || '')
   if (status === 'running') return `正在生成第 ${generatedCount.value + 1} 章`
-  if (status === 'stopping') return '正在停止,等待当前章节处理完成。'
-  if (status === 'waiting_user_decision' && generatedCount.value > 0) return `第 ${generatedCount.value} 章已生成,需要你确认`
+  if (status === 'stopping') return '正在停止，等待当前章节处理完成。'
+  if (status === 'waiting_user_decision' && generatedCount.value > 0) return `第 ${generatedCount.value} 章已生成，需要你确认`
   if (status === 'completed') return '全部章节已生成'
-  if (status === 'failed') return '当前队列执行失败,请检查停止原因或稍后重试。'
-  if (status === 'cancelled') return '当前队列已取消,已生成候选稿会保留。'
+  if (status === 'failed') return '当前队列执行失败，请检查停止原因或稍后重试。'
+  if (status === 'cancelled') return '当前队列已取消，已生成候选稿会保留。'
   return props.noteMessage || stopRecordCopy(props.currentRun?.stop_record)
 })
 const bannerModifierClass = computed(() => {
@@ -468,14 +468,14 @@ const noteTitle = computed(() => {
 })
 const summaryCopy = computed(() => {
   const status = String(props.currentRun?.status || '')
-  if (status === 'waiting_user_decision') return `当前队列在安全模式下暂停,已生成 ${generatedCount.value} 章候选稿,等待你确认后继续。`
-  if (status === 'running') return `当前队列正在运行,已生成 ${generatedCount.value} 章候选稿。`
-  if (status === 'paused') return `当前队列已暂停,已生成 ${generatedCount.value} 章候选稿。`
-  if (status === 'stopped') return `当前队列已停止,已生成 ${generatedCount.value} 章候选稿,候选稿会保留在候选稿区。`
-  if (status === 'stopping') return '当前队列正在停止,等待当前章节处理完成后结束。'
-  if (status === 'completed') return `当前队列已完成,累计生成 ${generatedCount.value} 章候选稿。`
-  if (status === 'failed') return '当前队列执行失败,请检查停止原因或稍后重试。'
-  if (status === 'cancelled') return '当前队列已取消,已生成候选稿会保留。'
+  if (status === 'waiting_user_decision') return `当前队列在安全模式下暂停，已生成 ${generatedCount.value} 章候选稿，等待你确认后继续。`
+  if (status === 'running') return `当前队列正在运行，已生成 ${generatedCount.value} 章候选稿。`
+  if (status === 'paused') return `当前队列已暂停，已生成 ${generatedCount.value} 章候选稿。`
+  if (status === 'stopped') return `当前队列已停止，已生成 ${generatedCount.value} 章候选稿，候选稿会保留在候选稿区。`
+  if (status === 'stopping') return '当前队列正在停止，等待当前章节处理完成后结束。'
+  if (status === 'completed') return `当前队列已完成，累计生成 ${generatedCount.value} 章候选稿。`
+  if (status === 'failed') return '当前队列执行失败，请检查停止原因或稍后重试。'
+  if (status === 'cancelled') return '当前队列已取消，已生成候选稿会保留。'
   return `当前队列状态为 ${statusLabel(status)}。`
 })
 const progressTargetChapters = computed(() => Number(props.currentRun?.target_chapters || props.targetChapters || 0))
@@ -518,9 +518,9 @@ const chapterItemStatusLabel = (status) => ({ review_passed: '审阅通过', can
 
 const stopRecordCopy = (stopRecord) => {
   const reason = String(stopRecord?.stop_reason || '')
-  if (reason === 'budget_exceeded') return '预算已超出,自动续写已暂停。'
-  if (reason === 'blocking_review_consecutive') return '连续出现严重冲突,自动续写已停止。'
-  if (reason === 'user_manual_stop') return '你已手动停止队列,已生成候选稿会保留。'
+  if (reason === 'budget_exceeded') return '预算已超出，自动续写已暂停。'
+  if (reason === 'blocking_review_consecutive') return '连续出现严重冲突，自动续写已停止。'
+  if (reason === 'user_manual_stop') return '你已手动停止队列，已生成候选稿会保留。'
   return ''
 }
 const stopReasonLabel = (stopRecord) => {

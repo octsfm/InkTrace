@@ -45,7 +45,7 @@
         <li v-for="item in candidateDrafts" :key="item.candidate_draft_id" class="entity-card">
           <div class="entity-summary">
             <strong>{{ item.candidate_draft_id }}</strong>
-            <span>{{ displayStatus(item.status) }}</span>
+            <span>{{ displayStatus(item.status || 'pending') }}</span>
             <span>{{ displayValidationStatus(item.validation_status) }}</span>
             <span>{{ item.content_preview || text.noPreview }}</span>
             <span v-if="selectedVersionByDraft[item.candidate_draft_id]">
@@ -417,7 +417,7 @@
             </li>
           </ul>
           <div v-if="agentTraceDetails[trace.trace_id]" class="note-box">
-            {{ agentTraceDetails[trace.trace_id].summary || text.traceDetailLoaded }}
+            {{ displayTraceDetailSummary(agentTraceDetails[trace.trace_id]) }}
           </div>
         </li>
       </ul>
@@ -570,7 +570,7 @@ const statusLabels = {
   waiting_for_review: '\u7b49\u5f85\u5ba1\u6279',
   approved: '\u5ba1\u6279\u901a\u8fc7',
   detail: '\u5df2\u52a0\u8f7d\u8be6\u60c5',
-  revision: '\u4fee\u8ba2\u8bb0\u5f55'
+  revision: '\u5f85\u67e5\u770b\u4fee\u8ba2'
 }
 
 const validationStatusLabels = {
@@ -629,7 +629,8 @@ const agentTypeLabels = {
   planner: '\u89c4\u5212\u65b9\u5411',
   writer: '\u751f\u6210\u5019\u9009\u7a3f',
   reviewer: '\u5ba1\u9605\u7a3f\u4ef6',
-  rewriter: '\u4fee\u8ba2\u7a3f\u4ef6'
+  rewriter: '\u4fee\u8ba2\u7a3f\u4ef6',
+  conflict_guard: '\u51b2\u7a81\u5b88\u536b'
 }
 
 const stepActionLabels = {
@@ -637,7 +638,13 @@ const stepActionLabels = {
   draft: '\u751f\u6210\u5019\u9009\u7a3f',
   rewrite: '\u6267\u884c\u4fee\u8ba2',
   planning: '\u89c4\u5212\u4efb\u52a1',
-  analysis: '\u5206\u6790\u4e0a\u4e0b\u6587'
+  analysis: '\u5206\u6790\u4e0a\u4e0b\u6587',
+  run_writer: '\u751f\u6210\u5019\u9009\u7a3f',
+  plan: '\u89c4\u5212\u4efb\u52a1',
+  confirm_direction: '\u786e\u8ba4\u65b9\u5411',
+  wait_direction: '\u7b49\u5f85\u65b9\u5411\u9009\u62e9',
+  validate: '\u6821\u9a8c\u7ed3\u679c',
+  call_tool: '\u8c03\u7528\u5de5\u5177'
 }
 
 const memoryTargetLabels = {
@@ -677,6 +684,11 @@ const displayAgentType = (value) => agentTypeLabels[String(value || '')] || Stri
 const displayStepAction = (value) => stepActionLabels[String(value || '')] || String(value || '\u672a\u77e5\u52a8\u4f5c')
 const displayMemoryTargetType = (value) => memoryTargetLabels[String(value || '')] || String(value || '\u672a\u77e5\u8bb0\u5fc6')
 const displayRevisionType = (value) => revisionTypeLabels[String(value || '')] || String(value || '\u672a\u77e5\u4fee\u8ba2')
+const displayTraceDetailSummary = (value) => {
+  const summary = String(value?.summary || '').trim()
+  if (!summary || summary.toLowerCase() === 'detail') return text.traceDetailLoaded
+  return summary
+}
 
 const conflictsByDraft = computed(() => {
   const grouped = {}

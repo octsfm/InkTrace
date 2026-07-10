@@ -120,7 +120,7 @@ describe('WorksList 页面', () => {
 
   it('展示书架主入口与作品列表', async () => {
     const wrapper = await mountPage()
-    expect(wrapper.text()).toContain('选择作品,开始写作')
+    expect(wrapper.text()).toContain('选择作品，开始写作')
     expect(wrapper.text()).toContain('新建作品')
     expect(wrapper.text()).toContain('导入 TXT')
     expect(wrapper.text()).toContain('我的作品')
@@ -166,7 +166,9 @@ describe('WorksList 页面', () => {
 
     await wrapper.find('.more-button').trigger('click')
     await wrapper.find('.menu-item.danger').trigger('click')
-    expect(wrapper.text()).toContain('此操作不可恢复,确认删除?')
+    expect(wrapper.text()).toContain('确认删除作品？')
+    expect(wrapper.text()).toContain('此操作不可恢复，确认删除？')
+    expect(wrapper.text()).not.toContain('此操作不可恢复,确认删除?')
     await wrapper.find('.danger-button').trigger('click')
     await flushPromises()
 

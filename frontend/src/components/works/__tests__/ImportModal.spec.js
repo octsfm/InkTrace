@@ -7,9 +7,11 @@ const source = readFileSync(resolve(process.cwd(), 'src/components/works/ImportM
 describe('ImportModal contract', () => {
   it('defines txt file selection and upload fields', () => {
     expect(source).toContain('导入 TXT')
+    expect(source).toContain('选择本地 TXT 文件后，系统会创建作品并导入章节。')
     expect(source).toContain('accept=".txt,text/plain"')
     expect(source).toContain('handleFallbackFileChange')
     expect(source).toContain('selectedFileLabel')
+    expect(source).toContain('placeholder="可选，不填则使用文件名"')
   })
 
   it('calls v1 import api with txt file title and author', () => {

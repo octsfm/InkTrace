@@ -3,14 +3,14 @@
     <header class="settings-header">
       <div>
         <h1>设置中心</h1>
-        <p>在这里统一管理全局界面与 AI 配置,写作台不再承载全局设置。</p>
+        <p>在这里统一管理全局界面与 AI 配置，写作台不再承载全局设置。</p>
       </div>
     </header>
 
     <div class="settings-grid">
       <article class="settings-card">
         <h2>界面与阅读设置</h2>
-        <p class="settings-tip">界面主题作用于整个应用,所有主功能区保持一致。</p>
+        <p class="settings-tip">界面主题作用于整个应用，所有主功能区保持一致。</p>
 
         <div class="field-grid">
           <label class="field">
@@ -39,8 +39,8 @@
 
       <article class="settings-card">
         <h2>AI 设置</h2>
-        <p class="settings-tip">先配置可用模型服务 Key,再完成任务模型配置。分析任务和写作任务是必填项。</p>
-        <p class="settings-tip">说明:模型服务就是"大模型提供商或接入服务",例如 DeepSeek、Kimi、OpenAI。</p>
+                <p class="settings-tip">先配置可用模型服务密钥，再完成任务模型配置。分析任务和写作任务是必填项。</p>
+                <p class="settings-tip">说明：模型服务就是“大模型提供商或接入服务”，例如 DeepSeek、Kimi、OpenAI。</p>
 
         <div v-if="loading" class="settings-tip">正在加载 AI 设置...</div>
 
@@ -51,7 +51,7 @@
               <div class="provider-header">
                 <strong>{{ displayProviderName(provider.provider_name) }}</strong>
                 <span>{{ provider.enabled ? '已启用' : '已停用' }}</span>
-                <span>Key:{{ provider.key_configured ? '已配置' : '未配置' }}</span>
+                                <span>密钥：{{ provider.key_configured ? '已配置' : '未配置' }}</span>
                 <span v-if="provider.api_key_masked">{{ provider.api_key_masked }}</span>
               </div>
               <div class="field-grid">
@@ -64,12 +64,12 @@
                   <input v-model="provider.default_model" type="text" placeholder="例如 deepseek-chat" />
                 </label>
                 <label class="field">
-                  <span>模型服务 Key</span>
+                  <span>模型服务密钥</span>
                   <input
                     v-model="provider.api_key"
                     type="password"
                     autocomplete="new-password"
-                    placeholder="输入新 Key(不会回显旧值)"
+                    placeholder="输入新密钥(不会回显旧值)"
                   />
                 </label>
                 <label class="field">
@@ -83,7 +83,7 @@
               </div>
               <div class="provider-actions">
                 <button type="button" class="ink-button ink-button--ghost" @click="testProviderConnection(provider.provider_name)">测试连接</button>
-                <span v-if="provider.last_test_status">测试状态:{{ displayTestStatus(provider.last_test_status) }}</span>
+                                <span v-if="provider.last_test_status">测试状态：{{ displayTestStatus(provider.last_test_status) }}</span>
                 <span v-if="provider.last_test_error_message" class="error-text">{{ provider.last_test_error_message }}</span>
               </div>
             </div>
@@ -159,7 +159,7 @@ const requiredSettingsRoles = REQUIRED_SETTINGS_ROLES
 const themeClass = computed(() => `settings-center--${String(preferenceStore.appTheme || 'light')}`)
 const providerConfigs = computed(() => settingsForm.provider_configs || [])
 const roleLabelMap = {
-  analysis: '分析任务模型',
+    analysis: '分析任务模型',
   planning: '规划任务模型',
   writer: '写作任务模型',
   reviewer: '审阅任务模型',
@@ -169,7 +169,7 @@ const providerNameAliasMap = {
   fake: '测试占位服务(不可正式使用)'
 }
 const testStatusLabelMap = {
-  ok: '连接成功',
+    ok: '连接成功',
   passed: '通过',
   failed: '失败',
   unknown: '未知',
@@ -229,16 +229,16 @@ const resetSettingsForm = (payload) => {
 const aiSettingsBlockMessage = computed(() => {
   const enabledProviders = providerConfigs.value.filter((provider) => provider.enabled)
   if (!enabledProviders.some((provider) => provider.key_configured || String(provider.api_key || '').trim())) {
-    return '请至少配置一个已启用模型服务的 Key。'
+    return '请至少配置一个已启用模型服务的密钥。'
   }
   for (const role of ['analysis', 'writer']) {
     const mapping = settingsForm.model_role_mappings[role]
     if (!mapping || !String(mapping.provider_name || '').trim() || !String(mapping.model_name || '').trim()) {
-      return `请完成"${displayRoleLabel(role)}"并选择可用模型服务。`
+      return `请完成“${displayRoleLabel(role)}”并选择可用模型服务。`
     }
     const provider = providerConfigs.value.find((item) => item.provider_name === mapping.provider_name)
     if (!provider || !provider.enabled || !(provider.key_configured || String(provider.api_key || '').trim())) {
-      return `"${displayRoleLabel(role)}"选择的模型服务不可用,请检查启用状态和 Key。`
+      return `“${displayRoleLabel(role)}”选择的模型服务不可用，请检查启用状态和密钥。`
     }
   }
   return ''

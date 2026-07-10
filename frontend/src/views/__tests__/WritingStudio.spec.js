@@ -1227,7 +1227,7 @@ describe('WritingStudio focus mode', () => {
     await wrapper.vm.handleSelectionRewriteAccept({ finalText: '月光静静落在旧窗台上' })
     await flushStudio()
 
-    expect(elMessage.error).toHaveBeenCalledWith('改写结果已确认,但本地草稿应用失败,请手动重试。')
+    expect(elMessage.error).toHaveBeenCalledWith('改写结果已确认，但本地草稿应用失败，请手动重试。')
     expect(chapterStore.activeChapterContent).toBe(originalDraft)
     expect(selectionRewriteStore.modalVisible).toBe(true)
 

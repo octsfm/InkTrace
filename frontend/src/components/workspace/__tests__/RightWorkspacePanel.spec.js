@@ -48,6 +48,8 @@ describe('RightWorkspacePanel', () => {
 
     await wrapper.find('[data-workspace-tab="timeline"]').trigger('click')
     expect(wrapper.find('.right-workspace-panel__dirty-guard').exists()).toBe(true)
+    expect(wrapper.text()).toContain('请先保存或放弃当前修改，再继续切换右侧工作区。')
+    expect(wrapper.text()).not.toContain('请先保存或放弃当前修改,再继续切换右侧工作区。')
 
     await wrapper.find('[data-test="workspace-dirty-save"]').trigger('click')
     expect(wrapper.emitted('save-dirty')?.[0]).toEqual(['outline'])

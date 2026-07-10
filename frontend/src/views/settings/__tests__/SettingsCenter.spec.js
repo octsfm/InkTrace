@@ -93,10 +93,14 @@ describe('SettingsCenter', () => {
     expect(getAISettings).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('设置中心')
     expect(wrapper.text()).toContain('AI 设置')
+    expect(wrapper.text()).toContain('在这里统一管理全局界面与 AI 配置，写作台不再承载全局设置。')
+    expect(wrapper.text()).toContain('界面主题作用于整个应用，所有主功能区保持一致。')
     expect(wrapper.text()).toContain('deepseek')
     expect(wrapper.text()).toContain('已启用')
-    expect(wrapper.text()).toContain('Key：已配置')
+    expect(wrapper.text()).toContain('密钥：已配置')
+    expect(wrapper.text()).not.toContain('Key：已配置')
     expect(wrapper.text()).toContain('sk-***1234')
+    expect(wrapper.text()).not.toContain('在这里统一管理全局界面与 AI 配置,写作台不再承载全局设置。')
   })
 
   it('未完成 analysis 或 writer 配置时展示阻断提示', async () => {
@@ -116,6 +120,49 @@ describe('SettingsCenter', () => {
 
     expect(wrapper.text()).toContain('AI 设置未完成')
     expect(wrapper.text()).toContain('请完成“分析任务模型”并选择可用模型服务。')
+  })
+
+  it('模型服务不可用时使用中文标点提示', async () => {
+    getAISettings.mockResolvedValueOnce({
+      data: buildSettingsPayload({
+        provider_configs: [
+          {
+            provider_name: 'deepseek',
+            enabled: false,
+            default_model: 'deepseek-chat',
+            api_key_masked: 'sk-***1234',
+            key_configured: true,
+            timeout: 30,
+            base_url: 'https://api.deepseek.com',
+            last_test_status: 'not_tested',
+            last_test_error_message: ''
+          },
+          {
+            provider_name: 'fake',
+            enabled: true,
+            default_model: 'fake-chat',
+            api_key_masked: 'sk-***fake',
+            key_configured: true,
+            timeout: 30,
+            base_url: '',
+            last_test_status: 'not_tested',
+            last_test_error_message: ''
+          }
+        ],
+        model_role_mappings: {
+          analysis: { provider_name: 'deepseek', model_name: 'deepseek-chat' },
+          planning: { provider_name: 'fake', model_name: 'fake-chat' },
+          writer: { provider_name: 'deepseek', model_name: 'deepseek-writer' },
+          reviewer: { provider_name: 'fake', model_name: 'fake-chat' },
+          rewriter: { provider_name: 'fake', model_name: 'fake-chat' }
+        }
+      })
+    })
+
+    const { wrapper } = await mountPage()
+
+    expect(wrapper.text()).toContain('“分析任务模型”选择的模型服务不可用，请检查启用状态和密钥。')
+    expect(wrapper.text()).not.toContain('“分析任务模型”选择的模型服务不可用,请检查启用状态和密钥。')
   })
 
   it('保存 AI 配置时透传 caller_type、user_action 与幂等键', async () => {

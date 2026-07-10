@@ -93,6 +93,7 @@ describe('ForeshadowPanel', () => {
 
     expect(mockGetContextPackReadiness).toHaveBeenCalledWith('work-1', 'chapter-2')
     expect(wrapper.text()).toContain('卷弧提示')
+    expect(wrapper.text()).toContain('按状态筛选伏笔，编辑后需手动保存。')
     expect(wrapper.text()).toContain('确认灯塔背后的势力')
     expect(wrapper.text()).toContain('地图来源')
     expect(wrapper.text()).toContain('灯塔来历')

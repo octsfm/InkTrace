@@ -44,8 +44,8 @@
         <article class="plot-arc-card">
               <h5>主线轨道</h5>
           <p v-if="masterArcSummary.arc_title">{{ masterArcSummary.arc_title }}</p>
-          <p v-if="masterArcSummary.current_stage">当前阶段:{{ masterArcSummary.current_stage }}</p>
-          <p v-if="masterArcSummary.ultimate_goal">终局目标:{{ masterArcSummary.ultimate_goal }}</p>
+          <p v-if="masterArcSummary.current_stage">当前阶段：{{ masterArcSummary.current_stage }}</p>
+          <p v-if="masterArcSummary.ultimate_goal">终局目标：{{ masterArcSummary.ultimate_goal }}</p>
         </article>
         <article class="plot-arc-card">
               <h5>卷轨道</h5>
@@ -63,7 +63,7 @@
 
     <div class="outline-editor-shell">
       <template v-if="currentMode === 'work'">
-        <p class="outline-description">`content_text` 是唯一真源,树结构仅作为派生缓存保存。</p>
+        <p class="outline-description">`content_text` 是唯一真源，树结构仅作为派生缓存保存。</p>
         <textarea
           class="outline-textarea"
           :value="draftText"
@@ -75,8 +75,8 @@
       </template>
 
       <template v-else>
-        <p v-if="activeChapterId" class="chapter-outline-caption">当前章节:{{ activeChapterId }}</p>
-        <div v-if="!activeChapterId" class="outline-empty-state">请先选择一个章节,再编辑章节大纲。</div>
+        <p v-if="activeChapterId" class="chapter-outline-caption">当前章节：{{ activeChapterId }}</p>
+        <div v-if="!activeChapterId" class="outline-empty-state">请先选择一个章节，再编辑章节大纲。</div>
         <textarea
           v-else
           class="outline-textarea chapter-outline-textarea"
@@ -102,7 +102,7 @@
     </footer>
 
     <section v-if="modeSwitchGuardVisible" class="mode-switch-guard">
-      <p>当前编辑区存在未保存内容,切换前请选择处理方式。</p>
+      <p>当前编辑区存在未保存内容，切换前请选择处理方式。</p>
       <div class="mode-switch-guard-actions">
         <button type="button" class="ink-button ink-button--primary save-button" @click="handleGuardSave">保存并切换</button>
         <button type="button" class="ink-button ink-button--ghost ghost-button" @click="handleGuardDiscard">放弃并切换</button>
@@ -208,8 +208,8 @@ const conflictVisible = computed(() => (
 ))
 const conflictDescription = computed(() => (
   conflictAssetType.value === 'chapter_outline'
-    ? '章节大纲已在其他位置被修改,请先处理冲突,再决定是否清除本地草稿。'
-    : '作品大纲已在其他位置被修改,请先处理冲突,再决定是否清除本地草稿。'
+    ? '章节大纲已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。'
+    : '作品大纲已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。'
 ))
 const localConflictContent = computed(() => (
   conflictAssetType.value === 'chapter_outline' ? chapterDraftText.value : draftText.value

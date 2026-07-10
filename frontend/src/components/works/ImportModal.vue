@@ -4,7 +4,7 @@
       <div class="modal-header">
         <div>
           <h3>导入 TXT</h3>
-          <p>选择本地 TXT 文件后,系统会创建作品并导入章节。</p>
+          <p>选择本地 TXT 文件后，系统会创建作品并导入章节。</p>
         </div>
         <button type="button" class="ink-button ink-button--ghost ghost-button" @click="close">关闭</button>
       </div>
@@ -27,7 +27,7 @@
 
         <label class="field-block">
           <span class="field-label">作品标题</span>
-          <input v-model="form.title" class="field-input" placeholder="可选,不填则使用文件名" />
+          <input v-model="form.title" class="field-input" placeholder="可选，不填则使用文件名" />
         </label>
 
         <label class="field-block">

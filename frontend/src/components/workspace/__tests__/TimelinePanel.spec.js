@@ -91,6 +91,9 @@ describe('TimelinePanel', () => {
 
     expect(mockGetContextPackReadiness).toHaveBeenCalledWith('work-1', 'chapter-2')
     expect(wrapper.text()).toContain('近期剧情窗口')
+    expect(wrapper.text()).toContain('按顺序维护故事事件，编辑后需手动保存。')
+    expect(wrapper.text()).toContain('序列目标：完成第一轮追索')
+    expect(wrapper.text()).toContain('活跃线索：灯塔谜团')
     expect(wrapper.text()).toContain('灯塔谜团')
     expect(wrapper.text()).toContain('顾迟进入灯塔')
     expect(wrapper.text()).toContain('完成第一轮追索')

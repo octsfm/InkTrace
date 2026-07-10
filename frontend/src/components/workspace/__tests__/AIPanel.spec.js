@@ -57,6 +57,9 @@ const listConflicts = vi.fn()
 const getConflict = vi.fn()
 const listMemoryGates = vi.fn()
 const listAgentTraces = vi.fn()
+const getAgentTrace = vi.fn()
+const getAgentTraceSteps = vi.fn()
+const getAgentTraceDetailView = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({
@@ -82,8 +85,7 @@ vi.mock('../ReviewTab.vue', () => ({
     props: ['workId', 'chapterId', 'chapterVersion', 'developerMode'],
     template: `
       <div data-test="review-tab-stub">
-        审阅工作区占位
-        <span data-test="review-tab-work">{{ workId }}</span>
+        ???????        <span data-test="review-tab-work">{{ workId }}</span>
         <span data-test="review-tab-chapter">{{ chapterId }}</span>
       </div>
     `
@@ -144,7 +146,10 @@ vi.mock('@/api', () => ({
     listConflicts,
     getConflict,
     listMemoryGates,
-    listAgentTraces
+    listAgentTraces,
+    getAgentTrace,
+    getAgentTraceSteps,
+    getAgentTraceDetailView
   }
 }))
 
@@ -199,10 +204,10 @@ describe('AIPanel', () => {
           immediate_window: { status: 'ready' }
         },
         plot_arc_summary: {
-          master_arc: { arc_title: '灯塔迷局', current_stage: '追查旧地图', ultimate_goal: '揭开海雾秘密' },
-          volume_arc: { stage_goal: '确认灯塔背后的势力', stage_open_loops: ['地图来源'] },
-          sequence_arc: { sequence_goal: '完成第一轮追索', key_events: ['发现旧地图'] },
-          immediate_window: { active_plot_threads: ['灯塔谜团'], recent_chapters_summary: ['顾迟进入灯塔'] }
+          master_arc: { arc_title: '????', current_stage: '?????', ultimate_goal: '??????' },
+          volume_arc: { stage_goal: '?????????', stage_open_loops: ['????'] },
+          sequence_arc: { sequence_goal: '???????', key_events: ['?????'] },
+          immediate_window: { active_plot_threads: ['????'], recent_chapters_summary: ['??????'] }
         }
       }
     })
@@ -244,7 +249,7 @@ describe('AIPanel', () => {
           options: [{
             option_id: 'opt_a',
             label: 'A',
-            plot_summary: '沿着钟声推进灯塔谜团'
+            plot_summary: '??????????'
           }]
         }]
       }
@@ -255,10 +260,10 @@ describe('AIPanel', () => {
         items: [{
           chapter_plan_id: 'plan_1',
           status: 'waiting_for_confirmation',
-          plan_summary: '未来三章围绕灯塔调查展开',
+          plan_summary: '????????????',
           plan_items: [{
             item_id: 'cpi_1',
-            chapter_goal: '潜入灯塔档案室'
+            chapter_goal: '???????'
           }]
         }]
       }
@@ -269,8 +274,8 @@ describe('AIPanel', () => {
         items: [{
           writing_task_id: 'wt_1',
           status: 'ready',
-          writing_goal: '潜入灯塔档案室并锁定钟声来源',
-          plan_summary: '未来三章围绕灯塔调查展开'
+          writing_goal: '??????????????',
+          plan_summary: '????????????'
         }]
       }
     })
@@ -280,8 +285,8 @@ describe('AIPanel', () => {
         writing_task_id: 'wt_1',
         status: 'ready',
         writing_goal: '??????????????',
-        must_include: ['??????'],
-        must_not_include: ['??????'],
+        must_include: ['????????'],
+        must_not_include: ['????????'],
         plan_summary: '????????????',
         metadata: {}
       }
@@ -303,8 +308,8 @@ describe('AIPanel', () => {
     listPlotArcs.mockResolvedValue({
       data: {
         items: [
-          { arc_id: 'arc_master_1', arc_level: 'master_arc', title: '灯塔迷局', status: 'ready', summary: '主线围绕灯塔真相展开。' },
-          { arc_id: 'arc_volume_1', arc_level: 'volume_arc', title: '卷一目标', status: 'pending', summary: '确认灯塔背后的势力。' }
+          { arc_id: 'arc_master_1', arc_level: 'master_arc', title: '????', status: 'ready', summary: '???????????' },
+          { arc_id: 'arc_volume_1', arc_level: 'volume_arc', title: '????', status: 'pending', summary: '??????????' }
         ]
       }
     })
@@ -313,10 +318,10 @@ describe('AIPanel', () => {
       data: {
         arc_id: 'arc_master_1',
         arc_level: 'master_arc',
-        title: '灯塔迷局',
+        title: '????',
         status: 'ready',
-        summary: '主线围绕灯塔真相展开。',
-        key_points: ['旧地图', '钟声来源']
+        summary: '???????????',
+        key_points: ['???', '????']
       }
     })
 
@@ -430,7 +435,7 @@ describe('AIPanel', () => {
         writing_task: { writing_task_id: 'wt_2', status: 'ready' }
       }
     })
-    runQuickTrial.mockResolvedValue({ data: { status: 'succeeded', output_text: '试跑输出', validation_status: 'passed' } })
+    runQuickTrial.mockResolvedValue({ data: { status: 'succeeded', output_text: '璇曡窇杈撳嚭', validation_status: 'passed' } })
   })
 
   afterEach(() => {
@@ -444,8 +449,8 @@ describe('AIPanel', () => {
 
     await vi.runAllTimersAsync()
 
-    expect(wrapper.text()).toContain('使用前检查')
-    expect(wrapper.text()).toContain('详细配置与模型服务商管理请前往"设置"页面')
+    expect(wrapper.text()).toContain('?????')
+    expect(wrapper.text()).toContain('?????????????????????')
     expect(listCandidateDrafts).not.toHaveBeenCalled()
     expect(listAISuggestions).not.toHaveBeenCalled()
     expect(listMemoryGates).not.toHaveBeenCalled()
@@ -463,9 +468,9 @@ describe('AIPanel', () => {
         chapterVersion: 3,
         mode: 'ai',
         chapterOptions: [
-          { id: 'chapter-1', title: '起点', content: '第一章正文', status: 'published', order_index: 1 },
-          { id: 'chapter-2', title: '转折', content: '第二章正文', status: 'published', order_index: 2 },
-          { id: 'chapter-3', title: '草稿', content: '第三章正文', status: 'draft', order_index: 3 }
+          { id: 'chapter-1', title: '??', content: '?????', status: 'published', order_index: 1 },
+          { id: 'chapter-2', title: '??', content: '?????', status: 'published', order_index: 2 },
+          { id: 'chapter-3', title: '??', content: '?????', status: 'draft', order_index: 3 }
         ],
         draftChapterIds: ['chapter-3']
       }
@@ -530,7 +535,7 @@ describe('AIPanel', () => {
     getAISuggestion.mockResolvedValue({
       data: {
         suggestion_id: 'sg_001',
-        summary: '建议先补侦查,再进入档案室。'
+        summary: '建议先补侦查，再进入档案室。'
       }
     })
     acceptAISuggestion.mockResolvedValue({ data: { suggestion_id: 'sg_001', status: 'accepted' } })
@@ -556,7 +561,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="suggestion-detail-sg_001"]').trigger('click')
     await flushPromises()
     expect(getAISuggestion).toHaveBeenCalledWith('sg_001')
-    expect(wrapper.get('[data-test="outline-assist-view"]').text()).toContain('建议先补侦查,再进入档案室。')
+    expect(wrapper.get('[data-test="outline-assist-view"]').text()).toContain('建议先补侦查，再进入档案室。')
 
     await wrapper.get('[data-test="suggestion-accept-sg_001"]').trigger('click')
     await flushPromises()
@@ -612,7 +617,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').text()).toContain('采纳中')
+    expect(wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').text()).toContain('采纳中...')
     expect(wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').attributes('disabled')).toBeDefined()
 
     resolveAccept({
@@ -633,11 +638,11 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_accept_guard_001',
-            title: '强化灯塔章节细纲',
+            title: '寮哄寲鐏绔犺妭缁嗙翰',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
-            summary: '建议补足潜入前的侦查段落'
+            summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑渚︽煡娈佃惤'
           }]
         }
       })
@@ -645,11 +650,11 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_accept_guard_001',
-            title: '强化灯塔章节细纲',
+            title: '寮哄寲鐏绔犺妭缁嗙翰',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'accepted',
-            summary: '采纳后回刷结果'
+            summary: '閲囩撼鍚庡洖鍒风粨鏋?'
           }]
         }
       })
@@ -695,11 +700,11 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_action_loading_001',
-            title: '强化灯塔章节细纲',
+            title: '寮哄寲鐏绔犺妭缁嗙翰',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
-            summary: '建议补足潜入前的侦查段落'
+            summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑渚︽煡娈佃惤'
           }]
         }
       })
@@ -707,11 +712,11 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_action_loading_001',
-            title: '强化灯塔章节细纲',
+            title: '寮哄寲鐏绔犺妭缁嗙翰',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
-            summary: 'dismiss 后回刷结果'
+            summary: 'dismiss 鍚庡洖鍒风粨鏋?'
           }]
         }
       })
@@ -719,11 +724,11 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_action_loading_001',
-            title: '强化灯塔章节细纲',
+            title: '寮哄寲鐏绔犺妭缁嗙翰',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
-            summary: 'convert 后回刷结果'
+            summary: 'convert 鍚庡洖鍒风粨鏋?'
           }]
         }
       })
@@ -750,7 +755,7 @@ describe('AIPanel', () => {
 
     await wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').text()).toContain('忽略中')
+    expect(wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').text()).toContain('忽略中...')
     expect(wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').attributes('disabled')).toBeDefined()
 
     resolveDismiss({
@@ -763,17 +768,17 @@ describe('AIPanel', () => {
 
     wrapper.vm.outlineAssistStore.setSuggestions([{
       suggestion_id: 'sg_action_loading_001',
-      title: '强化灯塔章节细纲',
+      title: '寮哄寲鐏绔犺妭缁嗙翰',
       suggestion_type: 'outline_expand',
       severity: 'warning',
       status: 'pending',
-      summary: '再次进入 convert'
+      summary: '鍐嶆杩涘叆 convert'
     }])
     await flushPromises()
 
     await wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').text()).toContain('转换中')
+    expect(wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').text()).toContain('转换中...')
     expect(wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').attributes('disabled')).toBeDefined()
 
     resolveConvert({
@@ -793,11 +798,11 @@ describe('AIPanel', () => {
       data: {
         items: [{
           suggestion_id: 'sg_apply_001',
-          title: '补全档案室潜入节点',
+          title: '琛ュ叏妗ｆ瀹ゆ綔鍏ヨ妭鐐?',
           suggestion_type: 'outline_expand',
           severity: 'warning',
           status: 'accepted',
-          summary: '建议将侦查段落并入正式大纲节点。'
+          summary: '寤鸿灏嗕睛鏌ユ钀藉苟鍏ユ寮忓ぇ绾茶妭鐐广€?'
         }]
       }
     })
@@ -843,11 +848,11 @@ describe('AIPanel', () => {
       data: {
         items: [{
           suggestion_id: 'sg_apply_success_001',
-          title: '补全雨夜潜入细纲',
+          title: '琛ュ叏闆ㄥ娼滃叆缁嗙翰',
           suggestion_type: 'outline_expand',
           severity: 'warning',
           status: 'accepted',
-          summary: '建议补足潜入前的地形观察。'
+          summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑鍦板舰瑙傚療銆?'
         }]
       }
     })
@@ -903,11 +908,11 @@ describe('AIPanel', () => {
           },
           {
             suggestion_id: 'sg_detail_001',
-            title: '生成章节细纲',
+            title: '补全潜入前的观察段落',
             suggestion_type: 'chapter_outline_detail',
             severity: 'warning',
             status: 'accepted',
-            summary: '细化本章场景节拍。'
+            summary: '缁嗗寲鏈珷鍦烘櫙鑺傛媿銆?'
           },
           {
             suggestion_id: 'sg_task_001',
@@ -915,7 +920,7 @@ describe('AIPanel', () => {
             suggestion_type: 'writing_task_suggestion',
             severity: 'warning',
             status: 'accepted',
-            summary: '重新聚焦钟声来源的调查目标。'
+            summary: '閲嶆柊鑱氱劍閽熷０鏉ユ簮鐨勮皟鏌ョ洰鏍囥€?'
           }
         ]
       }
@@ -944,8 +949,8 @@ describe('AIPanel', () => {
 
     expect(wrapper.text()).toContain('调整写作任务目标')
     expect(wrapper.text()).not.toContain('润色灯塔入口描述')
-    expect(wrapper.text()).not.toContain('扩写外墙侦查节点')
-    expect(wrapper.text()).not.toContain('生成章节细纲')
+    expect(wrapper.text()).not.toContain('鎵╁啓澶栧渚︽煡鑺傜偣')
+    expect(wrapper.text()).not.toContain('补全潜入前的观察段落')
   })
 
   it('shows refresh button and loading state for outline assist suggestions', async () => {
@@ -988,7 +993,7 @@ describe('AIPanel', () => {
     await refreshButton.trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新中')
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新中...')
     expect(wrapper.get('[data-test="outline-assist-refresh"]').attributes('disabled')).toBeDefined()
 
     resolveRefresh({
@@ -1030,7 +1035,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新中')
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新中...')
     expect(wrapper.get('[data-test="outline-assist-loading"]').text()).toContain('正在加载建议')
 
     resolveList({
@@ -1086,7 +1091,7 @@ describe('AIPanel', () => {
 
     expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新建议')
     expect(wrapper.get('[data-test="outline-assist-refresh"]').attributes('disabled')).toBeUndefined()
-    expect(wrapper.text()).toContain('大纲建议加载失败,请稍后重试')
+    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
   })
 
   it('shows generating and failed lifecycle hints for outline suggestions', async () => {
@@ -1149,35 +1154,35 @@ describe('AIPanel', () => {
         items: [
           {
             suggestion_id: 'sg_accepted_001',
-            title: '扩写灯塔外墙侦查节点',
+            title: '??????????',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'accepted',
-            summary: '建议补足潜入前侦查。'
+            summary: '寤鸿琛ヨ冻娼滃叆鍓嶄睛鏌ャ€?'
           },
           {
             suggestion_id: 'sg_applied_001',
-            title: '已应用的章节细纲',
+            title: '宸插簲鐢ㄧ殑绔犺妭缁嗙翰',
             suggestion_type: 'chapter_outline_detail',
             severity: 'warning',
             status: 'applied',
-            summary: '该建议已经写入正式大纲。'
+            summary: '璇ュ缓璁凡缁忓啓鍏ユ寮忓ぇ绾层€?'
           },
           {
             suggestion_id: 'sg_dismissed_001',
-            title: '已忽略的扩写建议',
+            title: '宸插拷鐣ョ殑鎵╁啓寤鸿',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'dismissed',
-            summary: '该建议已被忽略。'
+            summary: '璇ュ缓璁凡琚拷鐣ャ€?'
           },
           {
             suggestion_id: 'sg_converted_001',
-            title: '已转执行动作的建议',
+            title: '宸茶浆鎵ц鍔ㄤ綔鐨勫缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'converted',
-            summary: '该建议已转为执行动作。'
+            summary: '璇ュ缓璁凡杞负鎵ц鍔ㄤ綔銆?'
           }
         ]
       }
@@ -1227,19 +1232,19 @@ describe('AIPanel', () => {
         items: [
           {
             suggestion_id: 'sg_task_pending_001',
-            title: '优化写作任务目标',
+            title: '浼樺寲鍐欎綔浠诲姟鐩爣',
             suggestion_type: 'writing_task_suggestion',
             severity: 'warning',
             status: 'pending',
-            summary: '建议把任务重点聚焦到钟声来源。'
+            summary: '寤鸿鎶婁换鍔￠噸鐐硅仛鐒﹀埌閽熷０鏉ユ簮銆?'
           },
           {
             suggestion_id: 'sg_task_accepted_001',
-            title: '已采纳的写作任务建议',
+            title: '?????????',
             suggestion_type: 'writing_task_suggestion',
             severity: 'warning',
             status: 'accepted',
-            summary: '该建议已进入写作任务确认链。'
+            summary: '璇ュ缓璁凡杩涘叆鍐欎綔浠诲姟纭閾俱€?'
           }
         ]
       }
@@ -1282,7 +1287,7 @@ describe('AIPanel', () => {
           suggestion_type: 'outline_polish',
           severity: 'warning',
           status: 'accepted',
-          summary: '建议先润色这一段,再决定是否并入正式大纲。',
+          summary: '建议先润色这一段，再决定是否并入正式大纲。',
           payload_json: {
             target_kind: 'selection',
             target_id: null
@@ -1315,11 +1320,11 @@ describe('AIPanel', () => {
       data: {
         items: [{
           suggestion_id: 'sg_stale_001',
-          title: '补充灯塔外墙侦查段落',
+          title: '??????????',
           suggestion_type: 'outline_expand',
           severity: 'warning',
           status: 'stale',
-          summary: '建议补强主角在进入档案室前的外部侦查。'
+          summary: '寤鸿琛ュ己涓昏鍦ㄨ繘鍏ユ。妗堝鍓嶇殑澶栭儴渚︽煡銆?'
         }]
       }
     })
@@ -1338,7 +1343,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="suggestion-stale-hint-sg_stale_001"]').text()).toContain('大纲已被修改,当前建议可能已经过期')
+    expect(wrapper.get('[data-test="suggestion-stale-hint-sg_stale_001"]').text()).toContain('大纲已被修改，当前建议可能已经过期。')
   })
 
   it('shows refresh action next to stale outline suggestion hint', async () => {
@@ -1351,7 +1356,7 @@ describe('AIPanel', () => {
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'stale',
-            summary: '建议可能与当前大纲版本不一致。'
+            summary: '建议可能与当前大纲版本不一致。',
           }]
         }
       })
@@ -1363,7 +1368,7 @@ describe('AIPanel', () => {
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
-            summary: '已重新获取最新建议。'
+            summary: '已重新获取最新建议。',
           }]
         }
       })
@@ -1396,11 +1401,11 @@ describe('AIPanel', () => {
       data: {
         items: [{
           suggestion_id: 'sg_conflict_001',
-          title: '补全档案室节点',
+          title: '琛ュ叏妗ｆ瀹よ妭鐐?',
           suggestion_type: 'outline_expand',
           severity: 'warning',
           status: 'pending',
-          summary: '建议补足潜入前的侦查步骤。'
+          summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑渚︽煡姝ラ銆?'
         }]
       }
     })
@@ -1417,17 +1422,17 @@ describe('AIPanel', () => {
       data: {
         items: [{
           record_id: 'cg_outline_001',
-          title: '正式大纲节点冲突',
+          title: '目标节点已发生冲突',
           severity: 'blocking',
-          summary: '目标节点已被其他操作修改,请先确认差异。'
+          summary: '目标节点已被其他操作修改，请先确认差异。'
         }]
       }
     })
     getConflict.mockResolvedValue({
       data: {
         record_id: 'cg_outline_001',
-        title: '正式大纲节点冲突',
-        summary: '目标节点已被其他操作修改,请先确认差异。'
+        title: '目标节点已发生冲突',
+        summary: '目标节点已被其他操作修改，请先确认差异。'
       }
     })
 
@@ -1456,8 +1461,8 @@ describe('AIPanel', () => {
       work_id: 'work-1',
       chapter_id: 'chapter-1'
     })
-    expect(wrapper.get('[data-test="outline-assist-conflicts"]').text()).toContain('正式大纲节点冲突')
-    expect(wrapper.get('[data-test="outline-assist-conflicts"]').text()).toContain('目标节点已被其他操作修改,请先确认差异')
+    expect(wrapper.get('[data-test="outline-assist-conflicts"]').text()).toContain('目标节点已发生冲突')
+    expect(wrapper.get('[data-test="outline-assist-conflicts"]').text()).toContain('目标节点已被其他操作修改，请先确认差异')
   })
 
   it('clears outline assist conflict handoff when chapter changes', async () => {
@@ -1465,11 +1470,11 @@ describe('AIPanel', () => {
       data: {
         items: [{
           suggestion_id: 'sg_conflict_002',
-          title: '补全潜入前侦查节点',
+          title: '琛ュ叏娼滃叆鍓嶄睛鏌ヨ妭鐐?',
           suggestion_type: 'outline_expand',
           severity: 'warning',
           status: 'pending',
-          summary: '建议补足潜入前的侦查步骤。'
+          summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑渚︽煡姝ラ銆?'
         }]
       }
     })
@@ -1486,16 +1491,16 @@ describe('AIPanel', () => {
       data: {
         items: [{
           record_id: 'cg_outline_002',
-          title: '大纲节点存在冲突',
+          title: '澶х翰鑺傜偣瀛樺湪鍐茬獊',
           severity: 'blocking',
-          summary: '当前章节的大纲节点已发生变化。'
+          summary: '褰撳墠绔犺妭鐨勫ぇ绾茶妭鐐瑰凡鍙戠敓鍙樺寲銆?'
         }]
       }
     })
     getConflict.mockResolvedValue({
       data: {
         record_id: 'cg_outline_002',
-        summary: '当前章节的大纲节点已发生变化。'
+        summary: '褰撳墠绔犺妭鐨勫ぇ绾茶妭鐐瑰凡鍙戠敓鍙樺寲銆?'
       }
     })
 
@@ -1532,19 +1537,19 @@ describe('AIPanel', () => {
         items: [
           {
             suggestion_id: 'sg_conflict_003',
-            title: '补全侦查节点',
+            title: '??????????',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
-            summary: '建议补足潜入前的侦查步骤。'
+            summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑渚︽煡姝ラ銆?'
           },
           {
             suggestion_id: 'sg_convert_ok_001',
-            title: '转为普通执行动作',
+            title: '杞负鏅€氭墽琛屽姩浣?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
-            summary: '该建议可直接转为普通动作。'
+            summary: '璇ュ缓璁彲鐩存帴杞负鏅€氬姩浣溿€?'
           }
         ]
       }
@@ -1572,16 +1577,16 @@ describe('AIPanel', () => {
       data: {
         items: [{
           record_id: 'cg_outline_003',
-          title: '侦查节点冲突',
+          title: '???????',
           severity: 'blocking',
-          summary: '目标节点已被其他操作修改。'
+          summary: '鐩爣鑺傜偣宸茶鍏朵粬鎿嶄綔淇敼銆?'
         }]
       }
     })
     getConflict.mockResolvedValue({
       data: {
         record_id: 'cg_outline_003',
-        summary: '目标节点已被其他操作修改。'
+        summary: '鐩爣鑺傜偣宸茶鍏朵粬鎿嶄綔淇敼銆?'
       }
     })
 
@@ -1615,7 +1620,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_apply_002',
-            title: '补全潜入节点',
+            title: '补全潜入前的观察段落',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'accepted',
@@ -1631,7 +1636,7 @@ describe('AIPanel', () => {
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'accepted',
-            summary: 'chapter-2 建议。'
+            summary: 'chapter-2 建议'
           }]
         }
       })
@@ -1704,7 +1709,7 @@ describe('AIPanel', () => {
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
-            summary: '下一章同 id 建议'
+            summary: '下一章建议已生成',
           }]
         }
       })
@@ -1733,7 +1738,7 @@ describe('AIPanel', () => {
 
     await wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').text()).toContain('采纳中')
+    expect(wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').text()).toContain('采纳中...')
 
     await wrapper.setProps({
       chapterId: 'chapter-2',
@@ -1818,7 +1823,7 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('下一章建议')
-    expect(wrapper.text()).toContain('下一章仍应保持 pending')
+    expect(wrapper.text()).toContain('下一章仍应保持')
     expect(wrapper.find('[data-test="suggestion-apply-sg_repeat_late_001"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="suggestion-accept-sg_repeat_late_001"]').exists()).toBe(true)
   })
@@ -1830,7 +1835,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_conflict_late_001',
-            title: '上一章冲突建议',
+            title: '涓婁竴绔犲啿绐佸缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
@@ -1842,7 +1847,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_conflict_late_001',
-            title: '下一章建议',
+            title: '涓嬩竴绔犲缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
@@ -1888,7 +1893,7 @@ describe('AIPanel', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('下一章建议')
+    expect(wrapper.text()).toContain('涓嬩竴绔犲缓璁?')
     expect(wrapper.find('[data-test="outline-assist-conflicts"]').exists()).toBe(false)
   })
 
@@ -1899,7 +1904,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_apply_late_001',
-            title: '上一章应用建议',
+            title: '涓婁竴绔犲簲鐢ㄥ缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'accepted',
@@ -1911,7 +1916,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_apply_late_001',
-            title: '下一章建议',
+            title: '涓嬩竴绔犲缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'accepted',
@@ -1956,7 +1961,7 @@ describe('AIPanel', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('下一章建议')
+    expect(wrapper.text()).toContain('涓嬩竴绔犲缓璁?')
     expect(wrapper.text()).toContain('chapter-2 should stay accepted')
     expect(wrapper.find('[data-test="suggestion-apply-sg_apply_late_001"]').exists()).toBe(true)
   })
@@ -1968,7 +1973,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_dismiss_late_001',
-            title: '上一章忽略建议',
+            title: '涓婁竴绔犲拷鐣ュ缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
@@ -1980,7 +1985,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_dismiss_late_001',
-            title: '下一章建议',
+            title: '涓嬩竴绔犲缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
@@ -2023,7 +2028,7 @@ describe('AIPanel', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('下一章建议')
+    expect(wrapper.text()).toContain('涓嬩竴绔犲缓璁?')
     expect(wrapper.text()).toContain('chapter-2 should stay pending')
     expect(wrapper.find('[data-test="suggestion-accept-sg_dismiss_late_001"]').exists()).toBe(true)
   })
@@ -2035,7 +2040,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_convert_late_001',
-            title: '上一章转换建议',
+            title: '涓婁竴绔犺浆鎹㈠缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
@@ -2047,7 +2052,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_convert_late_001',
-            title: '下一章建议',
+            title: '涓嬩竴绔犲缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
@@ -2093,7 +2098,7 @@ describe('AIPanel', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('下一章建议')
+    expect(wrapper.text()).toContain('涓嬩竴绔犲缓璁?')
     expect(wrapper.text()).toContain('chapter-2 should stay pending')
     expect(wrapper.find('[data-test="suggestion-accept-sg_convert_late_001"]').exists()).toBe(true)
   })
@@ -2104,7 +2109,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_prev_002',
-            title: '上一章建议',
+            title: '涓婁竴绔犲缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
@@ -2128,7 +2133,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('上一章建议')
+    expect(wrapper.text()).toContain('涓婁竴绔犲缓璁?')
 
     await wrapper.setProps({
       chapterId: 'chapter-2',
@@ -2136,8 +2141,8 @@ describe('AIPanel', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('上一章建议')
-    expect(wrapper.text()).toContain('大纲建议加载失败,请稍后重试')
+    expect(wrapper.text()).not.toContain('涓婁竴绔犲缓璁?')
+    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
   })
 
   it('clears outline assist load error after a successful reload for the same chapter', async () => {
@@ -2146,7 +2151,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_retry_001',
-            title: '当前章节建议',
+            title: '???????',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
@@ -2159,7 +2164,7 @@ describe('AIPanel', () => {
         data: {
           items: [{
             suggestion_id: 'sg_retry_002',
-            title: '重试成功建议',
+            title: '????????',
             suggestion_type: 'outline_expand',
             severity: 'warning',
             status: 'pending',
@@ -2182,7 +2187,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('当前章节建议')
+    expect(wrapper.text()).toContain('???????')
 
     await wrapper.setProps({
       chapterId: 'chapter-2',
@@ -2190,15 +2195,15 @@ describe('AIPanel', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('大纲建议加载失败,请稍后重试')
+    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
 
     await wrapper.get('[data-test="ai-helper-tab-auto_queue"]').trigger('click')
     await flushPromises()
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('大纲建议加载失败,请稍后重试')
-    expect(wrapper.text()).toContain('重试成功建议')
+    expect(wrapper.text()).not.toContain('大纲建议加载失败，请稍后重试')
+    expect(wrapper.text()).toContain('????????')
   })
 
   it('shows opening agent tab and opens wizard shell', async () => {
@@ -2231,10 +2236,10 @@ describe('AIPanel', () => {
         analysis_summary: '通过海雾钟声建立开篇悬念。'
       },
       strategy: {
-        target_audience: '悬疑向女频读者',
+        target_audience: '悬疑向女性读者',
         genre_positioning: '都市悬疑',
         first_three_chapter_goal: '三章内建立主角与旧案的强关联',
-        forbidden_similarity_notes: '避免直接复用灯塔旧案设定',
+        forbidden_similarity_notes: '避免直接复用现有作品中的具体表达',
         protagonist_entry: '第一章前半段以归乡视角登场',
         conflict_entry: '第一章结尾抛出旧案重启',
         selling_points: ['悬念强', '节奏快']
@@ -2264,15 +2269,15 @@ describe('AIPanel', () => {
     expect(wrapper.get('[data-test="opening-agent-summary"]').text()).toContain('通过海雾钟声建立开篇悬念')
     expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('当前显示为本地预览')
     expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('开篇助手实时结果读取失败')
-    expect(wrapper.get('[data-test="opening-agent-strategy"]').text()).toContain('悬疑向女频读者')
+    expect(wrapper.get('[data-test="opening-agent-strategy"]').text()).toContain('悬疑向女性读者')
     expect(wrapper.get('[data-test="opening-agent-strategy-details"]').text()).toContain('都市悬疑')
     expect(wrapper.get('[data-test="opening-agent-strategy-details"]').text()).toContain('三章内建立主角与旧案的强关联')
-    expect(wrapper.get('[data-test="opening-agent-strategy-details"]').text()).toContain('避免直接复用灯塔旧案设定')
+    expect(wrapper.get('[data-test="opening-agent-strategy-details"]').text()).toContain('避免直接复用现有作品中的具体表达')
     expect(wrapper.get('[data-test="opening-agent-strategy-structure"]').text()).toContain('第一章前半段以归乡视角登场')
     expect(wrapper.get('[data-test="opening-agent-strategy-structure"]').text()).toContain('第一章结尾抛出旧案重启')
     expect(wrapper.get('[data-test="opening-agent-strategy-structure"]').text()).toContain('悬念强')
     expect(wrapper.get('[data-test="opening-agent-strategy-structure"]').text()).toContain('节奏快')
-    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('generate')
+    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('生成候选稿')
     expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('进行中')
     expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('2')
     expect(wrapper.get('[data-test="opening-agent-risk"]').text()).toContain('中风险')
@@ -2318,10 +2323,10 @@ describe('AIPanel', () => {
     expect(getOpeningAnalysis).toHaveBeenCalledWith('work-1')
     expect(getOpeningStatus).toHaveBeenCalledWith('work-1')
     expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取开篇助手的实时结果')
-    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次读取结果:读取成功')
+    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次读取结果：读取成功。')
     expect(wrapper.get('[data-test="opening-agent-last-updated"]').text()).toContain('2026-07-02T10:47:00.000Z')
     expect(wrapper.get('[data-test="opening-agent-summary"]').text()).toContain('通过潮声和残页手记建立开篇悬念')
-    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('generate')
+    expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('生成候选稿')
     expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('进行中')
     expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('3')
     expect(wrapper.get('[data-test="opening-agent-risk"]').text()).toContain('高风险')
@@ -2367,7 +2372,7 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('开篇助手实时结果读取失败')
-    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次读取结果:已回退到本地预览')
+    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次读取结果：已回退到本地预览。')
     expect(wrapper.get('[data-test="opening-agent-last-updated"]').text()).toContain('2026-07-02T10:48:00.000Z')
 
     vi.setSystemTime(new Date('2026-07-02T10:49:00.000Z'))
@@ -2377,7 +2382,7 @@ describe('AIPanel', () => {
     expect(getOpeningAnalysis).toHaveBeenCalledTimes(2)
     expect(getOpeningStatus).toHaveBeenCalledTimes(1)
     expect(wrapper.get('[data-test="opening-agent-preview-status"]').text()).toContain('已读取开篇助手的实时结果')
-    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次读取结果:读取成功')
+    expect(wrapper.get('[data-test="opening-agent-last-result"]').text()).toContain('最近一次读取结果：读取成功。')
     expect(wrapper.get('[data-test="opening-agent-last-updated"]').text()).toContain('2026-07-02T10:49:00.000Z')
     expect(wrapper.get('[data-test="opening-agent-summary"]').text()).toContain('通过潮声和遗失手札更新开篇悬念')
     expect(wrapper.get('[data-test="opening-agent-runtime"]').text()).toContain('3')
@@ -2421,7 +2426,7 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="opening-agent-refresh"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-test="opening-agent-refresh"]').text()).toContain('刷新中')
+    expect(wrapper.get('[data-test="opening-agent-refresh"]').text()).toContain('刷新中...')
 
     resolveRefresh({
       data: {
@@ -2505,7 +2510,7 @@ describe('AIPanel', () => {
         analysis_summary: '通过灯塔钟声建立开篇悬念。'
       },
       strategy: {
-        target_audience: '女频悬疑读者'
+        target_audience: '女性悬疑读者'
       },
       riskLevel: 'high'
     })
@@ -2530,7 +2535,7 @@ describe('AIPanel', () => {
     expect(wrapper.get('[data-test="opening-analysis-summary"]').text()).toContain('通过灯塔钟声建立开篇悬念')
 
     await wrapper.get('[data-test="opening-next"]').trigger('click')
-    expect(wrapper.get('[data-test="opening-strategy-card"]').text()).toContain('女频悬疑读者')
+    expect(wrapper.get('[data-test="opening-strategy-card"]').text()).toContain('女性悬疑读者')
 
     await wrapper.get('[data-test="opening-strategy-confirm"]').setValue(true)
     await wrapper.get('[data-test="opening-next"]').trigger('click')
@@ -2596,7 +2601,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="auto-queue-disable-budget-check"]').trigger('click')
     await flushPromises()
 
-    expect(confirmSpy).toHaveBeenCalledWith('关闭预算检查后,AI 功能将不再受预算限制。确定要关闭吗?')
+    expect(confirmSpy).toHaveBeenCalledWith('关闭预算检查后，AI 功能将不再受预算限制。确定要关闭吗？')
     expect(upsertAutoQueueConfig).toHaveBeenLastCalledWith({
       work_id: 'work-1',
       queue_mode: 'safe',
@@ -2707,7 +2712,7 @@ describe('AIPanel', () => {
       data: {
         items: [{
           record_id: 'conf_001',
-          title: '人物设定冲突',
+          title: '自动续写冲突详情',
           severity: 'blocking',
           summary: '主角设定与既有章节不一致'
         }]
@@ -2731,7 +2736,7 @@ describe('AIPanel', () => {
       work_id: 'work-1',
       chapter_id: 'chapter-1'
     })
-    expect(wrapper.get('[data-test="auto-queue-conflicts"]').text()).toContain('人物设定冲突')
+    expect(wrapper.get('[data-test="auto-queue-conflicts"]').text()).toContain('自动续写冲突详情')
     expect(wrapper.get('[data-test="auto-queue-conflicts"]').text()).toContain('主角设定与既有章节不一致')
   })
 
@@ -2958,7 +2963,7 @@ describe('AIPanel', () => {
     }))
     await wrapper.get('[data-test="writing-task-detail-wt_1"]').trigger('click')
     expect(getWritingTask).toHaveBeenCalledWith('wt_1')
-    expect(wrapper.text()).toContain('??????')
+    expect(wrapper.text()).toContain('????????')
 
     await wrapper.get('[data-test="writing-task-confirm-wt_1"]').trigger('click')
     expect(confirmWritingTask).toHaveBeenCalledWith('wt_1', expect.objectContaining({
@@ -2975,7 +2980,7 @@ describe('AIPanel', () => {
       caller_type: 'quick_trial',
       idempotency_key: expect.any(String)
     }))
-    expect(wrapper.text()).toContain('试跑输出')
+    expect(wrapper.text()).toContain('????')
   })
 
   it('delegates review mode to ReviewTab and hides ai workspace sections', async () => {
@@ -2999,6 +3004,70 @@ describe('AIPanel', () => {
     expect(wrapper.text()).not.toContain('AI 写作任务')
   })
 
+  it('shows localized trace copy in developer mode', async () => {
+    listAgentTraces.mockResolvedValue({
+      data: {
+        items: [{
+          trace_id: 'trace_1',
+          status: 'running',
+          workflow_type: 'continuation',
+          total_steps: 2,
+          total_tokens: 321
+        }]
+      }
+    })
+    getAgentTrace.mockResolvedValue({ data: { trace_id: 'trace_1' } })
+    getAgentTraceSteps.mockResolvedValue({
+      data: {
+        items: [
+          { step_id: 'step_1', agent_type: 'planner', action: 'prepare', status: 'running' },
+          { step_id: 'step_2', agent_type: 'writer', action: 'tool_call', status: 'completed' }
+        ]
+      }
+    })
+    getAgentTraceDetailView.mockResolvedValue({
+      data: {
+        tool_calls: [{ tool_name: 'vector_search', permission_result: 'allow' }],
+        events: [{ event_type: 'tool_call_denied' }],
+        metrics: [
+          { metric_id: 'metric_1', metric_name: 'llm_token_count', metric_value: 321 },
+          { metric_id: 'metric_2', metric_name: 'tool_call_latency_ms', metric_value: 180 }
+        ]
+      }
+    })
+
+    const wrapper = mount(AIPanel, {
+      props: {
+        workId: 'work-1',
+        chapterId: 'chapter-1',
+        chapterVersion: 3,
+        developerMode: true,
+        mode: 'ai'
+      }
+    })
+
+    await vi.runAllTimersAsync()
+
+    expect(listAgentTraces).toHaveBeenCalledWith({ work_id: 'work-1', chapter_id: 'chapter-1' })
+    expect(wrapper.text()).toContain('任务追踪')
+    expect(wrapper.text()).toContain('令牌 321')
+
+    await wrapper.get('[data-test="trace-steps-trace_1"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('准备')
+    expect(wrapper.text()).toContain('工具调用')
+    expect(wrapper.text()).not.toContain('prepare')
+    expect(wrapper.text()).not.toContain('tool_call')
+
+    await wrapper.get('[data-test="trace-detail-trace_1"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('模型令牌用量')
+    expect(wrapper.text()).toContain('工具调用耗时')
+    expect(wrapper.text()).not.toContain('Token')
+  })
+
   it('starts vector reindex from ai panel and polls progress after confirmation', async () => {
     getContextPackReadiness.mockResolvedValue({
       data: {
@@ -3013,14 +3082,14 @@ describe('AIPanel', () => {
         data: {
           job_id: 'job_reindex_1',
           status: 'running',
-          progress: { percent: 42, current_step_label: '正在处理第 2/4 章' }
+          progress: { percent: 42, current_step_label: '????? 2/4 ?' }
         }
       })
       .mockResolvedValueOnce({
         data: {
           job_id: 'job_reindex_1',
           status: 'completed',
-          progress: { percent: 100, current_step_label: '构建完成' },
+          progress: { percent: 100, current_step_label: '????' },
           result_summary: { index_status: 'ready' }
         }
       })
@@ -3039,9 +3108,9 @@ describe('AIPanel', () => {
       index_scope: 'full_work',
       caller_type: 'user_action'
     }))
-    expect(wrapper.text()).toContain('向量索引')
-    expect(wrapper.text()).toContain('索引已过期,点击重建')
-    expect(wrapper.text()).toContain('正在重建索引')
+    expect(wrapper.text()).toContain('????')
+    expect(wrapper.text()).toContain('??????????')
+    expect(wrapper.text()).toContain('??????')
   })
 
   it('restores pending vector reindex job from sessionStorage on mount', async () => {
@@ -3069,7 +3138,7 @@ describe('AIPanel', () => {
       data: {
         job_id: 'job_restore_1',
         status: 'running',
-        progress: { percent: 20, current_step_label: '正在生成向量' }
+        progress: { percent: 20, current_step_label: '??????' }
       }
     })
 
@@ -3092,7 +3161,7 @@ describe('AIPanel', () => {
       data: {
         job_id: 'job_reindex_1',
         status: 'running',
-        progress: { percent: 35, current_step_label: '正在处理第 1/3 章' }
+        progress: { percent: 35, current_step_label: '????? 1/3 ?' }
       }
     })
     vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -3115,14 +3184,14 @@ describe('AIPanel', () => {
         data: {
           job_id: 'job_reindex_partial_1',
           status: 'running',
-          progress: { percent: 78, current_step_label: '正在生成向量' }
+          progress: { percent: 78, current_step_label: '??????' }
         }
       })
       .mockResolvedValueOnce({
         data: {
           job_id: 'job_reindex_partial_1',
           status: 'partial_success',
-          progress: { percent: 100, current_step_label: '构建完成' },
+          progress: { percent: 100, current_step_label: '????' },
           result_summary: {
             completion_mode: 'partial_success',
             index_status: 'degraded'
@@ -3139,6 +3208,6 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="vector-index-reindex-full-work"]').trigger('click')
     await vi.advanceTimersByTimeAsync(6200)
 
-    expect(wrapper.text()).toContain('索引部分重建成功,部分章节的索引可能不完整。可以针对失败章节单独重建。')
+    expect(wrapper.text()).toContain('???????????????????????????????????')
   })
 })

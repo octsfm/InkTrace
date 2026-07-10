@@ -471,7 +471,7 @@ const conflictDescription = computed(() => {
     buildChapterLabel(chapterDataStore.activeChapter, '') ||
     '当前章节'
   )
-  return `${chapterTitle} 存在服务器新版本,请选择冲突处理方式。`
+  return `${chapterTitle} 存在服务器新版本，请选择冲突处理方式。`
 })
 const conflictLocalContent = computed(() => String(conflictPayload.value?.content || ''))
 const conflictServerContent = computed(() => String(

@@ -111,7 +111,7 @@ const submit = async () => {
     emit('exported', props.work)
     emit('update:modelValue', false)
   } catch (error) {
-    const detail = error?.response?.data?.detail || error?.message || '导出 TXT 失败,请稍后重试。'
+    const detail = error?.response?.data?.detail || error?.message || '导出 TXT 失败，请稍后重试。'
     ElMessage.error(detail)
     console.error('导出 TXT 失败:', error)
   } finally {

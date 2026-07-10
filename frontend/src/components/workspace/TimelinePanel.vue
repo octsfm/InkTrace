@@ -3,7 +3,7 @@
     <header class="timeline-header">
       <div>
         <h3>时间线</h3>
-        <p>按顺序维护故事事件,编辑后需手动保存。</p>
+        <p>按顺序维护故事事件，编辑后需手动保存。</p>
       </div>
       <button type="button" class="ink-button ink-button--primary create-button" @click="handleCreate">
         新建事件
@@ -16,13 +16,13 @@
         <span class="plot-arc-status">{{ plotArcStatusLabel }}</span>
       </header>
       <p v-if="sequenceSummary.sequence_goal" class="plot-arc-text">
-        序列目标:{{ sequenceSummary.sequence_goal }}
+        序列目标：{{ sequenceSummary.sequence_goal }}
       </p>
       <ul v-if="sequenceKeyEvents.length" class="plot-arc-list">
         <li v-for="event in sequenceKeyEvents" :key="event">{{ event }}</li>
       </ul>
       <p v-if="activeThreads.length" class="plot-arc-text">
-        活跃线索:{{ activeThreads.join(' / ') }}
+        活跃线索：{{ activeThreads.join(' / ') }}
       </p>
       <ul v-if="recentChapterSummaries.length" class="plot-arc-list">
         <li v-for="summary in recentChapterSummaries" :key="summary">{{ summary }}</li>
@@ -155,7 +155,7 @@
 
     <AssetConflictModal
       :model-value="conflictVisible"
-      description="当前时间线事件已在其他位置被修改,请先处理冲突,再决定是否清除本地草稿。"
+      description="当前时间线事件已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。"
       :local-content="localConflictContent"
       :server-content="serverConflictContent"
       @cancel="assetStore.clearAssetConflict"
@@ -276,9 +276,9 @@ const plotArcVisible = computed(() => Boolean(
 const localConflictContent = computed(() => {
   const payload = assetStore.assetConflictPayload?.payload || {}
   return [
-    `标题:${String(payload.title || '')}`,
-    `描述:${String(payload.description || '')}`,
-    `章节:${String(payload.chapter_id || '')}`
+    `标题：${String(payload.title || '')}`,
+    `描述：${String(payload.description || '')}`,
+    `章节：${String(payload.chapter_id || '')}`
   ].join('\n')
 })
 const serverConflictContent = computed(() => String(assetStore.assetConflictPayload?.server_content || ''))

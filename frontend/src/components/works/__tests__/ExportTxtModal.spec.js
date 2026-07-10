@@ -34,4 +34,9 @@ describe('ExportTxtModal source contract', () => {
     expect(source).toContain("emit('exported', props.work)")
     expect(source).toContain("emit('update:modelValue', false)")
   })
+
+  it('uses chinese punctuation in export failure fallback copy', () => {
+    expect(source).toContain('导出 TXT 失败，请稍后重试。')
+    expect(source).not.toContain('导出 TXT 失败,请稍后重试。')
+  })
 })

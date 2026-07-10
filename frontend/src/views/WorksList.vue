@@ -3,8 +3,8 @@
     <section class="hero-panel">
       <div class="hero-copy">
         <div class="hero-eyebrow">书架</div>
-        <h1 class="hero-title">选择作品,开始写作</h1>
-        <p class="hero-description">支持新建作品或导入 TXT,进入后即可继续创作。</p>
+        <h1 class="hero-title">选择作品，开始写作</h1>
+        <p class="hero-description">支持新建作品或导入 TXT，进入后即可继续创作。</p>
       </div>
       <div class="hero-actions">
         <el-button class="ink-el-button ink-el-button--primary hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">
@@ -47,8 +47,8 @@
     </section>
 
     <div v-else-if="works.length === 0" class="empty-container">
-      <el-empty description="你可以先新建空白作品,也可以直接导入 TXT。">
-        <p class="empty-hint">先创建一本空白作品开始写作,或者直接导入现有 TXT 稿件。</p>
+      <el-empty description="你可以先新建空白作品，也可以直接导入 TXT。">
+        <p class="empty-hint">先创建一本空白作品开始写作，或者直接导入现有 TXT 稿件。</p>
         <div class="empty-actions">
           <el-button class="ink-el-button ink-el-button--primary hero-btn hero-btn--primary" type="primary" @click="showCreateModal = true">新建作品</el-button>
           <el-button class="ink-el-button ink-el-button--secondary hero-btn hero-btn--secondary" plain @click="showImportModal = true">导入 TXT</el-button>
@@ -119,7 +119,7 @@ const loadWorks = async () => {
   } catch (error) {
     console.error('加载作品列表失败:', error)
     works.value = []
-    errorMessage.value = '暂时无法读取作品列表,请检查后端服务是否已启动。'
+    errorMessage.value = '暂时无法读取作品列表，请检查后端服务是否已启动。'
   } finally {
     loading.value = false
   }
@@ -144,7 +144,7 @@ const handleDeleteWork = async (workId) => {
     ElMessage.success('作品已删除')
   } catch (error) {
     console.error('删除作品失败:', error)
-    ElMessage.error('删除作品失败,请稍后重试。')
+    ElMessage.error('删除作品失败，请稍后重试。')
   } finally {
     deletingWorkId.value = ''
   }
@@ -169,7 +169,7 @@ const handleRenameWork = async (work) => {
     ElMessage.success('作品已重命名')
   } catch (error) {
     console.error('重命名作品失败:', error)
-    ElMessage.error('重命名作品失败,请稍后重试。')
+    ElMessage.error('重命名作品失败，请稍后重试。')
   }
 }
 
@@ -182,7 +182,7 @@ const handleChangeAuthor = async (work) => {
     ElMessage.success('作者信息已更新')
   } catch (error) {
     console.error('修改作者失败:', error)
-    ElMessage.error('修改作者失败,请稍后重试。')
+    ElMessage.error('修改作者失败，请稍后重试。')
   }
 }
 

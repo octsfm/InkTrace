@@ -18,7 +18,7 @@ describe('WorkCard', () => {
     })
 
     expect(wrapper.text()).toContain('风暴将至')
-    expect(wrapper.text()).toContain('测试作者')
+    expect(wrapper.text()).toContain('作者：测试作者')
     expect(wrapper.text()).toContain('32,000')
     expect(wrapper.text()).toContain('进入写作页')
   })
@@ -77,6 +77,9 @@ describe('WorkCard', () => {
     await wrapper.find('.menu-item.danger').trigger('click')
 
     expect(wrapper.find('.confirm-panel').exists()).toBe(true)
+    expect(wrapper.text()).toContain('确认删除作品？')
+    expect(wrapper.text()).toContain('此操作不可恢复，确认删除？')
+    expect(wrapper.text()).not.toContain('此操作不可恢复,确认删除?')
     expect(wrapper.emitted('delete')).toBeUndefined()
 
     await wrapper.find('.danger-button').trigger('click')

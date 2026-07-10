@@ -47,7 +47,7 @@
       <div v-if="pendingAction" class="right-workspace-panel__dirty-guard" role="dialog" aria-modal="true">
         <div class="right-workspace-panel__dirty-card">
           <h4>存在未保存修改</h4>
-          <p>请先保存或放弃当前修改,再继续切换右侧工作区。</p>
+          <p>请先保存或放弃当前修改，再继续切换右侧工作区。</p>
           <div class="right-workspace-panel__dirty-actions">
             <button data-test="workspace-dirty-save" type="button" @click="confirmSave">保存</button>
             <button data-test="workspace-dirty-discard" type="button" @click="confirmDiscard">放弃</button>
@@ -81,15 +81,15 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'save-dirty', 'discard-dirty', 'width-change'])
+const emit = defineEmits(['update:modelValue', 'update:model-value', 'save-dirty', 'discard-dirty', 'width-change'])
 
 const items = [
-  { key: 'outline', label: '大纲', icon: '纲', description: '查看全书与当前章节大纲。' },
-  { key: 'timeline', label: '线索', icon: '线', description: '查看时间线与关键事件。' },
-  { key: 'foreshadow', label: '伏笔', icon: '伏', description: '维护伏笔与回收计划。' },
-  { key: 'character', label: '人物', icon: '人', description: '查看角色设定与状态。' },
-  { key: 'ai', label: 'AI', icon: 'AI', description: '查看生成链路、会话进度与上下文状态。' },
-  { key: 'review', label: '审阅', icon: '审', description: '查看候选稿、审阅结果、冲突和记忆门控。' }
+    { key: 'outline', label: '大纲', icon: '纲', description: '查看全书与当前章节大纲。' },
+    { key: 'timeline', label: '线索', icon: '线', description: '查看时间线与关键事件。' },
+    { key: 'foreshadow', label: '伏笔', icon: '伏', description: '维护伏笔与回收计划。' },
+    { key: 'character', label: '人物', icon: '人', description: '查看角色设定与状态。' },
+    { key: 'ai', label: 'AI', icon: 'AI', description: '查看生成链路、会话进度与上下文状态。' },
+    { key: 'review', label: '审阅', icon: '审', description: '查看候选稿、审阅结果、冲突和记忆门控。' }
 ]
 
 const pendingAction = ref(null)

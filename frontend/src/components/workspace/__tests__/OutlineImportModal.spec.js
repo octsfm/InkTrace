@@ -22,7 +22,7 @@ describe('OutlineImportModal', () => {
 
     await wrapper.get('[data-testid="outline-import-paste"]').setValue('第一卷\n第二卷')
     expect(wrapper.get('[data-testid="outline-import-preview"]').text()).toContain('第一卷')
-    expect(wrapper.get('[data-testid="outline-import-char-count"]').text()).toContain('当前字符数:7')
+    expect(wrapper.get('[data-testid="outline-import-char-count"]').text()).toContain('当前字符数：7')
 
     await wrapper.get('[data-testid="outline-import-mode-append"]').setValue(true)
     await wrapper.get('[data-testid="outline-import-confirm"]').trigger('click')
@@ -60,6 +60,30 @@ describe('OutlineImportModal', () => {
     }])
   })
 
+  it('uses chinese punctuation in helper copy and counters', async () => {
+    const wrapper = mount(OutlineImportModal, {
+      props: {
+        visible: true
+      }
+    })
+
+    const file = createMockFile('灯塔谜局', 'outline.md')
+    const input = wrapper.get('[data-testid="outline-import-file"]')
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [file]
+    })
+    await input.trigger('change')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('导入结果只会进入当前草稿，仍需手动保存作品大纲。')
+    expect(wrapper.text()).toContain('已选择：outline.md')
+    expect(wrapper.get('[data-testid="outline-import-char-count"]').text()).toContain('当前字符数：4')
+    expect(wrapper.text()).not.toContain('导入结果只会进入当前草稿,仍需手动保存作品大纲。')
+    expect(wrapper.text()).not.toContain('已选择:outline.md')
+    expect(wrapper.get('[data-testid="outline-import-char-count"]').text()).not.toContain('当前字符数:4')
+  })
+
   it('shows threshold hints based on raw character count', async () => {
     const wrapper = mount(OutlineImportModal, {
       props: {
@@ -71,7 +95,7 @@ describe('OutlineImportModal', () => {
     expect(wrapper.text()).toContain('建议控制在 20,000 字以内以获得更好编辑体验。')
 
     await wrapper.get('[data-testid="outline-import-paste"]').setValue('b'.repeat(50000))
-    expect(wrapper.text()).toContain('当前内容较大,可能影响编辑性能。')
+    expect(wrapper.text()).toContain('当前内容较大，可能影响编辑性能。')
   })
 
   it('blocks invalid file type and empty content import', async () => {

@@ -42,8 +42,26 @@ export const organizeStatusLabelMap = {
   error: '失败'
 }
 
+export const organizeStageLabelMap = {
+  idle: '未开始',
+  running: '整理中',
+  pause_requested: '暂停处理中',
+  paused: '已暂停',
+  resume_requested: '继续处理中',
+  cancelling: '取消处理中',
+  cancelled: '已取消',
+  done: '已完成',
+  error: '失败'
+}
+
+export const organizeStrategyLabelMap = {
+  chapter_first: '按章节优先'
+}
+
 export const formatGenre = (value) => genreLabelMap[value] || value || '暂无'
 export const formatNovelStatus = (value) => novelStatusLabelMap[value] || value || '暂无'
 export const formatChapterStatus = (value) => chapterStatusLabelMap[value] || value || '暂无'
 export const formatChapterFunction = (value) => chapterFunctionLabelMap[value] || value || '暂无'
 export const formatOrganizeStatus = (value) => organizeStatusLabelMap[value] || value || '未知'
+export const formatOrganizeStage = (value) => organizeStageLabelMap[value] || value || '暂无'
+export const formatOrganizeStrategy = (value) => organizeStrategyLabelMap[value] || value || '暂无'

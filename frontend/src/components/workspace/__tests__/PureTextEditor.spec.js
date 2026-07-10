@@ -206,7 +206,8 @@ describe('PureTextEditor', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('当前章节已超过 20 万有效字符')
+    expect(wrapper.text()).toContain('当前章节已超过 20 万有效字符，建议尽快拆分章节以保持流畅编辑。')
+    expect(wrapper.text()).not.toContain('当前章节已超过 20 万有效字符,建议尽快拆分章节以保持流畅编辑。')
 
     const textarea = wrapper.find('textarea')
     await textarea.setValue('继续创作')

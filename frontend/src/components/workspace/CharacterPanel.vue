@@ -3,7 +3,7 @@
     <header class="panel-header">
       <div>
         <h3>人物</h3>
-        <p>支持人物姓名、别名和描述维护,编辑后需手动保存。</p>
+        <p>支持人物姓名、别名和描述维护，编辑后需手动保存。</p>
       </div>
       <button type="button" class="ink-button ink-button--primary create-button" @click="handleCreate">
         新建人物
@@ -15,9 +15,9 @@
         <h4>人物轨道提示</h4>
         <span class="plot-arc-status">{{ plotArcStatusLabel }}</span>
       </header>
-      <p v-if="volumeCharacters.length" class="plot-arc-text">关键人物:{{ volumeCharacters.join(' / ') }}</p>
+      <p v-if="volumeCharacters.length" class="plot-arc-text">关键人物：{{ volumeCharacters.join(' / ') }}</p>
       <ul v-if="characterStates.length" class="plot-arc-list">
-        <li v-for="state in characterStates" :key="state">{{ state }}</li>
+        <li v-for="state in characterStates" :key="state">{{ displayCharacterState(state) }}</li>
       </ul>
     </section>
 
@@ -59,7 +59,7 @@
         </header>
 
         <p v-if="showDuplicateWarning" class="duplicate-warning">
-          检测到重名人物,仍可继续保存。
+          检测到重名人物，仍可继续保存。
         </p>
 
         <label class="field">
@@ -122,7 +122,7 @@
 
     <AssetConflictModal
       :model-value="conflictVisible"
-      description="当前人物已在其他位置被修改,请先处理冲突,再决定是否清除本地草稿。"
+      description="当前人物已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。"
       :local-content="localConflictContent"
       :server-content="serverConflictContent"
       @cancel="assetStore.clearAssetConflict"
@@ -223,12 +223,13 @@ const characterStates = computed(() => {
   return Array.isArray(items) ? items.filter(Boolean) : []
 })
 const plotArcVisible = computed(() => Boolean(volumeCharacters.value.length || characterStates.value.length))
+const displayCharacterState = (value) => String(value || '').replace(/:\s*/, '：')
 const localConflictContent = computed(() => {
   const payload = assetStore.assetConflictPayload?.payload || {}
   return [
-    `姓名:${String(payload.name || '')}`,
-    `别名:${Array.isArray(payload.aliases) ? payload.aliases.join(', ') : ''}`,
-    `描述:${String(payload.description || '')}`
+    `姓名：${String(payload.name || '')}`,
+    `别名：${Array.isArray(payload.aliases) ? payload.aliases.join('，') : ''}`,
+    `描述：${String(payload.description || '')}`
   ].join('\n')
 })
 const serverConflictContent = computed(() => String(assetStore.assetConflictPayload?.server_content || ''))

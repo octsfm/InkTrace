@@ -32,7 +32,7 @@ const getTerminalRewriteErrorMessage = (payload = {}) => {
   const explicitMessage = String(payload?.error_message || '').trim()
   if (explicitMessage) return explicitMessage
   if (status === 'failed') return '选区改写生成失败,请稍后重试。'
-  if (status === 'conflicted') return '原文已变化,请重新选择。'
+    if (status === 'conflicted') return '原文已变化，请重新选择。'
   if (status === 'expired') return '当前选区改写结果已过期,请重新生成。'
   return ''
 }
@@ -299,7 +299,7 @@ export const useSelectionRewriteStore = defineStore('workbenchSelectionRewrite',
         idempotency_key: buildIdempotencyKey('selection_rewrite_apply')
       }))
       if (!canApplyPatchToDraft(currentDraft, payload?.patch, candidate.value?.source_text || selectionText.value)) {
-        actionError.value = '改写结果已确认,但本地草稿应用失败,请手动重试。'
+                actionError.value = '改写结果已确认，但本地草稿应用失败，请手动重试。'
         throw new Error('selection_rewrite_patch_apply_failed')
       }
       clearUndoSnapshot()

@@ -30,7 +30,9 @@ describe('AutoQueuePanel', () => {
     })
 
     expect(wrapper.text()).toContain('自动续写')
+    expect(wrapper.text()).toContain('为当前作品配置自动续写队列；安全模式逐章确认，连续模式在通过审阅后自动推进。')
     expect(wrapper.text()).toContain('安全模式')
+    expect(wrapper.text()).toContain('安全模式：每章完成后暂停，等你确认后继续。')
     expect(wrapper.text()).toContain('第 2 章已生成，需要你确认')
     expect(wrapper.text()).toContain('历史记录')
     expect(wrapper.text()).toContain('已生成 2 章候选稿')
@@ -349,6 +351,37 @@ describe('AutoQueuePanel', () => {
     const historyText = wrapper.get('[data-test="auto-queue-history-aqr_009"]').text()
     expect(historyText).toContain('连续出现阻断冲突')
     expect(historyText).toContain('先查看并处理冲突详情')
+  })
+
+  it('uses chinese punctuation in continuous mode hint and stop summaries', async () => {
+    const wrapper = mount(AutoQueuePanel, {
+      props: {
+        featureEnabled: true,
+        aiSettingsBlocked: false,
+        loading: false,
+        savingConfig: false,
+        actionLoading: false,
+        chapterId: 'chapter-1',
+        queueMode: 'continuous',
+        targetChapters: 3,
+        currentRun: {
+          run_id: 'aqr_015',
+          status: 'stopped',
+          queue_mode: 'continuous',
+          generated_count: 2,
+          stop_record: {
+            stop_reason: 'blocking_review_consecutive',
+            suggested_action: 'resolve_conflict'
+          }
+        },
+        historyRuns: []
+      }
+    })
+
+    expect(wrapper.text()).toContain('连续模式：审阅通过后自动继续，但遇到阻断冲突仍会暂停。')
+    expect(wrapper.get('[data-test="auto-queue-banner"]').text()).toContain('连续出现严重冲突，自动续写已停止。')
+    expect(wrapper.text()).not.toContain('连续模式:审阅通过后自动继续,但遇到阻断冲突仍会暂停。')
+    expect(wrapper.text()).not.toContain('连续出现严重冲突,自动续写已停止。')
   })
 
   it('shows target word count field for queue stop conditions', () => {

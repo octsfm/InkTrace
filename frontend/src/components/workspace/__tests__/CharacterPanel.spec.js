@@ -99,9 +99,11 @@ describe('CharacterPanel', () => {
 
     expect(mockGetContextPackReadiness).toHaveBeenCalledWith('work-1', 'chapter-3')
     expect(wrapper.text()).toContain('人物轨道提示')
+    expect(wrapper.text()).toContain('支持人物姓名、别名和描述维护，编辑后需手动保存。')
+    expect(wrapper.text()).toContain('关键人物：顾迟 / 苏棠')
     expect(wrapper.text()).toContain('顾迟')
     expect(wrapper.text()).toContain('苏棠')
-    expect(wrapper.text()).toContain('顾迟: 警觉')
+    expect(wrapper.text()).toContain('顾迟：警觉')
   })
 
   it('creates a character and converts aliases input into array payload', async () => {

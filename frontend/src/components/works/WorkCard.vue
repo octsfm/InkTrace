@@ -14,7 +14,7 @@
       <div class="work-cover">{{ coverText }}</div>
       <div class="work-main">
         <h3 class="work-title">{{ work.title }}</h3>
-        <p class="work-meta">作者:{{ work.author || '未填写' }}</p>
+        <p class="work-meta">作者：{{ work.author || '未填写' }}</p>
       </div>
     </div>
 
@@ -35,8 +35,8 @@
 
     <div v-if="confirmVisible" class="confirm-mask" @click.stop>
       <div class="confirm-panel">
-        <h4>确认删除作品?</h4>
-        <p>此操作不可恢复,确认删除?</p>
+        <h4>确认删除作品？</h4>
+        <p>此操作不可恢复，确认删除？</p>
         <div class="confirm-actions">
           <button type="button" class="ink-button ink-button--ghost ghost-button" @click.stop="closeDeleteConfirm">取消</button>
           <button type="button" class="ink-button ink-button--danger danger-button" :disabled="deleting" @click.stop="confirmDelete">

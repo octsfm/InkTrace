@@ -3,7 +3,7 @@
     <header class="panel-header">
       <div>
         <h3>伏笔</h3>
-        <p>按状态筛选伏笔,编辑后需手动保存。</p>
+        <p>按状态筛选伏笔，编辑后需手动保存。</p>
       </div>
       <button type="button" class="ink-button ink-button--primary create-button" @click="handleCreate">
         新建伏笔
@@ -161,7 +161,7 @@
 
     <AssetConflictModal
       :model-value="conflictVisible"
-      description="当前伏笔已在其他位置被修改,请先处理冲突,再决定是否清除本地草稿。"
+      description="当前伏笔已在其他位置被修改，请先处理冲突，再决定是否清除本地草稿。"
       :local-content="localConflictContent"
       :server-content="serverConflictContent"
       @cancel="assetStore.clearAssetConflict"
@@ -272,11 +272,11 @@ const plotArcVisible = computed(() => Boolean(volumeSummary.value?.stage_goal ||
 const localConflictContent = computed(() => {
   const payload = assetStore.assetConflictPayload?.payload || {}
   return [
-    `标题:${String(payload.title || '')}`,
-    `状态:${String(payload.status || '')}`,
-    `描述:${String(payload.description || '')}`,
-    `埋入章节:${String(payload.introduced_chapter_id || '')}`,
-    `回收章节:${String(payload.resolved_chapter_id || '')}`
+    `标题：${String(payload.title || '')}`,
+    `状态：${String(payload.status || '')}`,
+    `描述：${String(payload.description || '')}`,
+    `埋入章节：${String(payload.introduced_chapter_id || '')}`,
+    `回收章节：${String(payload.resolved_chapter_id || '')}`
   ].join('\n')
 })
 const serverConflictContent = computed(() => String(assetStore.assetConflictPayload?.server_content || ''))

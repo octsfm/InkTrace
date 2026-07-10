@@ -229,7 +229,7 @@ describe('ReviewTab', () => {
     })
     getAgentTrace.mockResolvedValue({ data: { trace_id: 'trace_1', status: 'waiting_for_user' } })
     getAgentTraceSteps.mockResolvedValue({
-      data: { items: [{ step_id: 'step_1', agent_type: 'reviewer', action: 'review', status: 'completed' }] }
+      data: { items: [{ step_id: 'step_1', agent_type: 'writer', action: 'run_writer', status: 'completed' }] }
     })
     getAgentTraceDetailView.mockResolvedValue({
       data: { trace_id: 'trace_1', summary: 'detail', metrics: [{ metric_name: 'tool_call_denied_total', metric_value: 1 }] }
@@ -244,6 +244,8 @@ describe('ReviewTab', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('候选稿与人工确认门')
+    expect(wrapper.text()).toContain('待开始')
+    expect(wrapper.text()).not.toContain('未知校验通过')
     expect(wrapper.text()).toContain('AI 建议')
     expect(wrapper.text()).toContain('记忆审批')
     expect(wrapper.text()).toContain('任务追踪')
@@ -323,6 +325,9 @@ describe('ReviewTab', () => {
 
     await flushPromises()
 
+    expect(wrapper.text()).toContain('待查看修订')
+    expect(wrapper.text()).not.toContain('revision')
+
     await wrapper.get('[data-test="suggestion-detail-ais_1"]').trigger('click')
     expect(getAISuggestion).toHaveBeenCalledWith('ais_1')
 
@@ -378,8 +383,31 @@ describe('ReviewTab', () => {
 
     await wrapper.get('[data-test="trace-steps-trace_1"]').trigger('click')
     expect(getAgentTraceSteps).toHaveBeenCalledWith('trace_1')
+    expect(wrapper.text()).toContain('生成候选稿')
+    expect(wrapper.text()).not.toContain('run_writer')
 
     await wrapper.get('[data-test="trace-detail-trace_1"]').trigger('click')
     expect(getAgentTraceDetailView).toHaveBeenCalledWith('trace_1')
+    expect(wrapper.text()).toContain('详细追踪已加载。')
+    expect(wrapper.text()).not.toContain('detail')
+  })
+
+  it('localizes trace step agent types returned by runtime services', async () => {
+    getAgentTraceSteps.mockReset()
+    getAgentTraceSteps.mockResolvedValue({
+      data: { items: [{ step_id: 'step_1', agent_type: 'conflict_guard', action: 'call_tool', status: 'completed' }] }
+    })
+
+    const wrapper = mount(ReviewTab, {
+      props: { workId: 'work-1', chapterId: 'chapter-1', chapterVersion: 3, developerMode: true }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="trace-steps-trace_1"]').trigger('click')
+
+    expect(wrapper.text()).toContain('冲突守卫')
+    expect(wrapper.text()).not.toContain('conflict_guard')
+    expect(wrapper.text()).toContain('调用工具')
+    expect(wrapper.text()).not.toContain('call_tool')
   })
 })

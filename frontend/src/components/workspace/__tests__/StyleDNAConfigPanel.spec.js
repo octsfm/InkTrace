@@ -31,8 +31,11 @@ describe('StyleDNAConfigPanel', () => {
     })
 
     expect(wrapper.text()).toContain('风格画像')
+    expect(wrapper.text()).toContain('上传样章文本，提取结构化文风特征，并由你决定是否激活。')
     expect(wrapper.text()).toContain('短句为主，动作感偏强。')
     expect(wrapper.text()).toContain('置信度较低')
+    expect(wrapper.text()).toContain('当前画像置信度较低：source_text_too_short')
+    expect(wrapper.text()).toContain('低置信度原因：source_text_too_short')
     expect(wrapper.text()).toContain('source_text_too_short')
     expect(wrapper.text()).toContain('对白占比')
     expect(wrapper.text()).toContain('平均句长')
@@ -187,5 +190,29 @@ describe('StyleDNAConfigPanel', () => {
     expect(wrapper.text()).toContain('第3章 草稿')
     expect(wrapper.find('[data-test="style-dna-input"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="style-dna-chapter-option-chapter-3"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('uses chinese punctuation in blocked and loading helper copy', () => {
+    const wrapper = mount(StyleDNAConfigPanel, {
+      props: {
+        featureEnabled: true,
+        aiSettingsBlocked: true,
+        loading: false,
+        extracting: true,
+        extractJobActive: true,
+        draftText: '这是标杆文本',
+        sourceMode: 'chapter_reference',
+        chapterOptions: [],
+        selectedChapterIds: [],
+        historyProfiles: []
+      }
+    })
+
+    expect(wrapper.text()).toContain('请先配置可用模型服务与任务模型，再提取风格画像。')
+    expect(wrapper.text()).toContain('仅限已确认章节，最多选择 3 章；草稿章节不可作为样章来源。')
+    expect(wrapper.text()).toContain('提取中，请稍候')
+    expect(wrapper.text()).not.toContain('请先配置可用模型服务与任务模型,再提取风格画像。')
+    expect(wrapper.text()).not.toContain('仅限已确认章节,最多选择 3 章;草稿章节不可作为样章来源。')
+    expect(wrapper.text()).not.toContain('提取中,请稍候')
   })
 })

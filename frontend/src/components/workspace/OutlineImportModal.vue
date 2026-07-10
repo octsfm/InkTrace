@@ -5,7 +5,7 @@
       <header class="outline-import-modal__header">
         <div>
           <h3>导入作品大纲</h3>
-          <p>导入结果只会进入当前草稿,仍需手动保存作品大纲。</p>
+          <p>导入结果只会进入当前草稿，仍需手动保存作品大纲。</p>
         </div>
         <button
           type="button"
@@ -31,7 +31,7 @@
             >
             <span>选择 TXT / Markdown 文件</span>
           </label>
-          <p v-if="selectedFileName" class="outline-import-modal__helper">已选择:{{ selectedFileName }}</p>
+          <p v-if="selectedFileName" class="outline-import-modal__helper">已选择：{{ selectedFileName }}</p>
         </section>
 
         <section class="outline-import-modal__section">
@@ -48,12 +48,12 @@
 
         <section class="outline-import-modal__section">
           <div class="outline-import-modal__metrics">
-            <span data-testid="outline-import-char-count">当前字符数:{{ charCount }}</span>
+            <span data-testid="outline-import-char-count">当前字符数：{{ charCount }}</span>
             <span v-if="charCount >= OUTLINE_IMPORT_RECOMMEND_THRESHOLD && charCount < OUTLINE_IMPORT_RISK_THRESHOLD" class="outline-import-modal__hint">
               建议控制在 20,000 字以内以获得更好编辑体验。
             </span>
             <span v-if="charCount >= OUTLINE_IMPORT_RISK_THRESHOLD" class="outline-import-modal__hint outline-import-modal__hint--warn">
-              当前内容较大,可能影响编辑性能。
+              当前内容较大，可能影响编辑性能。
             </span>
           </div>
           <p v-if="errorMessage" class="outline-import-modal__error" data-testid="outline-import-error">

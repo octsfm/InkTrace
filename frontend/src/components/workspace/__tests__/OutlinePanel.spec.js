@@ -108,6 +108,9 @@ describe('OutlinePanel', () => {
 
     expect(mockGetContextPackReadiness).toHaveBeenCalledWith('work-1', 'chapter-1')
     expect(wrapper.text()).toContain('剧情轨道')
+    expect(wrapper.text()).toContain('`content_text` 是唯一真源，树结构仅作为派生缓存保存。')
+    expect(wrapper.text()).toContain('当前阶段：追查旧地图')
+    expect(wrapper.text()).toContain('终局目标：揭开海雾秘密')
     expect(wrapper.text()).toContain('灯塔迷局')
     expect(wrapper.text()).toContain('确认灯塔背后的势力')
     expect(wrapper.text()).toContain('完成第一轮追索')
