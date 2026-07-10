@@ -3047,10 +3047,13 @@ describe('AIPanel', () => {
     })
 
     await vi.runAllTimersAsync()
+    await flushPromises()
 
     expect(listAgentTraces).toHaveBeenCalledWith({ work_id: 'work-1', chapter_id: 'chapter-1' })
     expect(wrapper.text()).toContain('任务追踪')
-    expect(wrapper.text()).toContain('令牌 321')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('令牌 321')
+    })
 
     await wrapper.get('[data-test="trace-steps-trace_1"]').trigger('click')
     await flushPromises()

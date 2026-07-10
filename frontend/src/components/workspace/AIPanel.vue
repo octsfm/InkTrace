@@ -878,7 +878,7 @@
       <p v-if="memoryActionError" class="ai-error">{{ memoryActionError }}</p>
     </div>
 
-    <div v-if="false" class="ai-section">
+    <div v-if="developerMode" class="ai-section">
       <h4>任务追踪</h4>
       <ul v-if="agentTraces.length" class="ai-list">
         <li v-for="trace in agentTraces" :key="trace.trace_id" class="planning-item">
@@ -2083,15 +2083,33 @@ const loadAgentTraces = async () => {
 }
 
 const refreshAIPanel = async () => {
-  await Promise.all([
+  const requests = [
     loadSettings(),
     loadInitialization(),
     loadContextReadiness(),
     loadAgentSessions(),
     loadPlotArcs(),
     loadPlanningData()
-  ])
+  ]
+  if (props.developerMode) {
+    requests.push(loadAgentTraces())
+  }
+  await Promise.all(requests)
 }
+
+Object.assign(stepActionLabelMap, {
+  prepare: '准备',
+  execute: '执行',
+  observe: '观察',
+  decide: '决策',
+  tool_call: '工具调用'
+})
+
+Object.assign(metricNameLabelMap, {
+  tool_call_latency_ms: '工具调用耗时',
+  llm_token_count: '模型令牌用量',
+  step_elapsed_ms: '步骤耗时'
+})
 
 const refreshReviewPanel = async () => {
   await Promise.all([
