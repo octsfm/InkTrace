@@ -142,7 +142,7 @@
         :saving-config="autoQueueStore.savingConfig"
         :action-loading="autoQueueStore.actionLoading"
         :chapter-id="chapterId"
-        :queue-mode="autoQueueMode"
+        :writing-intent="autoQueueWritingIntent"
         :target-chapters="autoQueueTargetChapters"
         :target-word-count="autoQueueTargetWordCount"
         :budget-limit-tokens="autoQueueBudgetLimitTokens"
@@ -154,8 +154,8 @@
         :history-runs="autoQueueStore.historyRuns"
         :error-message="autoQueueStore.errorMessage"
         :note-message="autoQueueStore.noteMessage"
-        @update:queue-mode="autoQueueMode = $event"
         @update:target-chapters="autoQueueTargetChapters = $event"
+        @update:writing-intent="autoQueueWritingIntent = $event"
         @update:target-word-count="autoQueueTargetWordCount = $event"
         @update:budget-limit-tokens="autoQueueBudgetLimitTokens = $event"
         @update:stop-at-sequence-end="autoQueueStopAtSequenceEnd = $event"
@@ -179,7 +179,7 @@
         v-if="aiHelperActiveView === 'auto_queue' && autoQueueConflictSectionVisible"
         data-test="auto-queue-conflicts"
       >
-        <h5>自动续写冲突详情</h5>
+        <h5>接着写时发现的问题</h5>
         <p v-if="autoQueueConflictLoading" class="ai-note">正在加载冲突详情…</p>
         <p v-else-if="!autoQueueConflictItems.length" class="ai-note">当前没有可展示的阻断冲突，请刷新后重试。</p>
         <ul v-else class="ai-list">
@@ -202,18 +202,30 @@
         :feature-enabled="outlineAssistStore.featureEnabled"
         :modes="outlineAssistStore.modes"
         :active-mode="outlineAssistStore.activeMode"
+        :target-kind="outlineAssistStore.targetKind"
+        :target-label="outlineAssistTargetLabel"
+        :target-selection="outlineAssistStore.targetSelection"
+        :chapter-options="chapterOptions"
+        :source-text="outlineAssistStore.sourceText"
         :suggestions="outlineAssistStore.filteredSuggestions"
         :suggestion-details="outlineAssistStore.suggestionDetails"
         :action-error="outlineAssistStore.actionError"
+        :action-notice="outlineAssistStore.actionNotice"
+        :pending-writing-task-id="outlineAssistStore.pendingWritingTaskId"
+        :confirming-writing-task="outlineAssistStore.confirmingWritingTask"
         :submitting-suggestion-id="outlineAssistStore.submittingSuggestionId"
         :submitting-action-type="outlineAssistStore.submittingActionType"
         :loading="outlineAssistStore.loading"
+        :target-loading="outlineAssistStore.targetLoading"
+        :target-ready="outlineAssistStore.targetReady"
+        :generating="outlineAssistStore.generating"
         :conflict-section-visible="outlineAssistStore.conflictSectionVisible"
         :conflict-loading="outlineAssistStore.conflictLoading"
         :conflict-items="outlineAssistStore.conflictItems"
         :conflict-details="outlineAssistStore.conflictDetails"
         :apply-confirm-suggestion-id="outlineAssistStore.applyConfirmSuggestionId"
         :apply-submitting-suggestion-id="outlineAssistStore.applySubmittingSuggestionId"
+        :is-mode-disabled="outlineAssistStore.isModeDisabled"
         :can-accept-suggestion="outlineAssistStore.canAcceptSuggestion"
         :can-resolve-suggestion="outlineAssistStore.canResolveSuggestion"
         :can-convert-suggestion="outlineAssistStore.canConvertSuggestion"
@@ -224,14 +236,19 @@
         :display-suggestion-type="displaySuggestionType"
         :display-severity="displaySeverity"
         @update:active-mode="outlineAssistStore.setActiveMode"
+        @update:source-text="outlineAssistStore.setSourceText"
+        @target-change="handleOutlineTargetChange"
+        @generate="handleGenerateOutlineSuggestion"
         @suggestion-detail="outlineAssistStore.loadSuggestionDetail"
         @suggestion-accept="outlineAssistStore.acceptSuggestion"
         @suggestion-apply-open="outlineAssistStore.openApplyConfirm"
         @suggestion-dismiss="outlineAssistStore.dismissSuggestion"
         @suggestion-convert="outlineAssistStore.convertSuggestionWithConflictSync"
+        @suggestion-copy="outlineAssistStore.copySuggestionResult"
+        @confirm-writing-plan="handleConfirmOutlineWritingPlan"
         @suggestion-apply-cancel="outlineAssistStore.closeApplyConfirm"
         @suggestion-apply-confirm-submit="handleApplyOutlineSuggestion"
-        @refresh="loadAISuggestions"
+        @refresh="refreshOutlineAssist"
       />
 
       <div
@@ -1074,8 +1091,8 @@ const quickTrialResult = ref({})
 const styleDNADraftText = ref('')
 const styleDNASourceMode = ref('user_upload')
 const styleDNASelectedChapterIds = ref([])
-const autoQueueMode = ref('safe')
 const autoQueueTargetChapters = ref(5)
+const autoQueueWritingIntent = ref('')
 const autoQueueTargetWordCount = ref(0)
 const autoQueueBudgetLimitTokens = ref(0)
 const autoQueueStopAtSequenceEnd = ref(true)
@@ -1144,7 +1161,7 @@ const panelDescription = computed(() => (
 const aiHelperViews = computed(() => {
   const items = []
   if (autoQueueStore.featureEnabled) {
-    items.push({ id: 'auto_queue', label: '自动续写' })
+    items.push({ id: 'auto_queue', label: '接着写' })
   }
   if (outlineAssistEnabled) {
     items.push({ id: 'outline_assist', label: '大纲辅助' })
@@ -1689,7 +1706,6 @@ const handleStyleDNARefresh = async () => {
 }
 
 const syncAutoQueueDraftsFromStore = () => {
-  autoQueueMode.value = String(autoQueueStore.config?.queue_mode || 'safe')
   autoQueueTargetChapters.value = Number(autoQueueStore.config?.target_chapters || 5)
   autoQueueTargetWordCount.value = Number(autoQueueStore.config?.target_word_count || 0)
   autoQueueBudgetLimitTokens.value = Number(autoQueueStore.config?.budget_limit_tokens || 0)
@@ -1701,7 +1717,6 @@ const syncAutoQueueDraftsFromStore = () => {
 
 const handleAutoQueueSaveConfig = async () => {
   await autoQueueStore.saveConfig({
-    queue_mode: autoQueueMode.value,
     target_chapters: Number(autoQueueTargetChapters.value || 0),
     target_word_count: Number(autoQueueTargetWordCount.value || 0),
     budget_limit_tokens: Number(autoQueueBudgetLimitTokens.value || 0),
@@ -1716,11 +1731,14 @@ const handleAutoQueueSaveConfig = async () => {
 const handleAutoQueueStart = async () => {
   if (!ensureAISettingsReady(planningActionError)) return
   if (!props.chapterId) {
-    autoQueueStore.errorMessage = '请先进入目标章节，再启动自动续写。'
+    autoQueueStore.errorMessage = '请先打开想接着写的章节。'
     return
   }
   await handleAutoQueueSaveConfig()
-  await autoQueueStore.startQueue({ startChapterId: props.chapterId })
+  await autoQueueStore.startQueue({
+    startChapterId: props.chapterId,
+    userInstruction: autoQueueWritingIntent.value
+  })
 }
 
 const handleAutoQueuePause = async () => {
@@ -1747,7 +1765,6 @@ const handleAutoQueueDisableBudgetCheck = async () => {
     : window.confirm('关闭预算检查后，AI 功能将不再受预算限制。确定要关闭吗？')
   if (!confirmed) return
   await autoQueueStore.saveConfig({
-    queue_mode: autoQueueMode.value,
     target_chapters: Number(autoQueueTargetChapters.value || 0),
     target_word_count: Number(autoQueueTargetWordCount.value || 0),
     budget_limit_tokens: Number(autoQueueBudgetLimitTokens.value || 0),
@@ -1809,7 +1826,7 @@ const handleAutoQueueStop = async () => {
   if (!runId) return
   const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
     ? true
-    : window.confirm('确定要停止自动续写吗?已生成的候选稿会保留。')
+    : window.confirm('确定要停下这次续写吗？已经写好的新稿会保留。')
   if (!confirmed) return
   await autoQueueStore.stopQueue(runId)
 }
@@ -2123,12 +2140,64 @@ const refreshAIPanel = async () => {
   await Promise.all(requests)
 }
 
+const refreshOutlineAssist = async () => {
+  if (!props.workId) return
+  try {
+    if (outlineAssistStore.targetId || outlineAssistStore.targetKind === 'selection') {
+      await outlineAssistStore.reloadTarget()
+    } else {
+      await outlineAssistStore.initializeForTarget(props.workId, props.chapterId)
+    }
+  } catch (error) {
+    outlineAssistStore.setActionError(String(
+      error?.userMessage || (outlineAssistStore.targetKind === 'chapter_outline'
+        ? '暂时没能读到本章细纲，请稍后重试。'
+        : '暂时没能读到作品大纲，请稍后重试。')
+    ))
+    return
+  }
+  try {
+    await outlineAssistStore.loadSuggestions({
+      workId: props.workId,
+      chapterId: outlineAssistStore.chapterId
+    })
+  } catch (error) {
+    outlineAssistStore.setActionError(String(error?.userMessage || '大纲建议加载失败，请稍后重试'))
+  }
+}
+
+const refreshOutlineAssistFromWorkspace = async () => {
+  if (!props.workId) return
+  try {
+    await outlineAssistStore.initializeForTarget(props.workId, props.chapterId)
+    await outlineAssistStore.loadSuggestions({
+      workId: props.workId,
+      chapterId: props.chapterId
+    })
+  } catch (error) {
+    outlineAssistStore.setActionError(String(
+      error?.userMessage || (props.chapterId
+        ? '暂时没能读到本章细纲，请稍后重试。'
+        : '暂时没能读到作品大纲，请稍后重试。')
+    ))
+  }
+}
+
 Object.assign(stepActionLabelMap, {
   prepare: '准备',
   execute: '执行',
   observe: '观察',
   decide: '决策',
   tool_call: '工具调用'
+})
+const outlineAssistTargetLabel = computed(() => {
+  if (outlineAssistStore.targetKind === 'work_outline') return '整本故事大纲'
+  if (outlineAssistStore.targetKind === 'selection') return '一段临时文字'
+  const chapter = (props.chapterOptions || []).find(
+    (item) => String(item?.id || '') === String(outlineAssistStore.targetId || '')
+  )
+  const order = Number(chapter?.order_index || 0)
+  return order > 0 ? `第${order}章细纲` : '本章细纲'
 })
 
 Object.assign(metricNameLabelMap, {
@@ -2567,12 +2636,48 @@ const handleRejectCandidateVersion = async (candidateDraftId, candidateVersionId
 
 const handleApplyOutlineSuggestion = async (suggestionId) => {
   if (!suggestionId || outlineAssistStore.applySubmittingSuggestionId === suggestionId) return
+  const confirmedTargetLabel = outlineAssistTargetLabel.value
   try {
-    await outlineAssistStore.applySuggestion(suggestionId)
+    const result = await outlineAssistStore.applySuggestion(suggestionId)
+    if (!result) return
     ElMessage.success({
-      message: '已应用 1 条建议',
+      message: `已放进${confirmedTargetLabel}`,
       duration: 2000
     })
+  } catch {}
+}
+
+const handleGenerateOutlineSuggestion = async (modeId) => {
+  if (outlineAssistStore.generating) return
+  try {
+    await outlineAssistStore.startGeneration(modeId)
+  } catch {}
+}
+
+const handleOutlineTargetChange = async (selection) => {
+  if (outlineAssistStore.targetLoading || outlineAssistStore.generating) return
+  const value = String(selection || 'work')
+  const [prefix, ...idParts] = value.split(':')
+  const kind = prefix === 'chapter'
+    ? 'chapter_outline'
+    : prefix === 'selection'
+      ? 'selection'
+      : 'work_outline'
+  const targetId = kind === 'chapter_outline' ? idParts.join(':') : ''
+  try {
+    await outlineAssistStore.selectTarget(kind, targetId)
+    await outlineAssistStore.loadSuggestions({
+      workId: props.workId,
+      chapterId: outlineAssistStore.chapterId
+    })
+  } catch {}
+}
+
+const handleConfirmOutlineWritingPlan = async () => {
+  try {
+    const result = await outlineAssistStore.confirmWritingPlan()
+    if (!result) return
+    ElMessage.success({ message: '已确认使用本章写作计划', duration: 2000 })
   } catch {}
 }
 
@@ -2778,7 +2883,6 @@ watch(() => props.workId, async () => {
   styleDNADraftText.value = ''
   styleDNASourceMode.value = 'user_upload'
   styleDNASelectedChapterIds.value = []
-  autoQueueMode.value = 'safe'
   autoQueueTargetChapters.value = 5
   autoQueueTargetWordCount.value = 0
   autoQueueConflictSectionVisible.value = false
@@ -2808,7 +2912,7 @@ watch(aiHelperViews, (views) => {
 
 watch(aiHelperActiveView, async (viewId) => {
   if (viewId === 'outline_assist' && outlineAssistEnabled) {
-    await loadAISuggestions()
+    await refreshOutlineAssist()
   }
 })
 
@@ -2826,7 +2930,7 @@ watch(() => props.chapterId, async () => {
     loadPlanningData()
   ]
   if (outlineAssistEnabled && aiHelperActiveView.value === 'outline_assist') {
-    tasks.push(loadAISuggestions())
+    tasks.push(refreshOutlineAssistFromWorkspace())
   } else {
     outlineAssistStore.clearChapterScopedUiState()
   }
@@ -2850,7 +2954,7 @@ watch(() => String(reindexPolling.job.value?.status || ''), async (status) => {
   }
 })
 
-watch(() => [autoQueueStore.config?.queue_mode, autoQueueStore.config?.target_chapters], () => {
+watch(() => autoQueueStore.config?.target_chapters, () => {
   syncAutoQueueDraftsFromStore()
 })
 </script>

@@ -1,128 +1,52 @@
 # InkTrace
 
-> 面向长篇小说创作的作者智能体工作系统
+> 给小说作者使用的长篇创作工作台：你决定故事往哪里走，系统帮你准备新稿、检查问题和整理线索。
 
-InkTrace 不是一个“AI 续写按钮”，也不是把很多模型能力堆在一起的写作工具箱。  
-它的目标是成为一个真正服务小说创作的工作系统：能理解已有小说，能接手未完成小说，能从零协助创作，也能在写作过程中持续提供规划、续写、改写、审查和修订能力。
+当前状态：V2.0 P2-04 方案 A 与“接着写”入口已完成本地封版，远端 CI 待复验。封版日期：2026-07-12。
 
-当前项目正在从旧的“功能页 + workflow 控制台”重构为新的 `Dashboard + Novel Workspace` 形态，并逐步走向真正的 `AuthorAgent` 体系。
+## 先说最重要的
 
-## 它是什么
+InkTrace 不会在你不知情时修改正式正文。
 
-InkTrace 的最终定位是：
+- AI 生成的内容先成为独立新稿。
+- 只有你明确选择“放进正文”，新稿才会进入正式正文。
+- 每写完一章都会停下来等你决定，不会无人值守地一直写。
+- “继续写下一章”和“采用当前新稿”是两个不同操作。
+- 系统不会在普通日志中记录完整正文、新稿、Prompt、ContextPack 或 API Key。
 
-- 一个能分析已有小说的系统
-- 一个能接手未完成小说继续写的系统
-- 一个能帮助作者从零创作的系统
-- 一个能改写、润色、去 AI 味的系统
-- 一个长期维护人物、世界观、剧情弧和一致性的系统
+## 它可以帮你做什么
 
-一句话说：
+- 管理作品和章节；
+- 在统一写作台中写正文；
+- 整理大纲、人物、时间线和伏笔；
+- 根据已有内容准备续写新稿；
+- 推演方向、确认章节计划；
+- 改写选中的文字；
+- 检查一致性、冲突和记忆变化；
+- 由作者逐次决定哪些内容真正进入作品。
 
-**InkTrace 想做的是“作者与智能体协作写小说的 IDE”。**
+## “接着写”怎么用
 
-## 核心设计
+1. 打开作品和想继续写的章节。
+2. 打开右侧“AI”，选择“接着写”。
+3. 选择“让冲突更紧张”“让人物关系推进”或“把刚才的伏笔接下去”。
+4. 也可以写一句自己的想法；没有特别要求时可以直接接着写。
+5. 点击“写一章给我看”。
+6. 写完先阅读新稿，再决定是否放进正文、是否继续下一章。
 
-### 双模型协同
-
-系统固定使用两类模型：
-
-- `Kimi`：理解、分析、规划、控制、校验
-- `DeepSeek`：写作、续写、改写、润色
-
-对应原则是：
-
-**Kimi 决定故事往哪走，DeepSeek 把它写出来。**
-
-### Story Model
-
-InkTrace 不想靠“把最近几章拼起来扔给模型”来续写。  
-系统会尽量把一部小说建成一套可持续使用的结构模型，包括：
-
-- 人物图谱
-- 世界观规则
-- 主线与支线
-- PlotArc
-- 当前推进状态
-- 风格画像
-- 一致性风险点
-
-### PlotArc
-
-`PlotArc` 是正式的中层叙事推进单位，不是章节摘要。  
-它承担的是：
-
-- 全书结构理解
-- 下一章规划
-- 长线一致性控制
-- 续写目标约束
-
-在设计上，PlotArc 至少有三层视角：
-
-- 全书总弧
-- 开局到当前阶段弧
-- 最近几章局部推进弧
-
-## 当前产品形态
-
-当前前端正在重构为两层结构：
-
-- `Dashboard`
-- `Novel Workspace`
-
-其中 `Novel Workspace` 是某一本小说的完整工作环境，主要包含：
-
-- `Writing`：写作核心区
-- `Overview`：整体概览
-- `Structure`：结构与 PlotArc
-- `Chapters`：章节管理
-- `Tasks`：任务与审查
-- `Settings`：后续配置区
-
-这意味着 InkTrace 的方向已经从“详情页 + 一堆按钮”转向“统一工作区 + 中央编辑器 + Copilot 协作”。
-
-## 当前实现状态
-
-当前仓库已经不再是早期原型，但也还没有完全到达最终形态。
-
-更准确地说，它现在是：
-
-- 一个已经开始落地新工作区 UI 的小说创作系统
-- 一个已经具备导入、分析、规划、续写、改写、审查主链的后端系统
-- 一个仍在从 workflow 主导，向真正 `AuthorAgent` 演进的系统
-
-现阶段比较明确的状态是：
-
-- 新 `Workspace` UI 主骨架已经搭起来
-- `Writing` 写作台已经开始成形
-- 双模型职责已经基本明确
-- PlotArc / Story Model / 记忆体系已经有正式设计
-- 真正的 `AuthorAgent` 还没有完全落成主链
-
-## 仓库结构
-
-```text
-ink-trace/
-├── application/         # 应用服务、workflow、agent_mvp
-├── domain/              # 领域对象、仓储接口、核心规则
-├── infrastructure/      # LLM、持久化、外部集成
-├── presentation/        # API 与依赖注入
-├── frontend/            # Vue 3 + Vite + Pinia 前端
-├── docs/                # 文档
-├── data/                # 本地数据库与项目数据
-├── main.py              # 后端入口
-├── start-all.bat        # 一键启动前后端
-└── stop.bat             # 停止前后端
-```
+详细说明见：[“接着写”使用说明](docs/10_user_guide/InkTrace-接着写-使用说明.md)。
 
 ## 快速开始
 
 ### 环境要求
 
-- Python 3.11+
-- Node.js 18+
+- Windows 10/11
+- Python 3.11 或更高版本
+- Node.js 18 或更高版本
 
-### 安装依赖
+### 第一次安装
+
+在项目目录打开 PowerShell：
 
 ```powershell
 pip install -r requirements.txt
@@ -139,61 +63,99 @@ cd ..
 
 启动后访问：
 
-- 前端：[http://localhost:3000](http://localhost:3000)
-- 后端 API：[http://127.0.0.1:9527/docs](http://127.0.0.1:9527/docs)
+- 写作界面：[http://localhost:3000](http://localhost:3000)
+- 后端接口说明：[http://127.0.0.1:9527/docs](http://127.0.0.1:9527/docs)
 
-### 停止
+停止服务：
 
 ```powershell
 .\stop.bat
 ```
 
-`stop.bat` 现在会同时关闭：
+## 模型设置
 
-- 后端 `9527`
-- 前端 `3000`
+你可以先浏览界面和管理作品；要使用分析、接着写、改写等 AI 功能，需要在应用的“设置”页面完成模型服务配置。
 
-## 模型配置
+API Key 通过受控配置链路保存和读取，不应写进源码、README、日志或提交记录。
 
-当前运行逻辑中，API Key 不再以环境变量作为主配置入口。  
-模型配置应通过应用内配置页完成，再由后端持久化到本地数据库读取。
+## 当前封版范围
 
-如果你只想先跑界面和基础流程，不一定需要马上配置模型；但要真正使用分析、续写、改写等能力，仍需要先在界面里完成模型配置。
+本次完成的是 P2-04 方案 A 和面向作者的“接着写”入口：
+
+- 入口统一使用作者语言；
+- 支持三项写作方向、0 至 60 字自由输入和空值直写；
+- 每次只生成一章并等待作者；
+- 候选稿与正式正文保持隔离；
+- 保留章数、篇幅、冲突和用量保护；
+- 后端、前端、构建和视觉验收均已在本地通过。
+
+这不代表 P2 所有模块已经完成发布验收。远端 CI 通过仍是合并或发布前置条件。
+
+## 本地验证结果
+
+| 检查 | 结果 |
+|---|---|
+| 后端全量测试 | `839 passed, 1 skipped` |
+| P2-04 相关后端测试 | `60 passed` |
+| 前端全量测试 | `443 passed` |
+| 前端生产构建 | 通过 |
+| Playwright 视觉验收 | `2 passed` |
+| 远端 CI | 待复验 |
+
+常用验证命令：
+
+```powershell
+python -m pytest -q
+cd frontend
+npm test
+npm run build
+```
 
 ## 文档入口
 
-重构设计文档已经集中放在：
+### 给作者
 
-- [docs/author_novel_agent_redesign/README.md](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/README.md)
+- [“接着写”使用说明](docs/10_user_guide/InkTrace-接着写-使用说明.md)
+- [当前项目状态](docs/PROJECT_STATUS_CURRENT.md)
 
-其中最重要的几份包括：
+### 封版资料
 
-- [产品蓝图](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/AUTHOR_NOVEL_AGENT_PRODUCT_BLUEPRINT.md)
-- [智能体架构](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/02_agent_architecture.md)
-- [工作流架构](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/03_workflow_architecture.md)
-- [小说领域架构](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/05_novel_domain_architecture.md)
-- [PlotArc 架构](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/06_plot_arc_architecture.md)
-- [记忆架构](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/07_memory_architecture.md)
-- [UI 工作区重构设计稿](/D:/Work/InkTrace/ink-trace/docs/author_novel_agent_redesign/24_ui_workspace_redesign_spec.md)
+- [“接着写”封版总结](docs/07_overview/InkTrace-V2.0-P2-04-接着写封版总结.md)
+- [P2-04 封版验收报告](docs/09_acceptance/InkTrace-V2.0-P2-S2-P2-04-验收清单.md)
+- [视觉验收记录](design-qa.md)
+- [设计与实现对照图](artifacts/design-qa/continue-writing-comparison.png)
 
-## 适合谁
+### 正式设计依据
 
-InkTrace 适合这几类使用者：
+- [需求规格说明书](docs/01_requirements/InkTrace-V2.0-需求规格说明书.md)
+- [架构设计说明书](docs/02_architecture/InkTrace-V2.0-架构设计说明书.md)
+- [概要设计说明书](docs/07_overview/InkTrace-V2.0-概要设计说明书.md)
+- [P2-04 详细设计](docs/03_design/InkTrace-V2.0-P2-04-自动续写队列详细设计.md)
+- [P2 API 与前端边界](docs/03_design/InkTrace-V2.0-P2-11-API与前端集成边界详细设计.md)
+- [P2 UI 与交互设计](docs/03_design/InkTrace-V2.0-P2-12-UI集成与交互设计说明书.md)
 
-- 有长篇小说、想让系统先理解再继续写的人
-- 不想只用“续写按钮”，而是想做结构化创作的人
-- 需要大纲、章节计划、正文、审查、修订一体化的人
-- 希望 AI 参与写作，但仍然保留作者控制权的人
+历史重构资料已归档在 `docs/history_archive/`，不作为当前实现依据。所有 `*_001.md`、草稿和备份文档也不得作为正式实现依据。
 
-## 当前重点
+## 仓库结构
 
-当前仓库的重点不是继续堆功能，而是完成这轮重大重构：
+```text
+ink-trace/
+├── application/       # 应用用例编排
+├── domain/            # 领域对象与核心规则
+├── infrastructure/    # 数据库、模型与外部适配
+├── presentation/      # API 与依赖注入
+├── frontend/          # Vue 3 + Vite + Pinia
+├── tests/             # 后端测试
+├── docs/              # 正式设计、计划、验收与使用说明
+├── main.py            # 后端入口
+├── start-all.bat      # 一键启动
+└── stop.bat           # 一键停止
+```
 
-- 从旧详情页式产品收口到 `Dashboard + Workspace`
-- 从“主备模型”语义收口到“职责模型”语义
-- 从“workflow 控制台”收口到“作者智能体工作系统”
-- 从“单次生成”收口到“长期理解作品”的 Story Model / PlotArc / Memory 体系
+## 开发约束
+
+本项目执行 DDD、Clean Architecture 和 TDD，并遵守根目录 [AGENTS.md](AGENTS.md) 的实现纪律。任何改动都不能绕过真实用户操作、人工审核门、记忆审核门或冲突保护。
 
 ## 许可证
 
-[MIT](./LICENSE)
+[MIT](LICENSE)

@@ -20,15 +20,14 @@ class SQLiteAutoQueueConfigRepository(AutoQueueConfigRepository):
             conn.execute(
                 """
                 INSERT INTO auto_queue_configs (
-                    config_id, work_id, queue_mode, target_chapters, target_word_count,
+                    config_id, work_id, target_chapters, target_word_count,
                     stop_at_sequence_end, stop_on_blocking_review, max_consecutive_blocking,
                     stop_on_budget_exceeded, stop_on_foreshadow_premature,
                     max_consecutive_revision_failures, budget_limit_tokens,
                     enabled, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(config_id) DO UPDATE SET
                     work_id = excluded.work_id,
-                    queue_mode = excluded.queue_mode,
                     target_chapters = excluded.target_chapters,
                     target_word_count = excluded.target_word_count,
                     stop_at_sequence_end = excluded.stop_at_sequence_end,
@@ -69,7 +68,6 @@ class SQLiteAutoQueueConfigRepository(AutoQueueConfigRepository):
                 AutoQueueConfig(
                     config_id=row["config_id"],
                     work_id=row["work_id"],
-                    queue_mode=row["queue_mode"],
                     target_chapters=int(row["target_chapters"] or 0),
                     target_word_count=int(row["target_word_count"] or 0),
                     stop_at_sequence_end=bool(row["stop_at_sequence_end"]),
@@ -92,7 +90,6 @@ class SQLiteAutoQueueConfigRepository(AutoQueueConfigRepository):
         return (
             config.config_id,
             config.work_id,
-            config.queue_mode.value,
             config.target_chapters,
             config.target_word_count,
             int(config.stop_at_sequence_end),

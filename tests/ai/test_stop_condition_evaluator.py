@@ -3,7 +3,6 @@ from domain.entities.ai.models import (
     AIReviewRiskLevel,
     AIReviewStatus,
     AutoQueueConfig,
-    AutoQueueMode,
     AutoQueueRun,
     AutoQueueStatus,
     ReviewIssue,
@@ -45,7 +44,6 @@ def _build_config(**updates) -> AutoQueueConfig:
     payload = {
         "config_id": "aqc_001",
         "work_id": "work_001",
-        "queue_mode": AutoQueueMode.SAFE,
         "target_chapters": 5,
         "target_word_count": 0,
         "stop_at_sequence_end": True,
@@ -70,7 +68,6 @@ def _build_run(**updates) -> AutoQueueRun:
         "work_id": "work_001",
         "multi_chapter_session_id": "mcs_001",
         "status": AutoQueueStatus.RUNNING,
-        "queue_mode": AutoQueueMode.SAFE,
         "generated_count": 1,
         "total_word_count": 3200,
         "consumed_tokens": 60000,

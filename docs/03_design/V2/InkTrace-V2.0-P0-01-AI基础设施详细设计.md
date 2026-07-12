@@ -1,13 +1,14 @@
 # InkTrace V2.0-P0-01 AI 基础设施详细设计
 
-版本：v2.0-p0-detail-01  
-状态：P0 模块级详细设计  
+版本：v2.1-p0-detail-01
+状态：P0 模块级详细设计（P2 成本事实安全兼容补丁已冻结）
 依据文档：
 
 - `docs/01_requirements/InkTrace-V2.0-需求规格说明书.md`
 - `docs/07_overview/InkTrace-V2.0-概要设计说明书.md`
 - `docs/02_architecture/InkTrace-V2.0-架构设计说明书.md`
 - `docs/03_design/InkTrace-V2.0-P0-详细设计总纲.md`
+- `docs/03_design/InkTrace-V2.0-P2-09-成本看板详细设计.md`（仅模型调用事实、预算入口与 retention 兼容补丁）
 
 说明：用户输入中的概要设计与架构设计路径为逻辑引用，本文档使用仓库中实际存在的冻结文档路径。
 
@@ -458,6 +459,7 @@ ProviderResponse 概念字段：
 | raw_text | 模型原始输出，普通日志不得完整记录 |
 | parsed_output | 结构化结果，可为空 |
 | token_usage | token 使用量 |
+| billing | 可选结构化 `ProviderBilling(amount Decimal, currency, source=provider_reported)`；仅上游明确返回本次费用时填写 |
 | elapsed_ms | 耗时 |
 | finish_reason | 完成原因 |
 | request_id | 请求 ID |
@@ -555,6 +557,8 @@ ModelRouter 属于 Core Application 层。
 - 调用 ProviderPort。
 - 返回 ProviderResponse。
 - 在调用前后协助记录 LLMCallLog。
+- 对每次首选/retry/fallback 暴露不含密钥的 `ResolvedModelAttempt(provider, model, role, route_revision)`。
+- P2 生产调用中，在真正调用 Provider 前后执行必需 `ProviderAttemptGuard`，确保每个精确 attempt 单独预算门控和落日志。
 
 不允许：
 
@@ -566,11 +570,54 @@ ModelRouter 属于 Core Application 层。
 
 ### 7.2 model_role 路由规则
 
+#### P0 Core 模型执行门 Port（P2 扩展点）
+
+P0 Core 定义与成本领域无关的模型执行门 Port，文件为 `application/ports/ai/provider_attempt_guard_port.py`：
+
+```python
+@dataclass(frozen=True)
+class ResolvedModelAttempt:
+    attempt_id: str
+    provider_name: str
+    model_name: str
+    model_role: str
+    route_revision: str
+
+@dataclass(frozen=True)
+class AttemptGuardDecision:
+    phase: Literal["before_attempt", "after_attempt"]
+    may_proceed: bool
+    control: Literal[
+        "continue", "block_before_attempt",
+        "stop_after_attempt", "pause_after_attempt"
+    ]
+    reason_code: str
+    decision_ref: str
+
+@dataclass(frozen=True)
+class RoutedLLMResult:
+    response: ProviderResponse | None
+    call_log_ref: str | None
+    guard_decision: AttemptGuardDecision
+
+class ProviderAttemptGuardPort(Protocol):
+    def before_attempt(self, request: LLMRequest,
+                       resolved: ResolvedModelAttempt) -> AttemptGuardDecision: ...
+    def after_logged_attempt(self, resolved: ResolvedModelAttempt,
+                             response: ProviderResponse,
+                             call_log: LLMCallLog) -> AttemptGuardDecision: ...
+```
+
+ModelRouter 只依赖该 Core Port。`before_attempt.may_proceed=false` 时不调用 Provider，也不创建 LLMCallLog；`after_attempt.may_proceed=false` 时已完成本 attempt，但禁止 Router 发起 retry/fallback。Router 不解析 decision_ref 对应的业务详情，不 import P2 BudgetGateResult/BudgetGuard；P2 的 GuardedLLMExecutor 在外层把通用 decision 映射回完整预算结果。这样依赖始终是 P2 feature → P0 Core Port，不形成 Core → P2 或循环依赖。
+
+#### model_role 规则
+
 规则：
 
 - Core Application Service 只提交 `model_role`。
 - 业务服务不得写死 Kimi / DeepSeek。
 - ModelRouter 通过 ModelRoleConfig 获取 provider / model。
+- P2 `GuardedLLMExecutor` 仍只接收业务 LLMRequest.model_role；精确 provider/model 由 Router 解析后传给 attempt guard，业务服务不得预选模型。
 - ModelRoleConfig 缺失、`model_role` 未配置或不受支持时返回 `model_role_invalid`。
 - 底层可以把 `model_role_config_missing` 作为内部兼容错误码或 debug_ref，但不得作为业务默认 fallback 静默切换模型。
 - Provider 未启用时返回 `provider_disabled`。
@@ -613,6 +660,9 @@ P0 fallback 只做最小设计：
 - fallback 不得改变任务语义。
 - fallback 失败后按原错误处理进入 failed。
 - fallback 的每次调用都必须写入 LLMCallLog。
+- 进入每次 Provider retry/fallback 前必须生成新的 request_id，并以该次精确 provider/model 再次调用 attempt guard；不得沿用上一模型的价格投影或准入结果。
+- P2 生产 `generate` 的 attempt_guard 必填且不可为 None。Provider 连接测试走独立 `test_connection`，不伪装生产调用。
+- P2 的 `after_logged_attempt` 结果必须随已落日志的 ProviderResponse 返回给 `GuardedLLMExecutor`。若调用后门控不允许继续，Router 立即禁止下一次 retry/fallback；不得用异常丢弃已成功落日志的响应，也不得自行决定 CandidateDraft/apply。上层只可在本地校验通过后保留 CandidateDraft/result_ref，并按控制信号停止或暂停后续模型步骤。
 
 P0 不做：
 
@@ -935,31 +985,35 @@ LLMCallLog 至少记录：
 | prompt_key | Prompt Key |
 | prompt_version | Prompt 版本 |
 | model_role | 模型角色 |
-| provider | Provider |
-| model | 模型名称 |
+| provider_name | Provider |
+| model_name | 模型名称 |
 | context_pack_snapshot_id | Context Pack 快照 ID，可为空 |
 | output_schema_key | 输出 schema key |
 | request_id | 单次请求 ID |
 | trace_id | 调用链追踪 ID |
-| token_usage | token 使用量 |
+| usage / usage_status | 输入/输出/总用量；known / unknown |
+| usage_unavailable_reason | usage unknown 时的安全原因，如 token_usage_unavailable |
 | elapsed_ms | 耗时 |
 | error_code | 错误码 |
 | error_message | 脱敏错误信息 |
 | attempt_no | 第几次尝试 |
 | job_id | 可选 |
-| job_step_id | 可选 |
-| created_at | 创建时间 |
+| step_id | AIJobStep/AgentStep ID，可选 |
+| work_id / run_id | P2 作品/自动队列范围；作品级生产调用直接写入 |
+| session_id / adoption_target_ref | P2 Agent/用户决策关系；适用时直接写入 |
+| usage_status / cost_status / cost_source | 区分已知、未知与真零 |
+| estimated_cost / cost_currency / price_snapshot_json | 调用时不可变 Decimal 费用事实与实际费用币种；Provider 账单币种不得被报价币种覆盖，不得用当前价格回算 |
+| canonical_digest | insert-only 幂等与冲突校验摘要 |
+| provider_call_state | succeeded / failed |
+| started_at / finished_at | 带时区的调用起止时间 |
 
 ### 10.3 LLMCallLogRepositoryPort
 
 LLMCallLogRepositoryPort 是 Application Port。
 
-职责：
+职责冻结为命令 Port：只提供 `append(log)`，执行 SQLite insert-if-absent，不承载查询。
 
-- 写入 LLMCallLog。
-- 按 request_id 查询调用记录。
-- 按 trace_id 查询同一流程调用链。
-- 按 job_id / job_step_id 查询任务调用记录。
+按 request_id/trace_id/job_id/step_id 的排障查询拆到只读 `LLMCallLogLookupPort`；P2 聚合/分页/趋势/usage 另用 `LLMCallLogCostQueryPort`。两个查询 Port 均不得写库，避免命令与查询职责再次混合。
 
 ### 10.4 LLMCallLogger
 
@@ -976,6 +1030,8 @@ LLMCallLogger 属于 Core Application 层。
 - 记录 retry attempt。
 - 调用 LLMCallLogRepositoryPort 持久化日志。
 - 真正持久化由 Infrastructure 的 LLMCallLogStore / Repository Adapter 完成。
+- SQLite `llm_call_logs` 是权威物理存储；JSONL 只可作为 SQLite 提交后的可选诊断副本。
+- Repository 只允许 insert-if-absent；相同 request_id+digest 可幂等，不同 digest 冲突不得覆盖。
 
 边界：
 
@@ -1002,26 +1058,17 @@ LLMCallLog 必须记录：
 - total_tokens。
 - elapsed_ms。
 
-如果 Provider 未返回 token usage，则记录为空并标记 `token_usage_unavailable`。
+如果 Provider 未返回 token usage，则记录为空，固定 `usage_status=unknown`、`usage_unavailable_reason=token_usage_unavailable`；预算不得把它当 0。Provider 请求发出前的本地校验/门控失败不创建 LLMCallLog，只写 AIJobAttempt，表示真零次调用。
 
 ### 10.7 P0 默认保留策略
 
-P0 默认 LLMCallLog 保留策略：
-
-- 默认保留 90 天。
-- 或默认最多保留最近 10000 条。
-- 两者满足任一条件即可清理。
-- P0 可先只设计保留策略，不要求实现自动清理任务。
-- 自动清理任务可在后续开发计划或 P1 / P2 中实现。
-- 用户手动清理失败 Job / 过期调试信息时，可以联动清理相关 LLMCallLog。
-- 清理不得影响正式正文、正式资产、Candidate Draft 正文内容。
-- LLMCallLog 不保存完整 Prompt、完整正文、API Key，因此清理只影响排障与成本追踪元数据。
+P0 基础规则由 P0-02 v2.1 §15.1 细化：至少保留 90 天且至少保留最近 10000 条**可清理终态记录**；当前自然月、非终态/暂停/可重试 Job、活跃或仍允许恢复的 AutoQueueRun、未收口成本控制审计和未 reconcile Provider attempt 永远先排除。总量可暂时超过 10000，禁止为满足容量目标破坏预算事实。清理后维护按作品的 retention watermark，查询不得把受限历史说成完整。
 
 ### 10.8 P2 成本看板扩展点
 
 P2 成本看板可以消费 LLMCallLog。
 
-如果 P2 成本看板需要更长周期统计，必须在 P2 重新设计归档策略。
+P2 已冻结按作品 retention watermark 和 `history_completeness=complete/retention_limited` 的归档语义；历史费用未知或已清理都不得由当前价格倒算。
 
 P0 不实现：
 
@@ -1152,7 +1199,7 @@ sequenceDiagram
 | ProviderPort | Port | 标准化模型调用 | ProviderRequest | ProviderResponse | ProviderAdapter | 承载业务规则 | 流式输出不属于 P0，后续需单独设计 |
 | KimiProviderAdapter | Adapter | 封装 Kimi | ProviderRequest | ProviderResponse | Kimi SDK / HTTP | 被 Agent 直接调用 | 更多 Kimi 模型 |
 | DeepSeekProviderAdapter | Adapter | 封装 DeepSeek | ProviderRequest | ProviderResponse | DeepSeek SDK / HTTP | 被 Agent 直接调用 | 更多生成模型 |
-| ModelRouter | Service | 按 model_role 路由 | model_role、Prompt 输入 | ProviderResponse | ModelRoleConfig、ProviderPort、LLMCallLogger | 被 Workflow / Agent 直接调用 | fallback 策略增强 |
+| ModelRouter | Service | 按 model_role 路由 | model_role、Prompt 输入 | ProviderResponse | ModelRoleConfig、ProviderPort、LLMCallLogger | P0 由 Application 调用；进入 P2 后所有生产调用必须经 GuardedLLMExecutor，Workflow/Agent 不得直连 | fallback 策略增强 |
 | PromptRegistryService | Service | 管理 PromptTemplate 读取 | prompt_key、version | PromptTemplate | PromptTemplateRepositoryPort | 承载越权业务规则 | Prompt 治理后台，P2 |
 | PromptTemplateRepositoryPort | Port | 读取文件型 PromptTemplate | 查询条件 | PromptTemplate | PromptTemplateFileStore | 承载业务用例、要求数据库迁移 | Prompt 版本治理增强 |
 | PromptTemplateFileStore | Adapter | 从 YAML / JSON 文件加载 PromptTemplate | prompt_key、version | PromptTemplate | 文件系统 | 在线编辑 Prompt、写数据库 | P1/P2 可扩展数据库治理 |
@@ -1179,7 +1226,7 @@ sequenceDiagram
 | schema 校验失败 | output_schema_invalid | 最多 2 次重试 |
 | schema 缺失 | output_schema_missing | 当前 AI 任务 failed，不调用 Provider |
 | 超过最大重试次数 | output_schema_invalid | AIJobStep failed，不创建候选或正式数据 |
-| LLMCallLog 写入失败 | llm_call_log_write_failed | 不得阻塞 V1.1；AI 调用可标记日志异常 |
+| LLMCallLog 权威写入失败 | llm_call_log_write_failed | 不影响 V1.1 手动写作/保存；本次 AI 结果必须阻断，不创建候选或正式数据 |
 | PromptTemplate 缺失 | prompt_template_missing | 当前 AI 任务 failed |
 | ModelRoleConfig 缺失 / model_role 未配置 | model_role_invalid | 当前 AI 任务 failed；内部可记录 model_role_config_missing 作为 debug_ref |
 | Provider 未启用 | provider_disabled | 当前 AI 任务 blocked |
@@ -1198,8 +1245,10 @@ AI 基础设施错误不得影响：
 
 LLMCallLog 写入失败时：
 
-- 普通写作链路不受影响。
-- 当前 AI 调用结果是否继续由调用方根据任务安全级别决定。
+- V1.1 手动正文编辑、Local-First 保存、导入导出不受影响。
+- 本次 Provider 返回结果不得继续进入 Output→CandidateDraft/ReviewReport/正式资产链路；对应 Step/Job 不得标 completed，应 failed 或 paused 等待修复。
+- 后续启用预算的生产调用保持 fail-safe block，直到 Attempt 与权威 LLMCallLog 完成 reconcile。
+- P2 Presentation 对外映射为 `503 P2_LLM_USAGE_AUDIT_FAILED`；内部仍可记录 `llm_call_log_write_failed`。
 - 必须记录脱敏系统日志。
 - 不得将完整 Prompt、正文、API Key 写入普通日志。
 
@@ -1267,7 +1316,7 @@ P0 应为后续清理能力保留边界：
 - 丢弃候选稿。
 - 清理过期调试信息。
 - 清理过期 LLMCallLog。
-- 用户手动清理失败 Job / 过期调试信息时，可以联动清理相关 LLMCallLog。
+- 用户手动清理失败 Job / 过期调试信息时，仅可联动清理 P0-02 §15.1 判定为可清理的终态 LLMCallLog；可重试或仍受预算/审计保护的记录不得删除。
 - 清理不得影响正式正文、正式资产、Candidate Draft 正文内容。
 - LLMCallLog 不保存完整 Prompt、完整正文、API Key，因此清理只影响排障与成本追踪元数据。
 
@@ -1312,7 +1361,8 @@ P0 AI 基础设施验收标准：
 - 审稿失败时 CandidateDraft 可保留，ReviewReport 不创建或候选稿标记 review_failed。
 - 正文分析某章失败时该章节 AIJobStep failed，并允许后续跳过或重试。
 - LLMCallLog 记录 prompt_key、prompt_version、model_role、provider、model、token usage、elapsed time、error_code。
-- P0 LLMCallLog 默认保留 90 天或最近 10000 条。
+- P0 LLMCallLog 至少保留 90 天且保留最近 10000 条可清理终态记录；当前月/活跃/可重试/未收口范围优先保护并允许超量。
+- LLMCallLog 权威写失败时，本次 AI 结果不创建候选或正式数据，但不影响用户手动写作与 Local-First 保存。
 - 普通日志不记录 API Key、完整正文、完整 Prompt。
 - P0 默认不启用流式输出。
 - AI Provider 不可用时，V1.1 写作、保存、导入、导出能力不受影响。

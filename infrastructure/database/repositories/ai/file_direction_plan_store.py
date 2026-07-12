@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from threading import RLock
 
 from domain.entities.ai.models import (
     DirectionPlanSnapshot,
@@ -9,9 +10,13 @@ from domain.entities.ai.models import (
     DirectionSelection,
     PlanConfirmation,
     WritingTask,
+    WritingTaskStatus,
 )
 from domain.repositories.ai.direction_plan_repository import DirectionPlanRepository
 from infrastructure.database.session import get_database_path
+
+
+_DIRECTION_PLAN_FILE_LOCK = RLock()
 
 
 class FileDirectionPlanStore(DirectionPlanRepository):
@@ -19,9 +24,10 @@ class FileDirectionPlanStore(DirectionPlanRepository):
         self._file_path = Path(file_path) if file_path else get_database_path().with_name("direction_plan.json")
 
     def save_direction_proposal(self, proposal: DirectionProposal) -> DirectionProposal:
-        payload = self._load_payload()
-        payload["direction_proposals"][proposal.direction_proposal_id] = proposal.model_dump(mode="json")
-        self._save_payload(payload)
+        with _DIRECTION_PLAN_FILE_LOCK:
+            payload = self._load_payload()
+            payload["direction_proposals"][proposal.direction_proposal_id] = proposal.model_dump(mode="json")
+            self._save_payload(payload)
         return proposal
 
     def get_direction_proposal(self, direction_proposal_id: str) -> DirectionProposal:
@@ -41,9 +47,10 @@ class FileDirectionPlanStore(DirectionPlanRepository):
         return sorted(items, key=lambda item: (item.created_at, item.direction_proposal_id), reverse=True)
 
     def save_direction_selection(self, selection: DirectionSelection) -> DirectionSelection:
-        payload = self._load_payload()
-        payload["direction_selections"][selection.selection_id] = selection.model_dump(mode="json")
-        self._save_payload(payload)
+        with _DIRECTION_PLAN_FILE_LOCK:
+            payload = self._load_payload()
+            payload["direction_selections"][selection.selection_id] = selection.model_dump(mode="json")
+            self._save_payload(payload)
         return selection
 
     def get_direction_selection(self, selection_id: str) -> DirectionSelection:
@@ -53,9 +60,10 @@ class FileDirectionPlanStore(DirectionPlanRepository):
         return DirectionSelection.model_validate(raw)
 
     def save_plan_confirmation(self, confirmation: PlanConfirmation) -> PlanConfirmation:
-        payload = self._load_payload()
-        payload["plan_confirmations"][confirmation.confirmation_id] = confirmation.model_dump(mode="json")
-        self._save_payload(payload)
+        with _DIRECTION_PLAN_FILE_LOCK:
+            payload = self._load_payload()
+            payload["plan_confirmations"][confirmation.confirmation_id] = confirmation.model_dump(mode="json")
+            self._save_payload(payload)
         return confirmation
 
     def get_plan_confirmation(self, confirmation_id: str) -> PlanConfirmation:
@@ -65,9 +73,10 @@ class FileDirectionPlanStore(DirectionPlanRepository):
         return PlanConfirmation.model_validate(raw)
 
     def save_writing_task(self, task: WritingTask) -> WritingTask:
-        payload = self._load_payload()
-        payload["writing_tasks"][task.writing_task_id] = task.model_dump(mode="json")
-        self._save_payload(payload)
+        with _DIRECTION_PLAN_FILE_LOCK:
+            payload = self._load_payload()
+            payload["writing_tasks"][task.writing_task_id] = task.model_dump(mode="json")
+            self._save_payload(payload)
         return task
 
     def get_writing_task(self, writing_task_id: str) -> WritingTask:
@@ -87,13 +96,18 @@ class FileDirectionPlanStore(DirectionPlanRepository):
         return sorted(items, key=lambda item: (item.created_at, item.writing_task_id), reverse=True)
 
     def get_active_writing_task(self, work_id: str, chapter_id: str = "") -> WritingTask | None:
-        items = self.list_writing_tasks(work_id, chapter_id=chapter_id)
+        items = [
+            item
+            for item in self.list_writing_tasks(work_id, chapter_id=chapter_id)
+            if item.status == WritingTaskStatus.READY and item.stale_status == "fresh"
+        ]
         return items[0] if items else None
 
     def save_direction_plan_snapshot(self, snapshot: DirectionPlanSnapshot) -> DirectionPlanSnapshot:
-        payload = self._load_payload()
-        payload["direction_plan_snapshots"][snapshot.snapshot_id] = snapshot.model_dump(mode="json")
-        self._save_payload(payload)
+        with _DIRECTION_PLAN_FILE_LOCK:
+            payload = self._load_payload()
+            payload["direction_plan_snapshots"][snapshot.snapshot_id] = snapshot.model_dump(mode="json")
+            self._save_payload(payload)
         return snapshot
 
     def get_direction_plan_snapshot(self, snapshot_id: str) -> DirectionPlanSnapshot:
@@ -103,16 +117,18 @@ class FileDirectionPlanStore(DirectionPlanRepository):
         return DirectionPlanSnapshot.model_validate(raw)
 
     def _load_payload(self) -> dict[str, dict[str, object]]:
-        if not self._file_path.exists():
-            return self._empty_payload()
-        payload = json.loads(self._file_path.read_text(encoding="utf-8"))
-        for key, value in self._empty_payload().items():
-            payload.setdefault(key, value)
-        return payload
+        with _DIRECTION_PLAN_FILE_LOCK:
+            if not self._file_path.exists():
+                return self._empty_payload()
+            payload = json.loads(self._file_path.read_text(encoding="utf-8"))
+            for key, value in self._empty_payload().items():
+                payload.setdefault(key, value)
+            return payload
 
     def _save_payload(self, payload: dict[str, dict[str, object]]) -> None:
-        self._file_path.parent.mkdir(parents=True, exist_ok=True)
-        self._file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        with _DIRECTION_PLAN_FILE_LOCK:
+            self._file_path.parent.mkdir(parents=True, exist_ok=True)
+            self._file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _empty_payload(self) -> dict[str, dict[str, object]]:
         return {

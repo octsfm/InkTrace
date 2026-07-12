@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
+import json
+from threading import RLock
 
 from application.services.ai.tool_facade import CoreToolFacade, ToolExecutionContext
 from application.services.v1.chapter_service import ChapterService
@@ -22,6 +25,28 @@ from domain.entities.ai.models import (
 )
 from domain.repositories.ai.chapter_plan_repository import ChapterPlanRepository
 from domain.repositories.ai.direction_plan_repository import DirectionPlanRepository
+from domain.value_objects.outline_snapshot import outline_content_hash
+
+
+_P2_WRITING_TASK_CONFIRM_LOCK = RLock()
+
+
+def _normalize_decision_note(value: str) -> str:
+    return str(value or "").strip()
+
+
+def _user_decision_request_hash(*, resource_id: str, user_id: str, decision_note: str) -> str:
+    canonical = json.dumps(
+        {
+            "resource_id": str(resource_id),
+            "user_id": str(user_id),
+            "decision_note": _normalize_decision_note(decision_note),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class PlanningAPIService:
@@ -35,6 +60,8 @@ class PlanningAPIService:
         orchestrator,
         direction_plan_repository: DirectionPlanRepository,
         chapter_plan_repository: ChapterPlanRepository,
+        writing_asset_service=None,
+        trace_service=None,
     ) -> None:
         self._work_service = work_service
         self._chapter_service = chapter_service
@@ -43,6 +70,8 @@ class PlanningAPIService:
         self._orchestrator = orchestrator
         self._direction_plan_repository = direction_plan_repository
         self._chapter_plan_repository = chapter_plan_repository
+        self._writing_asset_service = writing_asset_service
+        self._trace_service = trace_service
 
     def generate_direction_proposal(
         self,
@@ -301,6 +330,13 @@ class PlanningAPIService:
     def get_writing_task(self, writing_task_id: str) -> WritingTask:
         return self._direction_plan_repository.get_writing_task(writing_task_id)
 
+    def is_outline_assist_writing_task(self, writing_task_id: str) -> bool:
+        try:
+            task = self._direction_plan_repository.get_writing_task(writing_task_id)
+        except ValueError:
+            return False
+        return (task.metadata or {}).get("source") == "p2_outline_assist"
+
     def confirm_writing_task(
         self,
         *,
@@ -310,14 +346,114 @@ class PlanningAPIService:
         trace_id: str,
         user_action: bool,
         decision_note: str = "",
+        idempotency_key: str = "",
     ) -> WritingTask:
+        if not user_action:
+            raise ValueError("action_not_allowed")
         task = self.get_writing_task(writing_task_id)
-        if task.status != WritingTaskStatus.READY:
-            raise ValueError("writing_task_not_ready")
+        if (task.metadata or {}).get("source") == "p2_outline_assist":
+            with _P2_WRITING_TASK_CONFIRM_LOCK:
+                return self._confirm_writing_task_loaded(
+                    self.get_writing_task(writing_task_id),
+                    user_id=user_id,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                    decision_note=decision_note,
+                    idempotency_key=idempotency_key,
+                )
+        return self._confirm_writing_task_loaded(
+            task,
+            user_id=user_id,
+            request_id=request_id,
+            trace_id=trace_id,
+            decision_note=decision_note,
+            idempotency_key=idempotency_key,
+        )
 
+    def _confirm_writing_task_loaded(
+        self,
+        task: WritingTask,
+        *,
+        user_id: str,
+        request_id: str,
+        trace_id: str,
+        decision_note: str,
+        idempotency_key: str,
+    ) -> WritingTask:
         metadata = dict(task.metadata or {})
-        if metadata.get("user_confirmed") and str(metadata.get("confirmed_by", "") or "") == user_id:
+        is_p2_task = metadata.get("source") == "p2_outline_assist"
+        normalized_note = _normalize_decision_note(decision_note) if is_p2_task else decision_note or ""
+        if is_p2_task:
+            if not str(idempotency_key or "").strip():
+                raise ValueError("P2_IDEMPOTENCY_KEY_REQUIRED")
+            key_hash = hashlib.sha256(idempotency_key.strip().encode("utf-8")).hexdigest()
+            request_hash = _user_decision_request_hash(
+                resource_id=task.writing_task_id,
+                user_id=user_id,
+                decision_note=normalized_note,
+            )
+            self._require_confirmation_request_matches_key_scope(
+                task,
+                key_hash=key_hash,
+                request_hash=request_hash,
+            )
+            if metadata.get("confirmation_key_hash"):
+                if (
+                    metadata.get("confirmation_key_hash") != key_hash
+                    or metadata.get("confirmation_request_hash") != request_hash
+                ):
+                    raise ValueError("P2_IDEMPOTENCY_CONFLICT")
+                if task.status == WritingTaskStatus.READY and metadata.get("user_confirmed"):
+                    return task
+        elif (
+            task.status == WritingTaskStatus.READY
+            and metadata.get("user_confirmed")
+            and str(metadata.get("confirmed_by", "") or "") == user_id
+        ):
             return task
+        if is_p2_task:
+            if task.status != WritingTaskStatus.PENDING:
+                raise ValueError("writing_task_not_ready")
+            try:
+                plan = self._chapter_plan_repository.get(task.chapter_plan_id)
+            except ValueError as exc:
+                raise ValueError("P2_WRITING_TASK_PREREQUISITE_MISSING") from exc
+            if (
+                plan.work_id != task.work_id
+                or plan.chapter_id != task.chapter_id
+                or plan.status not in {DirectionPlanStatus.CONFIRMED, DirectionPlanStatus.EDITED}
+                or plan.stale_status != "fresh"
+                or int(plan.version) != int(metadata.get("chapter_plan_version") or 0)
+            ):
+                raise ValueError("P2_WRITING_TASK_PREREQUISITE_MISSING")
+            current_plan = next(
+                (
+                    candidate
+                    for candidate in self._chapter_plan_repository.list_by_work(task.work_id, chapter_id=task.chapter_id)
+                    if candidate.status in {DirectionPlanStatus.CONFIRMED, DirectionPlanStatus.EDITED}
+                    and candidate.stale_status == "fresh"
+                ),
+                None,
+            )
+            if current_plan is None or current_plan.chapter_plan_id != plan.chapter_plan_id:
+                raise ValueError("P2_WRITING_TASK_PREREQUISITE_MISSING")
+            if self._writing_asset_service is None:
+                raise ValueError("P2_WRITING_TASK_PREREQUISITE_MISSING")
+            try:
+                current_outline = self._writing_asset_service.get_chapter_outline(task.chapter_id)
+            except ValueError as exc:
+                raise ValueError("P2_WRITING_TASK_PREREQUISITE_MISSING") from exc
+            if (
+                int(current_outline.version) != int(metadata.get("target_revision") or 0)
+                or outline_content_hash(current_outline.content_text, current_outline.content_tree_json)
+                != str(metadata.get("target_content_hash") or "")
+            ):
+                raise ValueError("P2_OUTLINE_TARGET_CONFLICT")
+            self._record_outline_task_confirmation_before_write(task, user_id=user_id)
+            metadata["confirmation_key_hash"] = key_hash
+            metadata["confirmation_request_hash"] = request_hash
+        elif task.status != WritingTaskStatus.READY:
+            raise ValueError("writing_task_not_ready")
 
         metadata.update(
             {
@@ -325,20 +461,66 @@ class PlanningAPIService:
                 "confirmed_by": user_id,
                 "confirmed_via": "writing_task_confirm_api",
                 "confirmed_request_id": request_id,
-                "confirmed_trace_id": trace_id,
-                "confirmation_note": decision_note or "",
+                "confirmed_trace_id": task.trace_id if is_p2_task else trace_id,
+                "confirmation_note": normalized_note,
             }
         )
         updated = task.model_copy(
             update={
+                "status": WritingTaskStatus.READY if is_p2_task else task.status,
                 "metadata": metadata,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
-                "request_id": request_id or task.request_id,
-                "trace_id": trace_id or task.trace_id,
+                "request_id": task.request_id if is_p2_task else request_id or task.request_id,
+                "trace_id": task.trace_id if is_p2_task else trace_id or task.trace_id,
             }
         )
         self._direction_plan_repository.save_writing_task(updated)
-        return self.get_writing_task(writing_task_id)
+        return self.get_writing_task(task.writing_task_id)
+
+    def _require_confirmation_request_matches_key_scope(
+        self,
+        task: WritingTask,
+        *,
+        key_hash: str,
+        request_hash: str,
+    ) -> None:
+        for candidate in self._direction_plan_repository.list_writing_tasks(task.work_id):
+            metadata = candidate.metadata or {}
+            if (
+                metadata.get("confirmation_key_hash") == key_hash
+                and metadata.get("confirmation_request_hash") != request_hash
+            ):
+                raise ValueError("P2_IDEMPOTENCY_CONFLICT")
+
+    def _record_outline_task_confirmation_before_write(self, task: WritingTask, *, user_id: str) -> None:
+        if self._trace_service is None or not str(task.trace_id or "").strip():
+            raise ValueError("P2_OUTLINE_AUDIT_WRITE_FAILED")
+        try:
+            trace = self._trace_service.ensure_operation_trace(
+                trace_id=task.trace_id,
+                work_id=task.work_id,
+                chapter_id=task.chapter_id,
+                operation_ref=task.writing_task_id,
+                workflow_type="outline_assist",
+            )
+            event = self._trace_service.record_audit_event(
+                trace_id=task.trace_id,
+                session_id=task.writing_task_id,
+                step_id="writing_task_confirm",
+                event_type="user_decision_recorded",
+                summary="writing_task_confirm",
+                payload_digest={
+                    "writing_task_id": task.writing_task_id,
+                    "suggestion_id": str((task.metadata or {}).get("suggestion_id") or ""),
+                    "decision_type": "confirm_writing_task",
+                    "user_id": user_id,
+                },
+                high_risk_user_action=True,
+            )
+            if trace is None or event is None:
+                raise ValueError("audit_record_not_persisted")
+        except Exception as exc:
+            raise ValueError("P2_OUTLINE_AUDIT_WRITE_FAILED") from exc
 
     def _direction_generation_context(self, work_id: str, chapter_id: str) -> dict[str, object]:
         readiness = self._context_pack_service.evaluate_readiness(work_id, chapter_id=chapter_id)

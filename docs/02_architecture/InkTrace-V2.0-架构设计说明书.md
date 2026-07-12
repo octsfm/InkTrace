@@ -1,7 +1,11 @@
 # InkTrace V2.0 架构设计说明书
 
-版本：v2.0-architecture  
-更新时间：2026-05-08  
+版本：v2.1-architecture
+
+更新时间：2026-07-12
+
+冻结裁决：P2 自动续写统一逐章确认，不提供连续候选自动推进模式。
+
 依据文档：
 
 - `docs/01_requirements/InkTrace-V2.0-需求规格说明书.md`
@@ -65,9 +69,9 @@ V2.0 架构目标：
 
 | 阶段 | 架构定位 | 包含能力 | 明确不包含 |
 |---|---|---|---|
-| P0 | Agent-ready 的最小 AI 写作闭环 | AI Infrastructure、AI Job、两阶段初始化、P0 Story Memory、Story State、向量索引、Context Pack 最小版、Writing Task、Minimal Continuation Workflow、WorkflowRunContext、单章 Candidate Draft、Human Review Gate、基础 AI Review | 完整 Agent Runtime、完整五 Agent Workflow、完整四层剧情轨道、自动连续续写、多章自动队列、Opening Agent、@ 引用系统、复杂 Knowledge Graph、复杂分析看板 |
+| P0 | Agent-ready 的最小 AI 写作闭环 | AI Infrastructure、AI Job、两阶段初始化、P0 Story Memory、Story State、向量索引、Context Pack 最小版、Writing Task、Minimal Continuation Workflow、WorkflowRunContext、单章 Candidate Draft、Human Review Gate、基础 AI Review | 完整 Agent Runtime、完整五 Agent Workflow、完整四层剧情轨道、受控自动逐章续写、多章自动队列、Opening Agent、@ 引用系统、复杂 Knowledge Graph、复杂分析看板 |
 | P1 | 完整智能体工作流与剧情轨道 | Agent Runtime、AgentSession、AgentStep、AgentObservation、AgentTrace、五 Agent Workflow、AgentPermissionPolicy、完整 Tool 权限矩阵、四层剧情轨道、A/B/C 方向、章节计划、多轮候选稿、AI Suggestion、Conflict Guard、Memory Revision、引用建议占位 | P2 增强能力 |
-| P2 | 增强能力 | 多章续写、受控自动连续续写队列、Style DNA、Citation Link、@ 标签引用系统、Opening Agent、大纲辅助、选区改写/润色、成本看板、分析看板 | 无人化自动写书 |
+| P2 | 增强能力 | 多章续写、受控自动逐章续写队列、Style DNA、Citation Link、@ 标签引用系统、Opening Agent、大纲辅助、选区改写/润色、成本看板、分析看板 | 无人化自动写书、连续候选自动推进 |
 
 ***
 
@@ -1002,7 +1006,7 @@ Job 与 Workflow / Agent 关系：
 
 - P0：AIJobService 启动 Minimal Continuation Workflow。
 - P1：AIJobService 启动 Agent Runtime 或 Agent Workflow。
-- P2：AIJobService 支撑自动连续续写队列。
+- P2：AIJobService 支撑受控自动逐章续写队列；每章完成后固定等待真实用户确认。
 
 服务重启策略：
 
@@ -1593,7 +1597,7 @@ flowchart LR
     Gate --> Suggest["Memory Update Suggestion"]
 ```
 
-### 7.8 P2 自动连续续写队列流程（占位）
+### 7.8 P2 受控自动逐章续写队列流程（占位）
 
 ```mermaid
 flowchart TB
@@ -1603,11 +1607,14 @@ flowchart TB
     Review --> Rewrite{"Need rewrite?"}
     Rewrite -->|yes| Revise["Create revised candidate"]
     Revise --> Review
-    Rewrite -->|no| Hold["Hold candidate for user"]
-    Hold --> Stop{"Stop condition?"}
-    Stop -->|no| Chapter
-    Stop -->|yes| End["Stop queue\nno official merge"]
+    Rewrite -->|no| Stop{"Stop condition?"}
+    Stop -->|yes| End["Stop queue\nkeep candidates and reason"]
+    Stop -->|no| Hold["WAITING_USER_DECISION\nshow candidate to user"]
+    Hold -->|real user_action confirm-continue| Chapter
+    Hold -->|stop or cancel| End
 ```
+
+每章候选稿完成并通过停止条件评估后，必须进入 `WAITING_USER_DECISION`。只有真实 `caller_type=user_action`、`user_action=true` 的 `confirm-continue` 才能生成下一章；该动作与 CandidateDraft apply / Human Review Gate 相互独立。Agent、workflow、system 与服务重启不得自动推进。
 
 ### 7.9 Memory Update Suggestion 采纳事务流程
 
@@ -1868,7 +1875,7 @@ classDiagram
 
 待确认：
 
-- 是否保存完整 Prompt。
+- 已冻结：不保存完整 Prompt、完整 Context Pack、完整正文、完整候选稿或 API Key，只保存摘要、hash 与引用 ID。
 - 是否保存完整 Context Pack。
 - 是否保存完整正文片段。
 
@@ -1980,7 +1987,7 @@ LLMCallLog 可追踪字段：
 
 范围：
 
-- 自动连续续写队列。
+- 受控自动逐章续写队列。
 - Style DNA。
 - Citation Link。
 - @ 引用。

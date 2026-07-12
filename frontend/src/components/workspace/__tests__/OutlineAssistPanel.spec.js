@@ -42,10 +42,10 @@ describe('OutlineAssistPanel', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('当前模式下暂时没有建议，生成后会在这里展示。')
-    expect(wrapper.text()).toContain('当前没有可展示的冲突，请刷新后重试。')
-    expect(wrapper.text()).not.toContain('当前模式下暂时没有建议,生成后会在这里展示。')
-    expect(wrapper.text()).not.toContain('当前没有可展示的冲突,请刷新后重试。')
+    expect(wrapper.text()).toContain('还没有整理结果。点击上面的按钮开始即可。')
+    expect(wrapper.text()).toContain('暂时没有可查看的冲突，请重新读取大纲后再试。')
+    expect(wrapper.text()).not.toContain('还没有整理结果,点击上面的按钮开始即可。')
+    expect(wrapper.text()).not.toContain('暂时没有可查看的冲突,请重新读取大纲后再试。')
   })
 
   it('uses chinese punctuation in suggestion state hints and apply confirm copy', () => {
@@ -58,7 +58,7 @@ describe('OutlineAssistPanel', () => {
           suggestion_type: 'outline_expand',
           severity: 'warning',
           summary: '建议补足灯塔守夜人的出场。',
-          status: 'generating'
+          status: 'pending'
         }, {
           suggestion_id: 'sg_2',
           title: '补全档案室目标',
@@ -74,14 +74,14 @@ describe('OutlineAssistPanel', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('建议生成中，请稍后刷新查看结果。')
-    expect(wrapper.text()).toContain('已进入写作任务确认链，待二次确认后才会进入"写作任务已确认"状态。')
-    expect(wrapper.text()).toContain('当前建议针对自由文本片段，需要先选择目标大纲节点后才能应用。')
-    expect(wrapper.text()).toContain('确定要将这条建议应用到正式大纲吗？')
-    expect(wrapper.text()).not.toContain('建议生成中,请稍后刷新查看结果。')
-    expect(wrapper.text()).not.toContain('已进入写作任务确认链,待二次确认后才会进入"写作任务已确认"状态。')
-    expect(wrapper.text()).not.toContain('当前建议针对自由文本片段,需要先选择目标大纲节点后才能应用。')
-    expect(wrapper.text()).not.toContain('确定要将这条建议应用到正式大纲吗?')
+    expect(wrapper.text()).toContain('正在整理这条建议，请稍等。')
+    expect(wrapper.text()).toContain('这份计划还需要你确认使用，确认前不会进入写作流程，也不会写入正文。')
+    expect(wrapper.text()).toContain('这条建议只针对你选中的文字，不能直接改动整份大纲。')
+    expect(wrapper.text()).toContain('确定把这条建议放进作品大纲吗？')
+    expect(wrapper.text()).not.toContain('正在整理这条建议,请稍等。')
+    expect(wrapper.text()).not.toContain('这份计划还需要你确认使用,确认前不会进入写作流程,也不会写入正文。')
+    expect(wrapper.text()).not.toContain('这条建议只针对你选中的文字,不能直接改动整份大纲。')
+    expect(wrapper.text()).not.toContain('确定把这条建议放进作品大纲吗?')
   })
 
   it('uses chinese punctuation in conflict summaries', () => {

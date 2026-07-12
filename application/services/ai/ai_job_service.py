@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime
+from threading import RLock
+from typing import Iterator
 
 from domain.entities.ai.models import (
     AIJob,
@@ -17,6 +20,9 @@ from domain.repositories.ai.ai_job_repository import AIJobRepository
 from domain.repositories.ai.ai_job_step_repository import AIJobStepRepository
 
 
+_AI_JOB_TERMINAL_LOCK = RLock()
+
+
 class AIJobService:
     def __init__(
         self,
@@ -27,6 +33,11 @@ class AIJobService:
         self._job_repository = job_repository
         self._step_repository = step_repository
         self._attempt_repository = attempt_repository
+
+    @contextmanager
+    def terminal_transition(self) -> Iterator[None]:
+        with _AI_JOB_TERMINAL_LOCK:
+            yield
 
     def create_job(
         self,
@@ -107,20 +118,21 @@ class AIJobService:
         return saved
 
     def start_job(self, job_id: str) -> AIJob:
-        job = self._job_repository.get_job(job_id)
-        if job.status not in {AIJobStatus.QUEUED, AIJobStatus.PAUSED}:
-            raise ValueError("job_not_retryable")
-        now = self._now()
-        updated = job.model_copy(
-            update={
-                "status": AIJobStatus.RUNNING,
-                "started_at": job.started_at or now,
-                "paused_at": "",
-                "updated_at": now,
-                "status_reason": "",
-            }
-        )
-        return self._job_repository.save_job(self._sync_progress(updated))
+        with _AI_JOB_TERMINAL_LOCK:
+            job = self._job_repository.get_job(job_id)
+            if job.status not in {AIJobStatus.QUEUED, AIJobStatus.PAUSED}:
+                raise ValueError("job_not_retryable")
+            now = self._now()
+            updated = job.model_copy(
+                update={
+                    "status": AIJobStatus.RUNNING,
+                    "started_at": job.started_at or now,
+                    "paused_at": "",
+                    "updated_at": now,
+                    "status_reason": "",
+                }
+            )
+            return self._job_repository.save_job(self._sync_progress(updated))
 
     def pause_job(self, job_id: str, *, reason: str) -> AIJob:
         job = self._job_repository.get_job(job_id)
@@ -244,34 +256,38 @@ class AIJobService:
         return saved
 
     def mark_job_completed(self, job_id: str, *, result_summary: dict[str, object], result_ref: str = "") -> AIJob:
-        job = self._job_repository.get_job(job_id)
-        if job.status == AIJobStatus.CANCELLED:
-            return self._job_repository.save_job(self._sync_progress(job))
-        updated = job.model_copy(
-            update={
-                "status": AIJobStatus.COMPLETED,
-                "updated_at": self._now(),
-                "finished_at": self._now(),
-                "result_summary": self._sanitize_mapping(result_summary),
-                "result_ref": result_ref,
-                "error_code": "",
-                "error_message": "",
-            }
-        )
-        return self._job_repository.save_job(self._sync_progress(updated))
+        with _AI_JOB_TERMINAL_LOCK:
+            job = self._job_repository.get_job(job_id)
+            if job.status == AIJobStatus.CANCELLED:
+                return self._job_repository.save_job(self._sync_progress(job))
+            updated = job.model_copy(
+                update={
+                    "status": AIJobStatus.COMPLETED,
+                    "updated_at": self._now(),
+                    "finished_at": self._now(),
+                    "result_summary": self._sanitize_mapping(result_summary),
+                    "result_ref": result_ref,
+                    "error_code": "",
+                    "error_message": "",
+                }
+            )
+            return self._job_repository.save_job(self._sync_progress(updated))
 
     def mark_job_failed(self, job_id: str, *, error_code: str, error_message: str) -> AIJob:
-        job = self._job_repository.get_job(job_id)
-        updated = job.model_copy(
-            update={
-                "status": AIJobStatus.FAILED,
-                "updated_at": self._now(),
-                "finished_at": "",
-                "error_code": error_code,
-                "error_message": self._sanitize_text(error_message),
-            }
-        )
-        return self._job_repository.save_job(self._sync_progress(updated))
+        with _AI_JOB_TERMINAL_LOCK:
+            job = self._job_repository.get_job(job_id)
+            if job.status == AIJobStatus.CANCELLED:
+                return self._job_repository.save_job(self._sync_progress(job))
+            updated = job.model_copy(
+                update={
+                    "status": AIJobStatus.FAILED,
+                    "updated_at": self._now(),
+                    "finished_at": "",
+                    "error_code": error_code,
+                    "error_message": self._sanitize_text(error_message),
+                }
+            )
+            return self._job_repository.save_job(self._sync_progress(updated))
 
     def mark_job_partial_success(self, job_id: str, *, result_summary: dict[str, object]) -> AIJob:
         summary = self._sanitize_mapping(result_summary)
@@ -279,18 +295,19 @@ class AIJobService:
         return self.mark_job_completed(job_id, result_summary=summary)
 
     def cancel_job(self, job_id: str, *, reason: str) -> AIJob:
-        job = self._job_repository.get_job(job_id)
-        if job.status in {AIJobStatus.COMPLETED, AIJobStatus.CANCELLED}:
-            return self._job_repository.save_job(self._sync_progress(job))
-        updated = job.model_copy(
-            update={
-                "status": AIJobStatus.CANCELLED,
-                "updated_at": self._now(),
-                "cancelled_at": self._now(),
-                "status_reason": reason,
-            }
-        )
-        return self._job_repository.save_job(self._sync_progress(updated))
+        with _AI_JOB_TERMINAL_LOCK:
+            job = self._job_repository.get_job(job_id)
+            if job.status in {AIJobStatus.COMPLETED, AIJobStatus.CANCELLED}:
+                return self._job_repository.save_job(self._sync_progress(job))
+            updated = job.model_copy(
+                update={
+                    "status": AIJobStatus.CANCELLED,
+                    "updated_at": self._now(),
+                    "cancelled_at": self._now(),
+                    "status_reason": reason,
+                }
+            )
+            return self._job_repository.save_job(self._sync_progress(updated))
 
     def retry_job(self, job_id: str) -> AIJob:
         job = self._job_repository.get_job(job_id)

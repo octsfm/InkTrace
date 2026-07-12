@@ -1,6 +1,5 @@
 from domain.entities.ai.models import (
     AutoQueueConfig,
-    AutoQueueMode,
     AutoQueueRun,
     AutoQueueStatus,
     AutoQueueStopRecord,
@@ -15,7 +14,6 @@ def test_auto_queue_models_preserve_required_fields() -> None:
     config = AutoQueueConfig(
         config_id="aqc_001",
         work_id="work_001",
-        queue_mode=AutoQueueMode.SAFE,
         target_chapters=10,
         target_word_count=50000,
         stop_at_sequence_end=True,
@@ -44,7 +42,6 @@ def test_auto_queue_models_preserve_required_fields() -> None:
         work_id="work_001",
         multi_chapter_session_id="mcs_001",
         status=AutoQueueStatus.STOPPED,
-        queue_mode=AutoQueueMode.CONTINUOUS,
         generated_count=4,
         total_word_count=12600,
         consumed_tokens=520000,
@@ -64,8 +61,6 @@ def test_auto_queue_models_preserve_required_fields() -> None:
         stopped_at="2026-06-24T11:20:00Z",
         finished_at="",
     )
-
-    assert config.queue_mode == AutoQueueMode.SAFE
     assert run.status == AutoQueueStatus.STOPPED
     assert run.job_id == "job_aq_001"
     assert run.stop_record is not None
@@ -80,7 +75,6 @@ def test_sqlite_auto_queue_repositories_persist_config_active_and_history_runs(t
     config = AutoQueueConfig(
         config_id="aqc_001",
         work_id="work_001",
-        queue_mode=AutoQueueMode.SAFE,
         target_chapters=5,
         target_word_count=0,
         stop_at_sequence_end=True,
@@ -101,7 +95,6 @@ def test_sqlite_auto_queue_repositories_persist_config_active_and_history_runs(t
         work_id="work_001",
         multi_chapter_session_id="mcs_001",
         status=AutoQueueStatus.RUNNING,
-        queue_mode=AutoQueueMode.SAFE,
         generated_count=2,
         total_word_count=6200,
         consumed_tokens=82000,

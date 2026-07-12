@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 
 from domain.entities.ai.models import (
     AutoQueueConfig,
-    AutoQueueMode,
     AutoQueueRun,
     AutoQueueStatus,
     AutoQueueStopRecord,
@@ -62,7 +61,13 @@ class AutoContinuationQueueService:
     def get_config(self, work_id: str) -> AutoQueueConfig | None:
         return self._config_repository.get_by_work(work_id)
 
-    def start(self, config_id: str, work_id: str, start_chapter_id: str) -> AutoQueueRun:
+    def start(
+        self,
+        config_id: str,
+        work_id: str,
+        start_chapter_id: str,
+        user_instruction: str = "",
+    ) -> AutoQueueRun:
         config = self._load_config(config_id)
         if config.work_id != work_id:
             raise ValueError("auto_queue_work_id_mismatch")
@@ -86,7 +91,6 @@ class AutoContinuationQueueService:
                 "config_id": config.config_id,
                 "work_id": work_id,
                 "start_chapter_id": start_chapter_id,
-                "queue_mode": config.queue_mode.value,
             },
             steps=[
                 {
@@ -99,7 +103,7 @@ class AutoContinuationQueueService:
             work_id=work_id,
             start_chapter_id=start_chapter_id,
             target_chapters=int(config.target_chapters),
-            user_instruction="",
+            user_instruction=str(user_instruction or "").strip(),
             caller_type="user_action",
         )
         now = self._now()
@@ -110,7 +114,6 @@ class AutoContinuationQueueService:
             work_id=work_id,
             multi_chapter_session_id=session.session_id,
             status=self._map_session_status(session.status),
-            queue_mode=config.queue_mode,
             generated_count=self._count_generated(session),
             total_word_count=0,
             consumed_tokens=0,
@@ -193,9 +196,7 @@ class AutoContinuationQueueService:
         if run.status == AutoQueueStatus.RUNNING:
             return self.resume(run.run_id)
         if run.status == AutoQueueStatus.WAITING_USER_DECISION:
-            session = self._multi_chapter_service.get_session(run.multi_chapter_session_id)
-            config = self._load_config(run.config_id)
-            return self._sync_from_session(run, session, config=config)
+            return run
         return run
 
     def run_background_step(self, run_id: str) -> AutoQueueRun:
@@ -204,33 +205,20 @@ class AutoContinuationQueueService:
             return run
         config = self._load_config(run.config_id)
         if run.status == AutoQueueStatus.WAITING_USER_DECISION:
-            if run.queue_mode == AutoQueueMode.SAFE:
-                return run
-            current_run = run
-            for _ in range(10):
-                session = self._multi_chapter_service.advance_to_next_chapter(
-                    current_run.multi_chapter_session_id,
-                    decision=ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY,
-                )
-                current_run = self._sync_from_session(current_run, session, config=config, allow_continuous_auto_advance=False)
-                if current_run.status != AutoQueueStatus.WAITING_USER_DECISION:
-                    if current_run.status == AutoQueueStatus.RUNNING:
-                        refreshed_session = self._multi_chapter_service.get_session(current_run.multi_chapter_session_id)
-                        return self._sync_from_session(
-                            current_run,
-                            refreshed_session,
-                            config=config,
-                            allow_continuous_auto_advance=False,
-                        )
-                    return current_run
-            return current_run
+            return run
         session = self._multi_chapter_service.get_session(run.multi_chapter_session_id)
-        return self._sync_from_session(run, session, config=config, allow_continuous_auto_advance=False)
+        return self._sync_from_session(run, session, config=config)
 
-    def user_confirm_continue(self, run_id: str) -> AutoQueueRun:
+    def user_confirm_continue(
+        self,
+        run_id: str,
+        *,
+        caller_type: str,
+        user_action: bool,
+    ) -> AutoQueueRun:
+        if caller_type != "user_action" or not user_action:
+            raise ValueError("P2_CALLER_FORBIDDEN")
         run = self._load_run(run_id)
-        if run.queue_mode != "safe":
-            raise ValueError("auto_queue_confirm_continue_only_for_safe_mode")
         if run.status != AutoQueueStatus.WAITING_USER_DECISION:
             raise ValueError("auto_queue_not_waiting_user_decision")
         config = self._load_config(run.config_id)
@@ -293,7 +281,6 @@ class AutoContinuationQueueService:
         session,
         *,
         config: AutoQueueConfig | None = None,
-        allow_continuous_auto_advance: bool = True,
     ) -> AutoQueueRun:
         status = self._map_session_status(session.status)
         if config is None:
@@ -309,29 +296,6 @@ class AutoContinuationQueueService:
             if evaluation.severity == StopSeverity.NORMAL:
                 return self._mark_completed(synced_run, evaluation)
             return self._mark_stopped(synced_run, evaluation, session=session)
-
-        if (
-            allow_continuous_auto_advance
-            and synced_run.queue_mode == AutoQueueMode.CONTINUOUS
-            and status == AutoQueueStatus.WAITING_USER_DECISION
-        ):
-            synced_run = synced_run.model_copy(
-                update={
-                    "current_stop_evaluation": self._serialize_stop_evaluation(evaluation),
-                    "updated_at": self._now(),
-                }
-            )
-            synced_run = self._run_repository.update(synced_run)
-            advanced_session = self._multi_chapter_service.advance_to_next_chapter(
-                synced_run.multi_chapter_session_id,
-                decision=ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY,
-            )
-            return self._sync_from_session(
-                synced_run,
-                advanced_session,
-                config=config,
-                allow_continuous_auto_advance=False,
-            )
 
         synced_run = synced_run.model_copy(
             update={

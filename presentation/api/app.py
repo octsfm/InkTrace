@@ -44,6 +44,7 @@ from presentation.api.routers.v2.ai import context_pack as ai_context_pack_v2
 from presentation.api.routers.v2.ai import initialization as ai_initialization_v2
 from presentation.api.routers.v2.ai import memory as ai_memory_v2
 from presentation.api.routers.v2.ai import opening as ai_opening_v2
+from presentation.api.routers.v2.ai import outline_assist as ai_outline_assist_v2
 from presentation.api.routers.v2.ai import plot_arcs as ai_plot_arcs_v2
 from presentation.api.routers.v2.ai import sessions as ai_sessions_v2
 from presentation.api.routers.v2.ai import traces as ai_traces_v2
@@ -61,6 +62,7 @@ from presentation.api.routers.v2.ai import selection_rewrite as ai_selection_rew
 from presentation.api.routers.v2.ai import suggestions as ai_suggestions_v2
 from presentation.api.routers.v2.ai import settings as ai_settings_v2
 from presentation.api.routers.v1.schemas import V1APIError, build_error_response
+from presentation.api.routers.v2.ai.response_utils import error_response
 
 logger = get_logger(__name__)
 v1_api_logger = get_v1_logger("api")
@@ -223,6 +225,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_suggestions_v2.router)
     app.include_router(ai_memory_v2.router)
     app.include_router(ai_opening_v2.router)
+    app.include_router(ai_outline_assist_v2.router)
     app.include_router(ai_traces_v2.router)
     logger.info("routers registered", extra=build_log_context(event="app_router_registered", module="app", version=APP_VERSION))
 
@@ -284,6 +287,14 @@ def create_app() -> FastAPI:
             if request_id:
                 response.headers["X-Request-Id"] = request_id
             return response
+        if str(request.url.path).startswith("/api/v2/ai/outline-assist"):
+            target_fields = {"target_kind", "target_id", "target_revision", "chapter_id"}
+            if any(str(error.get("loc", [""])[-1]) in target_fields for error in exc.errors()):
+                return error_response(
+                    request,
+                    error_code="P2_OUTLINE_TARGET_REQUIRED",
+                    status_code=400,
+                )
         return await fastapi_request_validation_exception_handler(request, exc)
 
     @app.exception_handler(Exception)

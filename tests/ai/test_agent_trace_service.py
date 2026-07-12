@@ -227,6 +227,45 @@ def test_agent_trace_service_records_tool_denied_and_llm_projection_in_detail_vi
     assert "tool_call_denied_total" in metric_names
 
 
+def test_agent_trace_service_projects_failed_llm_status_and_error_code(tmp_path) -> None:
+    bundle = _build_bundle(tmp_path)
+    runtime = bundle["runtime"]
+    trace_service = bundle["trace_service"]
+
+    session = runtime.create_session(
+        work_id="work_trace_failed_llm",
+        chapter_id="chapter_trace_failed_llm",
+        agent_workflow_type="planning",
+        user_instruction="把这段写顺",
+        request_id="req_trace_failed_llm",
+        trace_id="trace_failed_llm",
+        caller_type="user_action",
+    )
+    started_at = datetime.now(UTC)
+    bundle["llm_logger"].record(
+        prompt_key="outline_polish",
+        prompt_version="v1",
+        model_role="planner",
+        provider_name="fake",
+        model_name="fake-chat",
+        request_id="req_failed_llm_attempt_1",
+        trace_id=session.trace_id,
+        status=LLMCallStatus.FAILED,
+        started_at=started_at,
+        finished_at=started_at + timedelta(milliseconds=80),
+        error_code="provider_timeout",
+        attempt_no=1,
+        output_schema_key="outline_polish_v1",
+        session_id=session.session_id,
+        step_id="step_failed_llm",
+    )
+
+    detail = trace_service.get_detail_view(session.trace_id, developer_mode=True)
+
+    assert detail["llm_calls"][0].status == "failed"
+    assert detail["llm_calls"][0].error_code == "provider_timeout"
+
+
 def test_agent_trace_event_rejects_unknown_event_type() -> None:
     with pytest.raises(ValidationError):
         AgentTraceEvent(

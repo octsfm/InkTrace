@@ -1,7 +1,7 @@
 ﻿# InkTrace V2.0-P0-02 AIJobSystem 详细设计
 
-版本：v2.0-p0-detail-02  
-状态：P0 模块级详细设计  
+版本：v2.1-p0-detail-02
+状态：P0 模块级详细设计（P2 成本事实与保留策略兼容补丁已冻结）
 依据文档：
 
 - `docs/01_requirements/InkTrace-V2.0-需求规格说明书.md`
@@ -9,6 +9,7 @@
 - `docs/02_architecture/InkTrace-V2.0-架构设计说明书.md`
 - `docs/03_design/InkTrace-V2.0-P0-详细设计总纲.md`
 - `docs/03_design/InkTrace-V2.0-P0-01-AI基础设施详细设计.md`
+- `docs/03_design/InkTrace-V2.0-P2-09-成本看板详细设计.md`（仅 LLMCallLog 权威写与 retention 兼容补丁）
 
 ---
 
@@ -535,7 +536,7 @@ Attempt 记录 Provider retry 与 schema retry，保证每次调用可追踪、�
 | elapsed_ms | 耗时 |
 | error_code | 错误码 |
 | error_message | 脱敏错误信息 |
-| llm_call_log_id | 关联 LLMCallLog ID，可选 |
+| llm_call_log_id | 关联 LLMCallLog 主键；冻结为该 attempt 的 `request_id`，可选 |
 | retry_reason | provider_timeout / output_schema_invalid 等 |
 
 ### 7.3 request_id / trace_id 规则
@@ -549,10 +550,14 @@ Attempt 记录 Provider retry 与 schema retry，保证每次调用可追踪、�
 ### 7.4 与 LLMCallLog 的关系
 
 - Attempt 不替代 LLMCallLog。
-- LLMCallLog 记录模型调用元数据、token usage、elapsed time、错误。
+- LLMCallLog 记录模型调用元数据、usage、elapsed time、价格快照、费用状态和错误；SQLite `llm_call_logs` 是权威物理事实源，JSONL 只可作为可选诊断副本。
 - Attempt 记录 Step 视角下的调用尝试与 retry_reason。
 - Attempt 可保存 llm_call_log_id 与 LLMCallLog 互相关联。
-- 每次 Provider retry 与 schema retry 都必须写入 Attempt 与 LLMCallLog。
+- Provider 请求发出前的本地校验/门控失败只写 Attempt，不创建 LLMCallLog，表示可证明的零次 Provider 调用。
+- 每次真正发出的 Provider retry 与 schema retry 都必须写入 Attempt 与独立 LLMCallLog；每次 attempt 使用新的 request_id。
+- LLMCallLog 只允许 insert-if-absent。相同 request_id 与相同 canonical digest 可幂等返回；摘要不同必须报冲突，禁止 `ON CONFLICT UPDATE` 覆盖用量/费用/范围事实。
+- Provider 已返回但权威 LLMCallLog 写入失败时，Step/Job 不得 completed，结果不得创建 CandidateDraft 或正式资产；后续预算调用保护性阻断，直到事实修复。
+- 作品级生产调用必须直接记录 work_id/job_id；session_id/step_id/run_id/adoption_target_ref 在适用时由贯穿调用链的 scope 写入。不得依赖时间窗口猜测新记录范围。
 
 ### 7.5 单个 Step 总调用次数上限
 
@@ -1095,7 +1100,33 @@ P0-02 必须继承 P0-01 AI 基础设施规则：
 - 超过总调用上限后，error_code 使用最后一次失败原因；如果最后失败是 schema，使用 `output_schema_invalid`。
 - 超过总调用上限后，不得创建候选数据或正式数据。
 - 普通日志不记录 API Key、完整正文、完整 Prompt。
-- LLMCallLog 默认保留 90 天或最近 10000 条。
+- LLMCallLog 的默认保留、保护集合与完整度水位按 §15.1 执行；“90 天或最近 10000 条”不是可越过活跃任务/当前月的硬删除上限。
+
+### 15.1 LLMCallLog 保留、清理与历史完整度（P2 兼容冻结）
+
+默认规则仍是“至少保留 90 天，且至少保留最近 10000 条可清理记录”，但清理前必须先排除保护集合：
+
+1. Asia/Shanghai 当前自然月的所有 LLMCallLog。
+2. 关联 AIJob.status 为 `queued/running/paused` 的记录，以及关联 failed Job/Step 且 `can_retry=true` 的记录。
+3. 关联活跃 AutoQueueRun（`pending/running/paused/stopping/waiting_user_decision`），以及 `stopped + resume_allowed=true` 的可恢复 run 记录；直到用户 CANCELLED/明确归档前不得清理。
+4. 关联尚未收口的成本控制审计/回执（`audit_status=completion_pending`）的 Trace/事实引用。
+5. Provider 已发出但 Attempt 与 LLMCallLog 尚未完成 reconcile 的缺口记录。
+
+只有保护集合之外、终态且早于 90 天的记录进入清理候选；在这些候选中，仍保留时间最新的 10000 条。换言之，删除必须同时满足“早于 90 天、非保护、终态、且不在最近 10000 条可清理记录内”。当前月或活跃任务很多时，总量允许暂时超过 10000，维护任务不得为满足数量上限破坏预算事实。
+
+清理按 work_id 更新 `llm_call_log_retention_watermarks(work_id, complete_from, last_pruned_at)`：`complete_from` 取该作品已删除事实的最晚 finished_at。查询未跨越水位时返回 `history_completeness=complete`；全部历史或起始时间早于水位时返回 `history_completeness=retention_limited + retention_start_at=complete_from`。水位只描述“从这里以后完整”，不得据此删除仍受保护的更早事实。
+
+```sql
+CREATE TABLE IF NOT EXISTS llm_call_log_retention_watermarks (
+    work_id TEXT PRIMARY KEY,
+    complete_from TEXT NOT NULL,
+    last_pruned_at TEXT NOT NULL
+);
+```
+
+从未删除过该作品事实时不建水位行；不能以当前最早记录时间猜测“之前已被清理”。
+
+清理操作本身只记录数量、时间窗、work_id hash 和安全错误摘要；不得记录完整 Prompt、ContextPack、正文、候选稿或 API Key。任何清理失败宁可延后并超出容量目标，也不得把 blocked/degraded 伪装为成功。
 
 ---
 

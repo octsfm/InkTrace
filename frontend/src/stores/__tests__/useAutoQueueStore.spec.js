@@ -45,7 +45,6 @@ describe('useAutoQueueStore', () => {
         config: {
           config_id: 'aqc_001',
           work_id: 'work-1',
-          queue_mode: 'safe',
           target_chapters: 5
         }
       }
@@ -53,8 +52,8 @@ describe('useAutoQueueStore', () => {
     getAutoQueueHistory.mockResolvedValue({
       data: {
         runs: [
-          { run_id: 'aqr_active_001', status: 'running', queue_mode: 'safe', generated_count: 2 },
-          { run_id: 'aqr_stopped_001', status: 'stopped', queue_mode: 'safe', generated_count: 1 }
+          { run_id: 'aqr_active_001', status: 'running', generated_count: 2 },
+          { run_id: 'aqr_stopped_001', status: 'stopped', generated_count: 1 }
         ]
       }
     })
@@ -63,7 +62,6 @@ describe('useAutoQueueStore', () => {
         run: {
           run_id: 'aqr_active_001',
           status: 'running',
-          queue_mode: 'safe',
           generated_count: 2
         }
       }
@@ -91,7 +89,6 @@ describe('useAutoQueueStore', () => {
         config: {
           config_id: 'aqc_002',
           work_id: 'work-1',
-          queue_mode: 'safe',
           target_chapters: 6
         }
       }
@@ -100,7 +97,6 @@ describe('useAutoQueueStore', () => {
       data: {
         run_id: 'aqr_002',
         status: 'running',
-        queue_mode: 'safe'
       }
     })
     getAutoQueueStatus
@@ -109,7 +105,6 @@ describe('useAutoQueueStore', () => {
           run: {
             run_id: 'aqr_002',
             status: 'running',
-            queue_mode: 'safe',
             generated_count: 1,
             polling_hint: { next_interval_ms: 2500, stop: false }
           }
@@ -120,7 +115,6 @@ describe('useAutoQueueStore', () => {
           run: {
             run_id: 'aqr_002',
             status: 'waiting_user_decision',
-            queue_mode: 'safe',
             generated_count: 2
           },
           polling_hint: { stop: true }
@@ -128,17 +122,17 @@ describe('useAutoQueueStore', () => {
       })
 
     await store.initializeForWork('work-1')
-    await store.saveConfig({ queue_mode: 'safe', target_chapters: 6 })
-    await store.startQueue({ startChapterId: 'chapter-1' })
+    await store.saveConfig({ target_chapters: 6 })
+    await store.startQueue({ startChapterId: 'chapter-1', userInstruction: '让人物关系推进' })
 
     expect(upsertAutoQueueConfig).toHaveBeenCalledWith({
       work_id: 'work-1',
-      queue_mode: 'safe',
       target_chapters: 6
     })
     expect(startAutoQueue).toHaveBeenCalledWith({
       work_id: 'work-1',
-      start_chapter_id: 'chapter-1'
+      start_chapter_id: 'chapter-1',
+      user_instruction: '让人物关系推进'
     })
     expect(store.currentRun?.run_id).toBe('aqr_002')
     expect(store.currentRun?.status).toBe('running')
@@ -157,32 +151,32 @@ describe('useAutoQueueStore', () => {
     getAutoQueueConfig.mockResolvedValue({ data: { config: null } })
     getAutoQueueHistory.mockResolvedValue({
       data: {
-        runs: [{ run_id: 'aqr_003', status: 'waiting_user_decision', queue_mode: 'safe', generated_count: 3 }]
+        runs: [{ run_id: 'aqr_003', status: 'waiting_user_decision', generated_count: 3 }]
       }
     })
     getAutoQueueStatus.mockResolvedValue({
       data: {
-        run: { run_id: 'aqr_003', status: 'waiting_user_decision', queue_mode: 'safe', generated_count: 3 }
+        run: { run_id: 'aqr_003', status: 'waiting_user_decision', generated_count: 3 }
       }
     })
     pauseAutoQueue.mockResolvedValue({
       data: {
-        run: { run_id: 'aqr_003', status: 'paused', queue_mode: 'safe', generated_count: 3 }
+        run: { run_id: 'aqr_003', status: 'paused', generated_count: 3 }
       }
     })
     resumeAutoQueue.mockResolvedValue({
       data: {
-        run: { run_id: 'aqr_003', status: 'running', queue_mode: 'safe', generated_count: 3 }
+        run: { run_id: 'aqr_003', status: 'running', generated_count: 3 }
       }
     })
     stopAutoQueue.mockResolvedValue({
       data: {
-        run: { run_id: 'aqr_003', status: 'stopped', queue_mode: 'safe', generated_count: 3 }
+        run: { run_id: 'aqr_003', status: 'stopped', generated_count: 3 }
       }
     })
     confirmAutoQueueContinue.mockResolvedValue({
       data: {
-        run: { run_id: 'aqr_003', status: 'running', queue_mode: 'safe', generated_count: 4 }
+        run: { run_id: 'aqr_003', status: 'running', generated_count: 4 }
       }
     })
 

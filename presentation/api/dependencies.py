@@ -43,6 +43,8 @@ from application.services.ai.opening_agent_service import (
     ModelRouterOpeningOriginalityChecker,
     OpeningAgentService,
 )
+from application.services.ai.outline_application_service import OutlineApplicationService
+from application.services.ai.outline_assist_service import OutlineAssistService, OutlinePlannerService
 from application.services.ai.planning_api_service import PlanningAPIService
 from application.services.ai.plot_arc_service import PlotArcQueryService
 from application.services.ai.ai_settings_service import AISettingsService
@@ -52,6 +54,7 @@ from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.context_vector_recall_service import ContextVectorRecallService
 from application.services.ai.initialization_service import InitializationApplicationService
 from application.services.ai.model_router import ModelRouter
+from application.services.ai.llm_call_logger import LLMCallLogger
 from application.services.ai.output_validation_service import OutputValidationService
 from application.services.ai.prompt_registry import PromptRegistry
 from application.services.ai.provider_registry import ProviderRegistry
@@ -442,6 +445,42 @@ def get_opening_agent_service() -> OpeningAgentService:
 
 
 @lru_cache(maxsize=1)
+def get_outline_planner_service() -> OutlinePlannerService:
+    return OutlinePlannerService(
+        model_router=get_model_router(),
+        output_validator=get_output_validation_service(),
+        prompt_registry=get_prompt_registry(),
+        llm_call_logger=LLMCallLogger(
+            get_llm_call_log_repository(),
+            trace_service=get_agent_trace_service(),
+            strict_trace=True,
+        ),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_outline_assist_service() -> OutlineAssistService:
+    return OutlineAssistService(
+        planner_service=get_outline_planner_service(),
+        ai_suggestion_repository=get_ai_suggestion_repository(),
+        ai_job_service=get_ai_job_service(),
+        writing_asset_service=build_writing_asset_service(),
+        chapter_plan_repository=get_chapter_plan_repository(),
+        trace_service=get_agent_trace_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_outline_application_service() -> OutlineApplicationService:
+    return OutlineApplicationService(
+        ai_suggestion_repository=get_ai_suggestion_repository(),
+        writing_asset_service=build_writing_asset_service(),
+        conflict_guard_service=get_conflict_guard_service(),
+        trace_service=get_agent_trace_service(),
+    )
+
+
+@lru_cache(maxsize=1)
 def get_stop_condition_evaluator() -> StopConditionEvaluator:
     return StopConditionEvaluator(plot_arc_repository=get_plot_arc_repository())
 
@@ -605,6 +644,9 @@ def get_ai_suggestion_service() -> AISuggestionService:
         candidate_draft_repository=get_candidate_draft_repository(),
         candidate_rewrite_service=get_candidate_rewrite_service(),
         trace_service=get_agent_trace_service(),
+        direction_plan_repository=get_direction_plan_repository(),
+        chapter_plan_repository=get_chapter_plan_repository(),
+        writing_asset_service=build_writing_asset_service(),
     )
 
 
@@ -644,6 +686,8 @@ def get_planning_api_service() -> PlanningAPIService:
         orchestrator=get_agent_orchestrator(),
         direction_plan_repository=get_direction_plan_repository(),
         chapter_plan_repository=get_chapter_plan_repository(),
+        writing_asset_service=build_writing_asset_service(),
+        trace_service=get_agent_trace_service(),
     )
 
 

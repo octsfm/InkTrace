@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
 from application.services.ai.ai_job_service import AIJobService
 from domain.entities.ai.models import (
     AIJobStatus,
     AutoQueueConfig,
-    AutoQueueMode,
     AutoQueueRun,
     AutoQueueStatus,
     ChapterAdvanceDecision,
@@ -243,7 +244,6 @@ def _build_config(**updates) -> AutoQueueConfig:
     payload = {
         "config_id": "aqc_001",
         "work_id": "work_001",
-        "queue_mode": AutoQueueMode.SAFE,
         "target_chapters": 3,
         "target_word_count": 0,
         "stop_at_sequence_end": True,
@@ -303,7 +303,6 @@ def _build_run(**updates) -> AutoQueueRun:
         "work_id": "work_001",
         "multi_chapter_session_id": "mcs_001",
         "status": AutoQueueStatus.RUNNING,
-        "queue_mode": AutoQueueMode.SAFE,
         "generated_count": 1,
         "total_word_count": 3200,
         "consumed_tokens": 60000,
@@ -344,11 +343,15 @@ def test_auto_queue_service_start_creates_run_and_delegates_to_multi_chapter_sta
         job_service=job_service,
     )
 
-    run = service.start(config_id="aqc_001", work_id="work_001", start_chapter_id="chapter_start")
+    run = service.start(
+        config_id="aqc_001",
+        work_id="work_001",
+        start_chapter_id="chapter_start",
+        user_instruction="让人物关系推进",
+    )
 
     assert run.status == AutoQueueStatus.RUNNING
     assert run.job_id == "job_aq_001"
-    assert run.queue_mode == AutoQueueMode.SAFE
     assert run.multi_chapter_session_id == "mcs_001"
     assert run_repo.get_by_id(run.run_id) is not None
     assert job_service.created_jobs == [
@@ -365,7 +368,6 @@ def test_auto_queue_service_start_creates_run_and_delegates_to_multi_chapter_sta
                 "config_id": "aqc_001",
                 "work_id": "work_001",
                 "start_chapter_id": "chapter_start",
-                "queue_mode": "safe",
             },
         }
     ]
@@ -374,7 +376,7 @@ def test_auto_queue_service_start_creates_run_and_delegates_to_multi_chapter_sta
             "work_id": "work_001",
             "start_chapter_id": "chapter_start",
             "target_chapters": 3,
-            "user_instruction": "",
+            "user_instruction": "让人物关系推进",
             "caller_type": "user_action",
         }
     ]
@@ -411,12 +413,12 @@ def test_auto_queue_service_start_rejects_zero_target_chapters_even_with_other_s
         raise AssertionError("zero target_chapters should be rejected under current P2-01-aligned contract")
 
 
-def test_auto_queue_service_start_auto_advances_one_hop_in_continuous_mode() -> None:
+def test_auto_queue_service_start_waits_for_user_after_first_chapter() -> None:
     from application.services.ai.auto_queue_service import AutoContinuationQueueService
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=3, stop_at_sequence_end=False))
+    config_repo.save(_build_config(target_chapters=3, stop_at_sequence_end=False))
     multi_chapter_service = _StubMultiChapterService(
         start_result=_build_session(
             status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -440,9 +442,8 @@ def test_auto_queue_service_start_auto_advances_one_hop_in_continuous_mode() -> 
 
     run = service.start(config_id="aqc_001", work_id="work_001", start_chapter_id="chapter_start")
 
-    assert run.status == AutoQueueStatus.RUNNING
-    assert run.queue_mode == AutoQueueMode.CONTINUOUS
-    assert multi_chapter_service.advance_calls == [("mcs_001", ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY)]
+    assert run.status == AutoQueueStatus.WAITING_USER_DECISION
+    assert multi_chapter_service.advance_calls == []
 
 
 def test_auto_queue_service_start_completes_instead_of_auto_advance_when_target_reached() -> None:
@@ -450,7 +451,7 @@ def test_auto_queue_service_start_completes_instead_of_auto_advance_when_target_
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=1, stop_at_sequence_end=False))
+    config_repo.save(_build_config(target_chapters=1, stop_at_sequence_end=False))
     multi_chapter_service = _StubMultiChapterService(
         start_result=_build_session(
             status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -528,8 +529,8 @@ def test_auto_queue_service_resume_marks_completed_when_target_reached() -> None
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE, target_chapters=2, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, queue_mode=AutoQueueMode.SAFE, generated_count=1))
+    config_repo.save(_build_config(target_chapters=2, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.resume_result = _build_session(
         status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -569,13 +570,12 @@ def test_auto_queue_service_resume_stops_when_budget_exceeded() -> None:
     run_repo = _InMemoryAutoQueueRunRepository()
     config_repo.save(
         _build_config(
-            queue_mode=AutoQueueMode.CONTINUOUS,
             target_chapters=4,
             stop_at_sequence_end=False,
             stop_on_budget_exceeded=True,
         )
     )
-    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.resume_result = _build_session(
         status=MultiChapterStatus.RUNNING,
@@ -609,13 +609,12 @@ def test_auto_queue_service_resume_records_budget_stop_audit_event() -> None:
     run_repo = _InMemoryAutoQueueRunRepository()
     config_repo.save(
         _build_config(
-            queue_mode=AutoQueueMode.CONTINUOUS,
             target_chapters=4,
             stop_at_sequence_end=False,
             stop_on_budget_exceeded=True,
         )
     )
-    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.resume_result = _build_session(
         status=MultiChapterStatus.RUNNING,
@@ -660,7 +659,6 @@ def test_auto_queue_service_resume_budget_audit_only_records_safe_digest_fields(
     run_repo = _InMemoryAutoQueueRunRepository()
     config_repo.save(
         _build_config(
-            queue_mode=AutoQueueMode.CONTINUOUS,
             target_chapters=4,
             stop_at_sequence_end=False,
             stop_on_budget_exceeded=True,
@@ -669,7 +667,6 @@ def test_auto_queue_service_resume_budget_audit_only_records_safe_digest_fields(
     run_repo.save(
         _build_run(
             status=AutoQueueStatus.PAUSED,
-            queue_mode=AutoQueueMode.CONTINUOUS,
             generated_count=1,
             error_message="FULL_PROVIDER_ERROR: secret quota details",
             current_candidate_story_state={
@@ -721,13 +718,12 @@ def test_auto_queue_service_resume_does_not_record_audit_event_for_non_budget_st
     run_repo = _InMemoryAutoQueueRunRepository()
     config_repo.save(
         _build_config(
-            queue_mode=AutoQueueMode.CONTINUOUS,
             target_chapters=4,
             stop_at_sequence_end=False,
             stop_on_budget_exceeded=True,
         )
     )
-    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.resume_result = _build_session(
         status=MultiChapterStatus.BLOCKED,
@@ -757,13 +753,12 @@ def test_auto_queue_service_resume_does_not_record_budget_audit_for_provider_sto
     run_repo = _InMemoryAutoQueueRunRepository()
     config_repo.save(
         _build_config(
-            queue_mode=AutoQueueMode.CONTINUOUS,
             target_chapters=4,
             stop_at_sequence_end=False,
             stop_on_budget_exceeded=True,
         )
     )
-    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    run_repo.save(_build_run(status=AutoQueueStatus.PAUSED, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.resume_result = _build_session(
         status=MultiChapterStatus.BLOCKED,
@@ -802,8 +797,8 @@ def test_auto_queue_service_stop_does_not_record_budget_audit_for_user_manual_st
     trace_service = _StubTraceService()
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.SAFE))
+    config_repo.save(_build_config())
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
 
     service = AutoContinuationQueueService(
@@ -828,8 +823,8 @@ def test_auto_queue_service_user_confirm_continue_advances_without_apply() -> No
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE))
-    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.SAFE))
+    config_repo.save(_build_config())
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.advance_result = _build_session(status=MultiChapterStatus.RUNNING, current_index=2)
 
@@ -841,10 +836,37 @@ def test_auto_queue_service_user_confirm_continue_advances_without_apply() -> No
         job_service=_StubJobService(),
     )
 
-    updated = service.user_confirm_continue("aqr_001")
+    updated = service.user_confirm_continue("aqr_001", caller_type="user_action", user_action=True)
 
     assert updated.status == AutoQueueStatus.RUNNING
     assert multi_chapter_service.advance_calls == [("mcs_001", ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY)]
+
+
+def test_auto_queue_service_user_confirm_continue_rejects_non_user_caller() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(_build_config())
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION))
+    multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi_chapter_service,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+    )
+
+    for caller_type, user_action in (("agent", True), ("system", True), ("user_action", False)):
+        with pytest.raises(ValueError, match="P2_CALLER_FORBIDDEN"):
+            service.user_confirm_continue(
+                "aqr_001",
+                caller_type=caller_type,
+                user_action=user_action,
+            )
+
+    assert multi_chapter_service.advance_calls == []
 
 
 def test_auto_queue_service_user_confirm_continue_marks_completed_when_target_reached() -> None:
@@ -852,8 +874,8 @@ def test_auto_queue_service_user_confirm_continue_marks_completed_when_target_re
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE, target_chapters=2, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.SAFE, generated_count=1))
+    config_repo.save(_build_config(target_chapters=2, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.advance_result = _build_session(
         status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -876,7 +898,7 @@ def test_auto_queue_service_user_confirm_continue_marks_completed_when_target_re
         job_service=_StubJobService(),
     )
 
-    updated = service.user_confirm_continue("aqr_001")
+    updated = service.user_confirm_continue("aqr_001", caller_type="user_action", user_action=True)
 
     assert updated.status == AutoQueueStatus.COMPLETED
     assert updated.stop_record is not None
@@ -893,13 +915,12 @@ def test_auto_queue_service_user_confirm_continue_stops_when_budget_exceeded() -
     run_repo = _InMemoryAutoQueueRunRepository()
     config_repo.save(
         _build_config(
-            queue_mode=AutoQueueMode.SAFE,
             target_chapters=3,
             stop_at_sequence_end=False,
             stop_on_budget_exceeded=True,
         )
     )
-    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.SAFE, generated_count=1))
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.advance_result = _build_session(
         status=MultiChapterStatus.RUNNING,
@@ -915,7 +936,7 @@ def test_auto_queue_service_user_confirm_continue_stops_when_budget_exceeded() -
         job_service=_StubJobService(),
     )
 
-    updated = service.user_confirm_continue("aqr_001")
+    updated = service.user_confirm_continue("aqr_001", caller_type="user_action", user_action=True)
 
     assert updated.status == AutoQueueStatus.STOPPED
     assert updated.stop_record is not None
@@ -924,13 +945,13 @@ def test_auto_queue_service_user_confirm_continue_stops_when_budget_exceeded() -
     assert budget_service.calls == ["aqr_001"]
 
 
-def test_auto_queue_service_run_background_step_returns_waiting_in_safe_mode() -> None:
+def test_auto_queue_service_run_background_step_returns_waiting_for_user() -> None:
     from application.services.ai.auto_queue_service import AutoContinuationQueueService
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE))
-    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.SAFE))
+    config_repo.save(_build_config())
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
 
     service = AutoContinuationQueueService(
@@ -948,13 +969,13 @@ def test_auto_queue_service_run_background_step_returns_waiting_in_safe_mode() -
     assert multi_chapter_service.advance_calls == []
 
 
-def test_auto_queue_service_run_background_step_advances_waiting_continuous_mode() -> None:
+def test_auto_queue_service_run_background_step_never_advances_waiting_run() -> None:
     from application.services.ai.auto_queue_service import AutoContinuationQueueService
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=3, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    config_repo.save(_build_config(target_chapters=3, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.advance_result = _build_session(
         status=MultiChapterStatus.RUNNING,
@@ -972,18 +993,18 @@ def test_auto_queue_service_run_background_step_advances_waiting_continuous_mode
 
     stepped = service.run_background_step("aqr_001")
 
-    assert stepped.status == AutoQueueStatus.RUNNING
-    assert multi_chapter_service.get_session_calls == ["mcs_001"]
-    assert multi_chapter_service.advance_calls == [("mcs_001", ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY)]
+    assert stepped.status == AutoQueueStatus.WAITING_USER_DECISION
+    assert multi_chapter_service.get_session_calls == []
+    assert multi_chapter_service.advance_calls == []
 
 
-def test_auto_queue_service_run_background_step_advances_multiple_chapters_until_completed() -> None:
+def test_auto_queue_service_run_background_step_does_not_chain_waiting_chapters() -> None:
     from application.services.ai.auto_queue_service import AutoContinuationQueueService
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=3, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    config_repo.save(_build_config(target_chapters=3, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.advance_results = [
         _build_session(
@@ -1008,21 +1029,18 @@ def test_auto_queue_service_run_background_step_advances_multiple_chapters_until
 
     stepped = service.run_background_step("aqr_001")
 
-    assert stepped.status == AutoQueueStatus.COMPLETED
-    assert stepped.generated_count == 3
-    assert multi_chapter_service.advance_calls == [
-        ("mcs_001", ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY),
-        ("mcs_001", ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY),
-    ]
+    assert stepped.status == AutoQueueStatus.WAITING_USER_DECISION
+    assert stepped.generated_count == 1
+    assert multi_chapter_service.advance_calls == []
 
 
-def test_auto_queue_service_run_background_step_stops_at_waiting_when_continuous_advances_to_non_terminal_state() -> None:
+def test_auto_queue_service_run_background_step_keeps_waiting_snapshot_unchanged() -> None:
     from application.services.ai.auto_queue_service import AutoContinuationQueueService
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=4, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    config_repo.save(_build_config(target_chapters=4, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.advance_results = [
         _build_session(
@@ -1048,9 +1066,9 @@ def test_auto_queue_service_run_background_step_stops_at_waiting_when_continuous
     stepped = service.run_background_step("aqr_001")
 
     assert stepped.status == AutoQueueStatus.WAITING_USER_DECISION
-    assert stepped.generated_count == 2
-    assert multi_chapter_service.advance_calls == [("mcs_001", ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY)]
-    assert multi_chapter_service.get_session_calls == ["mcs_001"]
+    assert stepped.generated_count == 1
+    assert multi_chapter_service.advance_calls == []
+    assert multi_chapter_service.get_session_calls == []
 
 
 def test_auto_queue_service_get_status_refreshes_waiting_state_from_multi_chapter_session() -> None:
@@ -1058,8 +1076,8 @@ def test_auto_queue_service_get_status_refreshes_waiting_state_from_multi_chapte
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.SAFE))
+    config_repo.save(_build_config())
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(
         status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -1081,13 +1099,13 @@ def test_auto_queue_service_get_status_refreshes_waiting_state_from_multi_chapte
     assert multi_chapter_service.get_session_calls == ["mcs_001"]
 
 
-def test_auto_queue_service_get_status_auto_advances_one_hop_in_continuous_mode() -> None:
+def test_auto_queue_service_get_status_never_auto_advances() -> None:
     from application.services.ai.auto_queue_service import AutoContinuationQueueService
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=3, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    config_repo.save(_build_config(target_chapters=3, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(
         status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -1110,19 +1128,19 @@ def test_auto_queue_service_get_status_auto_advances_one_hop_in_continuous_mode(
 
     refreshed = service.get_status("aqr_001")
 
-    assert refreshed.status == AutoQueueStatus.RUNNING
-    assert refreshed.generated_count == 2
+    assert refreshed.status == AutoQueueStatus.WAITING_USER_DECISION
+    assert refreshed.generated_count == 1
     assert multi_chapter_service.get_session_calls == ["mcs_001"]
-    assert multi_chapter_service.advance_calls == [("mcs_001", ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY)]
+    assert multi_chapter_service.advance_calls == []
 
 
-def test_auto_queue_service_get_status_continuous_mode_completes_instead_of_auto_advance_when_target_reached() -> None:
+def test_auto_queue_service_get_status_completes_when_target_reached() -> None:
     from application.services.ai.auto_queue_service import AutoContinuationQueueService
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=1, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=0))
+    config_repo.save(_build_config(target_chapters=1, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, generated_count=0))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(
         status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -1151,8 +1169,8 @@ def test_auto_queue_service_get_status_maps_blocked_session_to_stopped_with_stop
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS))
+    config_repo.save(_build_config())
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(status=MultiChapterStatus.BLOCKED).model_copy(
         update={
@@ -1186,11 +1204,10 @@ def test_auto_queue_service_get_status_resets_consecutive_blocking_count_after_n
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE, max_consecutive_blocking=2))
+    config_repo.save(_build_config(max_consecutive_blocking=2))
     run_repo.save(
         _build_run(
             status=AutoQueueStatus.RUNNING,
-            queue_mode=AutoQueueMode.SAFE,
             consecutive_blocking_count=1,
         )
     )
@@ -1220,8 +1237,8 @@ def test_auto_queue_service_get_status_preserves_failed_session_error_details() 
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS))
+    config_repo.save(_build_config())
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(status=MultiChapterStatus.FAILED).model_copy(
         update={
@@ -1250,8 +1267,8 @@ def test_auto_queue_service_get_status_marks_completed_when_target_chapters_reac
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE, target_chapters=1, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.SAFE, generated_count=0))
+    config_repo.save(_build_config(target_chapters=1, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, generated_count=0))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(
         status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -1285,13 +1302,12 @@ def test_auto_queue_service_get_status_stops_when_budget_exceeded() -> None:
     run_repo = _InMemoryAutoQueueRunRepository()
     config_repo.save(
         _build_config(
-            queue_mode=AutoQueueMode.CONTINUOUS,
             target_chapters=5,
             stop_at_sequence_end=False,
             stop_on_budget_exceeded=True,
         )
     )
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(
         status=MultiChapterStatus.RUNNING,
@@ -1324,13 +1340,12 @@ def test_auto_queue_service_get_status_marks_completed_when_target_word_count_re
     run_repo = _InMemoryAutoQueueRunRepository()
     config_repo.save(
         _build_config(
-            queue_mode=AutoQueueMode.CONTINUOUS,
             target_chapters=5,
             target_word_count=5000,
             stop_at_sequence_end=False,
         )
     )
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS, total_word_count=0))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, total_word_count=0))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(
         status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -1368,8 +1383,8 @@ def test_auto_queue_service_get_status_syncs_consumed_tokens_from_session_metada
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=5, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS, consumed_tokens=0))
+    config_repo.save(_build_config(target_chapters=5, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, consumed_tokens=0))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(
         status=MultiChapterStatus.RUNNING,
@@ -1430,8 +1445,8 @@ def test_auto_queue_service_recover_after_restart_resumes_running_active_run() -
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=3, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS))
+    config_repo.save(_build_config(target_chapters=3, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.resume_result = _build_session(
         status=MultiChapterStatus.RUNNING,
@@ -1461,8 +1476,8 @@ def test_auto_queue_service_recover_after_restart_records_budget_stop_audit_for_
     trace_service = _StubTraceService()
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=4, stop_at_sequence_end=False, stop_on_budget_exceeded=True))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    config_repo.save(_build_config(target_chapters=4, stop_at_sequence_end=False, stop_on_budget_exceeded=True))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.resume_result = _build_session(
         status=MultiChapterStatus.RUNNING,
@@ -1505,8 +1520,8 @@ def test_auto_queue_service_recover_after_restart_keeps_safe_waiting_run_waiting
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.SAFE, target_chapters=3))
-    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.SAFE))
+    config_repo.save(_build_config(target_chapters=3))
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(
         status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -1527,17 +1542,17 @@ def test_auto_queue_service_recover_after_restart_keeps_safe_waiting_run_waiting
     assert recovered is not None
     assert recovered.status == AutoQueueStatus.WAITING_USER_DECISION
     assert multi_chapter_service.resume_calls == []
-    assert multi_chapter_service.get_session_calls == ["mcs_001"]
+    assert multi_chapter_service.get_session_calls == []
     assert multi_chapter_service.advance_calls == []
 
 
-def test_auto_queue_service_recover_after_restart_auto_advances_continuous_waiting_run() -> None:
+def test_auto_queue_service_recover_after_restart_never_advances_waiting_run() -> None:
     from application.services.ai.auto_queue_service import AutoContinuationQueueService
 
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=3, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    config_repo.save(_build_config(target_chapters=3, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(start_result=_build_session())
     multi_chapter_service.get_session_result = _build_session(
         status=MultiChapterStatus.WAITING_USER_DECISION,
@@ -1561,7 +1576,7 @@ def test_auto_queue_service_recover_after_restart_auto_advances_continuous_waiti
     recovered = service.recover_after_restart("work_001")
 
     assert recovered is not None
-    assert recovered.status == AutoQueueStatus.RUNNING
-    assert recovered.generated_count == 2
-    assert multi_chapter_service.get_session_calls == ["mcs_001"]
-    assert multi_chapter_service.advance_calls == [("mcs_001", ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY)]
+    assert recovered.status == AutoQueueStatus.WAITING_USER_DECISION
+    assert recovered.generated_count == 1
+    assert multi_chapter_service.get_session_calls == []
+    assert multi_chapter_service.advance_calls == []

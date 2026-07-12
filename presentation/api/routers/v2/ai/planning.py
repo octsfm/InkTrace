@@ -18,6 +18,10 @@ from domain.entities.ai.models import (
     WritingTask,
 )
 from presentation.api import dependencies
+from presentation.api.middleware.p2_feature_flag import (
+    is_outline_assist_enabled,
+    outline_assist_feature_disabled_response,
+)
 from presentation.api.routers.v2.ai.response_utils import error_response, success_response
 from presentation.api.routers.v2.ai.schemas import (
     ConfirmWritingTaskRequest,
@@ -30,14 +34,26 @@ from presentation.api.routers.v2.ai.schemas import (
 
 router = APIRouter(tags=["v2-ai-planning"])
 
+_AUDIT_FAILURE_SAFE_MESSAGE = "安全记录暂时失败，本次操作没有生效，请稍后重试。"
 
-def _ensure_gate_request(request: Request, *, caller_type: str, user_action: bool, idempotency_key: str):
+
+def _ensure_gate_request(
+    request: Request,
+    *,
+    caller_type: str,
+    user_action: bool,
+    idempotency_key: str,
+    is_outline_assist: bool = False,
+):
     if caller_type != "user_action":
-        return error_response(request, error_code="caller_type_forbidden", status_code=403)
+        error_code = "P2_CALLER_FORBIDDEN" if is_outline_assist else "caller_type_forbidden"
+        return error_response(request, error_code=error_code, status_code=403)
     if not user_action:
-        return error_response(request, error_code="action_not_allowed", status_code=403)
+        error_code = "P2_USER_ACTION_REQUIRED" if is_outline_assist else "action_not_allowed"
+        return error_response(request, error_code=error_code, status_code=403)
     if not str(idempotency_key or "").strip():
-        return error_response(request, error_code="idempotency_key_required", status_code=400)
+        error_code = "P2_IDEMPOTENCY_KEY_REQUIRED" if is_outline_assist else "idempotency_key_required"
+        return error_response(request, error_code=error_code, status_code=400)
     return None
 
 
@@ -500,25 +516,50 @@ def get_writing_task(writing_task_id: str, request: Request):
 
 @router.post("/api/v2/ai/writing-tasks/{writing_task_id}/confirm")
 def confirm_writing_task(writing_task_id: str, payload: ConfirmWritingTaskRequest, request: Request):
+    service = dependencies.get_planning_api_service()
+    try:
+        is_outline_task = service.is_outline_assist_writing_task(writing_task_id)
+    except ValueError as exc:
+        if str(exc) != "writing_task_not_found":
+            raise
+        is_outline_task = False
+    if is_outline_task and not is_outline_assist_enabled():
+        return outline_assist_feature_disabled_response(request)
     denied = _ensure_gate_request(
         request,
         caller_type=payload.caller_type,
         user_action=payload.user_action,
         idempotency_key=payload.idempotency_key,
+        is_outline_assist=is_outline_task,
     )
     if denied is not None:
         return denied
     try:
-        task = dependencies.get_planning_api_service().confirm_writing_task(
+        task = service.confirm_writing_task(
             writing_task_id=writing_task_id,
             user_id=payload.user_id,
             decision_note=payload.decision_note,
             request_id=getattr(request.state, "request_id", ""),
             trace_id=request.headers.get("X-Trace-Id", "").strip(),
             user_action=payload.user_action,
+            idempotency_key=payload.idempotency_key,
         )
     except ValueError as exc:
         error_code = str(exc)
-        status_code = 404 if error_code == "writing_task_not_found" else 400
-        return error_response(request, error_code=error_code, status_code=status_code)
+        if error_code == "writing_task_not_found":
+            status_code = 404
+        elif error_code in {"P2_IDEMPOTENCY_CONFLICT", "P2_WRITING_TASK_PREREQUISITE_MISSING", "P2_OUTLINE_TARGET_CONFLICT"}:
+            status_code = 409
+        elif error_code == "P2_OUTLINE_AUDIT_WRITE_FAILED":
+            status_code = 503
+        else:
+            status_code = 400
+        audit_failed = error_code == "P2_OUTLINE_AUDIT_WRITE_FAILED"
+        return error_response(
+            request,
+            error_code=error_code,
+            status_code=status_code,
+            retryable=audit_failed,
+            safe_message=_AUDIT_FAILURE_SAFE_MESSAGE if audit_failed else None,
+        )
     return success_response(request, data=_serialize_writing_task(task))

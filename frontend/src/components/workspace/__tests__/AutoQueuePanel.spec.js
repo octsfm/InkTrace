@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import AutoQueuePanel from '../AutoQueuePanel.vue'
 
 describe('AutoQueuePanel', () => {
-  it('renders safe mode configuration, waiting review copy, and history list', () => {
+  it('renders per-chapter confirmation, waiting review copy, and history list', () => {
     const wrapper = mount(AutoQueuePanel, {
       props: {
         featureEnabled: true,
@@ -13,26 +13,24 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'safe',
         targetChapters: 5,
         currentRun: {
           run_id: 'aqr_001',
           status: 'waiting_user_decision',
-          queue_mode: 'safe',
           generated_count: 2,
           stop_record: null
         },
         historyRuns: [
-          { run_id: 'aqr_001', status: 'waiting_user_decision', queue_mode: 'safe', generated_count: 2 },
-          { run_id: 'aqr_000', status: 'stopped', queue_mode: 'safe', generated_count: 1 }
+          { run_id: 'aqr_001', status: 'waiting_user_decision', generated_count: 2 },
+          { run_id: 'aqr_000', status: 'stopped', generated_count: 1 }
         ]
       }
     })
 
-    expect(wrapper.text()).toContain('自动续写')
-    expect(wrapper.text()).toContain('为当前作品配置自动续写队列；安全模式逐章确认，连续模式在通过审阅后自动推进。')
-    expect(wrapper.text()).toContain('安全模式')
-    expect(wrapper.text()).toContain('安全模式：每章完成后暂停，等你确认后继续。')
+    expect(wrapper.text()).toContain('接着写')
+    expect(wrapper.text()).toContain('说想法 → 写一章 → 你来看 → 再决定')
+    expect(wrapper.text()).toContain('每次只写一章')
+    expect(wrapper.text()).toContain('写完先停下来，等你看过再决定要不要继续。')
     expect(wrapper.text()).toContain('第 2 章已生成，需要你确认')
     expect(wrapper.text()).toContain('历史记录')
     expect(wrapper.text()).toContain('已生成 2 章候选稿')
@@ -47,7 +45,6 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'safe',
         targetChapters: 3,
         targetWordCount: 50000,
         budgetLimitTokens: 120000,
@@ -55,20 +52,11 @@ describe('AutoQueuePanel', () => {
         stopOnBlockingReview: true,
         stopOnBudgetExceeded: true,
         stopOnForeshadowPremature: true,
-        currentRun: {
-          run_id: 'aqr_002',
-          status: 'waiting_user_decision',
-          queue_mode: 'safe',
-          generated_count: 1,
-          stop_record: null
-        },
-        historyRuns: [
-          { run_id: 'aqr_002', status: 'waiting_user_decision', queue_mode: 'safe', generated_count: 1 }
-        ]
+        currentRun: null,
+        historyRuns: []
       }
     })
 
-    await wrapper.get('[data-test="auto-queue-mode-continuous"]').trigger('click')
     await wrapper.get('[data-test="auto-queue-target-chapters"]').setValue('6')
     await wrapper.get('[data-test="auto-queue-target-words"]').setValue('80000')
     await wrapper.get('[data-test="auto-queue-budget-limit"]').setValue('150000')
@@ -78,12 +66,23 @@ describe('AutoQueuePanel', () => {
     await wrapper.get('[data-test="auto-queue-stop-foreshadow"]').setValue(false)
     await wrapper.get('[data-test="auto-queue-save-config"]').trigger('click')
     await wrapper.get('[data-test="auto-queue-start"]').trigger('click')
+    await wrapper.setProps({
+      currentRun: {
+        run_id: 'aqr_002',
+        status: 'waiting_user_decision',
+        generated_count: 1,
+        stop_record: null
+      },
+      historyRuns: [
+        { run_id: 'aqr_002', status: 'waiting_user_decision', generated_count: 1 }
+      ]
+    })
     await wrapper.get('[data-test="auto-queue-view-candidates"]').trigger('click')
     await wrapper.get('[data-test="auto-queue-confirm-continue"]').trigger('click')
     await wrapper.get('[data-test="auto-queue-stop"]').trigger('click')
     await wrapper.get('[data-test="auto-queue-history-aqr_002"]').trigger('click')
 
-    expect(wrapper.emitted('update:queue-mode')).toEqual([['continuous']])
+    expect(wrapper.find('[data-test="auto-queue-mode-continuous"]').exists()).toBe(false)
     expect(wrapper.emitted('update:target-chapters')).toEqual([[6]])
     expect(wrapper.emitted('update:target-word-count')).toEqual([[80000]])
     expect(wrapper.emitted('update:budget-limit-tokens')).toEqual([[150000]])
@@ -108,12 +107,10 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'continuous',
         targetChapters: 8,
         currentRun: {
           run_id: 'aqr_003',
           status: 'running',
-          queue_mode: 'continuous',
           generated_count: 4,
           stop_record: {
             stop_reason: 'budget_exceeded',
@@ -125,7 +122,7 @@ describe('AutoQueuePanel', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('连续模式')
+    expect(wrapper.text()).toContain('每次只写一章')
     expect(wrapper.find('[data-test="auto-queue-pause"]').exists()).toBe(true)
 
     await wrapper.get('[data-test="auto-queue-pause"]').trigger('click')
@@ -135,7 +132,6 @@ describe('AutoQueuePanel', () => {
       currentRun: {
         run_id: 'aqr_003',
         status: 'paused',
-        queue_mode: 'continuous',
         generated_count: 4,
         stop_record: {
           stop_reason: 'budget_exceeded',
@@ -159,12 +155,10 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'safe',
         targetChapters: 3,
         currentRun: {
           run_id: 'aqr_004',
           status: 'waiting_user_decision',
-          queue_mode: 'safe',
           generated_count: 2,
           stop_record: null
         },
@@ -180,7 +174,6 @@ describe('AutoQueuePanel', () => {
       currentRun: {
         run_id: 'aqr_004',
         status: 'stopped',
-        queue_mode: 'safe',
         generated_count: 2,
         stop_record: {
           stop_reason: 'budget_exceeded',
@@ -206,12 +199,10 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'continuous',
         targetChapters: 4,
         currentRun: {
           run_id: 'aqr_005',
           status: 'stopped',
-          queue_mode: 'continuous',
           generated_count: 2,
           stop_record: {
             stop_reason: 'blocking_review_consecutive',
@@ -236,12 +227,10 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'safe',
         targetChapters: 3,
         currentRun: {
           run_id: 'aqr_006',
           status: 'waiting_user_decision',
-          queue_mode: 'safe',
           generated_count: 2,
           stop_record: null
         },
@@ -256,7 +245,6 @@ describe('AutoQueuePanel', () => {
       currentRun: {
         run_id: 'aqr_006',
         status: 'stopped',
-        queue_mode: 'safe',
         generated_count: 2,
         consumed_tokens: 128000,
         stop_record: {
@@ -269,7 +257,7 @@ describe('AutoQueuePanel', () => {
     })
 
     expect(wrapper.get('[data-test="auto-queue-banner"]').classes()).toContain('auto-queue-panel__banner--error')
-    expect(wrapper.text()).toContain('已使用约 128000 令牌')
+    expect(wrapper.text()).toContain('已使用约 128000 AI 用量')
     expect(wrapper.get('[data-test="auto-queue-stop-record"]').text()).toContain('停止原因：预算已超出')
     expect(wrapper.get('[data-test="auto-queue-stop-record"]').text()).toContain('建议操作：提高预算或关闭预算检查')
   })
@@ -283,12 +271,10 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'continuous',
         targetChapters: 10,
         currentRun: {
           run_id: 'aqr_007',
           status: 'running',
-          queue_mode: 'continuous',
           generated_count: 5,
           target_chapters: 10,
           total_word_count: 25000,
@@ -307,7 +293,7 @@ describe('AutoQueuePanel', () => {
 
     expect(wrapper.get('[data-test="auto-queue-progress"]').text()).toContain('5 / 10 章')
     expect(wrapper.text()).toContain('字数25,000 / 50,000')
-    expect(wrapper.text()).toContain('令牌120K')
+    expect(wrapper.text()).toContain('AI 用量120K')
     expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('第1章')
     expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('审阅通过')
     expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('生成中')
@@ -323,12 +309,10 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'safe',
         targetChapters: 3,
         currentRun: {
           run_id: 'aqr_010',
           status: 'stopped',
-          queue_mode: 'safe',
           generated_count: 2,
           stop_record: {
             stop_reason: 'user_manual_stop',
@@ -338,7 +322,6 @@ describe('AutoQueuePanel', () => {
         historyRuns: [{
           run_id: 'aqr_009',
           status: 'stopped',
-          queue_mode: 'safe',
           generated_count: 2,
           stop_record: {
             stop_reason: 'blocking_review_consecutive',
@@ -349,11 +332,11 @@ describe('AutoQueuePanel', () => {
     })
 
     const historyText = wrapper.get('[data-test="auto-queue-history-aqr_009"]').text()
-    expect(historyText).toContain('连续出现阻断冲突')
+    expect(historyText).toContain('连续发现需要你处理的矛盾')
     expect(historyText).toContain('先查看并处理冲突详情')
   })
 
-  it('uses chinese punctuation in continuous mode hint and stop summaries', async () => {
+  it('uses chinese punctuation in per-chapter hint and stop summaries', async () => {
     const wrapper = mount(AutoQueuePanel, {
       props: {
         featureEnabled: true,
@@ -362,12 +345,10 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'continuous',
         targetChapters: 3,
         currentRun: {
           run_id: 'aqr_015',
           status: 'stopped',
-          queue_mode: 'continuous',
           generated_count: 2,
           stop_record: {
             stop_reason: 'blocking_review_consecutive',
@@ -378,10 +359,10 @@ describe('AutoQueuePanel', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('连续模式：审阅通过后自动继续，但遇到阻断冲突仍会暂停。')
-    expect(wrapper.get('[data-test="auto-queue-banner"]').text()).toContain('连续出现严重冲突，自动续写已停止。')
-    expect(wrapper.text()).not.toContain('连续模式:审阅通过后自动继续,但遇到阻断冲突仍会暂停。')
-    expect(wrapper.text()).not.toContain('连续出现严重冲突,自动续写已停止。')
+    expect(wrapper.text()).toContain('写完先停下来，等你看过再决定要不要继续。')
+    expect(wrapper.get('[data-test="auto-queue-banner"]').text()).toContain('连续发现需要你处理的矛盾，这次续写已停下。')
+    expect(wrapper.text()).not.toContain('连续模式')
+    expect(wrapper.text()).not.toContain('连续发现需要你处理的矛盾,这次续写已停下。')
   })
 
   it('shows target word count field for queue stop conditions', () => {
@@ -393,7 +374,6 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'continuous',
         targetChapters: 10,
         targetWordCount: 50000,
         historyRuns: []
@@ -413,7 +393,6 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'safe',
         targetChapters: 0,
         targetWordCount: 50000,
         budgetLimitTokens: 120000,
@@ -441,7 +420,6 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'safe',
         targetChapters: 0,
         targetWordCount: 80000,
         historyRuns: []
@@ -452,7 +430,7 @@ describe('AutoQueuePanel', () => {
     expect(wrapper.get('[data-test="auto-queue-start"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('keeps continuous mode blocked when target chapters is zero', () => {
+  it('allows target words as the stop condition without a mode switch', () => {
     const wrapper = mount(AutoQueuePanel, {
       props: {
         featureEnabled: true,
@@ -461,15 +439,15 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'continuous',
         targetChapters: 0,
         targetWordCount: 80000,
         historyRuns: []
       }
     })
 
-    expect(wrapper.get('[data-test="auto-queue-save-config"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-test="auto-queue-start"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-test="auto-queue-mode-continuous"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="auto-queue-save-config"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-test="auto-queue-start"]').attributes('disabled')).toBeUndefined()
   })
 
   it('shows running and completed banner copy from current run status', async () => {
@@ -481,12 +459,10 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'continuous',
         targetChapters: 3,
         currentRun: {
           run_id: 'aqr_009',
           status: 'running',
-          queue_mode: 'continuous',
           generated_count: 2
         },
         historyRuns: []
@@ -499,7 +475,6 @@ describe('AutoQueuePanel', () => {
       currentRun: {
         run_id: 'aqr_009',
         status: 'completed',
-        queue_mode: 'continuous',
         generated_count: 3
       }
     })
@@ -517,39 +492,35 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'continuous',
         targetChapters: 3,
         currentRun: {
           run_id: 'aqr_011',
           status: 'completed',
-          queue_mode: 'continuous',
           generated_count: 3
         },
         historyRuns: []
       }
     })
 
-    expect(wrapper.get('.auto-queue-panel__summary').text()).toBe('当前队列已完成，累计生成 3 章候选稿。')
+    expect(wrapper.get('.auto-queue-panel__summary').text()).toBe('这次新稿写完了，共有 3 章。')
 
     await wrapper.setProps({
       currentRun: {
         run_id: 'aqr_011',
         status: 'failed',
-        queue_mode: 'continuous',
         generated_count: 2
       }
     })
-    expect(wrapper.get('.auto-queue-panel__summary').text()).toBe('当前队列执行失败，请检查停止原因或稍后重试。')
+    expect(wrapper.get('.auto-queue-panel__summary').text()).toBe('这次没有写完，请看看原因或稍后重试。')
 
     await wrapper.setProps({
       currentRun: {
         run_id: 'aqr_011',
         status: 'cancelled',
-        queue_mode: 'continuous',
         generated_count: 2
       }
     })
-    expect(wrapper.get('.auto-queue-panel__summary').text()).toBe('当前队列已取消，已生成候选稿会保留。')
+    expect(wrapper.get('.auto-queue-panel__summary').text()).toBe('这次续写已结束，已经写好的新稿会保留。')
   })
 
   it('localizes stopping status and shows budget limit in budget exceeded banner', () => {
@@ -561,13 +532,11 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'continuous',
         targetChapters: 4,
         budgetLimitTokens: 500000,
         currentRun: {
           run_id: 'aqr_012',
           status: 'stopping',
-          queue_mode: 'continuous',
           generated_count: 4,
           consumed_tokens: 520000,
           stop_record: {
@@ -581,8 +550,8 @@ describe('AutoQueuePanel', () => {
     })
 
     expect(wrapper.text()).toContain('状态 正在停止')
-    expect(wrapper.get('[data-test="auto-queue-banner"]').text()).toContain('已使用约 520000 / 预算 500000 令牌')
-    expect(wrapper.get('.auto-queue-panel__summary').text()).toBe('当前队列正在停止，等待当前章节处理完成后结束。')
+    expect(wrapper.get('[data-test="auto-queue-banner"]').text()).toContain('已使用约 520000 / 上限 500000 AI 用量')
+    expect(wrapper.get('.auto-queue-panel__summary').text()).toBe('正在停下来，写完手上这一章就结束。')
   })
 
   it('shows raise budget action and focuses budget input when clicked', async () => {
@@ -595,13 +564,11 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'safe',
         targetChapters: 3,
         budgetLimitTokens: 500000,
         currentRun: {
           run_id: 'aqr_013',
           status: 'stopped',
-          queue_mode: 'safe',
           generated_count: 2,
           stop_record: {
             stop_reason: 'budget_exceeded',
@@ -628,13 +595,11 @@ describe('AutoQueuePanel', () => {
         savingConfig: false,
         actionLoading: false,
         chapterId: 'chapter-1',
-        queueMode: 'continuous',
         targetChapters: 5,
         targetWordCount: 80000,
         currentRun: {
           run_id: 'aqr_014',
           status: 'running',
-          queue_mode: 'continuous',
           generated_count: 2,
           total_word_count: 16000
         },

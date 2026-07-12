@@ -1,5 +1,7 @@
 # InkTrace V2.0 项目现状汇报
 
+> **历史快照**：本文记录 2026-05-18 的阶段状态。当前状态请以 [`../PROJECT_STATUS_CURRENT.md`](../PROJECT_STATUS_CURRENT.md) 为准。
+
 > 汇报日期：2026-05-18 | 当前分支：`feature/v2-p0` | 作者：开发团队
 
 ---

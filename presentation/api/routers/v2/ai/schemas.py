@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -126,9 +128,47 @@ class RewriteCandidateDraftRequest(V2AIOperationRequest):
 
 
 class SuggestionDecisionRequest(V2AIOperationRequest):
+    caller_type: str
     user_action: bool = False
-    user_id: str = ""
+    user_id: str = Field(min_length=1, pattern=r".*\S.*")
     decision_note: str = ""
+
+
+class OutlinePolishRequest(V2AIOperationRequest):
+    caller_type: str
+    work_id: str
+    target_kind: Literal["work_outline", "chapter_outline", "selection"]
+    target_id: str | None = None
+    target_revision: int | None = None
+    selected_text: str | None = None
+
+
+class OutlineExpandRequest(OutlinePolishRequest):
+    expand_focus: str | None = None
+
+
+class ChapterOutlineAssistRequest(V2AIOperationRequest):
+    caller_type: str
+    work_id: str
+    target_kind: Literal["chapter_outline"]
+    target_id: str
+    target_revision: int
+    chapter_goal: str | None = None
+
+
+class WritingTaskAssistRequest(V2AIOperationRequest):
+    caller_type: str
+    work_id: str
+    chapter_id: str
+    target_revision: int
+
+
+class ApplyOutlineSuggestionRequest(V2AIOperationRequest):
+    caller_type: str
+    user_action: bool = False
+    user_id: str = Field(min_length=1, pattern=r".*\S.*")
+    confirm_apply: bool = False
+    target_revision: int
 
 
 class ConflictDecisionRequest(V2AIOperationRequest):
@@ -178,8 +218,9 @@ class RejectChapterPlanRequest(V2AIOperationRequest):
 
 
 class ConfirmWritingTaskRequest(V2AIOperationRequest):
+    caller_type: str
     user_action: bool = False
-    user_id: str = ""
+    user_id: str = Field(min_length=1, pattern=r".*\S.*")
     decision_note: str = ""
 
 

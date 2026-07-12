@@ -33,6 +33,20 @@ SAFE_MESSAGE_MAP = {
     "idempotency_key_conflict": "当前操作已提交，请勿重复执行。",
     "internal_error": "服务暂时不可用，请稍后重试。",
     "P2_CALLER_FORBIDDEN": "当前请求来源不被允许。",
+    "P2_USER_ACTION_REQUIRED": "请由你本人点击确认后再试。",
+    "P2_IDEMPOTENCY_KEY_REQUIRED": "操作标识缺失，请刷新后重试。",
+    "P2_IDEMPOTENCY_CONFLICT": "这次操作与之前的请求不一致，请刷新后再试。",
+    "P2_OUTLINE_TARGET_REQUIRED": "请先选择要处理的大纲或章节。",
+    "P2_OUTLINE_TARGET_NOT_FOUND": "没有找到这份大纲，请刷新后重试。",
+    "P2_OUTLINE_TARGET_CONFLICT": "这份大纲刚刚有改动，请刷新后重新生成建议。",
+    "P2_OUTLINE_SUGGESTION_NOT_FOUND": "没有找到这条建议，请重新生成。",
+    "P2_OUTLINE_SUGGESTION_NOT_ACCEPTED": "请先选择“先留着”，再放进大纲。",
+    "P2_OUTLINE_SUGGESTION_TYPE_UNSUPPORTED": "这条建议不能直接放进大纲。",
+    "P2_OUTLINE_APPLY_CONFIRMATION_REQUIRED": "请先查看前后对比并确认，再放进大纲。",
+    "P2_OUTLINE_CONFLICT_REVIEW_REQUIRED": "发现需要你处理的冲突，暂未改动大纲。",
+    "P2_OUTLINE_CONFLICT_CHECK_FAILED": "安全检查暂时失败，大纲没有改动，请稍后重试。",
+    "P2_WRITING_TASK_PREREQUISITE_MISSING": "请先确认本章方向和章节计划，再整理写作要点。",
+    "output_schema_invalid": "这次生成的结果格式不完整，请重试。",
     "P2_VECTOR_INVALID_INDEX_SCOPE": "请选择\"整部作品\"或\"指定章节\"。",
     "P2_VECTOR_TARGET_CHAPTER_IDS_REQUIRED": "请选择至少一个章节。",
     "P2_VECTOR_TARGET_CHAPTER_IDS_NOT_ALLOWED": "全作品重建不需要选择章节，请取消章节选择后重试。",
@@ -79,7 +93,6 @@ SAFE_MESSAGE_MAP = {
     "auto_queue_already_running": "当前作品已有自动续写任务在运行。",
     "auto_queue_disabled": "当前自动续写配置已关闭，请先启用后再试。",
     "auto_queue_work_id_mismatch": "自动续写任务与当前作品不匹配，请刷新后重试。",
-    "auto_queue_confirm_continue_only_for_safe_mode": "仅安全模式下支持确认后继续。",
     "auto_queue_not_waiting_user_decision": "当前状态下不能执行确认后继续。",
 }
 
@@ -113,17 +126,21 @@ def error_response(
     status_code: int = 400,
     retryable: bool = False,
     safe_message: str | None = None,
+    data: dict[str, object] | None = None,
 ) -> JSONResponse:
+    error_payload: dict[str, object] = {
+        "error_code": error_code,
+        "safe_message": resolve_safe_message(safe_message or error_code),
+        "retryable": retryable,
+    }
+    if data:
+        error_payload["data"] = data
     return JSONResponse(
         status_code=status_code,
         content={
             "request_id": getattr(request.state, "request_id", ""),
             "trace_id": trace_id_from_request(request),
             "status": "error",
-            "error": {
-                "error_code": error_code,
-                "safe_message": resolve_safe_message(safe_message or error_code),
-                "retryable": retryable,
-            },
+            "error": error_payload,
         },
     )

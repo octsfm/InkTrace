@@ -1,7 +1,7 @@
 # InkTrace V2.0-P2-01 多章续写详细设计
 
-版本：v1.0 / P2 模块级详细设计候选冻结版
-状态：候选冻结
+版本：v1.1 / P2 模块级详细设计冻结版（方案 A 逐章确认已收口）
+状态：冻结生效
 所属阶段：InkTrace V2.0 P2-S1
 设计范围：多章续写编排层
 
@@ -46,13 +46,13 @@ P2-01 的目标是冻结：用户如何一次触发 N 章续写、系统如何�
 - 前端进度面板集成方向。
 - 测试策略与安全红线。
 
-**核心交互模式（冻结）**：P2-01 默认采用**逐章确认推进**模式——`start()` 只生成第一章候选稿；每章候选稿就绪并经用户处理后，`advance_to_next_chapter` 才启动下一章。不是一次性生成 N 章候选稿。
+**核心交互模式（冻结）**：P2-01 只采用**逐章确认推进**——`start()` 只生成第一章候选稿；每章候选稿就绪后固定进入 `WAITING_USER_DECISION`，只有真实用户操作 `advance_to_next_chapter` 才能启动下一章。用户可以先 apply，也可以保留当前候选稿后继续；两种操作都是独立 user_action。不存在连续自动推进。
 
 ### 1.3 不覆盖范围
 
 P2-01 不覆盖：
 
-- 自动续写队列的无人值守编排（属于 P2-04）。
+- 自动续写队列的停止条件、预算、运行历史与恢复封装（属于 P2-04）。
 - Style DNA / Citation Link / @ 引用 / Opening Agent / 大纲辅助 / 选区改写 / 成本看板 / 分析看板。
 - 单章 AgentWorkflow 内部细节（属于 P1-02 / P1-03）。
 - CandidateDraft / HumanReviewGate 内部细节（属于 P0-09）。
@@ -230,6 +230,8 @@ class MultiChapterContinuationService:
         session_id: str,
         *,
         decision: ChapterAdvanceDecision,
+        action: UserActionContext,
+        idempotency_key: str,
     ) -> MultiChapterSession: ...
 
     # ── 章间状态更新（内部）──
@@ -249,10 +251,10 @@ P1 AgentWorkflow 单章生成可能需要数分钟。多章续写的 HTTP 请求
 POST /start  →  创建 MultiChapterSession + AIJob  →  立即返回 session_id（HTTP 202）
                   ↓
               后台异步任务（ai_job_runner）执行：
-                 循环 _start_single_chapter → 章间状态更新 → 下一章
+                 _start_single_chapter → 保存本章候选结果
                  每章完成后更新 MultiChapterSession 状态
-                 安全模式下暂停于 WAITING_USER_DECISION
-                 连续候选模式下自动推进
+                 非最后一章固定暂停于 WAITING_USER_DECISION
+                 只有用户 advance 后才更新章间候选状态并启动下一章
                  队列完成/停止后标记终态
                   ↓
 GET /progress →  前端轮询 MultiChapterSession 状态
@@ -306,8 +308,8 @@ async def _run_chapter_loop(self, session_id: str) -> None:
             await self._save(session)
             return
 
-        # 安全模式（默认）：本章候选稿就绪后暂停，等待用户手动 advance
-        if session.auto_mode == "safe":
+        # 非最后一章：候选稿就绪后固定暂停，等待真实用户手动 advance
+        if chapter_index < session.target_chapters:
             session.status = MultiChapterStatus.WAITING_USER_DECISION
             await self._save(session)
             return
@@ -341,7 +343,7 @@ async def _start_single_chapter(
 
 ### 3.6 advance_to_next_chapter：触发时机与幂等性（冻结）
 
-`advance_to_next_chapter` 是用户在当前章做出决策后**手动调用的推进操作**。
+`advance_to_next_chapter` 是用户看过当前章候选结果后**手动调用的推进操作**。Application Service 必须复核 `caller_type=user_action`、`user_action=true`、非空 user_id、允许的 action 与 Idempotency-Key；不能只依赖 API 层，也不能由启动时的旧授权、Agent、workflow、system 或服务重启代替本章确认。
 
 **与 CandidateDraft accept/apply 的关系（关键决策）**：
 
@@ -352,17 +354,20 @@ async def _start_single_chapter(
 **推荐交互模式**（前端实现）：
 1. 用户在候选稿区点击 [应用并继续] → 前端依次调用 `PUT /apply` 然后 `POST /advance`。
 2. 用户也可以仅 [应用]（不推进），稍后再手动点击多章面板的 [继续下一章]。
-3. 后端不自动耦合 apply 和 advance——耦合在前端。
+3. 用户也可选择 [保留并继续写下一章]，前端只调用 `POST /advance` 并提交 `continue_without_apply`；当前 CandidateDraft 保持隔离，不进入正式正文。
+4. 后端不自动耦合 apply 和 advance——组合操作只由前端在用户当次点击后依次发起。
 
 **幂等性**：
 - 用户连续调用两次 `advance`：第二次调用时 `current_index` 已推进到下一章，且状态为 `GENERATING` 或 `WAITING_USER_DECISION`——返回 `{ already_advanced: true, current_index }`，不报错。
-- 用户在当前章未 apply 时调用 `advance`：返回 `{ blocked: true, reason: "candidate_not_applied" }`。
+- 用户在当前章未 apply 时，只有显式 decision=`continue_without_apply` 才可推进；CandidateDraft 状态保持原样，不自动 accept/apply。
 - 所有章已完成时调用 `advance`：返回 `{ already_completed: true }`。
 
 ```python
 async def advance_to_next_chapter(
-    self, session_id: str, *, decision: ChapterAdvanceDecision
+    self, session_id: str, *, decision: ChapterAdvanceDecision,
+    action: UserActionContext, idempotency_key: str
 ) -> MultiChapterSession:
+    self._require_real_user_action(action, expected_action="advance_multi_chapter")
     session = await self._load(session_id)
 
     # 幂等性检查
@@ -424,7 +429,7 @@ async def _update_inter_chapter_state(
 | 状态转换 | 触发条件 |
 |---|---|
 | PENDING → RUNNING | `start()` 提交后台任务成功 |
-| RUNNING → WAITING_USER_DECISION | 安全模式下，当前章候选稿生成完毕 + 审稿通过 |
+| RUNNING → WAITING_USER_DECISION | 非最后一章的候选稿生成完毕 + 审稿通过 |
 | WAITING_USER_DECISION → RUNNING | 用户调用 `advance_to_next_chapter` |
 | RUNNING → BLOCKED | 当前章审稿结果为 blocking 级别 |
 | BLOCKED → RUNNING | 用户处理冲突后调用 `advance_to_next_chapter` |
@@ -577,7 +582,10 @@ GET    /api/v2/ai/multi-chapter/{session_id}/progress
               completed_count, blocked_count, per_chapter: [...] }
 
 POST   /api/v2/ai/multi-chapter/{session_id}/advance
-  Request:  { decision: "applied" | "skipped" | "continue_without_apply" | "regenerate" }
+  Request:  { decision: "applied" | "skipped" | "continue_without_apply" | "regenerate",
+              caller_type: "user_action", user_action: true, user_id,
+              user_action_context: { action: "advance_multi_chapter" } }
+  Header:   Idempotency-Key（必填）
   Response: { session_id, status, current_index, next_chapter_available }
 
 POST   /api/v2/ai/multi-chapter/{session_id}/pause
@@ -595,7 +603,7 @@ GET    /api/v2/ai/multi-chapter/{session_id}/chapters
 
 ### 6.3 API 安全规则
 
-- `advance` / `pause` / `resume` / `cancel` 必须 `caller_type=user_action`。
+- `advance` / `pause` / `resume` / `cancel` 必须 `caller_type=user_action + user_action=true + user_id`；advance 额外要求本章独立 Idempotency-Key。
 - Agent 不得调用这些端点。
 - API 层不承载编排逻辑——只做参数适配和权限校验，核心编排在 `MultiChapterContinuationService`。
 - 响应沿用 P0-11 通用格式：`{ request_id, trace_id, status, data, error, polling_hint }`。
@@ -658,6 +666,8 @@ GET    /api/v2/ai/multi-chapter/{session_id}/chapters
 | # | 用例 | 验证点 |
 |---|---|---|
 | T8 | Agent 尝试调用 advance API | 返回 forbidden（caller_type 校验） |
+| T8A | system/服务重启尝试自动推进 WAITING_USER_DECISION | 保持等待；未创建下一章 Provider 调用 |
+| T8B | 未 apply 时用户选择 continue_without_apply | 允许推进；CandidateDraft 保持隔离且状态不被自动改变 |
 | T9 | 章间不更新正式 StoryState | Mock story_state_service，验证 update_official 未被调用 |
 | T10 | 多章 apply 不能批量 | 每章 apply 必须独立 user_action，Agent 不能伪造 |
 | T11 | formal_write Tool 不可被多章编排调用 | 权限矩阵测试 |

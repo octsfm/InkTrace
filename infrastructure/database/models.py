@@ -195,7 +195,6 @@ AUTO_QUEUE_CONFIGS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS auto_queue_configs (
     config_id TEXT PRIMARY KEY,
     work_id TEXT NOT NULL UNIQUE,
-    queue_mode TEXT NOT NULL DEFAULT 'safe',
     target_chapters INTEGER DEFAULT 0,
     target_word_count INTEGER DEFAULT 0,
     stop_at_sequence_end INTEGER DEFAULT 1,
@@ -219,7 +218,6 @@ CREATE TABLE IF NOT EXISTS auto_queue_runs (
     work_id TEXT NOT NULL,
     multi_chapter_session_id TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
-    queue_mode TEXT NOT NULL DEFAULT 'safe',
     generated_count INTEGER DEFAULT 0,
     total_word_count INTEGER DEFAULT 0,
     consumed_tokens INTEGER DEFAULT 0,

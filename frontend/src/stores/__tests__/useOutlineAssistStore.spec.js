@@ -10,9 +10,36 @@ const applyOutlineAssistSuggestion = vi.fn()
 const listConflicts = vi.fn()
 const getConflict = vi.fn()
 
+const listAISuggestionsApi = async (request = {}) => {
+  const response = await listAISuggestions(request)
+  if (!Array.isArray(response?.data?.items)) return response
+  const targetId = String(request?.chapter_id || request?.work_id || '')
+  const targetKind = request?.chapter_id ? 'chapter_outline' : 'work_outline'
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      items: response.data.items.map((item) => {
+        const payload = item?.payload_json ?? item?.payload ?? {}
+        if (payload?.target_kind || payload?.target_id || payload?.chapter_id) return item
+        return {
+          ...item,
+          payload_json: {
+            ...payload,
+            target_kind: targetKind,
+            target_id: targetId,
+            chapter_id: request?.chapter_id || undefined,
+            target_revision: 3
+          }
+        }
+      })
+    }
+  }
+}
+
 vi.mock('@/api', () => ({
   aiApi: {
-    listAISuggestions,
+    listAISuggestions: listAISuggestionsApi,
     getAISuggestion,
     acceptAISuggestion,
     dismissAISuggestion,
@@ -90,8 +117,8 @@ describe('useOutlineAssistStore', () => {
         suggestion_type: 'outline_polish',
         status: 'accepted',
         payload_json: {
-          target_kind: 'outline_node',
-          target_id: 'node_1'
+          target_kind: 'work_outline',
+          target_id: 'work-1'
         }
       },
       {
@@ -106,7 +133,11 @@ describe('useOutlineAssistStore', () => {
       {
         suggestion_id: 'sg_detail_001',
         suggestion_type: 'chapter_outline_suggestion',
-        status: 'stale'
+        status: 'stale',
+        payload_json: {
+          target_kind: 'work_outline',
+          target_id: 'work-1'
+        }
       }
     ])
 
@@ -164,7 +195,7 @@ describe('useOutlineAssistStore', () => {
 
     expect(store.canAcceptSuggestion(writingTaskAccepted)).toBe(false)
     expect(store.canResolveSuggestion(writingTaskAccepted)).toBe(false)
-    expect(store.canConvertSuggestion(writingTaskAccepted)).toBe(false)
+    expect(store.canConvertSuggestion(writingTaskAccepted)).toBe(true)
     expect(store.canApplySuggestion(writingTaskAccepted)).toBe(false)
     expect(store.isAcceptedWritingTaskSuggestion(writingTaskAccepted)).toBe(true)
 
@@ -280,7 +311,7 @@ describe('useOutlineAssistStore', () => {
     store.setSuggestions([{
       suggestion_id: 'sg_submit_001',
       suggestion_type: 'outline_expand',
-      status: 'pending',
+      status: 'generated',
       summary: '上一章待采纳建议'
     }])
     acceptAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
@@ -322,7 +353,7 @@ describe('useOutlineAssistStore', () => {
     store.setSuggestions([{
       suggestion_id: 'sg_repeat_ctx_001',
       suggestion_type: 'outline_expand',
-      status: 'pending',
+      status: 'generated',
       summary: 'chapter-1 suggestion'
     }])
     acceptAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
@@ -333,7 +364,7 @@ describe('useOutlineAssistStore', () => {
         items: [{
           suggestion_id: 'sg_repeat_ctx_001',
           suggestion_type: 'outline_expand',
-          status: 'pending',
+          status: 'generated',
           summary: 'chapter-2 suggestion'
         }]
       }
@@ -357,7 +388,7 @@ describe('useOutlineAssistStore', () => {
     })
     await acceptPromise
 
-    expect(store.suggestions[0].status).toBe('pending')
+    expect(store.suggestions[0].status).toBe('generated')
     expect(store.suggestions[0].summary).toBe('chapter-2 suggestion')
     expect(listAISuggestions).toHaveBeenCalledTimes(1)
   })
@@ -370,8 +401,8 @@ describe('useOutlineAssistStore', () => {
     await store.initializeForWork('work-1')
     store.setSuggestions([{
       suggestion_id: 'sg_convert_ctx_001',
-      suggestion_type: 'outline_expand',
-      status: 'pending',
+      suggestion_type: 'writing_task_suggestion',
+      status: 'shown',
       summary: 'chapter-1 convert'
     }])
     convertAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
@@ -381,8 +412,8 @@ describe('useOutlineAssistStore', () => {
       data: {
         items: [{
           suggestion_id: 'sg_convert_ctx_001',
-          suggestion_type: 'outline_expand',
-          status: 'pending',
+          suggestion_type: 'writing_task_suggestion',
+          status: 'shown',
           summary: 'chapter-2 suggestion'
         }]
       }
@@ -467,7 +498,7 @@ describe('useOutlineAssistStore', () => {
     store.setSuggestions([{
       suggestion_id: 'sg_dismiss_ctx_001',
       suggestion_type: 'outline_expand',
-      status: 'pending',
+      status: 'generated',
       summary: 'chapter-1 dismiss'
     }])
     dismissAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
@@ -478,7 +509,7 @@ describe('useOutlineAssistStore', () => {
         items: [{
           suggestion_id: 'sg_dismiss_ctx_001',
           suggestion_type: 'outline_expand',
-          status: 'pending',
+          status: 'generated',
           summary: 'chapter-2 suggestion'
         }]
       }
@@ -499,7 +530,7 @@ describe('useOutlineAssistStore', () => {
     })
     await dismissPromise
 
-    expect(store.suggestions[0].status).toBe('pending')
+    expect(store.suggestions[0].status).toBe('generated')
     expect(store.suggestions[0].summary).toBe('chapter-2 suggestion')
     expect(listAISuggestions).toHaveBeenCalledTimes(1)
   })
@@ -512,8 +543,8 @@ describe('useOutlineAssistStore', () => {
     await store.initializeForWork('work-1')
     store.setSuggestions([{
       suggestion_id: 'sg_convert_state_001',
-      suggestion_type: 'outline_expand',
-      status: 'pending',
+      suggestion_type: 'writing_task_suggestion',
+      status: 'shown',
       summary: 'chapter-1 convert'
     }])
     convertAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
@@ -523,8 +554,8 @@ describe('useOutlineAssistStore', () => {
       data: {
         items: [{
           suggestion_id: 'sg_convert_state_001',
-          suggestion_type: 'outline_expand',
-          status: 'pending',
+          suggestion_type: 'writing_task_suggestion',
+          status: 'shown',
           summary: 'chapter-2 suggestion'
         }]
       }
@@ -548,7 +579,7 @@ describe('useOutlineAssistStore', () => {
     })
     await convertPromise
 
-    expect(store.suggestions[0].status).toBe('pending')
+    expect(store.suggestions[0].status).toBe('shown')
     expect(store.suggestions[0].summary).toBe('chapter-2 suggestion')
     expect(listAISuggestions).toHaveBeenCalledTimes(1)
   })
@@ -682,7 +713,7 @@ describe('useOutlineAssistStore', () => {
     store.setSuggestions([{
       suggestion_id: 'sg_accept_pending_001',
       suggestion_type: 'outline_expand',
-      status: 'pending',
+      status: 'generated',
       summary: '待采纳建议'
     }])
     acceptAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
@@ -727,7 +758,7 @@ describe('useOutlineAssistStore', () => {
     store.setSuggestions([{
       suggestion_id: 'sg_action_guard_001',
       suggestion_type: 'outline_expand',
-      status: 'pending',
+      status: 'generated',
       summary: '待处理建议'
     }])
     acceptAISuggestion.mockImplementationOnce(() => new Promise((resolve) => {
@@ -786,7 +817,7 @@ describe('useOutlineAssistStore', () => {
     store.setSuggestions([{
       suggestion_id: 'sg_accept_001',
       suggestion_type: 'outline_expand',
-      status: 'pending',
+      status: 'generated',
       summary: '补足潜入前侦查段落'
     }])
     acceptAISuggestion.mockResolvedValue({
@@ -813,7 +844,7 @@ describe('useOutlineAssistStore', () => {
     store.setSuggestions([{
       suggestion_id: 'sg_refresh_001',
       suggestion_type: 'outline_expand',
-      status: 'pending',
+      status: 'generated',
       summary: '补足潜入前侦查段落'
     }])
     acceptAISuggestion.mockResolvedValue({
@@ -834,7 +865,7 @@ describe('useOutlineAssistStore', () => {
           items: [{
             suggestion_id: 'sg_refresh_001',
             suggestion_type: 'outline_expand',
-            status: 'pending',
+            status: 'generated',
             summary: 'initial 列表'
           }]
         }
@@ -890,7 +921,7 @@ describe('useOutlineAssistStore', () => {
     store.setSuggestions([{
       suggestion_id: 'sg_dismiss_001',
       suggestion_type: 'outline_expand',
-      status: 'pending',
+      status: 'generated',
       summary: '补足潜入前侦查段落'
     }])
     dismissAISuggestion.mockResolvedValue({
@@ -910,14 +941,14 @@ describe('useOutlineAssistStore', () => {
     expect(store.suggestions[0].status).toBe('dismissed')
   })
 
-  it('converts an outline suggestion and returns action ref', async () => {
+  it('converts a writing-task suggestion and returns its task ref', async () => {
     const { useOutlineAssistStore } = await import('../useOutlineAssistStore')
     const store = useOutlineAssistStore()
 
     store.setSuggestions([{
       suggestion_id: 'sg_convert_001',
-      suggestion_type: 'outline_expand',
-      status: 'pending',
+      suggestion_type: 'writing_task_suggestion',
+      status: 'shown',
       summary: '补足潜入前侦查段落'
     }])
     convertAISuggestion.mockResolvedValue({
@@ -925,7 +956,7 @@ describe('useOutlineAssistStore', () => {
         suggestion_id: 'sg_convert_001',
         status: 'converted',
         action: {
-          action_payload_ref: 'conflict_guard:cg_001'
+          action_payload_ref: 'writing_task:wt_001'
         }
       }
     })
@@ -937,10 +968,11 @@ describe('useOutlineAssistStore', () => {
       user_action: true
     }))
     expect(store.suggestions[0].status).toBe('converted')
-    expect(result.action.action_payload_ref).toBe('conflict_guard:cg_001')
+    expect(result.action.action_payload_ref).toBe('writing_task:wt_001')
+    expect(store.pendingWritingTaskId).toBe('wt_001')
   })
 
-  it('orchestrates convert and conflict handoff in one store action', async () => {
+  it('keeps conflict handoff closed when writing-task conversion returns a task ref', async () => {
     const { useOutlineAssistStore } = await import('../useOutlineAssistStore')
     const store = useOutlineAssistStore()
 
@@ -952,8 +984,8 @@ describe('useOutlineAssistStore', () => {
     })
     store.setSuggestions([{
       suggestion_id: 'sg_convert_flow_001',
-      suggestion_type: 'outline_expand',
-      status: 'pending',
+      suggestion_type: 'writing_task_suggestion',
+      status: 'shown',
       summary: '补足侦查节点'
     }])
     convertAISuggestion.mockResolvedValue({
@@ -961,7 +993,7 @@ describe('useOutlineAssistStore', () => {
         suggestion_id: 'sg_convert_flow_001',
         status: 'converted',
         action: {
-          action_payload_ref: 'conflict_guard:cg_flow_001'
+          action_payload_ref: 'writing_task:wt_flow_001'
         }
       }
     })
@@ -969,7 +1001,7 @@ describe('useOutlineAssistStore', () => {
       data: {
         items: [{
           suggestion_id: 'sg_convert_flow_001',
-          suggestion_type: 'outline_expand',
+          suggestion_type: 'writing_task_suggestion',
           status: 'converted',
           summary: 'convert 后回刷结果'
         }]
@@ -1001,17 +1033,13 @@ describe('useOutlineAssistStore', () => {
       caller_type: 'user_action',
       user_action: true
     }))
-    expect(getConflict).toHaveBeenCalledWith('cg_flow_001')
-    expect(listConflicts).toHaveBeenCalledWith({
-      work_id: 'work-1',
-      chapter_id: 'chapter-1'
-    })
-    expect(result.action.action_payload_ref).toBe('conflict_guard:cg_flow_001')
-    expect(store.conflictSectionVisible).toBe(true)
-    expect(store.conflictItems[0].record_id).toBe('cg_flow_001')
+    expect(getConflict).not.toHaveBeenCalled()
+    expect(listConflicts).not.toHaveBeenCalled()
+    expect(result.action.action_payload_ref).toBe('writing_task:wt_flow_001')
+    expect(store.conflictSectionVisible).toBe(false)
   })
 
-  it('uses current store work and chapter context for convert conflict handoff by default', async () => {
+  it('uses current store work and chapter context for explicit conflict handoff by default', async () => {
     const { useOutlineAssistStore } = await import('../useOutlineAssistStore')
     const store = useOutlineAssistStore()
 
@@ -1019,21 +1047,6 @@ describe('useOutlineAssistStore', () => {
     await store.loadSuggestions({
       workId: 'work-1',
       chapterId: 'chapter-9'
-    })
-    store.setSuggestions([{
-      suggestion_id: 'sg_convert_flow_002',
-      suggestion_type: 'outline_expand',
-      status: 'pending',
-      summary: '补足侦查节点'
-    }])
-    convertAISuggestion.mockResolvedValue({
-      data: {
-        suggestion_id: 'sg_convert_flow_002',
-        status: 'converted',
-        action: {
-          action_payload_ref: 'conflict_guard:cg_flow_002'
-        }
-      }
     })
     listConflicts.mockResolvedValue({
       data: {
@@ -1052,7 +1065,7 @@ describe('useOutlineAssistStore', () => {
       }
     })
 
-    await store.convertSuggestionWithConflictSync('sg_convert_flow_002')
+    await store.syncConflictHandoff('conflict_guard:cg_flow_002')
 
     expect(listConflicts).toHaveBeenCalledWith({
       work_id: 'work-1',
@@ -1061,16 +1074,16 @@ describe('useOutlineAssistStore', () => {
     expect(getConflict).toHaveBeenCalledWith('cg_flow_002')
   })
 
-  it('refreshes current chapter suggestions after convert and apply actions', async () => {
+  it('refreshes current chapter suggestions after writing-task convert and outline apply actions', async () => {
     const { useOutlineAssistStore } = await import('../useOutlineAssistStore')
     const store = useOutlineAssistStore()
 
     await store.initializeForWork('work-1')
     store.setSuggestions([{
       suggestion_id: 'sg_refresh_002',
-      suggestion_type: 'outline_expand',
-      status: 'accepted',
-      summary: '补足潜入前侦查段落'
+      suggestion_type: 'writing_task_suggestion',
+      status: 'shown',
+      summary: '整理本章写作要点'
     }])
     store.openApplyConfirm('sg_refresh_002')
     convertAISuggestion.mockResolvedValue({
@@ -1094,8 +1107,8 @@ describe('useOutlineAssistStore', () => {
         data: {
           items: [{
             suggestion_id: 'sg_refresh_002',
-            suggestion_type: 'outline_expand',
-            status: 'pending',
+            suggestion_type: 'writing_task_suggestion',
+            status: 'shown',
             summary: 'initial 列表'
           }]
         }
@@ -1104,7 +1117,7 @@ describe('useOutlineAssistStore', () => {
         data: {
           items: [{
             suggestion_id: 'sg_refresh_002',
-            suggestion_type: 'outline_expand',
+            suggestion_type: 'writing_task_suggestion',
             status: 'converted',
             summary: 'convert 后回刷结果'
           }]
@@ -1115,7 +1128,7 @@ describe('useOutlineAssistStore', () => {
           items: [{
             suggestion_id: 'sg_refresh_002',
             suggestion_type: 'outline_expand',
-            status: 'applied',
+            status: 'converted',
             summary: 'apply 后回刷结果'
           }]
         }
@@ -1147,7 +1160,7 @@ describe('useOutlineAssistStore', () => {
       work_id: 'work-1',
       chapter_id: 'chapter-1'
     })
-    expect(store.suggestions[0].status).toBe('applied')
+    expect(store.suggestions[0].status).toBe('converted')
     expect(store.suggestions[0].summary).toContain('apply 后回刷结果')
   })
 
@@ -1176,10 +1189,156 @@ describe('useOutlineAssistStore', () => {
       caller_type: 'user_action',
       user_action: true
     }))
-    expect(store.suggestions[0].status).toBe('applied')
+    expect(store.suggestions[0].status).toBe('converted')
     expect(store.applyConfirmSuggestionId).toBe('')
     expect(store.applySubmittingSuggestionId).toBe('')
     expect(result.success).toBe(true)
+  })
+
+  it('opens the existing conflict section when outline apply requires conflict review', async () => {
+    const { useOutlineAssistStore } = await import('../useOutlineAssistStore')
+    const store = useOutlineAssistStore()
+
+    listAISuggestions.mockResolvedValueOnce({ data: { items: [] } })
+    await store.loadSuggestions({ workId: 'work-1', chapterId: 'chapter-1' })
+    store.setSuggestions([{
+      suggestion_id: 'sg_apply_conflict_001',
+      suggestion_type: 'outline_expand',
+      status: 'accepted',
+      payload_json: {
+        target_kind: 'chapter_outline',
+        target_id: 'chapter-1',
+        target_revision: 3
+      }
+    }])
+    const conflictError = Object.assign(new Error('conflict review required'), {
+      response: {
+        status: 409,
+        data: {
+          error: {
+            error_code: 'P2_OUTLINE_CONFLICT_REVIEW_REQUIRED',
+            safe_message: '存在需要人工处理的冲突。',
+            retryable: false,
+            data: {
+              record_refs: ['cg_apply_001']
+            }
+          }
+        }
+      }
+    })
+    applyOutlineAssistSuggestion.mockRejectedValueOnce(conflictError)
+    getConflict.mockResolvedValueOnce({
+      data: {
+        record_id: 'cg_apply_001',
+        summary: '目标大纲与已确认设定存在冲突。'
+      }
+    })
+    listConflicts.mockResolvedValueOnce({
+      data: {
+        items: [{
+          record_id: 'cg_apply_001',
+          severity: 'blocking',
+          summary: '目标大纲与已确认设定存在冲突。'
+        }]
+      }
+    })
+
+    await expect(store.applySuggestion('sg_apply_conflict_001')).rejects.toBe(conflictError)
+
+    expect(getConflict).toHaveBeenCalledWith('cg_apply_001')
+    expect(listConflicts).toHaveBeenCalledWith({
+      work_id: 'work-1',
+      chapter_id: 'chapter-1'
+    })
+    expect(store.conflictSectionVisible).toBe(true)
+    expect(store.conflictItems[0].record_id).toBe('cg_apply_001')
+  })
+
+  it('falls back to current-target blocking conflicts when review-required has no record refs', async () => {
+    const { useOutlineAssistStore } = await import('../useOutlineAssistStore')
+    const store = useOutlineAssistStore()
+
+    listAISuggestions.mockResolvedValueOnce({ data: { items: [] } })
+    await store.loadSuggestions({ workId: 'work-1', chapterId: 'chapter-1' })
+    store.setSuggestions([{
+      suggestion_id: 'sg_apply_conflict_without_refs',
+      suggestion_type: 'outline_expand',
+      status: 'accepted',
+      payload_json: {
+        target_kind: 'chapter_outline',
+        target_id: 'chapter-1',
+        target_revision: 3
+      }
+    }])
+    const conflictError = Object.assign(new Error('conflict review required'), {
+      response: {
+        status: 409,
+        data: {
+          detail: {
+            code: 'P2_OUTLINE_CONFLICT_REVIEW_REQUIRED',
+            message: '存在需要人工处理的冲突。'
+          }
+        }
+      }
+    })
+    applyOutlineAssistSuggestion.mockRejectedValueOnce(conflictError)
+    listConflicts.mockResolvedValueOnce({
+      data: {
+        items: [
+          { record_id: 'cg_info_001', severity: 'info', summary: '普通提示。' },
+          { record_id: 'cg_blocking_001', severity: 'blocking', summary: '已确认设定冲突。' }
+        ]
+      }
+    })
+
+    await expect(store.applySuggestion('sg_apply_conflict_without_refs')).rejects.toBe(conflictError)
+
+    expect(listConflicts).toHaveBeenCalledWith({
+      work_id: 'work-1',
+      chapter_id: 'chapter-1'
+    })
+    expect(getConflict).not.toHaveBeenCalled()
+    expect(store.conflictSectionVisible).toBe(true)
+    expect(store.conflictItems.map((item) => item.record_id)).toEqual(['cg_blocking_001'])
+  })
+
+  it('keeps target version conflicts out of conflict review and asks for refresh and regeneration', async () => {
+    const { useOutlineAssistStore } = await import('../useOutlineAssistStore')
+    const store = useOutlineAssistStore()
+
+    store.setSuggestions([{
+      suggestion_id: 'sg_apply_version_conflict_001',
+      suggestion_type: 'outline_expand',
+      status: 'accepted',
+      payload_json: {
+        target_kind: 'work_outline',
+        target_id: 'work-1',
+        target_revision: 3
+      }
+    }])
+    const conflictError = Object.assign(new Error('target changed'), {
+      response: {
+        status: 409,
+        data: {
+          error: {
+            error_code: 'P2_OUTLINE_TARGET_CONFLICT',
+            safe_message: '大纲版本已变化。',
+            retryable: false,
+            data: {
+              record_refs: ['conflict_guard:cg_version_001']
+            }
+          }
+        }
+      }
+    })
+    applyOutlineAssistSuggestion.mockRejectedValueOnce(conflictError)
+
+    await expect(store.applySuggestion('sg_apply_version_conflict_001')).rejects.toBe(conflictError)
+
+    expect(store.actionError).toBe('这份大纲刚刚有改动，请刷新后重新生成建议。')
+    expect(store.conflictSectionVisible).toBe(false)
+    expect(getConflict).not.toHaveBeenCalled()
+    expect(listConflicts).not.toHaveBeenCalled()
   })
 
   it('blocks invalid convert and apply actions before calling api', async () => {
@@ -1189,8 +1348,8 @@ describe('useOutlineAssistStore', () => {
     store.setSuggestions([
       {
         suggestion_id: 'sg_task_001',
-        suggestion_type: 'writing_task_suggestion',
-        status: 'accepted'
+        suggestion_type: 'outline_expand',
+        status: 'generated'
       },
       {
         suggestion_id: 'sg_pending_001',
@@ -1201,12 +1360,12 @@ describe('useOutlineAssistStore', () => {
 
     await expect(store.convertSuggestion('sg_task_001')).resolves.toBeNull()
     expect(convertAISuggestion).not.toHaveBeenCalled()
-    expect(store.actionError).toContain('当前建议不允许转为执行动作')
+    expect(store.actionError).toContain('只有“写作计划”建议')
 
     store.clearActionError()
     await expect(store.applySuggestion('sg_pending_001')).resolves.toBeNull()
     expect(applyOutlineAssistSuggestion).not.toHaveBeenCalled()
-    expect(store.actionError).toContain('当前建议不允许应用到大纲')
+    expect(store.actionError).toContain('请先选择“先留着”')
   })
 
   it('clears stale action error after successful accept dismiss and convert actions', async () => {
@@ -1219,7 +1378,7 @@ describe('useOutlineAssistStore', () => {
         items: [{
           suggestion_id: 'sg_clear_error_001',
           suggestion_type: 'outline_expand',
-          status: 'pending',
+          status: 'accepted',
           summary: '回刷后的合法建议'
         }]
       }
@@ -1227,16 +1386,16 @@ describe('useOutlineAssistStore', () => {
 
     store.setSuggestions([{
       suggestion_id: 'sg_blocked_001',
-      suggestion_type: 'writing_task_suggestion',
-      status: 'accepted'
+      suggestion_type: 'outline_expand',
+      status: 'generated'
     }])
     await store.convertSuggestion('sg_blocked_001')
-    expect(store.actionError).toContain('当前建议不允许转为执行动作')
+    expect(store.actionError).toContain('只有“写作计划”建议')
 
     store.setSuggestions([{
       suggestion_id: 'sg_clear_error_001',
       suggestion_type: 'outline_expand',
-      status: 'pending',
+      status: 'generated',
       summary: '合法建议'
     }])
     acceptAISuggestion.mockResolvedValue({
@@ -1261,9 +1420,9 @@ describe('useOutlineAssistStore', () => {
     store.setActionError('旧错误')
     store.setSuggestions([{
       suggestion_id: 'sg_clear_error_001',
-      suggestion_type: 'outline_expand',
-      status: 'pending',
-      summary: '合法建议'
+      suggestion_type: 'writing_task_suggestion',
+      status: 'shown',
+      summary: '合法写作计划建议'
     }])
     convertAISuggestion.mockResolvedValue({
       data: {

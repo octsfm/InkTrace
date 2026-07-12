@@ -7,6 +7,12 @@ from pydantic import BaseModel, ValidationError
 
 from domain.entities.ai.models import OutputValidationResult
 from domain.validators.selection_rewrite_schema import SelectionRewriteOutputModel
+from domain.validators.outline_suggestion_schemas import (
+    ChapterOutlineDetailOutputModel,
+    OutlineExpandOutputModel,
+    OutlinePolishOutputModel,
+    WritingTaskSuggestionOutputModel,
+)
 
 
 class _ProviderConnectionResultModel(BaseModel):
@@ -39,6 +45,10 @@ class OutputValidationService:
             "provider_connection_result": _ProviderConnectionResultModel,
             "style_dna_output": _StyleDNAOutputModel,
             "selection_rewrite_schema": SelectionRewriteOutputModel,
+            "outline_polish_schema": OutlinePolishOutputModel,
+            "outline_expand_schema": OutlineExpandOutputModel,
+            "chapter_outline_detail_schema": ChapterOutlineDetailOutputModel,
+            "writing_task_suggestion_schema": WritingTaskSuggestionOutputModel,
         }
 
     def validate(self, output_schema_key: str, raw_output: Any) -> OutputValidationResult:

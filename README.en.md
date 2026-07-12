@@ -1,36 +1,71 @@
 # InkTrace
 
-#### Description
-{**When you're done, you can delete the content in this README and update the file with details for others getting started with your repository**}
+> A long-form fiction workspace where the author stays in control and AI prepares drafts, options, and consistency checks.
 
-#### Software Architecture
-Software architecture description
+[中文 README](README.md)
 
-#### Installation
+Status: the V2.0 P2-04 Scheme A and the author-facing “Continue Writing” flow are locally sealed as of 2026-07-12. Remote CI verification is still pending.
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## The key promise
 
-#### Instructions
+- AI output is created as an isolated candidate draft.
+- It never enters the manuscript until the author explicitly applies it.
+- The system writes one chapter at a time and waits for the author before continuing.
+- Continuing to the next chapter and applying the current draft are separate actions.
+- Full manuscripts, candidate drafts, prompts, context packs, and API keys must not be written to ordinary logs.
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## Continue Writing
 
-#### Contribution
+Open a work and chapter, choose **AI → Continue Writing**, then:
 
-1.  Fork the repository
-2.  Create Feat_xxx branch
-3.  Commit your code
-4.  Create Pull Request
+1. Pick a plain-language direction, write one short instruction, or continue without extra guidance.
+2. Ask InkTrace to prepare one chapter.
+3. Review the new draft.
+4. Decide separately whether to apply it and whether to continue.
 
+Chinese author guide: [InkTrace Continue Writing Guide](docs/10_user_guide/InkTrace-接着写-使用说明.md).
 
-#### Gitee Feature
+## Quick start
 
-1.  You can use Readme\_XXX.md to support different languages, such as Readme\_en.md, Readme\_zh.md
-2.  Gitee blog [blog.gitee.com](https://blog.gitee.com)
-3.  Explore open source project [https://gitee.com/explore](https://gitee.com/explore)
-4.  The most valuable open source project [GVP](https://gitee.com/gvp)
-5.  The manual of Gitee [https://gitee.com/help](https://gitee.com/help)
-6.  The most popular members  [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+Requirements:
+
+- Python 3.11+
+- Node.js 18+
+
+```powershell
+pip install -r requirements.txt
+cd frontend
+npm install
+cd ..
+.\start-all.bat
+```
+
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- API documentation: [http://127.0.0.1:9527/docs](http://127.0.0.1:9527/docs)
+
+Stop all local services with `./stop.bat`.
+
+## Local verification
+
+| Check | Result |
+|---|---|
+| Backend | `839 passed, 1 skipped` |
+| P2-04 focused backend tests | `60 passed` |
+| Frontend | `443 passed` |
+| Production build | Passed |
+| Playwright visual QA | `2 passed` |
+| Remote CI | Pending |
+
+## Documentation
+
+- [Seal summary](docs/07_overview/InkTrace-V2.0-P2-04-接着写封版总结.md)
+- [Acceptance report](docs/09_acceptance/InkTrace-V2.0-P2-S2-P2-04-验收清单.md)
+- [Current project status](docs/PROJECT_STATUS_CURRENT.md)
+- [Requirements](docs/01_requirements/InkTrace-V2.0-需求规格说明书.md)
+- [Architecture](docs/02_architecture/InkTrace-V2.0-架构设计说明书.md)
+
+Historical redesign material under `docs/history_archive/`, `*_001.md` files, drafts, and backups are not current implementation sources.
+
+## License
+
+[MIT](LICENSE)

@@ -1,5 +1,7 @@
 # InkTrace 项目现状报告
 
+> **历史快照**：本文记录 2026-05-07 的 V1.1 状态，不代表当前封版结论。当前状态请以 [`PROJECT_STATUS_CURRENT.md`](PROJECT_STATUS_CURRENT.md) 为准。
+
 > 生成时间：2026-05-07
 > 版本：V1.1（完整落地）
 

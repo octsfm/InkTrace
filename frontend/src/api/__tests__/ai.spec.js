@@ -89,7 +89,6 @@ describe('P0 AI API client', () => {
     })
     await api.aiApi.upsertAutoQueueConfig({
       work_id: 'work-1',
-      queue_mode: 'safe',
       target_chapters: 5
     })
     await api.aiApi.getAutoQueueConfig('work-1')
@@ -198,7 +197,6 @@ describe('P0 AI API client', () => {
     })
     expect(mockPut).toHaveBeenCalledWith('/v2/ai/auto-queues/config', {
       work_id: 'work-1',
-      queue_mode: 'safe',
       target_chapters: 5
     })
     expect(mockGet).toHaveBeenCalledWith('/v2/ai/auto-queues/config/work-1')
@@ -314,7 +312,9 @@ describe('P0 AI API client', () => {
       }
     }
 
-    await expect(errorHandler(error)).rejects.toBe(error)
+    await expect(errorHandler(error)).rejects.toMatchObject({
+      userMessage: 'AI 嵌入服务暂时不可用，请稍后重试或检查 AI 设置。'
+    })
     expect(ElMessage.error).toHaveBeenCalledWith('AI 嵌入服务暂时不可用，请稍后重试或检查 AI 设置。')
   })
 
@@ -343,8 +343,24 @@ describe('P0 AI API client', () => {
       }
     }
 
-    await expect(errorHandler(error)).rejects.toBe(error)
+    await expect(errorHandler(error)).rejects.toMatchObject({
+      userMessage: '这个功能暂未开启'
+    })
     expect(ElMessage.error).toHaveBeenCalledWith('这个功能暂未开启')
+  })
+
+  it('does not decorate or toast canceled requests', async () => {
+    const { ElMessage } = await import('element-plus')
+    const errorHandler = responseUse.mock.calls[0][1]
+    const error = {
+      name: 'CanceledError',
+      code: 'ERR_CANCELED',
+      message: 'canceled'
+    }
+
+    await expect(errorHandler(error)).rejects.toBe(error)
+    expect(error).not.toHaveProperty('userMessage')
+    expect(ElMessage.error).not.toHaveBeenCalled()
   })
 
   it('wraps selection rewrite endpoints with expected request paths', async () => {
@@ -454,5 +470,44 @@ describe('P0 AI API client', () => {
       }]
     })
     expect(mockGet).toHaveBeenCalledWith('/v2/mentions/m_001/summary')
+  })
+
+  it('wraps the four outline-assist generation endpoints', async () => {
+    mockPost.mockResolvedValue({})
+    const payload = {
+      work_id: 'work-1',
+      target_kind: 'chapter_outline',
+      target_id: 'chapter-1',
+      target_revision: 4,
+      selected_text: '本章从雨夜来信开始。',
+      caller_type: 'user_action',
+      idempotency_key: 'outline-1'
+    }
+
+    await api.aiApi.polishOutline(payload)
+    await api.aiApi.expandOutline(payload)
+    const chapterOutlinePayload = {
+      work_id: 'work-1',
+      target_kind: 'chapter_outline',
+      target_id: 'chapter-1',
+      target_revision: 4,
+      chapter_goal: '查清雨夜来信的来源',
+      caller_type: 'user_action',
+      idempotency_key: 'outline-chapter-1'
+    }
+    await api.aiApi.generateChapterOutline(chapterOutlinePayload)
+    const writingTaskPayload = {
+      work_id: 'work-1',
+      chapter_id: 'chapter-1',
+      target_revision: 4,
+      caller_type: 'user_action',
+      idempotency_key: 'outline-task-1'
+    }
+    await api.aiApi.suggestWritingTask(writingTaskPayload)
+
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/outline-assist/polish', payload)
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/outline-assist/expand', payload)
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/outline-assist/chapter-outline', chapterOutlinePayload)
+    expect(mockPost).toHaveBeenCalledWith('/v2/ai/outline-assist/writing-task', writingTaskPayload)
   })
 })

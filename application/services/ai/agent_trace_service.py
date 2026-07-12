@@ -39,6 +39,59 @@ class AgentTraceService:
         self._repository = repository
         self._detail_retention_days = detail_retention_days
 
+    def ensure_operation_trace(
+        self,
+        *,
+        trace_id: str,
+        work_id: str,
+        chapter_id: str = "",
+        operation_ref: str,
+        workflow_type: str,
+    ) -> AgentTrace:
+        try:
+            return self._repository.get_trace(trace_id)
+        except ValueError:
+            now = _now()
+            return self._repository.save_trace(
+                AgentTrace(
+                    trace_id=trace_id,
+                    work_id=work_id,
+                    chapter_id=chapter_id,
+                    session_id=operation_ref,
+                    workflow_run_id=operation_ref,
+                    workflow_type=workflow_type,
+                    status=AgentTraceStatus.RUNNING,
+                    started_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
+    def finish_operation_trace(
+        self,
+        trace_id: str,
+        *,
+        status: AgentTraceStatus,
+        result_ref: str = "",
+        error_code: str = "",
+    ) -> AgentTrace:
+        trace = self._repository.get_trace(trace_id)
+        now = _now()
+        refs = list(trace.result_ref_ids)
+        if result_ref and result_ref not in refs:
+            refs.append(result_ref)
+        return self._repository.save_trace(
+            trace.model_copy(
+                update={
+                    "status": status,
+                    "result_ref_ids": refs,
+                    "error_code": error_code,
+                    "ended_at": now,
+                    "updated_at": now,
+                }
+            )
+        )
+
     def ensure_trace_for_session(self, session: AgentSession, *, workflow_run_id: str = "", workflow_type: str = "") -> AgentTrace:
         try:
             existing = self._repository.get_trace(session.trace_id)
@@ -350,6 +403,8 @@ class AgentTraceService:
                 output_schema_key=entry.output_schema_key,
                 token_count=token_count,
                 elapsed_ms=elapsed_ms,
+                status=entry.status.value,
+                error_code=entry.error_code,
                 content_hash=content_hash,
             )
         )

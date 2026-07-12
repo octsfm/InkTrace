@@ -127,7 +127,6 @@ def test_runtime_schema_creates_p2_s0_ai_tables_and_columns(tmp_path):
     assert {
         "config_id",
         "work_id",
-        "queue_mode",
         "target_chapters",
         "target_word_count",
         "stop_at_sequence_end",
@@ -148,7 +147,6 @@ def test_runtime_schema_creates_p2_s0_ai_tables_and_columns(tmp_path):
         "work_id",
         "multi_chapter_session_id",
         "status",
-        "queue_mode",
         "generated_count",
         "total_word_count",
         "consumed_tokens",

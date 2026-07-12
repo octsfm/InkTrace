@@ -50,6 +50,12 @@ const acceptAISuggestion = vi.fn()
 const dismissAISuggestion = vi.fn()
 const convertAISuggestion = vi.fn()
 const applyOutlineAssistSuggestion = vi.fn()
+const polishOutline = vi.fn()
+const expandOutline = vi.fn()
+const generateChapterOutline = vi.fn()
+const suggestWritingTask = vi.fn()
+const getWorkOutline = vi.fn()
+const getChapterOutline = vi.fn()
 const elMessageSuccess = vi.fn()
 const getOpeningAnalysis = vi.fn()
 const getOpeningStatus = vi.fn()
@@ -60,6 +66,50 @@ const listAgentTraces = vi.fn()
 const getAgentTrace = vi.fn()
 const getAgentTraceSteps = vi.fn()
 const getAgentTraceDetailView = vi.fn()
+
+const listAISuggestionsApi = async (request = {}) => {
+  const response = await listAISuggestions(request)
+  if (!Array.isArray(response?.data?.items)) return response
+  const targetId = String(request?.chapter_id || request?.work_id || '')
+  const targetKind = request?.chapter_id ? 'chapter_outline' : 'work_outline'
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      items: response.data.items.map((item) => {
+        const payload = item?.payload_json ?? item?.payload ?? {}
+        if (payload?.target_kind || payload?.target_id || payload?.chapter_id) return item
+        return {
+          ...item,
+          payload_json: {
+            ...payload,
+            target_kind: targetKind,
+            target_id: targetId,
+            chapter_id: request?.chapter_id || undefined,
+            target_revision: 3
+          }
+        }
+      })
+    }
+  }
+}
+
+const outlineApplyError = (errorCode, recordRefs = []) => Object.assign(
+  new Error(errorCode),
+  {
+    response: {
+      status: 409,
+      data: {
+        error: {
+          error_code: errorCode,
+          safe_message: '大纲没有改动，请按提示处理。',
+          retryable: false,
+          data: { record_refs: recordRefs }
+        }
+      }
+    }
+  }
+)
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({
@@ -135,12 +185,16 @@ vi.mock('@/api', () => ({
     getPlotArcStatus,
     listCandidateDrafts,
     listCandidateDraftVersions,
-    listAISuggestions,
+    listAISuggestions: listAISuggestionsApi,
     getAISuggestion,
     acceptAISuggestion,
     dismissAISuggestion,
     convertAISuggestion,
     applyOutlineAssistSuggestion,
+    polishOutline,
+    expandOutline,
+    generateChapterOutline,
+    suggestWritingTask,
     getOpeningAnalysis,
     getOpeningStatus,
     listConflicts,
@@ -153,6 +207,13 @@ vi.mock('@/api', () => ({
   }
 }))
 
+vi.mock('@/api/works', () => ({
+  v1WritingAssetsApi: {
+    getWorkOutline,
+    getChapterOutline
+  }
+}))
+
 describe('AIPanel', () => {
   let AIPanel
 
@@ -161,6 +222,9 @@ describe('AIPanel', () => {
     vi.useFakeTimers()
     setActivePinia(createPinia())
     AIPanel = (await import('../AIPanel.vue')).default
+
+    getWorkOutline.mockResolvedValue({ content_text: '整本故事大纲', version: 2 })
+    getChapterOutline.mockResolvedValue({ content_text: '本章从雨夜来信开始。', version: 3 })
 
     getAISettings.mockResolvedValue({
       data: {
@@ -358,7 +422,6 @@ describe('AIPanel', () => {
         config: {
           config_id: 'aqc_001',
           work_id: 'work-1',
-          queue_mode: 'safe',
           target_chapters: 5,
           target_word_count: 0,
           budget_limit_tokens: 0,
@@ -374,7 +437,6 @@ describe('AIPanel', () => {
         config: {
           config_id: 'aqc_001',
           work_id: 'work-1',
-          queue_mode: 'safe',
           target_chapters: 5,
           target_word_count: 0,
           budget_limit_tokens: 0,
@@ -390,7 +452,6 @@ describe('AIPanel', () => {
       data: {
         run_id: 'aqr_001',
         status: 'running',
-        queue_mode: 'safe'
       }
     })
     getAutoQueueStatus.mockResolvedValue({
@@ -398,16 +459,15 @@ describe('AIPanel', () => {
         run: {
           run_id: 'aqr_001',
           status: 'waiting_user_decision',
-          queue_mode: 'safe',
           generated_count: 1
         }
       }
     })
-    pauseAutoQueue.mockResolvedValue({ data: { run: { run_id: 'aqr_001', status: 'paused', queue_mode: 'safe', generated_count: 1 } } })
-    resumeAutoQueue.mockResolvedValue({ data: { run: { run_id: 'aqr_001', status: 'running', queue_mode: 'safe', generated_count: 1 } } })
-    stopAutoQueue.mockResolvedValue({ data: { run: { run_id: 'aqr_001', status: 'stopped', queue_mode: 'safe', generated_count: 1 } } })
+    pauseAutoQueue.mockResolvedValue({ data: { run: { run_id: 'aqr_001', status: 'paused', generated_count: 1 } } })
+    resumeAutoQueue.mockResolvedValue({ data: { run: { run_id: 'aqr_001', status: 'running', generated_count: 1 } } })
+    stopAutoQueue.mockResolvedValue({ data: { run: { run_id: 'aqr_001', status: 'stopped', generated_count: 1 } } })
     confirmAutoQueueContinue.mockResolvedValue({
-      data: { run: { run_id: 'aqr_001', status: 'running', queue_mode: 'safe', generated_count: 2 } }
+      data: { run: { run_id: 'aqr_001', status: 'running', generated_count: 2 } }
     })
     getActiveStyleProfile.mockResolvedValue({ data: { profile: null } })
     getStyleProfileHistory.mockResolvedValue({ data: { profiles: [] } })
@@ -501,11 +561,10 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('AI 助手')
-    expect(wrapper.text()).toContain('自动续写')
-    expect(wrapper.text()).toContain('安全模式')
+    expect(wrapper.text()).toContain('接着写')
+    expect(wrapper.text()).toContain('每次只写一章')
     expect(upsertAutoQueueConfig).toHaveBeenCalledWith({
       work_id: 'work-1',
-      queue_mode: 'safe',
       target_chapters: 5,
       target_word_count: 0,
       budget_limit_tokens: 0,
@@ -516,7 +575,8 @@ describe('AIPanel', () => {
     })
     expect(startAutoQueue).toHaveBeenCalledWith({
       work_id: 'work-1',
-      start_chapter_id: 'chapter-1'
+      start_chapter_id: 'chapter-1',
+      user_instruction: ''
     })
   })
 
@@ -528,6 +588,7 @@ describe('AIPanel', () => {
           title: '强化灯塔章节细纲',
           suggestion_type: 'chapter_outline_suggestion',
           severity: 'warning',
+          status: 'generated',
           summary: '建议补足潜入前的侦查段落'
         }]
       }
@@ -579,7 +640,7 @@ describe('AIPanel', () => {
             title: '强化灯塔章节细纲',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: '建议补足潜入前的侦查段落'
           }]
         }
@@ -617,7 +678,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').text()).toContain('采纳中...')
+    expect(wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').text()).toContain('正在保留...')
     expect(wrapper.get('[data-test="suggestion-accept-sg_accept_loading_001"]').attributes('disabled')).toBeDefined()
 
     resolveAccept({
@@ -641,7 +702,7 @@ describe('AIPanel', () => {
             title: '寮哄寲鐏绔犺妭缁嗙翰',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑渚︽煡娈佃惤'
           }]
         }
@@ -681,7 +742,7 @@ describe('AIPanel', () => {
 
     expect(wrapper.get('[data-test="suggestion-accept-sg_accept_guard_001"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-test="suggestion-dismiss-sg_accept_guard_001"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-test="suggestion-convert-sg_accept_guard_001"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-test="suggestion-convert-sg_accept_guard_001"]').exists()).toBe(false)
 
     resolveAccept({
       data: {
@@ -703,7 +764,7 @@ describe('AIPanel', () => {
             title: '寮哄寲鐏绔犺妭缁嗙翰',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑渚︽煡娈佃惤'
           }]
         }
@@ -715,7 +776,7 @@ describe('AIPanel', () => {
             title: '寮哄寲鐏绔犺妭缁嗙翰',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'dismissed',
             summary: 'dismiss 鍚庡洖鍒风粨鏋?'
           }]
         }
@@ -727,7 +788,7 @@ describe('AIPanel', () => {
             title: '寮哄寲鐏绔犺妭缁嗙翰',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'converted',
             summary: 'convert 鍚庡洖鍒风粨鏋?'
           }]
         }
@@ -755,7 +816,7 @@ describe('AIPanel', () => {
 
     await wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').text()).toContain('忽略中...')
+    expect(wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').text()).toContain('正在移除...')
     expect(wrapper.get('[data-test="suggestion-dismiss-sg_action_loading_001"]').attributes('disabled')).toBeDefined()
 
     resolveDismiss({
@@ -769,16 +830,23 @@ describe('AIPanel', () => {
     wrapper.vm.outlineAssistStore.setSuggestions([{
       suggestion_id: 'sg_action_loading_001',
       title: '寮哄寲鐏绔犺妭缁嗙翰',
-      suggestion_type: 'outline_expand',
+      suggestion_type: 'writing_task_suggestion',
       severity: 'warning',
-      status: 'pending',
+      status: 'shown',
+      payload_json: {
+        target_kind: 'chapter_outline',
+        target_id: 'chapter-1',
+        chapter_id: 'chapter-1',
+        target_revision: 3
+      },
       summary: '鍐嶆杩涘叆 convert'
     }])
+    wrapper.vm.outlineAssistStore.setActiveMode('writing_task_suggestion')
     await flushPromises()
 
     await wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').text()).toContain('转换中...')
+    expect(wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').text()).toContain('正在整理计划...')
     expect(wrapper.get('[data-test="suggestion-convert-sg_action_loading_001"]').attributes('disabled')).toBeDefined()
 
     resolveConvert({
@@ -832,8 +900,8 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(applyOutlineAssistSuggestion).not.toHaveBeenCalled()
-    expect(wrapper.get('[data-test="suggestion-apply-confirm-sg_apply_001"]').text()).toContain('这会修改正式大纲内容')
-    expect(wrapper.get('[data-test="suggestion-apply-confirm-sg_apply_001"]').text()).toContain('确定要将这条建议应用到正式大纲吗')
+    expect(wrapper.get('[data-test="suggestion-apply-confirm-sg_apply_001"]').text()).toContain('当前大纲会被修改')
+    expect(wrapper.get('[data-test="suggestion-apply-confirm-sg_apply_001"]').text()).toContain('确定把这条建议放进本章细纲吗')
 
     await wrapper.get('[data-test="suggestion-apply-confirm-submit-sg_apply_001"]').trigger('click')
     await flushPromises()
@@ -881,7 +949,7 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(elMessageSuccess).toHaveBeenCalledWith({
-      message: '已应用 1 条建议',
+      message: '已放进本章细纲',
       duration: 2000
     })
   })
@@ -940,7 +1008,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="outline-assist-mode-outline_polish"]').text()).toContain('润色')
+    expect(wrapper.get('[data-test="outline-assist-mode-outline_polish"]').text()).toContain('把这段写顺')
     expect(wrapper.text()).toContain('润色灯塔入口描述')
     expect(wrapper.text()).not.toContain('扩写外墙侦查节点')
 
@@ -963,7 +1031,7 @@ describe('AIPanel', () => {
             title: '初始建议',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: 'initial suggestion'
           }]
         }
@@ -987,7 +1055,7 @@ describe('AIPanel', () => {
     await flushPromises()
 
     const refreshButton = wrapper.get('[data-test="outline-assist-refresh"]')
-    expect(refreshButton.text()).toContain('刷新建议')
+    expect(refreshButton.text()).toContain('重新读取大纲')
     expect(refreshButton.attributes('disabled')).toBeUndefined()
 
     await refreshButton.trigger('click')
@@ -1010,7 +1078,7 @@ describe('AIPanel', () => {
     })
     await flushPromises()
 
-    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新建议')
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('重新读取大纲')
     expect(wrapper.get('[data-test="outline-assist-refresh"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.text()).toContain('刷新后建议')
   })
@@ -1036,7 +1104,7 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新中...')
-    expect(wrapper.get('[data-test="outline-assist-loading"]').text()).toContain('正在加载建议')
+    expect(wrapper.get('[data-test="outline-assist-loading"]').text()).toContain('正在刷新已有建议')
 
     resolveList({
       data: {
@@ -1065,7 +1133,7 @@ describe('AIPanel', () => {
             title: '初始建议',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: 'initial suggestion'
           }]
         }
@@ -1089,7 +1157,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="outline-assist-refresh"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('刷新建议')
+    expect(wrapper.get('[data-test="outline-assist-refresh"]').text()).toContain('重新读取大纲')
     expect(wrapper.get('[data-test="outline-assist-refresh"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
   })
@@ -1103,7 +1171,7 @@ describe('AIPanel', () => {
             title: '正在生成章节细纲',
             suggestion_type: 'chapter_outline_detail',
             severity: 'warning',
-            status: 'generating',
+            status: 'pending',
             summary: '系统正在生成本章细纲。'
           },
           {
@@ -1134,7 +1202,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="outline-assist-mode-chapter_outline_detail"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="suggestion-generating-hint-sg_generating_001"]').text()).toContain('建议生成中')
+    expect(wrapper.get('[data-test="suggestion-generating-hint-sg_generating_001"]').text()).toContain('正在整理这条建议')
     expect(wrapper.find('[data-test="suggestion-accept-sg_generating_001"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="suggestion-dismiss-sg_generating_001"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="suggestion-convert-sg_generating_001"]').exists()).toBe(false)
@@ -1142,7 +1210,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="outline-assist-mode-writing_task_suggestion"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="suggestion-failed-hint-sg_failed_001"]').text()).toContain('建议生成失败')
+    expect(wrapper.get('[data-test="suggestion-failed-hint-sg_failed_001"]').text()).toContain('这次没有整理成功')
     expect(wrapper.find('[data-test="suggestion-accept-sg_failed_001"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="suggestion-dismiss-sg_failed_001"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="suggestion-convert-sg_failed_001"]').exists()).toBe(false)
@@ -1235,7 +1303,7 @@ describe('AIPanel', () => {
             title: '浼樺寲鍐欎綔浠诲姟鐩爣',
             suggestion_type: 'writing_task_suggestion',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: '寤鸿鎶婁换鍔￠噸鐐硅仛鐒﹀埌閽熷０鏉ユ簮銆?'
           },
           {
@@ -1266,16 +1334,16 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="outline-assist-mode-writing_task_suggestion"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-test="suggestion-accept-sg_task_pending_001"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="suggestion-accept-sg_task_pending_001"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="suggestion-dismiss-sg_task_pending_001"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="suggestion-convert-sg_task_pending_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-convert-sg_task_pending_001"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="suggestion-apply-sg_task_pending_001"]').exists()).toBe(false)
 
     expect(wrapper.find('[data-test="suggestion-accept-sg_task_accepted_001"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="suggestion-dismiss-sg_task_accepted_001"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="suggestion-convert-sg_task_accepted_001"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="suggestion-convert-sg_task_accepted_001"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="suggestion-apply-sg_task_accepted_001"]').exists()).toBe(false)
-    expect(wrapper.get('[data-test="suggestion-writing-task-hint-sg_task_accepted_001"]').text()).toContain('已进入写作任务确认链')
+    expect(wrapper.get('[data-test="suggestion-writing-task-hint-sg_task_accepted_001"]').text()).toContain('还需要你确认使用')
   })
 
   it('does not allow applying selection-only outline suggestions directly', async () => {
@@ -1310,8 +1378,25 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
+    await wrapper.vm.outlineAssistStore.selectTarget('selection')
+    wrapper.vm.outlineAssistStore.setSuggestions([{
+      suggestion_id: 'sg_selection_001',
+      title: '润色自由文本片段',
+      suggestion_type: 'outline_polish',
+      severity: 'warning',
+      status: 'accepted',
+      summary: '建议先润色这一段，再决定放在哪里。',
+      payload_json: {
+        target_kind: 'selection',
+        target_id: null,
+        proposed_content_text: '整理后的临时文字。'
+      }
+    }])
+    await flushPromises()
+
     expect(wrapper.find('[data-test="suggestion-apply-sg_selection_001"]').exists()).toBe(false)
-    expect(wrapper.get('[data-test="suggestion-apply-hint-sg_selection_001"]').text()).toContain('需要先选择目标大纲节点')
+    expect(wrapper.get('[data-test="suggestion-apply-hint-sg_selection_001"]').text()).toContain('不能直接改动整份大纲')
+    expect(wrapper.find('[data-test="suggestion-copy-sg_selection_001"]').exists()).toBe(true)
     expect(applyOutlineAssistSuggestion).not.toHaveBeenCalled()
   })
 
@@ -1343,7 +1428,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="suggestion-stale-hint-sg_stale_001"]').text()).toContain('大纲已被修改，当前建议可能已经过期。')
+    expect(wrapper.get('[data-test="suggestion-stale-hint-sg_stale_001"]').text()).toContain('你刚才看到的大纲已经变了')
   })
 
   it('shows refresh action next to stale outline suggestion hint', async () => {
@@ -1387,7 +1472,7 @@ describe('AIPanel', () => {
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="suggestion-stale-hint-sg_stale_refresh_001"]').text()).toContain('大纲已被修改')
+    expect(wrapper.get('[data-test="suggestion-stale-hint-sg_stale_refresh_001"]').text()).toContain('你刚才看到的大纲已经变了')
 
     await wrapper.get('[data-test="suggestion-stale-refresh-sg_stale_refresh_001"]').trigger('click')
     await flushPromises()
@@ -1396,7 +1481,7 @@ describe('AIPanel', () => {
     expect(wrapper.text()).toContain('刷新后的最新建议')
   })
 
-  it('shows outline assist conflict handoff when convert returns conflict guard ref', async () => {
+  it('shows outline assist conflict handoff when apply requires conflict review', async () => {
     listAISuggestions.mockResolvedValue({
       data: {
         items: [{
@@ -1404,20 +1489,14 @@ describe('AIPanel', () => {
           title: '琛ュ叏妗ｆ瀹よ妭鐐?',
           suggestion_type: 'outline_expand',
           severity: 'warning',
-          status: 'pending',
+          status: 'accepted',
           summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑渚︽煡姝ラ銆?'
         }]
       }
     })
-    convertAISuggestion.mockResolvedValue({
-      data: {
-        suggestion_id: 'sg_conflict_001',
-        status: 'converted',
-        action: {
-          action_payload_ref: 'conflict_guard:cg_outline_001'
-        }
-      }
-    })
+    applyOutlineAssistSuggestion.mockRejectedValue(
+      outlineApplyError('P2_OUTLINE_CONFLICT_REVIEW_REQUIRED', ['cg_outline_001'])
+    )
     listConflicts.mockResolvedValue({
       data: {
         items: [{
@@ -1449,12 +1528,15 @@ describe('AIPanel', () => {
     await flushPromises()
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
-    await wrapper.get('[data-test="suggestion-convert-sg_conflict_001"]').trigger('click')
+    await wrapper.get('[data-test="suggestion-apply-sg_conflict_001"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-apply-confirm-submit-sg_conflict_001"]').trigger('click')
     await flushPromises()
 
-    expect(convertAISuggestion).toHaveBeenCalledWith('sg_conflict_001', expect.objectContaining({
+    expect(applyOutlineAssistSuggestion).toHaveBeenCalledWith('sg_conflict_001', expect.objectContaining({
       caller_type: 'user_action',
-      user_action: true
+      user_action: true,
+      confirm_apply: true
     }))
     expect(getConflict).toHaveBeenCalledWith('cg_outline_001')
     expect(listConflicts).toHaveBeenCalledWith({
@@ -1465,7 +1547,7 @@ describe('AIPanel', () => {
     expect(wrapper.get('[data-test="outline-assist-conflicts"]').text()).toContain('目标节点已被其他操作修改，请先确认差异')
   })
 
-  it('clears outline assist conflict handoff when chapter changes', async () => {
+  it('clears outline assist apply-conflict handoff when chapter changes', async () => {
     listAISuggestions.mockResolvedValue({
       data: {
         items: [{
@@ -1473,20 +1555,14 @@ describe('AIPanel', () => {
           title: '琛ュ叏娼滃叆鍓嶄睛鏌ヨ妭鐐?',
           suggestion_type: 'outline_expand',
           severity: 'warning',
-          status: 'pending',
+          status: 'accepted',
           summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑渚︽煡姝ラ銆?'
         }]
       }
     })
-    convertAISuggestion.mockResolvedValue({
-      data: {
-        suggestion_id: 'sg_conflict_002',
-        status: 'converted',
-        action: {
-          action_payload_ref: 'conflict_guard:cg_outline_002'
-        }
-      }
-    })
+    applyOutlineAssistSuggestion.mockRejectedValue(
+      outlineApplyError('P2_OUTLINE_CONFLICT_REVIEW_REQUIRED', ['cg_outline_002'])
+    )
     listConflicts.mockResolvedValue({
       data: {
         items: [{
@@ -1517,7 +1593,9 @@ describe('AIPanel', () => {
     await flushPromises()
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
-    await wrapper.get('[data-test="suggestion-convert-sg_conflict_002"]').trigger('click')
+    await wrapper.get('[data-test="suggestion-apply-sg_conflict_002"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-apply-confirm-submit-sg_conflict_002"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-test="outline-assist-conflicts"]').exists()).toBe(true)
@@ -1531,7 +1609,7 @@ describe('AIPanel', () => {
     expect(wrapper.find('[data-test="outline-assist-conflicts"]').exists()).toBe(false)
   })
 
-  it('clears previous outline assist conflict handoff when a later convert has no conflict guard', async () => {
+  it('clears previous outline assist conflict handoff when a later apply finds a target version conflict', async () => {
     listAISuggestions.mockResolvedValue({
       data: {
         items: [
@@ -1540,39 +1618,27 @@ describe('AIPanel', () => {
             title: '??????????',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'accepted',
             summary: '寤鸿琛ヨ冻娼滃叆鍓嶇殑渚︽煡姝ラ銆?'
           },
           {
             suggestion_id: 'sg_convert_ok_001',
-            title: '杞负鏅€氭墽琛屽姩浣?',
+            title: '另一个大纲建议',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
-            summary: '璇ュ缓璁彲鐩存帴杞负鏅€氬姩浣溿€?'
+            status: 'accepted',
+            summary: '这个建议也等待写入。'
           }
         ]
       }
     })
-    convertAISuggestion
-      .mockResolvedValueOnce({
-        data: {
-          suggestion_id: 'sg_conflict_003',
-          status: 'converted',
-          action: {
-            action_payload_ref: 'conflict_guard:cg_outline_003'
-          }
-        }
-      })
-      .mockResolvedValueOnce({
-        data: {
-          suggestion_id: 'sg_convert_ok_001',
-          status: 'converted',
-          action: {
-            action_payload_ref: 'writing_task:wt_001'
-          }
-        }
-      })
+    applyOutlineAssistSuggestion
+      .mockRejectedValueOnce(
+        outlineApplyError('P2_OUTLINE_CONFLICT_REVIEW_REQUIRED', ['cg_outline_003'])
+      )
+      .mockRejectedValueOnce(
+        outlineApplyError('P2_OUTLINE_TARGET_CONFLICT', ['cg_target_version_003'])
+      )
     listConflicts.mockResolvedValue({
       data: {
         items: [{
@@ -1603,12 +1669,16 @@ describe('AIPanel', () => {
     await flushPromises()
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
-    await wrapper.get('[data-test="suggestion-convert-sg_conflict_003"]').trigger('click')
+    await wrapper.get('[data-test="suggestion-apply-sg_conflict_003"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-apply-confirm-submit-sg_conflict_003"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-test="outline-assist-conflicts"]').exists()).toBe(true)
 
-    await wrapper.get('[data-test="suggestion-convert-sg_convert_ok_001"]').trigger('click')
+    await wrapper.get('[data-test="suggestion-apply-sg_convert_ok_001"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="suggestion-apply-confirm-submit-sg_convert_ok_001"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-test="outline-assist-conflicts"]').exists()).toBe(false)
@@ -1696,7 +1766,7 @@ describe('AIPanel', () => {
             title: '上一章建议',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: '上一章待采纳建议'
           }]
         }
@@ -1708,7 +1778,7 @@ describe('AIPanel', () => {
             title: '下一章建议',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: '下一章建议已生成',
           }]
         }
@@ -1738,7 +1808,7 @@ describe('AIPanel', () => {
 
     await wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').text()).toContain('采纳中...')
+    expect(wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').text()).toContain('正在保留...')
 
     await wrapper.setProps({
       chapterId: 'chapter-2',
@@ -1747,7 +1817,7 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('下一章建议')
-    expect(wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').text()).toContain('采纳建议')
+    expect(wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').text()).toContain('先留着')
     expect(wrapper.get('[data-test="suggestion-accept-sg_repeat_001"]').attributes('disabled')).toBeUndefined()
 
     resolveAccept({
@@ -1769,7 +1839,7 @@ describe('AIPanel', () => {
             title: '上一章建议',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: '上一章待采纳建议'
           }]
         }
@@ -1781,7 +1851,7 @@ describe('AIPanel', () => {
             title: '下一章建议',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: '下一章仍应保持 pending'
           }]
         }
@@ -1836,9 +1906,9 @@ describe('AIPanel', () => {
           items: [{
             suggestion_id: 'sg_conflict_late_001',
             title: '涓婁竴绔犲啿绐佸缓璁?',
-            suggestion_type: 'outline_expand',
+            suggestion_type: 'writing_task_suggestion',
             severity: 'warning',
-            status: 'pending',
+            status: 'shown',
             summary: 'chapter-1 convert'
           }]
         }
@@ -1848,9 +1918,9 @@ describe('AIPanel', () => {
           items: [{
             suggestion_id: 'sg_conflict_late_001',
             title: '涓嬩竴绔犲缓璁?',
-            suggestion_type: 'outline_expand',
+            suggestion_type: 'writing_task_suggestion',
             severity: 'warning',
-            status: 'pending',
+            status: 'shown',
             summary: 'chapter-2 suggestion'
           }]
         }
@@ -1871,6 +1941,9 @@ describe('AIPanel', () => {
     await vi.runAllTimersAsync()
     await flushPromises()
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="outline-assist-mode-writing_task_suggestion"]').trigger('click')
     await flushPromises()
 
     await wrapper.get('[data-test="suggestion-convert-sg_conflict_late_001"]').trigger('click')
@@ -1976,7 +2049,7 @@ describe('AIPanel', () => {
             title: '涓婁竴绔犲拷鐣ュ缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: 'chapter-1 dismiss'
           }]
         }
@@ -1988,7 +2061,7 @@ describe('AIPanel', () => {
             title: '涓嬩竴绔犲缓璁?',
             suggestion_type: 'outline_expand',
             severity: 'warning',
-            status: 'pending',
+            status: 'generated',
             summary: 'chapter-2 should stay pending'
           }]
         }
@@ -2041,9 +2114,9 @@ describe('AIPanel', () => {
           items: [{
             suggestion_id: 'sg_convert_late_001',
             title: '涓婁竴绔犺浆鎹㈠缓璁?',
-            suggestion_type: 'outline_expand',
+            suggestion_type: 'writing_task_suggestion',
             severity: 'warning',
-            status: 'pending',
+            status: 'shown',
             summary: 'chapter-1 convert'
           }]
         }
@@ -2053,9 +2126,9 @@ describe('AIPanel', () => {
           items: [{
             suggestion_id: 'sg_convert_late_001',
             title: '涓嬩竴绔犲缓璁?',
-            suggestion_type: 'outline_expand',
+            suggestion_type: 'writing_task_suggestion',
             severity: 'warning',
-            status: 'pending',
+            status: 'shown',
             summary: 'chapter-2 should stay pending'
           }]
         }
@@ -2076,6 +2149,8 @@ describe('AIPanel', () => {
     await vi.runAllTimersAsync()
     await flushPromises()
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="outline-assist-mode-writing_task_suggestion"]').trigger('click')
     await flushPromises()
     await wrapper.get('[data-test="suggestion-convert-sg_convert_late_001"]').trigger('click')
     await flushPromises()
@@ -2100,7 +2175,7 @@ describe('AIPanel', () => {
 
     expect(wrapper.text()).toContain('涓嬩竴绔犲缓璁?')
     expect(wrapper.text()).toContain('chapter-2 should stay pending')
-    expect(wrapper.find('[data-test="suggestion-accept-sg_convert_late_001"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="suggestion-convert-sg_convert_late_001"]').exists()).toBe(true)
   })
 
   it('does not keep previous outline assist suggestions visible when chapter reload fails', async () => {
@@ -2142,7 +2217,7 @@ describe('AIPanel', () => {
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('涓婁竴绔犲缓璁?')
-    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
+    expect(wrapper.text()).toContain('暂时没能读到本章细纲，请稍后重试。')
   })
 
   it('clears outline assist load error after a successful reload for the same chapter', async () => {
@@ -2195,14 +2270,14 @@ describe('AIPanel', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('大纲建议加载失败，请稍后重试')
+    expect(wrapper.text()).toContain('暂时没能读到本章细纲，请稍后重试。')
 
     await wrapper.get('[data-test="ai-helper-tab-auto_queue"]').trigger('click')
     await flushPromises()
     await wrapper.get('[data-test="ai-helper-tab-outline_assist"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('大纲建议加载失败，请稍后重试')
+    expect(wrapper.text()).not.toContain('暂时没能读到本章细纲，请稍后重试。')
     expect(wrapper.text()).toContain('????????')
   })
 
@@ -2529,7 +2604,6 @@ describe('AIPanel', () => {
         config: {
           config_id: 'aqc_001',
           work_id: 'work-1',
-          queue_mode: 'safe',
           target_chapters: 5,
           stop_on_budget_exceeded: false
         }
@@ -2540,7 +2614,6 @@ describe('AIPanel', () => {
         runs: [{
           run_id: 'aqr_001',
           status: 'stopped',
-          queue_mode: 'safe',
           generated_count: 2,
           stop_record: {
             stop_reason: 'budget_exceeded',
@@ -2555,7 +2628,6 @@ describe('AIPanel', () => {
         run: {
           run_id: 'aqr_001',
           status: 'stopped',
-          queue_mode: 'safe',
           generated_count: 2,
           stop_record: {
             stop_reason: 'budget_exceeded',
@@ -2585,7 +2657,6 @@ describe('AIPanel', () => {
     expect(confirmSpy).toHaveBeenCalledWith('关闭预算检查后，AI 功能将不再受预算限制。确定要关闭吗？')
     expect(upsertAutoQueueConfig).toHaveBeenLastCalledWith({
       work_id: 'work-1',
-      queue_mode: 'safe',
       target_chapters: 5,
       target_word_count: 0,
       budget_limit_tokens: 0,
@@ -2602,7 +2673,6 @@ describe('AIPanel', () => {
         runs: [{
           run_id: 'aqr_031',
           status: 'stopped',
-          queue_mode: 'safe',
           generated_count: 2,
           stop_record: {
             stop_reason: 'user_manual_stop',
@@ -2617,7 +2687,6 @@ describe('AIPanel', () => {
         run: {
           run_id: 'aqr_031',
           status: 'stopped',
-          queue_mode: 'safe',
           generated_count: 2,
           stop_record: {
             stop_reason: 'user_manual_stop',
@@ -2632,7 +2701,6 @@ describe('AIPanel', () => {
         run: {
           run_id: 'aqr_031',
           status: 'running',
-          queue_mode: 'safe',
           generated_count: 2
         }
       }
@@ -2664,7 +2732,6 @@ describe('AIPanel', () => {
         runs: [{
           run_id: 'aqr_010',
           status: 'stopped',
-          queue_mode: 'continuous',
           generated_count: 2,
           stop_record: {
             stop_reason: 'blocking_review_consecutive',
@@ -2679,7 +2746,6 @@ describe('AIPanel', () => {
         run: {
           run_id: 'aqr_010',
           status: 'stopped',
-          queue_mode: 'continuous',
           generated_count: 2,
           stop_record: {
             stop_reason: 'blocking_review_consecutive',
@@ -2717,7 +2783,7 @@ describe('AIPanel', () => {
       work_id: 'work-1',
       chapter_id: 'chapter-1'
     })
-    expect(wrapper.get('[data-test="auto-queue-conflicts"]').text()).toContain('自动续写冲突详情')
+    expect(wrapper.get('[data-test="auto-queue-conflicts"]').text()).toContain('接着写时发现的问题')
     expect(wrapper.get('[data-test="auto-queue-conflicts"]').text()).toContain('主角设定与既有章节不一致')
   })
 
@@ -2727,7 +2793,6 @@ describe('AIPanel', () => {
         runs: [{
           run_id: 'aqr_020',
           status: 'completed',
-          queue_mode: 'continuous',
           generated_count: 5,
           target_chapters: 10,
           total_word_count: 25000,
@@ -2747,7 +2812,6 @@ describe('AIPanel', () => {
         run: {
           run_id: 'aqr_020',
           status: 'completed',
-          queue_mode: 'continuous',
           generated_count: 5,
           target_chapters: 10,
           total_word_count: 25000,
@@ -2776,7 +2840,7 @@ describe('AIPanel', () => {
 
     expect(wrapper.get('[data-test="auto-queue-progress"]').text()).toContain('5 / 10 章')
     expect(wrapper.text()).toContain('字数25,000 / 50,000')
-    expect(wrapper.text()).toContain('令牌120K')
+    expect(wrapper.text()).toContain('AI 用量120K')
     expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('第3章')
     expect(wrapper.get('[data-test="auto-queue-per-chapter"]').text()).toContain('生成中')
   })
@@ -2803,7 +2867,6 @@ describe('AIPanel', () => {
 
     expect(upsertAutoQueueConfig).toHaveBeenCalledWith({
       work_id: 'work-1',
-      queue_mode: 'safe',
       target_chapters: 5,
       target_word_count: 80000,
       budget_limit_tokens: 160000,
@@ -2820,7 +2883,6 @@ describe('AIPanel', () => {
         runs: [{
           run_id: 'aqr_030',
           status: 'completed',
-          queue_mode: 'safe',
           generated_count: 2
         }]
       }
@@ -2830,7 +2892,6 @@ describe('AIPanel', () => {
         run: {
           run_id: 'aqr_030',
           status: 'completed',
-          queue_mode: 'safe',
           generated_count: 2
         }
       }

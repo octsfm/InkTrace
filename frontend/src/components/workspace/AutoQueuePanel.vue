@@ -2,8 +2,8 @@
   <div v-if="featureEnabled" class="auto-queue-panel" data-test="auto-queue-panel">
     <div class="auto-queue-panel__header">
       <div>
-        <h4>自动续写</h4>
-        <p>为当前作品配置自动续写队列；安全模式逐章确认，连续模式在通过审阅后自动推进。</p>
+        <h4>接着写</h4>
+        <p>说想法 <span aria-hidden="true">→</span> 写一章 <span aria-hidden="true">→</span> 你来看 <span aria-hidden="true">→</span> 再决定</p>
       </div>
       <button
         data-test="auto-queue-refresh"
@@ -18,7 +18,7 @@
 
     <div v-if="aiSettingsBlocked" class="auto-queue-panel__banner auto-queue-panel__banner--warning">
       <strong>AI 设置未完成</strong>
-      <span>请先配置可用模型服务与任务模型，再启动自动续写。</span>
+      <span>请先完成 AI 设置，再请它接着写。</span>
     </div>
 
     <div v-else-if="errorMessage" class="auto-queue-panel__banner auto-queue-panel__banner--error">
@@ -37,31 +37,69 @@
       <span v-if="budgetUsageCopy">{{ budgetUsageCopy }}</span>
     </div>
 
-    <div class="auto-queue-panel__mode">
+    <section v-if="!currentRun" class="auto-queue-panel__intent" aria-labelledby="auto-queue-intent-title">
+      <h5 id="auto-queue-intent-title">下一章，你最想看到什么？</h5>
+      <div class="auto-queue-panel__intent-options">
+        <button
+          v-for="option in intentOptions"
+          :key="option.id"
+          :data-test="`auto-queue-intent-${option.id}`"
+          type="button"
+          class="auto-queue-panel__intent-option"
+          :class="{ 'auto-queue-panel__intent-option--active': localWritingIntent === option.instruction }"
+          :aria-pressed="localWritingIntent === option.instruction"
+          :disabled="savingConfig || actionLoading"
+          @click="chooseIntent(option.instruction)"
+        >
+          {{ option.label }}
+        </button>
+      </div>
+      <label class="auto-queue-panel__intent-field">
+        <span class="sr-only">下一章的想法</span>
+        <textarea
+          data-test="auto-queue-writing-intent"
+          rows="3"
+          maxlength="60"
+          :value="localWritingIntent"
+          :disabled="savingConfig || actionLoading"
+          placeholder="或者写一句你自己的想法"
+          @input="updateWritingIntent($event.target.value)"
+        />
+        <span class="auto-queue-panel__intent-count">{{ localWritingIntent.length }}/60</span>
+      </label>
+      <p class="auto-queue-panel__safety-note">
+        <strong>只会写一份新稿，不会改动你的正文。</strong>
+        <span>写完先给你看。</span>
+      </p>
       <button
-        data-test="auto-queue-mode-safe"
+        data-test="auto-queue-start"
         type="button"
-        class="ink-button"
-        :class="queueMode === 'safe' ? 'ink-button--primary auto-queue-panel__mode-button--active' : 'ink-button--ghost'"
-        :disabled="savingConfig || actionLoading"
-        @click="$emit('update:queue-mode', 'safe')"
+        class="ink-button ink-button--primary auto-queue-panel__start"
+        :disabled="aiSettingsBlocked || savingConfig || actionLoading || !canStart"
+        @click="$emit('start')"
       >
-        安全模式
+        {{ actionLoading ? '正在准备新稿…' : '写一章给我看' }}
       </button>
       <button
-        data-test="auto-queue-mode-continuous"
+        data-test="auto-queue-start-direct"
         type="button"
-        class="ink-button"
-        :class="queueMode === 'continuous' ? 'ink-button--primary auto-queue-panel__mode-button--active' : 'ink-button--ghost'"
-        :disabled="savingConfig || actionLoading"
-        @click="$emit('update:queue-mode', 'continuous')"
+        class="auto-queue-panel__direct-start"
+        :disabled="aiSettingsBlocked || savingConfig || actionLoading || !canStart"
+        @click="startDirectly"
       >
-        连续模式
+        不用补充，直接接着写
       </button>
+    </section>
+
+    <details class="auto-queue-panel__advanced">
+      <summary>更多保护设置</summary>
+
+    <div class="auto-queue-panel__mode" data-test="auto-queue-mode-per-chapter">
+      <strong>每次只写一章</strong>
     </div>
 
     <p class="auto-queue-panel__hint">
-      {{ queueMode === 'safe' ? '安全模式：每章完成后暂停，等你确认后继续。' : '连续模式：审阅通过后自动继续，但遇到阻断冲突仍会暂停。' }}
+      写完先停下来，等你看过再决定要不要继续。
     </p>
 
     <label class="auto-queue-panel__field">
@@ -91,7 +129,7 @@
     </label>
 
     <label class="auto-queue-panel__field">
-      <span>预算上限令牌</span>
+      <span>本次 AI 用量上限</span>
       <input
         ref="budgetLimitInputRef"
         data-test="auto-queue-budget-limit"
@@ -123,7 +161,7 @@
           :disabled="savingConfig || actionLoading"
           @change="emit('update:stop-on-blocking-review', $event.target.checked)"
         />
-        <span>连续出现阻断冲突时停止</span>
+        <span>连续发现严重矛盾时停下来</span>
       </label>
       <label class="auto-queue-panel__toggle">
         <input
@@ -133,7 +171,7 @@
           :disabled="savingConfig || actionLoading"
           @change="emit('update:stop-on-budget-exceeded', $event.target.checked)"
         />
-        <span>超预算时停止</span>
+        <span>到达用量上限时停下来</span>
       </label>
       <label class="auto-queue-panel__toggle">
         <input
@@ -147,7 +185,6 @@
       </label>
     </div>
 
-    <div class="auto-queue-panel__actions">
       <button
         data-test="auto-queue-save-config"
         type="button"
@@ -155,17 +192,11 @@
         :disabled="aiSettingsBlocked || savingConfig || actionLoading || !canSubmitConfig"
         @click="$emit('save-config')"
       >
-        {{ savingConfig ? '保存中...' : '保存设置' }}
+        {{ savingConfig ? '保存中...' : '保存保护设置' }}
       </button>
-      <button
-        data-test="auto-queue-start"
-        type="button"
-        class="ink-button ink-button--primary"
-        :disabled="aiSettingsBlocked || savingConfig || actionLoading || !canStart"
-        @click="$emit('start')"
-      >
-        {{ actionLoading && !currentRun?.run_id ? '启动中...' : '开始自动续写' }}
-      </button>
+    </details>
+
+    <div class="auto-queue-panel__actions">
       <button
         v-if="showPause"
         data-test="auto-queue-pause"
@@ -194,7 +225,7 @@
         :disabled="actionLoading"
         @click="$emit('resume')"
       >
-        继续队列
+        处理好了，继续写
       </button>
       <button
         v-if="showConfirmContinue"
@@ -204,7 +235,7 @@
         :disabled="actionLoading"
         @click="$emit('confirm-continue')"
       >
-        确认后继续
+        继续写下一章
       </button>
       <button
         v-if="showStop"
@@ -214,7 +245,7 @@
         :disabled="actionLoading"
         @click="$emit('stop')"
       >
-        停止队列
+        停下这次续写
       </button>
     </div>
 
@@ -264,15 +295,14 @@
     </div>
 
     <div class="auto-queue-panel__meta">
-      <span>当前模式 {{ modeLabel(currentRun?.queue_mode || queueMode) }}</span>
+      <span>每次只写一章</span>
       <span>状态 {{ statusLabel(currentRun?.status || 'idle') }}</span>
       <span>已生成 {{ generatedCount }} 章候选稿</span>
     </div>
 
     <div v-if="currentRun" class="auto-queue-panel__card">
       <div class="auto-queue-panel__card-header">
-        <strong>当前队列</strong>
-        <span>{{ currentRun.run_id }}</span>
+        <strong>这次接着写</strong>
         <span class="auto-queue-panel__status-pill">{{ statusLabel(currentRun.status) }}</span>
       </div>
       <div
@@ -336,7 +366,7 @@
             :class="historyItemClass(run)"
             @click="$emit('select-run', run.run_id)"
           >
-            <span>{{ run.run_id }}</span>
+            <span>以前写过的一次</span>
             <span>{{ statusLabel(run.status) }}</span>
             <span>{{ generatedCountLabel(run.generated_count) }}</span>
             <span v-if="historyStopReasonCopy(run)" class="auto-queue-panel__history-detail">{{ historyStopReasonCopy(run) }}</span>
@@ -349,7 +379,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   featureEnabled: { type: Boolean, default: false },
@@ -358,7 +388,7 @@ const props = defineProps({
   savingConfig: { type: Boolean, default: false },
   actionLoading: { type: Boolean, default: false },
   chapterId: { type: String, default: '' },
-  queueMode: { type: String, default: 'safe' },
+  writingIntent: { type: String, default: '' },
   targetChapters: { type: Number, default: 0 },
   targetWordCount: { type: Number, default: 0 },
   budgetLimitTokens: { type: Number, default: 0 },
@@ -373,8 +403,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'update:queue-mode',
   'update:target-chapters',
+  'update:writing-intent',
   'update:target-word-count',
   'update:budget-limit-tokens',
   'update:stop-at-sequence-end',
@@ -395,6 +425,27 @@ const emit = defineEmits([
 ])
 
 const budgetLimitInputRef = ref(null)
+const localWritingIntent = ref(String(props.writingIntent || '').slice(0, 60))
+watch(() => props.writingIntent, (value) => {
+  localWritingIntent.value = String(value || '').slice(0, 60)
+})
+const intentOptions = [
+  {
+    id: 'conflict',
+    label: '让冲突更紧张',
+    instruction: '下一章优先增强当前冲突，让局势更紧张，但不要提前解决核心矛盾。'
+  },
+  {
+    id: 'relationship',
+    label: '让人物关系推进',
+    instruction: '下一章优先推进当前人物关系，让互动产生清晰变化，但不要改变既定人物性格。'
+  },
+  {
+    id: 'foreshadow',
+    label: '把刚才的伏笔接下去',
+    instruction: '下一章优先承接最近出现且尚未解决的伏笔，但不要提前揭示不该揭示的信息。'
+  }
+]
 const normalizedTargetChapters = computed(() => Math.max(0, Number(props.targetChapters || 0)))
 const normalizedTargetWordCount = computed(() => Math.max(0, Number(props.targetWordCount || 0)))
 const normalizedBudgetLimitTokens = computed(() => Math.max(0, Number(props.budgetLimitTokens || 0)))
@@ -405,9 +456,6 @@ const hasNormalStopCondition = computed(() => (
   normalizedBudgetLimitTokens.value > 0
 ))
 const canSubmitConfig = computed(() => {
-  if (String(props.queueMode || 'safe') === 'continuous') {
-    return normalizedTargetChapters.value > 0 || normalizedBudgetLimitTokens.value > 0
-  }
   return hasNormalStopCondition.value
 })
 const canStart = computed(() => canSubmitConfig.value && Boolean(props.chapterId))
@@ -429,8 +477,8 @@ const displayNote = computed(() => {
   if (status === 'stopping') return '正在停止，等待当前章节处理完成。'
   if (status === 'waiting_user_decision' && generatedCount.value > 0) return `第 ${generatedCount.value} 章已生成，需要你确认`
   if (status === 'completed') return '全部章节已生成'
-  if (status === 'failed') return '当前队列执行失败，请检查停止原因或稍后重试。'
-  if (status === 'cancelled') return '当前队列已取消，已生成候选稿会保留。'
+  if (status === 'failed') return '这次没有写完，请看看原因或稍后重试。'
+  if (status === 'cancelled') return '这次续写已结束，已经写好的新稿会保留。'
   return props.noteMessage || stopRecordCopy(props.currentRun?.stop_record)
 })
 const bannerModifierClass = computed(() => {
@@ -448,8 +496,8 @@ const budgetUsageCopy = computed(() => {
   const consumedTokens = Number(props.currentRun?.consumed_tokens || 0)
   const budgetLimit = normalizedBudgetLimitTokens.value
   if (consumedTokens <= 0 && budgetLimit <= 0) return ''
-  if (budgetLimit > 0) return `已使用约 ${consumedTokens} / 预算 ${budgetLimit} 令牌`
-  return `已使用约 ${consumedTokens} 令牌`
+  if (budgetLimit > 0) return `已使用约 ${consumedTokens} / 上限 ${budgetLimit} AI 用量`
+  return `已使用约 ${consumedTokens} AI 用量`
 })
 const noteTitle = computed(() => {
   const status = String(props.currentRun?.status || '')
@@ -457,26 +505,26 @@ const noteTitle = computed(() => {
   if (status === 'running') return '正在生成'
   if (status === 'stopping') return '正在停止'
   if (status === 'waiting_user_decision') return '当前章节需要你确认'
-  if (status === 'completed') return '自动续写已完成'
+  if (status === 'completed') return '这次新稿写完了'
   if (status === 'failed') return '执行失败'
   if (status === 'cancelled') return '已取消'
   if (reason === 'budget_exceeded') return '预算已超出'
   if (reason === 'blocking_review_consecutive') return '连续出现严重冲突'
-  if (reason === 'user_manual_stop') return '你已手动停止队列'
+  if (reason === 'user_manual_stop') return '你已停下这次续写'
   if (showConfirmContinue.value) return '等待你确认'
   return '提示'
 })
 const summaryCopy = computed(() => {
   const status = String(props.currentRun?.status || '')
-  if (status === 'waiting_user_decision') return `当前队列在安全模式下暂停，已生成 ${generatedCount.value} 章候选稿，等待你确认后继续。`
-  if (status === 'running') return `当前队列正在运行，已生成 ${generatedCount.value} 章候选稿。`
-  if (status === 'paused') return `当前队列已暂停，已生成 ${generatedCount.value} 章候选稿。`
-  if (status === 'stopped') return `当前队列已停止，已生成 ${generatedCount.value} 章候选稿，候选稿会保留在候选稿区。`
-  if (status === 'stopping') return '当前队列正在停止，等待当前章节处理完成后结束。'
-  if (status === 'completed') return `当前队列已完成，累计生成 ${generatedCount.value} 章候选稿。`
-  if (status === 'failed') return '当前队列执行失败，请检查停止原因或稍后重试。'
-  if (status === 'cancelled') return '当前队列已取消，已生成候选稿会保留。'
-  return `当前队列状态为 ${statusLabel(status)}。`
+  if (status === 'waiting_user_decision') return `新写的一章还没有放进正文。已经写好 ${generatedCount.value} 章，等你看过再决定。`
+  if (status === 'running') return `正在写新稿，已经写好 ${generatedCount.value} 章。`
+  if (status === 'paused') return `已经停下来，写好的 ${generatedCount.value} 章新稿都还在。`
+  if (status === 'stopped') return `这次续写已停下，写好的 ${generatedCount.value} 章新稿都还在。`
+  if (status === 'stopping') return '正在停下来，写完手上这一章就结束。'
+  if (status === 'completed') return `这次新稿写完了，共有 ${generatedCount.value} 章。`
+  if (status === 'failed') return '这次没有写完，请看看原因或稍后重试。'
+  if (status === 'cancelled') return '这次续写已结束，已经写好的新稿会保留。'
+  return `这次续写：${statusLabel(status)}。`
 })
 const progressTargetChapters = computed(() => Number(props.currentRun?.target_chapters || props.targetChapters || 0))
 const progressVisible = computed(() => progressTargetChapters.value > 0 && Boolean(props.currentRun))
@@ -495,7 +543,7 @@ const overviewMetrics = computed(() => {
     items.push({ label: '字数', value: `${formatCount(totalWords)}${targetWords > 0 ? ` / ${formatCount(targetWords)}` : ''}` })
   }
   if (consumedTokens > 0) {
-    items.push({ label: '令牌', value: formatTokenCount(consumedTokens) })
+    items.push({ label: 'AI 用量', value: formatTokenCount(consumedTokens) })
   }
   return items
 })
@@ -503,7 +551,6 @@ const perChapterItems = computed(() => Array.isArray(props.currentRun?.per_chapt
 const currentRunStopReasonCopy = computed(() => stopReasonLabel(props.currentRun?.stop_record))
 const currentRunSuggestedActionCopy = computed(() => suggestedActionLabel(props.currentRun?.stop_record))
 
-const modeLabel = (value) => ({ safe: '安全模式', continuous: '连续模式' }[String(value || '')] || String(value || '-'))
 const statusLabel = (value) => ({ idle: '未启动', pending: '待启动', running: '进行中', paused: '已暂停', stopping: '正在停止', waiting_user_decision: '等待你确认', stopped: '已停止', completed: '已完成', failed: '失败', cancelled: '已取消' }[String(value || '')] || String(value || '-'))
 const generatedCountLabel = (value) => `已生成 ${Number(value || 0)} 章候选稿`
 const formatCount = (value) => Number(value || 0).toLocaleString('zh-CN')
@@ -514,20 +561,20 @@ const formatTokenCount = (value) => {
 const chapterItemKey = (item, index) => item?.chapter_id || item?.chapter_title || `chapter_${index}`
 const chapterItemTitle = (item, index) => String(item?.chapter_title || item?.chapter_name || `第${index + 1}章`)
 const chapterItemIcon = (status) => ({ review_passed: '✓', candidate_generation: '📝', waiting: '⏳', waiting_user_decision: '⏳', running: '📝', completed: '✓' }[String(status || '')] || '•')
-const chapterItemStatusLabel = (status) => ({ review_passed: '审阅通过', candidate_generation: '生成中', waiting: '等待中', waiting_user_decision: '等待确认', running: '进行中', completed: '已完成', blocked: '阻断' }[String(status || '')] || statusLabel(status))
+const chapterItemStatusLabel = (status) => ({ review_passed: '审阅通过', candidate_generation: '生成中', waiting: '等待中', waiting_user_decision: '等待确认', running: '进行中', completed: '已完成', blocked: '需要你处理' }[String(status || '')] || statusLabel(status))
 
 const stopRecordCopy = (stopRecord) => {
   const reason = String(stopRecord?.stop_reason || '')
-  if (reason === 'budget_exceeded') return '预算已超出，自动续写已暂停。'
-  if (reason === 'blocking_review_consecutive') return '连续出现严重冲突，自动续写已停止。'
-  if (reason === 'user_manual_stop') return '你已手动停止队列，已生成候选稿会保留。'
+  if (reason === 'budget_exceeded') return '已到达你设置的用量上限，这次续写已停下。'
+  if (reason === 'blocking_review_consecutive') return '连续发现需要你处理的矛盾，这次续写已停下。'
+  if (reason === 'user_manual_stop') return '你已停下这次续写，写好的新稿会保留。'
   return ''
 }
 const stopReasonLabel = (stopRecord) => {
   const reason = String(stopRecord?.stop_reason || '')
   if (reason === 'budget_exceeded') return '预算已超出'
-  if (reason === 'blocking_review_consecutive') return '连续出现阻断冲突'
-  if (reason === 'user_manual_stop') return '你已手动停止队列'
+  if (reason === 'blocking_review_consecutive') return '连续发现需要你处理的矛盾'
+  if (reason === 'user_manual_stop') return '你已停下这次续写'
   if (reason === 'target_chapters_reached') return '已达到目标章节数'
   if (reason === 'target_words_reached') return '已达到目标字数'
   if (reason === 'sequence_arc_ended') return '已到达剧情波次结束点'
@@ -537,7 +584,7 @@ const suggestedActionLabel = (stopRecord) => {
   const action = String(stopRecord?.suggested_action || '')
   if (action === 'adjust_budget') return '提高预算或关闭预算检查'
   if (action === 'resolve_conflict') return '先查看并处理冲突详情'
-  if (action === 'resume_queue') return '处理原因后继续队列'
+  if (action === 'resume_queue') return '处理好原因后继续写'
   if (action === 'manual_continue') return '确认后手动继续'
   return ''
 }
@@ -560,12 +607,147 @@ const emitBudgetLimitTokens = (value) => {
   if (!Number.isFinite(nextValue)) return
   emit('update:budget-limit-tokens', Math.max(nextValue, 0))
 }
+const updateWritingIntent = (value) => {
+  localWritingIntent.value = String(value || '').slice(0, 60)
+  emit('update:writing-intent', localWritingIntent.value)
+}
+const chooseIntent = (instruction) => updateWritingIntent(instruction)
+const startDirectly = () => {
+  updateWritingIntent('')
+  emit('start')
+}
 </script>
 
 <style scoped>
 .auto-queue-panel {
   display: grid;
+  gap: 16px;
+  color: var(--ai-title, #2d2926);
+}
+
+.auto-queue-panel__intent {
+  display: grid;
   gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--ai-border, #d8cec0) 80%, #b58b58);
+  border-radius: 16px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--ai-bg, #fffdf8) 92%, #f4eadb);
+}
+
+.auto-queue-panel__intent h5 {
+  margin: 0;
+  font-family: ui-serif, "Songti SC", "STSong", serif;
+  font-size: 17px;
+  color: var(--ai-title, #2d2926);
+}
+
+.auto-queue-panel__intent-options {
+  display: grid;
+  gap: 8px;
+}
+
+.auto-queue-panel__intent-option {
+  width: 100%;
+  border: 1px solid var(--ai-border, #d8cec0);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--ai-bg, #fffdf8);
+  color: var(--ai-title, #2d2926);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.auto-queue-panel__intent-option:hover,
+.auto-queue-panel__intent-option--active {
+  border-color: var(--ai-accent, #9b6b3d);
+  background: color-mix(in srgb, var(--ai-accent-soft, #efe1cf) 55%, var(--ai-bg, #fffdf8));
+}
+
+.auto-queue-panel__intent-field {
+  position: relative;
+  display: block;
+}
+
+.auto-queue-panel__intent-field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--ai-border, #d8cec0);
+  border-radius: 12px;
+  padding: 11px 12px 25px;
+  background: var(--ai-bg, #fffdf8);
+  color: var(--ai-title, #2d2926);
+  font: inherit;
+  line-height: 1.55;
+}
+
+.auto-queue-panel__intent-field textarea:focus-visible,
+.auto-queue-panel__intent-option:focus-visible,
+.auto-queue-panel__direct-start:focus-visible {
+  outline: 2px solid var(--ai-accent, #9b6b3d);
+  outline-offset: 2px;
+}
+
+.auto-queue-panel__intent-count {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  color: var(--ai-text, #756b62);
+  font-size: 12px;
+}
+
+.auto-queue-panel__safety-note {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  border-left: 3px solid var(--ai-accent, #9b6b3d);
+  padding-left: 10px;
+  color: var(--ai-text, #625950);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.auto-queue-panel__start {
+  width: 100%;
+  justify-content: center;
+}
+
+.auto-queue-panel__direct-start {
+  border: 0;
+  padding: 4px;
+  background: transparent;
+  color: var(--ai-text, #625950);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.auto-queue-panel__advanced {
+  border-top: 1px solid var(--ai-border, #d8cec0);
+  padding-top: 10px;
+}
+
+.auto-queue-panel__advanced summary {
+  cursor: pointer;
+  color: var(--ai-text, #625950);
+  font-size: 13px;
+}
+
+.auto-queue-panel__advanced[open] {
+  display: grid;
+  gap: 12px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
 }
 
 .auto-queue-panel__header,

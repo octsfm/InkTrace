@@ -8,7 +8,6 @@ from application.services.ai.auto_queue_service import AutoContinuationQueueServ
 from application.services.ai.stop_condition_evaluator import StopConditionEvaluator
 from domain.entities.ai.models import (
     AutoQueueConfig,
-    AutoQueueMode,
     AutoQueueRun,
     AutoQueueStatus,
     ChapterAdvanceDecision,
@@ -177,7 +176,7 @@ class _FakeAutoQueueService:
         _ = config_id, start_chapter_id
         return self.runs[work_id]
 
-    def user_confirm_continue(self, run_id: str) -> AutoQueueRun:
+    def user_confirm_continue(self, run_id: str, **_context) -> AutoQueueRun:
         return self.runs[run_id].model_copy(update={"status": AutoQueueStatus.RUNNING, "updated_at": _now()})
 
     def recover_after_restart(self, work_id: str) -> AutoQueueRun | None:
@@ -271,7 +270,6 @@ def _build_config(**updates) -> AutoQueueConfig:
     payload = {
         "config_id": "aqc_001",
         "work_id": "work_001",
-        "queue_mode": AutoQueueMode.SAFE,
         "target_chapters": 3,
         "target_word_count": 0,
         "stop_at_sequence_end": True,
@@ -331,7 +329,6 @@ def _build_run(**updates) -> AutoQueueRun:
         "work_id": "work_001",
         "multi_chapter_session_id": "mcs_001",
         "status": AutoQueueStatus.RUNNING,
-        "queue_mode": AutoQueueMode.SAFE,
         "generated_count": 1,
         "total_word_count": 3200,
         "consumed_tokens": 60000,
@@ -394,11 +391,11 @@ def test_p2_auto_queue_gate_start_rejects_zero_target_chapters_with_422(monkeypa
     assert response.json()["error"]["error_code"] == "auto_queue_target_chapters_required"
 
 
-def test_p2_auto_queue_gate_recover_after_restart_auto_advances_continuous_waiting_run() -> None:
+def test_p2_auto_queue_gate_recover_after_restart_keeps_waiting_for_user() -> None:
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, target_chapters=3, stop_at_sequence_end=False))
-    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.CONTINUOUS, generated_count=1))
+    config_repo.save(_build_config(target_chapters=3, stop_at_sequence_end=False))
+    run_repo.save(_build_run(status=AutoQueueStatus.WAITING_USER_DECISION, generated_count=1))
     multi_chapter_service = _StubMultiChapterService(
         session=_build_session(status=MultiChapterStatus.WAITING_USER_DECISION, current_index=1, target_chapters=3)
     )
@@ -418,17 +415,17 @@ def test_p2_auto_queue_gate_recover_after_restart_auto_advances_continuous_waiti
     recovered = service.recover_after_restart("work_001")
 
     assert recovered is not None
-    assert recovered.status == AutoQueueStatus.RUNNING
-    assert recovered.generated_count == 2
-    assert multi_chapter_service.get_session_calls == ["mcs_001"]
-    assert multi_chapter_service.advance_calls == [("mcs_001", ChapterAdvanceDecision.CONTINUE_WITHOUT_APPLY)]
+    assert recovered.status == AutoQueueStatus.WAITING_USER_DECISION
+    assert recovered.generated_count == 1
+    assert multi_chapter_service.get_session_calls == []
+    assert multi_chapter_service.advance_calls == []
 
 
 def test_p2_auto_queue_gate_blocking_stop_syncs_count_and_error_details() -> None:
     config_repo = _InMemoryAutoQueueConfigRepository()
     run_repo = _InMemoryAutoQueueRunRepository()
-    config_repo.save(_build_config(queue_mode=AutoQueueMode.CONTINUOUS, max_consecutive_blocking=2))
-    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS))
+    config_repo.save(_build_config(max_consecutive_blocking=2))
+    run_repo.save(_build_run(status=AutoQueueStatus.RUNNING))
     multi_chapter_service = _StubMultiChapterService(
         session=_build_session(status=MultiChapterStatus.BLOCKED, current_index=1, target_chapters=3).model_copy(
             update={
@@ -463,7 +460,6 @@ def test_p2_auto_queue_gate_recover_after_restart_skips_terminal_reconvergence_w
         job_id="job_aq_010",
         work_id="work_010",
         status=AutoQueueStatus.COMPLETED,
-        queue_mode=AutoQueueMode.CONTINUOUS,
     )
     fake_service.recover_results["work_010"] = completed_run
     fake_service.runs["aqr_010"] = completed_run
@@ -496,7 +492,6 @@ def test_p2_auto_queue_gate_recover_after_restart_skips_terminal_reconvergence_w
             {
                 "run_id": "aqr_010",
                 "status": "completed",
-                "queue_mode": "continuous",
             },
             "auto_queue_run:aqr_010",
         )
@@ -510,7 +505,6 @@ def test_p2_auto_queue_gate_budget_audit_only_records_safe_digest_fields() -> No
     run_repo = _InMemoryAutoQueueRunRepository()
     config_repo.save(
         _build_config(
-            queue_mode=AutoQueueMode.CONTINUOUS,
             target_chapters=4,
             stop_at_sequence_end=False,
             stop_on_budget_exceeded=True,
@@ -519,7 +513,6 @@ def test_p2_auto_queue_gate_budget_audit_only_records_safe_digest_fields() -> No
     run_repo.save(
         _build_run(
             status=AutoQueueStatus.PAUSED,
-            queue_mode=AutoQueueMode.CONTINUOUS,
             generated_count=1,
             error_message="FULL_PROVIDER_ERROR: secret quota details",
             current_candidate_story_state={

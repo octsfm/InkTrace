@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 
 from fastapi import APIRouter, Request
+from pydantic import Field
 
 from presentation.api import dependencies
 from presentation.api.routers.v2.ai.response_utils import error_response, success_response
@@ -16,7 +17,6 @@ _TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
 
 class AutoQueueConfigUpsertRequest(V2AIBaseModel):
     work_id: str
-    queue_mode: str | None = None
     target_chapters: int | None = None
     target_word_count: int | None = None
     stop_at_sequence_end: bool | None = None
@@ -32,6 +32,7 @@ class AutoQueueConfigUpsertRequest(V2AIBaseModel):
 class AutoQueueStartRequest(V2AIBaseModel):
     work_id: str
     start_chapter_id: str
+    user_instruction: str = Field(default="", max_length=60)
 
 
 def _ensure_gate_request(request: Request, *, caller_type: str, user_action: bool, idempotency_key: str):
@@ -45,11 +46,9 @@ def _ensure_gate_request(request: Request, *, caller_type: str, user_action: boo
 
 
 def _serialize_config(config) -> dict[str, object]:
-    queue_mode = getattr(config.queue_mode, "value", config.queue_mode)
     return {
         "config_id": config.config_id,
         "work_id": config.work_id,
-        "queue_mode": queue_mode,
         "target_chapters": config.target_chapters,
         "target_word_count": config.target_word_count,
         "stop_at_sequence_end": config.stop_at_sequence_end,
@@ -86,7 +85,6 @@ def _serialize_run(run) -> dict[str, object]:
         "work_id": run.work_id,
         "multi_chapter_session_id": run.multi_chapter_session_id,
         "status": getattr(run.status, "value", run.status),
-        "queue_mode": getattr(run.queue_mode, "value", run.queue_mode),
         "generated_count": run.generated_count,
         "total_word_count": run.total_word_count,
         "consumed_tokens": run.consumed_tokens,
@@ -119,7 +117,7 @@ def _spawn_auto_queue_runner(run, *, allow_terminal: bool = False) -> None:
     run_id = str(getattr(run, "run_id", "") or "")
     status = str(getattr(getattr(run, "status", ""), "value", getattr(run, "status", "")) or "")
     skip_job_start = allow_terminal and status in {"completed", "stopped", "cancelled", "failed"}
-    should_spawn = status in {"running", "waiting_user_decision"} or (allow_terminal and status in {"completed", "stopped", "cancelled", "failed"})
+    should_spawn = status == "running" or (allow_terminal and status in {"completed", "stopped", "cancelled", "failed"})
     if not job_id or not run_id or not should_spawn:
         return
     if skip_job_start:
@@ -171,8 +169,7 @@ def _run_auto_queue_async(job_id: str, run_id: str, *, skip_job_start: bool = Fa
             run = service.run_background_step(run_id)
             last_run = run
             status = getattr(run.status, "value", run.status)
-            queue_mode = getattr(run.queue_mode, "value", run.queue_mode)
-            if status == "waiting_user_decision" and queue_mode == "safe":
+            if status == "waiting_user_decision":
                 job_service.mark_step_completed(job_id, step.step_id, summary=f"run:{run.run_id}:{status}")
                 job_service.pause_job(job_id, reason="waiting_user_decision")
                 return
@@ -187,7 +184,6 @@ def _run_auto_queue_async(job_id: str, run_id: str, *, skip_job_start: bool = Fa
                 result_summary = {
                     "run_id": run.run_id,
                     "status": status,
-                    "queue_mode": queue_mode,
                 }
                 stop_record = getattr(run, "stop_record", None)
                 stop_reason = getattr(getattr(stop_record, "stop_reason", None), "value", getattr(stop_record, "stop_reason", None))
@@ -267,7 +263,12 @@ def start_auto_queue(payload: AutoQueueStartRequest, request: Request):
     if invalid_error is not None:
         return error_response(request, error_code=invalid_error, status_code=422)
     try:
-        run = service.start(config.config_id, payload.work_id, payload.start_chapter_id)
+        run = service.start(
+            config.config_id,
+            payload.work_id,
+            payload.start_chapter_id,
+            user_instruction=payload.user_instruction.strip(),
+        )
     except ValueError as exc:
         error_code = str(exc)
         if error_code == "auto_queue_config_not_found":
@@ -286,7 +287,6 @@ def start_auto_queue(payload: AutoQueueStartRequest, request: Request):
             "run_id": run.run_id,
             "job_id": getattr(run, "job_id", ""),
             "status": getattr(run.status, "value", run.status),
-            "queue_mode": getattr(run.queue_mode, "value", run.queue_mode),
         },
     )
 
@@ -368,10 +368,14 @@ def confirm_continue_auto_queue(run_id: str, payload: SessionActionRequest, requ
         return denied
     service = dependencies.get_auto_queue_service()
     try:
-        run = service.user_confirm_continue(run_id)
+        run = service.user_confirm_continue(
+            run_id,
+            caller_type=payload.caller_type,
+            user_action=payload.user_action,
+        )
     except ValueError as exc:
         error_code = str(exc)
-        status_code = 409 if error_code in {"auto_queue_confirm_continue_only_for_safe_mode", "auto_queue_not_waiting_user_decision"} else 404
+        status_code = 409 if error_code == "auto_queue_not_waiting_user_decision" else 404
         return error_response(request, error_code=error_code, status_code=status_code)
     _spawn_auto_queue_runner(run)
     return success_response(request, data={"run": _serialize_run(run)})

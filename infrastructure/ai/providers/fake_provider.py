@@ -57,6 +57,16 @@ class FakeLLMProvider(LLMProvider):
                 },
                 ensure_ascii=False,
             )
+        elif request.output_schema_key in {
+            "outline_polish_schema",
+            "outline_expand_schema",
+            "chapter_outline_detail_schema",
+            "writing_task_suggestion_schema",
+        }:
+            content = json.dumps(
+                self._build_outline_assist_output(request.output_schema_key, user_message),
+                ensure_ascii=False,
+            )
         return LLMResponse(
             provider_name=self.provider_name,
             model_name=model_name,
@@ -82,6 +92,57 @@ class FakeLLMProvider(LLMProvider):
         if prompt_key == "selection_de_ai_v1":
             return f"{base}，表达更贴近日常叙事。"
         return f"{base}，细节更完整。"
+
+    @staticmethod
+    def _build_outline_assist_output(schema_key: str, user_message: str) -> dict[str, object]:
+        try:
+            prompt_input = json.loads(user_message)
+        except (json.JSONDecodeError, TypeError):
+            prompt_input = {}
+        source = str(prompt_input.get("formal_target_content_text") or prompt_input.get("source_text") or "当前大纲")
+        tree = prompt_input.get("target_content_tree_json", [])
+        if schema_key == "writing_task_suggestion_schema":
+            return {
+                "task_title": "本章写作要点",
+                "writing_goal": "按已确认的章节计划推进本章冲突",
+                "must_include": ["推进本章核心目标"],
+                "must_not_include": ["越过尚未确认的剧情"],
+                "target_word_count": 2500,
+                "tone_guidance": "保持自然、清楚的叙事节奏",
+                "required_beats": ["开场承接", "冲突升级", "结尾钩子"],
+                "context_summary": "依据已确认的章节计划整理",
+            }
+        base: dict[str, object] = {
+            "proposed_content_text": f"{source}（已整理）",
+            "proposed_content_tree_json": tree,
+            "diff_summary": ["整理表达与推进顺序"],
+        }
+        if schema_key == "outline_polish_schema":
+            base["polish_notes"] = ["未新增剧情事实"]
+        elif schema_key == "outline_expand_schema":
+            base.update(
+                {
+                    "expansion_points": ["补足人物动机", "补足场景转折"],
+                    "expand_focus": prompt_input.get("expand_focus"),
+                }
+            )
+        else:
+            base.update(
+                {
+                    "chapter_goal": str(prompt_input.get("chapter_goal") or "推进本章主要矛盾"),
+                    "scene_beats": [
+                        {
+                            "beat_no": 1,
+                            "description": "承接上一场并建立本章目标",
+                            "characters_involved": [],
+                            "estimated_words": 800,
+                        }
+                    ],
+                    "conflict_points": ["人物目标受到阻碍"],
+                    "ending_hook": "留下下一步选择",
+                }
+            )
+        return base
 
     def test_connection(self, provider_config: AIProviderConfig, model_name: str) -> dict[str, str]:
         if not provider_config.encrypted_api_key:

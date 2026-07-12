@@ -23,20 +23,19 @@ class SQLiteAutoQueueRunRepository(AutoQueueRunRepository):
             conn.execute(
                 """
                 INSERT INTO auto_queue_runs (
-                    run_id, job_id, config_id, work_id, multi_chapter_session_id, status, queue_mode,
+                    run_id, job_id, config_id, work_id, multi_chapter_session_id, status,
                     generated_count, total_word_count, consumed_tokens, current_stop_evaluation_json,
                     stop_record_json, current_candidate_story_state_json, queue_state_snapshots_json,
                     consecutive_blocking_count, consecutive_revision_failure_count,
                     error_code, error_message, request_id, trace_id,
                     created_at, updated_at, started_at, stopped_at, finished_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     job_id = excluded.job_id,
                     config_id = excluded.config_id,
                     work_id = excluded.work_id,
                     multi_chapter_session_id = excluded.multi_chapter_session_id,
                     status = excluded.status,
-                    queue_mode = excluded.queue_mode,
                     generated_count = excluded.generated_count,
                     total_word_count = excluded.total_word_count,
                     consumed_tokens = excluded.consumed_tokens,
@@ -107,7 +106,6 @@ class SQLiteAutoQueueRunRepository(AutoQueueRunRepository):
             work_id=row["work_id"],
             multi_chapter_session_id=row["multi_chapter_session_id"],
             status=row["status"],
-            queue_mode=row["queue_mode"],
             generated_count=int(row["generated_count"] or 0),
             total_word_count=int(row["total_word_count"] or 0),
             consumed_tokens=int(row["consumed_tokens"] or 0),
@@ -136,7 +134,6 @@ class SQLiteAutoQueueRunRepository(AutoQueueRunRepository):
             run.work_id,
             run.multi_chapter_session_id,
             run.status.value,
-            run.queue_mode.value,
             run.generated_count,
             run.total_word_count,
             run.consumed_tokens,

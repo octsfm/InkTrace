@@ -1,8 +1,8 @@
 # InkTrace V2.0-P2 架构设计说明书
 
-版本：v2.0-p2-architecture
-更新时间：2026-06-08
-状态：冻结生效（Opening Agent 已同步 v2.0 人本化裁决）
+版本：v2.8-p2-architecture
+更新时间：2026-07-11
+状态：冻结生效（方案 A：自动续写统一逐章确认，不自动推进下一章）
 
 依据文档：
 
@@ -17,6 +17,14 @@
 |---|---|---|
 | v1.0 | 2026-06-08 | 初始版本 |
 | v1.1 | 2026-06-08 | 架构评审修订：修正架构图 Domain→Infra 依赖方向；明确自动队列默认安全模式 + StoryState 硬边界；删除 call_opening_model 改为业务 Tool 命名；StyleProfile 独立子域对象；Citation Link 双阶段校验；@ 引用存储方案升级为必须决策项；SelectionRewrite apply 路径明确；LLMCallLog 为唯一成本事实源；AI 痕迹→AI 使用分析；调整 P2-S1 实施顺序 |
+| v2.1 | 2026-07-11 | 同步 P2-07 冻结裁决：面向普通作者的四个白话入口；正式大纲复用 WorkOutline/ChapterOutline；accept/apply/convert 分离；WritingTask 复用 pending/ready；apply 四重门控、expected_version 与 ConflictGuard 闭环 |
+| v2.2 | 2026-07-11 | 冻结 P2-07 Local-First 并发边界：允许 WritingAssetService 用进程级互斥保护既有 expected_version 临界区；不改变 V1.1 保存语义，不宣称支持多进程 CAS |
+| v2.3 | 2026-07-11 | 补齐 P2-07 首次创建并发与幂等恢复：存在性快照用于区分虚拟 v1/真实 v1；写后恢复同时校验已持久化、预期版本与 proposed 快照 |
+| v2.4 | 2026-07-11 | 补齐虚拟 v1 首存竞态：P2 在 WritingAssetService 保存锁内同时复核 expected_version 与 expected_content_hash，避免版本未变时覆盖并发首存 |
+| v2.5 | 2026-07-11 | 补齐 P2-07 可观测性和复用端点安全边界：强制 PromptRegistry、LLMCallLog、必需 Trace fail-safe、WritingTask 双用户门审计与来源感知 Feature Flag |
+| v2.6 | 2026-07-11 | 冻结 P2-09 普通作者口径：调用时价格快照、未知费用与分币种、逐条采用状态、三级预算唯一来源、受控预算写和独立只读查询 Port |
+| v2.7 | 2026-07-11 | 收口 P2-09 可实现契约：LLMCallScope、统一 GuardedLLMExecutor、Application BudgetGateService + 纯 Domain BudgetGuard、价格策略、原子审计 UoW、权威日志追加写、看板 Flag 例外与 retention 完整度 |
+| v2.8 | 2026-07-11 | 按人工裁决方案 A 移除连续候选自动推进；自动续写每章候选稿就绪后固定进入 WAITING_USER_DECISION，只有真实 user_action 的 confirm-continue 才能生成下一章 |
 
 ---
 
@@ -69,7 +77,7 @@ P2 把 InkTrace 从"单次受控 AI 辅助写作"升级为"持续受控 AI 辅�
 | # | 子系统 | 需求编号 | 一句话职责 | 复杂度 | 新增 Agent 类型 |
 |---|---|---|---|---|---|
 | 1 | 多章续写 | R-AI-DRAFT-04 | P1 AgentWorkflow 循环 N 次，章间更新状态 | 中 | 否 |
-| 2 | 受控自动续写队列 | R-AI-DRAFT-05 | 无人值守逐章生成，9 重停止条件 | 高 | 否 |
+| 2 | 受控自动续写队列 | R-AI-DRAFT-05 | 逐章生成并等待真实用户确认，9 重停止条件 | 高 | 否 |
 | 3 | Style DNA | R-AI-ENH-01 | 文风指纹提取→Context Pack 可选层 | 中 | 否（复用 Memory Agent） |
 | 4 | Citation Link | R-AI-CITE-01 | 候选稿元数据标记前文引用来源 | 中 | 否 |
 | 5 | @ 标签引用 | R-AI-CITE-02 | 正文 @ 联想/高亮/悬停/mentions 持久化 | 高 | 否 |
@@ -247,13 +255,14 @@ S1→S2→S3 为建议顺序。**P2-S1 内部顺序说明**：自动续写队列
 
 | 文件 | 改动内容 | 风险 |
 |---|---|---|
-| `domain/entities/ai/models.py` | 追加枚举值：`AgentType.OPENING`、`ModelRole.STYLE_EXTRACTOR`、`ModelRole.SELECTION_REWRITER`、`AISuggestionType.OUTLINE_POLISH/OUTLINE_EXPAND/CHAPTER_OUTLINE_DETAIL/MENTION_SUGGESTION`、`AgentWorkflowType.OPENING_ANALYSIS`；追加实体类（StyleProfile / CitationLink / ChapterMention 等） | 低（追加不改已有） |
+| `domain/entities/ai/models.py` | 追加枚举值：`AgentType.OPENING`、`ModelRole.STYLE_EXTRACTOR`、`ModelRole.SELECTION_REWRITER`、`AISuggestionType.OUTLINE_POLISH/OUTLINE_EXPAND/CHAPTER_OUTLINE_DETAIL/WRITING_TASK_SUGGESTION/MENTION_SUGGESTION`、`AgentWorkflowType.OPENING_ANALYSIS`；追加实体类（StyleProfile / CitationLink / ChapterMention 等） | 低（追加不改已有） |
 | `application/services/ai/tool_facade.py` | 注册 P2 新增 Tool；权限矩阵新增 Opening Agent 行 | 低（追加行） |
 | `application/services/ai/agent_runtime_service.py` | 注册 `AgentType.OPENING` 的 AgentExecutionProfile | 低（追加配置） |
 | `application/services/ai/agent_workflow.py` | 新增 `WorkflowType.OPENING_WORKFLOW` 的 Stage 定义 | 低（新增 WorkflowDefinition） |
 | `application/services/ai/context_pack_service.py` | `_assemble_optional_layers()` 增加 Style DNA 层组装逻辑 | 低（在可选层列表追加一项） |
 | `application/services/ai/agent_trace_service.py` | 新增 P2 审计事件类型（见 4.3 节事件清单） | 低（追加事件类型） |
 | `application/services/ai/ai_suggestion_service.py` | 新增 P2 建议类型处理（大纲辅助/mention 建议） | 低（追加分支） |
+| `application/services/ai/llm_call_logger.py` | P2-09 强制写调用时价格快照、cost_status/cost_source 与 job/run 范围；禁止历史回算 | 中（需全调用路径回归） |
 | `presentation/api/app.py` | 注册 P2 路由模块 | 低（追加路由注册） |
 
 ### 3.3 需要新增的文件
@@ -261,6 +270,9 @@ S1→S2→S3 为建议顺序。**P2-S1 内部顺序说明**：自动续写队列
 按 DDD 分层组织：
 
 ```
+application/ports/ai/
+  provider_attempt_guard_port.py # P0 Core 通用 ResolvedAttempt/Decision/Guard Port
+
 application/services/ai/
   auto_queue_service.py           # AutoContinuationQueueService
   style_dna_service.py            # StyleDNAExtractionService
@@ -268,43 +280,109 @@ application/services/ai/
   mention_service.py              # MentionService（@联想/mentions CRUD）
   opening_agent_service.py        # OpeningAgentService（编排分段短用例）
   outline_assist_service.py       # OutlineAssistService
+  outline_application_service.py  # 大纲 apply 门控、ConflictGuard 与 V1.1 保存编排
   selection_rewrite_service.py    # SelectionRewriteService
-  cost_dashboard_service.py       # CostDashboardService
-  analysis_dashboard_service.py   # AnalysisDashboardService
+  cost_dashboard_query_service.py # CostDashboardQueryService（纯只读）
+  cost_budget_service.py          # CostBudgetService（受控预算写）
+  cost_price_policy_service.py    # CostPricePolicyService（手动价格写）
+  cost_usage_reconciliation_service.py # 确定性修复整行缺失的调用事实
+  price_resolver_service.py       # 价格解析与不可变快照
+  budget_gate_service.py          # Application 预算事实/投影编排
+  budget_provider_attempt_guard.py # 实现 P0 Core Guard Port
+  guarded_llm_executor.py         # 所有生产模型调用统一预算入口
+  analysis_dashboard_query_service.py # P2-10 只读查询
+  analysis_metric_refresh_service.py   # P2-10 缓存刷新
+  analysis_dashboard_constants.py      # P2-10 分析常量
+
+domain/entities/ai/
+  cost_entities.py                # LLMCallScope、Cost/Budget/Price 契约
+  analysis_entities.py            # P2-10 分析实体
+
+domain/services/ai/
+  budget_guard.py                 # BudgetGuard（预算核心规则，只判断）
+
+domain/repositories/ai/
+  auto_queue_config_repository.py # AutoQueueConfig Port
+  auto_queue_run_repository.py    # AutoQueueRun Port
+  auto_queue_lifecycle_uow_port.py # 生命周期资源+回执原子事务
+  llm_call_log_cost_query_port.py # LLMCallLog 独立只读查询 Port
+  llm_call_log_reconciliation_port.py # 整行缺失事实修复 Port
+  cost_budget_repository.py       # initialization/monthly 预算 Port
+  user_decision_query_port.py     # 逐条采用状态只读投影
+  auto_queue_budget_policy_port.py # AutoQueueConfig 预算适配
+  provider_price_catalog_port.py  # 官方精确价格目录
+  model_price_policy_repository.py # 手动价格策略
+  work_model_inventory_port.py    # 当前精确路由与 global 影响作品清单
+  cost_policy_mutation_coordinator_port.py # 跨设置一致性锁
+  cost_control_mutation_uow_port.py # 设置+回执原子事务
+  budget_audit_port.py            # AgentTrace 设置审计
+  token_estimator_port.py         # 服务端输入用量投影
 
 presentation/api/routers/v2/ai/
   auto_queues.py                  # 自动续写队列 API
   style_dna.py                    # Style DNA API
   citations.py                    # Citation Link API
-  mentions.py                     # @ Mentions API
   opening.py                      # Opening Agent API
   outline_assist.py               # 大纲辅助 API
   selection_rewrite.py            # 选区改写 API
-  cost_dashboard.py               # 成本看板 API
+  cost_dashboard.py               # AI 用量只读查询 API
+  cost_budget.py                  # 预算保护 API
+  cost_prices.py                  # 费用估算设置 API
   analysis_dashboard.py           # 分析看板 API
 
+presentation/api/routers/v2/
+  mentions.py                     # @ Mentions API（非 /ai 前缀）
+
 infrastructure/persistence/
-  sqlite_auto_queue_repo.py       # AutoQueueRepository
-  sqlite_style_dna_repo.py        # StyleDNARepository
+  sqlite_auto_queue_config_repo.py # AutoQueueConfigRepository
+  sqlite_auto_queue_run_repo.py   # AutoQueueRunRepository
+  sqlite_auto_queue_lifecycle_uow.py # 生命周期原子事务/回执
+  sqlite_style_profile_repo.py    # StyleProfileRepository
   sqlite_citation_link_repo.py    # CitationLinkRepository
-  sqlite_mention_repo.py          # MentionRepository
-  sqlite_opening_agent_repo.py    # OpeningAgentRepository
+  sqlite_chapter_mention_repo.py  # ChapterMentionRepository
+  sqlite_opening_analysis_repo.py # OpeningAnalysisRepository
+  sqlite_opening_strategy_repo.py # OpeningStrategyRepository
+  sqlite_imitation_risk_report_repo.py # ImitationRiskReportRepository
   sqlite_selection_rewrite_repo.py # SelectionRewriteRepository
-  sqlite_cost_repo.py             # CostRepository
-  sqlite_analysis_repo.py         # AnalysisRepository
+  sqlite_llm_call_log_cost_query_adapter.py # LLMCallLog 只读查询 Adapter
+  sqlite_llm_call_log_reconciliation_adapter.py # 仅补整行缺失
+  sqlite_cost_budget_repo.py      # CostBudgetRepository
+  sqlite_model_price_policy_repo.py # 手动价格策略
+  sqlite_cost_control_mutation_uow.py # 原子设置/回执
+  ai_settings_work_model_inventory_adapter.py # 版本化路由清单
+  sqlite_analysis_metric_repo.py  # AnalysisMetricRepository
+
+infrastructure/ai/pricing/
+  provider_price_catalog_adapter.py
+infrastructure/ai/tokenization/
+  model_token_estimator_adapter.py
+infrastructure/ai/audit/
+  agent_trace_budget_audit_adapter.py
+infrastructure/locking/
+  cost_policy_mutation_coordinator.py
 
 frontend/src/components/workspace/
   AutoQueuePanel.vue              # 自动续写面板
-  AtMentionPopup.vue              # @联想弹窗
-  AtMentionHighlight.vue          # @高亮渲染
+  MentionPopup.vue                # @联想弹窗
+  MentionHighlight.vue            # @高亮渲染
+  MentionTooltip.vue              # @悬停摘要
   OpeningAgentWizard.vue          # Opening Agent 向导
   SelectionRewriteToolbar.vue     # 选区改写工具栏
   SelectionRewriteDiffModal.vue   # 选区改写 Diff 弹窗
   OutlineAssistPanel.vue          # 大纲辅助面板
 
 frontend/src/views/
-  CostDashboard.vue               # 成本看板页面
+  CostDashboard.vue               # AI 用量与预算页面
   AnalysisDashboard.vue           # 分析看板页面
+
+frontend/src/components/settings/
+  AICostSettings.vue              # SettingsCenter AI 费用与预算
+
+frontend/src/stores/
+  useCostDashboardStore.js
+  useCostBudgetStore.js
+  useAICostSettingsStore.js
+  useAnalysisDashboardStore.js
 ```
 
 ---
@@ -359,19 +437,16 @@ sequenceDiagram
 
 ---
 
-### 4.2 受控自动连续续写队列（P2-S1）
+### 4.2 受控自动逐章续写队列（P2-S1）
 
 **复用关系**：依赖 4.1 多章续写 + P1 AgentWorkflow + P0 AIJobSystem。不新增 Agent 类型。
 
-**默认交互模式（冻结）**：
+**章间交互模式（冻结）**：
 
-自动续写队列默认采用**安全模式**：每章生成候选稿 + 审稿后**暂停等待用户确认是否继续下一章**。用户确认后才推进章间状态更新和下一章生成。
-
-提供**连续候选模式**作为高级开关（用户显式开启）：审稿通过后自动继续生成下一章候选稿。**两种模式下均不得自动合并正式正文**——apply 始终必须 user_action。
+自动续写队列只有一种模式：每章生成候选稿并完成审稿后，固定暂停等待作者确认是否继续下一章。只有作者真实点击“继续写下一章”后，系统才推进候选章间状态并开始下一章；Agent、workflow、system 和服务重启均不得代替作者确认。CandidateDraft apply 仍是另一道独立 HumanReviewGate，不能与“继续写下一章”混用。
 
 ```
-安全模式（默认）：生成→审稿→暂停→用户确认继续→下一章
-连续候选模式（开关）：生成→审稿→自动下一章→...→全部完成后用户逐章确认
+逐章确认：生成候选稿→审稿→暂停→作者点击“继续写下一章”→下一章
 ```
 
 **StoryState 章间更新硬边界（冻结）**：
@@ -388,15 +463,18 @@ sequenceDiagram
 ```mermaid
 flowchart TB
     Start["用户配置队列并启动"] --> LoadCfg["加载 AutoQueueConfig"]
-    LoadCfg --> Job["创建 AIJob (auto_continuation_queue)"]
+    LoadCfg --> Gate["BudgetGateService 准入检查\n捕获预算快照"]
+    Gate -->|允许| Job["创建 AIJob (auto_continuation_queue)"]
+    Gate -->|无法判断/超限| Hold["不启动\n保留设置并给出原因"]
     Job --> Loop{"循环"}
-    Loop -->|继续| Chapter["执行单章 AgentWorkflow\n(复用 4.1 单章逻辑)"]
+    Loop -->|继续| Chapter["执行单章 AgentWorkflow\n每次模型调用均受预算门控"]
     Chapter --> Review["审稿"]
     Review --> StopEval["StopConditionEvaluator\n评估 9 重停止条件"]
     StopEval -->|触发停止| Stop["记录 StopRecord\n保留已生成候选稿\n通知用户"]
-    StopEval -->|继续| Update["更新候选 StoryState + ImmediateWindow"]
+    StopEval -->|可以继续| WaitUser["展示本章候选稿\nWAITING_USER_DECISION"]
+    WaitUser -->|真实 user_action| Update["更新候选 StoryState + ImmediateWindow"]
     Update --> Loop
-    Loop -->|全部完成| Done["队列完成\n保留全部候选稿\n通知用户逐章确认"]
+    Loop -->|全部完成| Done["本次自动续写完成\n保留全部候选稿\n作者逐章决定是否使用"]
 ```
 
 **9 重停止条件矩阵**：
@@ -409,29 +487,29 @@ flowchart TB
 | 4 | 审稿连续 blocking | ReviewIssue.severity=blocking 连续 ≥2 章 | 异常中断 |
 | 5 | 伏笔提前揭示 | Reviewer 检测到尚未到达揭示阶段的伏笔被使用 | 异常中断 |
 | 6 | 连续修订失败 | 连续 ≥3 次 Rewriter→Reviewer 循环不通过 | 异常中断 |
-| 7 | 成本超限 | 作品级预算或月度预算超限 | 预算中断 |
+| 7 | 预算确定超限 | AutoQueue run 用量或叠加月度预算确定超限 | 预算中断 |
 | 8 | Provider 不可恢复 | auth_failed / quota_exceeded 等不可恢复错误 | 异常中断 |
 | 9 | 用户手动停止 | 用户主动暂停/取消 | 用户中断 |
 
-**章间用户交互策略（冻结）**：
-
-- **安全模式（默认）**：每章审稿后暂停，等用户确认方向后再继续。用户逐章审阅候选稿。
-- **连续候选模式（高级开关）**：审稿通过→自动下一章，用户事后批量审阅候选稿。apply 仍必须逐章 user_action。
-- 两种模式下，自动队列**均不自动合并正式正文**。
+**章间用户交互策略（冻结）**：每章审稿后都进入 `WAITING_USER_DECISION`。作者可查看候选稿后选择“继续写下一章”“停止”或“结束这次续写”；不要求先 apply 当前候选稿，但 confirm-continue 与 apply 都必须是各自独立的真实 user_action。自动队列永不自动合并正式正文。
 
 **关键对象**：
 
 | 对象 | 核心字段 |
 |---|---|
-| AutoQueueConfig | queue_id, work_id, target_chapters, target_words, stop_at_sequence_end, stop_on_blocking_review, stop_on_budget_exceeded, max_consecutive_revision_failures(default=3), **queue_mode(default=safe, enum: safe/continuous)** |
-| AutoQueueRun | run_id, config_id, status(queued/running/paused/stopped/completed), generated_count, total_word_count, stop_reason, stop_context, **current_candidate_story_state, queue_state_snapshots[]** |
+| AutoQueueConfig | config_id, work_id, target_chapters, target_word_count, stop_at_sequence_end, stop_on_blocking_review, stop_on_budget_exceeded, budget_limit_tokens, budget_alert_threshold, config_revision |
+| AutoQueueRun | run_id, config_id, status(pending/running/waiting_user_decision/paused/stopping/stopped/completed/cancelled), generated_count, total_word_count, current stop_record, stop_record_history, resume_allowed, **budget_policy_snapshot_json, current_candidate_story_state, queue_state_snapshots[]** |
 | QueueStateSnapshot | 队列运行期间的候选 Story State 快照，仅供章间续写上下文使用。**不是正式 StoryState baseline** |
-| StopConditionEvaluator | 统一评估 9 重条件，返回 (should_stop: bool, reason: str, severity: normal/abnormal/budget/user) |
+| StopConditionEvaluator | 统一评估 9 重条件，读取 Application 已算好的 BudgetGateResult，返回 should_stop/should_pause；不访问价格/Repository |
 
 **安全约束**：
 
-- 自动队列**不自动合并**正式正文。用户事后逐章确认。
-- 成本超限停止后，已消费 token 记录持久化到 CostRecord。
+- 每章候选稿就绪后必须停在 `WAITING_USER_DECISION`；没有新的真实 confirm-continue 不得创建下一章调用。自动队列也不自动合并正式正文。
+- 每次 Provider attempt 的用量/费用只追加到权威 SQLite LLMCallLog；`AutoQueueRun.consumed_tokens` 仅为可重建展示缓存。
+- 已在途 attempt 落权威日志后确定超限时，若本地校验通过可保留该 CandidateDraft/result_ref，随后立即触发 StopCondition #7；禁止本章 Reviewer/修订和下一章调用。用量未知/预算查询失败只进入 PAUSED，不生成 BUDGET_EXCEEDED StopRecord。
+- 用户显式启动或恢复时携带 expected_config_revision；门控后由生命周期 UoW 再复核 revision。检查与复核都通过才创建 run 或追加新预算快照并恢复；保存设置本身不自动恢复。
+- start/pause/resume/stop/cancel/confirm-continue 都由独立 AutoQueueLifecycle UoW 原子写状态+回执；post 审计失败保留 completion_pending，同 key 只补审计，不重复推进或调度。
+- STOPPED 是可恢复业务状态，状态查询固定 HTTP 200；用户可显式 resume，或 cancel 放弃本次运行。cancel 不删除候选稿、停止历史或成本事实。
 - 停止原因写入 AgentTrace 审计事件。
 
 ---
@@ -671,37 +749,62 @@ flowchart LR
 
 ### 4.7 大纲辅助（P2-S2）
 
-**复用关系**：Planner Agent 扩展 + AI Suggestion Store + Conflict Guard。不新增 Agent。
+**复用关系**：Planner Agent 扩展 + P1 AISuggestion + ConflictGuard + V1.1 WritingAssetService。不新增 Agent、不新增大纲表、不新增状态机。
 
-**四种辅助模式**：
+**作者可见的四种白话模式**：
 
-| 模式 | 触发方式 | 输出 | 存储位置 |
+| 界面文案 | 内部类型 | 输出 | 后续动作 |
 |---|---|---|---|
-| 大纲润色 | 用户选中大纲文本→"AI润色" | 优化后的大纲文本 | AI Suggestion (type=outline_polish) |
-| 大纲扩写 | 用户在大纲节点上→"AI扩写" | 补充细节/分支/伏笔 | AI Suggestion (type=outline_expand) |
-| 章节细纲 | 用户在章节上→"生成细纲" | 该章的节拍/场景拆分 | AI Suggestion (type=chapter_outline_detail) |
-| WritingTask 建议 | Planner 触发→"优化WritingTask" | 优化后的 WritingTask | WritingTask（标记 generated_by=ai） |
+| 把这段写顺 | `outline_polish` | 不改变故事含义，整理表达和顺序 | 先进入 AISuggestion；用户“先留着”后才能“放进大纲” |
+| 把这段补完整 | `outline_expand` | 补足动机、转折、线索或场景安排 | 同上 |
+| 生成本章细纲 | `chapter_outline_detail` | 本章目标、节拍、冲突与结尾钩子 | 目标固定为明确的 ChapterOutline |
+| 整理本章写作要点 | `writing_task_suggestion` | 本章写作目标与约束，不生成正文 | 用户“设为本章写作计划”后创建 WritingTask(pending)，确认后 ready |
+
+**正式对象边界**：
+
+- 作品大纲复用 `WorkOutline`：`target_kind=work_outline`，`target_id=work_id`。
+- 章节大纲复用 `ChapterOutline`：`target_kind=chapter_outline`，`target_id=chapter_id`。
+- 自由片段使用 `target_kind=selection`，无正式目标，不允许直接 apply。
+- WorkOutline/ChapterOutline 没有发布状态；所有持久化大纲默认按正式资产保护。apply 必须经过 ConflictGuard，并把生成时版本作为 `expected_version` 交给 WritingAssetService。
+- 生成时由服务端读取真实目标，把统一的 `target_revision`（即资产 version）和完整内容 `target_content_hash` 存入 `AISuggestion.payload`；作者可编辑的 `selected_text` 只供 AI 参考，不得充当资产基线。
+- apply 同时匹配 revision + hash 后才允许整体替换；调用 WritingAssetService 时，`target_revision` 映射为 `expected_version`，生成基线的 `target_content_hash` 映射为仅供 P2 使用、默认 `None` 的 `expected_content_hash`，并在保存互斥区内再次共同复核。
+- 当前 Local-First 单进程形态下，`WritingAssetService` 以进程级互斥保护“读取版本与完整内容 → expected_version/expected_content_hash 校验 → 保存”的临界区，防止 V1.1 与 P2 合法入口在同进程内检查后互相覆盖。保存入口在入锁前记录目标是否已经持久化；若本调用从“未持久化的虚拟 v1”开始、但锁内发现目标已由并发调用创建，则返回既有 `asset_version_conflict`，成功的首次创建仍保持 v1。`expected_content_hash` 为 P2 使用的向后兼容可选参数，默认 `None`；该锁与存在性只读查询不改变外部 API、状态、版本递增、旧 V1 默认调用或 `force_override` 语义。跨进程/跨主机部署必须另行设计数据库 CAS，P2-07 不作超范围承诺。
+- P2 apply 的写前幂等检查点记录 `target_was_persisted` 与 `expected_post_write_version`。写后 AISuggestion 完成态持久化失败时，同 key 恢复只有在“正式目标已持久化、当前版本等于预期写后版本、当前内容精确等于 proposed 快照”同时成立时才可返回真实已保存结果；不得仅因内容相同或仍为 v1 就伪造成功。
+- P2 Application Service 只能通过 WritingAssetService 的正式大纲存在性、章节归属和资产读取门面取数，不得借其公共属性跨层直读 Repository。
+- Planner 的版本化 PromptRegistry、LLMCallLogger 与 AgentTrace 均为必需依赖。模板缺失不得 fallback；每次调用/重试都写 LLMCallLog，并以同一 suggestion trace_id 严格关联 provider/model/schema/usage/status/error/耗时；无法解析的字段使用明确 unresolved/unknown，P2 严格模式不得吞掉 trace_not_found。完整 Prompt、大纲、输出建议与 API Key 不进入日志或 Trace。
+- 生成开始/终态、WritingTask convert、WritingTask confirm 是必需审计检查点。必需 Trace/LLMCallLog 缺失或写失败时 fail-safe，AIJob 不得 completed，convert/confirm 状态不得前进；统一使用 `P2_OUTLINE_AUDIT_WRITE_FAILED`。
+- `enable_outline_assist=false` 必须按实体来源同时关闭 P2-07 自有端点与复用的建议决策/WritingTask confirm；P1 来源实体不受影响。
 
 **核心流程**：
 
 ```mermaid
 flowchart TB
-    User["用户触发大纲辅助"] --> Mode{"选择模式"}
-    Mode --> Call["Planner Agent 生成建议"]
-    Call --> Store["存入 AI Suggestion Store"]
-    Store --> Check{"涉及正式大纲？"}
-    Check -->|是| CG["Conflict Guard\n展示 正式大纲 vs AI 建议 diff"]
-    Check -->|否| Show["直接展示建议"]
-    CG --> Decide{"用户决策"}
-    Show --> Decide
-    Decide -->|采纳| Apply["写入大纲"]
-    Decide -->|编辑后采纳| EditApply["编辑后写入"]
-    Decide -->|拒绝| Reject["标记 rejected"]
+    User["作者选择白话动作"] --> Call["Planner 受控生成"]
+    Call --> Store["AISuggestion\npending → generated/failed"]
+    Store --> Show["展示当前内容与建议内容"]
+    Show --> Kind{"建议类型"}
+    Kind -->|大纲建议| Keep["作者先留着\nstatus=accepted"]
+    Keep --> Confirm["作者查看前后对比并确认\n放进大纲"]
+    Confirm --> Apply["apply 四重门控\ncaller_type + user_action\n+ idempotency_key + confirm_apply"]
+    Apply --> Guard["ConflictGuard + expected_version"]
+    Guard -->|通过| Save["WritingAssetService 保存\nAISuggestion=converted"]
+    Guard -->|版本/阻断冲突| Stop["保存 blocking record 并 409\n不写入；刷新后重新生成"]
+    Kind -->|写作要点| Convert["作者设为本章写作计划\nconvert → WritingTask(pending)"]
+    Convert --> TaskConfirm["作者确认使用\nWritingTask → ready"]
 ```
 
-**新增 AI Suggestion 类型**：`outline_polish`、`outline_expand`、`chapter_outline_detail`。
+**状态与 API 口径**：
 
-**安全约束**：AI 大纲建议不自动覆盖正式大纲；涉及正式大纲时触发 Conflict Guard。
+- 复用 P1 AISuggestion 的 `pending/generated/shown/accepted/dismissed/converted/failed`，禁止新增 `generating/completed/rejected/applied`。
+- `accept` 只标记 accepted；不写大纲、不创建 WritingTask。
+- 写作要点建议无需先 accept，可由真实用户直接 convert；convert 才创建 WritingTask(pending)，现有确认使其 ready。
+- P2-07 自有 5 个 POST：4 个生成端点和 1 个 apply 端点；查询与建议决策复用 P1 API。
+- apply 成功使用 P1 `converted` + `action_status=completed` 表示，不新增 applied。
+- apply 请求必须携带 `caller_type=user_action`、`user_action=true`、非空 `idempotency_key` 与 `confirm_apply=true`。
+- 普通成功路径在同一 apply 用例内创建保护记录，用户确认后 acknowledged，写入成功后 resolved；不要求额外冲突参数或第二次请求。
+- 版本/哈希或其他真实 blocking 冲突保存 blocking record、返回 409 且不写入；用户处理后刷新目标并重新生成建议，不恢复旧请求或强制覆盖。
+
+**安全约束**：AI 大纲建议不自动覆盖正式大纲；Agent/workflow/system 不得伪造用户确认；不得记录完整 Prompt、ContextPack、大纲、正文、建议内容或 API Key。
 
 ---
 
@@ -774,51 +877,81 @@ SelectionRewriteCandidate 的 apply **不能**直接写正式数据库中的章�
 
 ### 4.9 成本看板（P2-S3）
 
-**复用关系**：LLMCallLog (P0) + AgentTrace (P1)。纯只读聚合，不产生新 AI 调用。
+**用户名称**：AI 用量与预算。页面先回答“花了多少、还剩多少、目前是否接近/到达上限或没有保护”，模型、服务商、角色和调用记录下沉到次级明细。GET 不含下一次投影，禁止承诺“可以开始”，更不得说模型服务整体 ready。
+
+**复用关系**：LLMCallLog (P0) + AgentTrace/UserDecisionTrace (P1) + AutoQueueConfig (P2-04)。成本查询不产生新 AI 调用；预算配置是受控写，不得把整个 P2-09 误称为纯只读系统。
 
 **架构**：
 
 ```mermaid
 flowchart LR
     subgraph Sources["数据源"]
-        LLM["LLMCallLog\n每次调用的 token/耗时/模型/错误"]
-        Trace["AgentTrace\n会话级 token/步骤汇总"]
+        LLM["SQLite LLMCallLog\n调用时用量/价格快照/费用状态"]
+        Attempt["AIJobAttempt\n已发出但日志缺失的完整度信号"]
+        Trace["AgentTrace + UserDecisionTrace\n范围关系/逐条采用状态"]
+        BudgetSource["cost_budgets + AutoQueueConfig\n三级预算唯一来源"]
+        Prices["官方价格目录 + model_price_policies\n未来调用价格"]
     end
 
-    subgraph Services["CostDashboardService"]
-        Agg["CostAggregationService\n作品级/月度级/任务级聚合"]
-        Budget["BudgetService\n预算配置 + 超限检测"]
-        Calc["PriceCalculator\n用户配置单价 × token 量"]
+    subgraph Ports["Domain/Application Ports"]
+        QueryPort["LLMCallLogCostQueryPort\n只读聚合/分页/趋势/用量"]
+        DecisionPort["UserDecisionQueryPort\n只读采用状态投影"]
+        BudgetPort["Budget/Price/UoW/Audit Ports"]
+        TokenPort["TokenEstimatorPort"]
     end
 
-    Sources --> Agg
-    Agg --> Calc
-    Budget --> AutoQueue["自动续写队列\n超限→触发停止条件"]
+    subgraph Services["Application + Domain"]
+        Query["CostDashboardQueryService\n纯只读"]
+        Budget["CostBudgetService + CostPricePolicyService\n受控设置写"]
+        Gate["BudgetGateService\n加载事实与服务端投影"]
+        Guard["Domain BudgetGuard\n纯判断"]
+        Exec["GuardedLLMExecutor\n生产模型调用唯一入口"]
+    end
+
+    LLM --> QueryPort --> Query
+    Attempt --> Gate
+    Trace --> DecisionPort --> Query
+    BudgetSource --> BudgetPort --> Budget
+    Prices --> BudgetPort --> Gate
+    QueryPort --> Gate
+    BudgetSource --> BudgetPort --> Gate
+    TokenPort --> Gate --> Guard --> Exec
+    Exec --> AutoQueue["AIJob/Agent/AutoQueue 调用方\nblock/pause/stop"]
+    Exec --> LLM
 ```
 
 **三级预算体系**：
 
 | 级别 | 配置粒度 | 超限行为 |
 |---|---|---|
-| 作品初始化预算 | 单次初始化 max_tokens | 暂停初始化，用户确认继续 |
+| 作品初始化预算 | 单个 initialization job max_tokens | 阻止下一次调用/暂停，用户调整后明确继续 |
 | 单次自动续写预算 | 单次队列 max_tokens | 触发停止条件 #7 |
-| 月度预算 | 每月 max_cost | 暂停所有 AI 能力，等待下月或用户手动调整 |
+| 月度预算 | 每月 max_cost + currency | 阻止新调用；已运行任务当前小步后暂停，等待下月或用户调整 |
 
 **数据源策略（冻结）**：
 
 - **`LLMCallLog` 是成本事实的唯一权威源**（P0 已有，每次 LLM 调用写入一条）。
-- `CostDashboardService` 直接查询 `LLMCallLog` 做实时的聚合计算（按作品/月度/任务维度 GROUP BY），**不另建 `cost_records` 事实表**，避免同一笔模型调用在两处存储导致的数据不一致。
-- 如果后续有性能需求，可在 P2-S3 详细设计中评估是否引入定时物化缓存，但缓存不是新的事实源。
+- SQLite `llm_call_logs` 为唯一权威物理存储，insert-only；JSONL 仅为可选诊断副本。相同摘要可幂等，不同摘要冲突不得覆盖。
+- 所有作品级生产调用必须贯穿 `LLMCallScope(work_id, job_id, session_id?, step_id?, run_id?, adoption_target_ref?)` 并经 `GuardedLLMExecutor`；Provider 连接测试是唯一排除项。
+- P0 Core 定义通用 ProviderAttemptGuardPort/AttemptGuardDecision；P2 预算 Guard 实现它。ModelRouter 为首选/retry/fallback 每个 attempt 解析精确 provider/model，再执行“通用门决策→Provider→权威日志→调用后通用门决策”，但不 import P2 BudgetGateResult，避免 Core→Feature 反向依赖。
+- 费用只使用调用完成时写入的 `estimated_cost + cost_currency + price_snapshot + cost_status`；Provider 实际账单币种不得被调用前报价币种覆盖；**禁止使用当前价格回算历史**。旧 `0.0 + {}` 视为费用未知，不得冒充免费。
+- Provider 未调用的本地失败不创建 LLMCallLog；请求一旦发出而 usage/日志缺失则为 unknown。汇总同时返回用量、费用与历史保留完整度。
+- CNY/USD 等币种分别聚合，禁止直接相加；金额/单价使用 Decimal 字符串，不使用 float。
+- 现有 `LLMCallLogRepository.append()` 保持命令 Port；查询使用独立 `LLMCallLogCostQueryPort`，首版不做聚合缓存。
+- 自动续写预算继续以 P2-04 `AutoQueueConfig.budget_limit_tokens` 为唯一事实源，P2-09 只通过 Adapter 统一展示/编辑，不在 `cost_budgets` 复制。
+- 价格解析按 Provider 实际费用→官方精确目录→作品手动精确价→全局手动精确价→unknown；手动价格只影响未来。启用月度预算或改价时通过 WorkModelInventoryPort 检查作品当前 primary/retry/fallback 精确路由；global 改价枚举全部继承作品，并与 AI Settings 路由 revision 在同一协调锁/UoW 快照中复核，禁止部分生效。
 
 | 字段 | 来源 |
 |---|---|
-| work_id, task_id | LLMCallLog + AgentTrace 关联 |
+| work_id, job_id, session_id, step_id, run_id | LLMCallLog 直接字段；旧数据仅做唯一关系投影 |
 | provider_name, model_name, model_role | LLMCallLog |
-| total_tokens, elapsed_ms | LLMCallLog |
-| cost | CostDashboardService 实时计算：total_tokens × unit_price |
-| user_adopted | AgentTrace → UserDecisionTrace（后续关联） |
+| usage_status, total_tokens, elapsed_ms | LLMCallLog；unknown 不计为 0 |
+| estimated_cost, cost_currency, cost_status | LLMCallLog 调用时不可变费用事实；明细 DTO 映射为 currency |
+| user_adopted/adoption_state | UserDecisionTrace/业务对象只读投影；不写回 LLMCallLog |
 
-**安全约束**：只读不写；API Key 不入看板；完整正文不入看板；单价本地存储。
+`CostSummary` 不提供 adoption_rate；汇总采用率仍归 P2-10。预算/手动价格写必须由真实 `caller_type=user_action + user_action=true + user_id + Idempotency-Key` 触发。pre 审计成功后，由 `CostControlMutationUnitOfWorkPort` 原子写资源+回执；post 审计失败只标 completion_pending。同 key 只补审计。关闭预算保护需二次确认；调整后不得自动恢复暂停/停止任务。
+
+**安全约束**：查询只读；Domain BudgetGuard 只判断；API Key、完整 Prompt、ContextPack、正文和候选稿不入看板或日志；查询服务不得调用 ModelRouter/Provider；费用未知或预算查询失败不得伪装 allowed/ready。`enable_cost_dashboard` 只控制看板查询，既有预算始终门控，预算/价格设置始终可访问。
 
 ---
 
@@ -891,6 +1024,7 @@ class AISuggestionType(StrEnum):
     OUTLINE_POLISH = "outline_polish"
     OUTLINE_EXPAND = "outline_expand"
     CHAPTER_OUTLINE_DETAIL = "chapter_outline_detail"
+    WRITING_TASK_SUGGESTION = "writing_task_suggestion"
     MENTION_SUGGESTION = "mention_suggestion"
 
 # WorkflowType 新增
@@ -954,6 +1088,7 @@ class TraceEventType(StrEnum):
 | auto_queue_configs | 自动续写队列 | 配置 | 需要 |
 | auto_queue_runs | 自动续写队列 | 运行时状态 | - |
 | auto_queue_stop_records | 自动续写队列 | 日志 | - |
+| auto_queue_lifecycle_receipts | 自动续写队列 | 生命周期幂等回执与 completion_pending 审计收口 | - |
 | style_profiles | Style DNA | AI 分析 | 正式化需确认 |
 | citation_links | Citation Link | 元数据 | - |
 | chapter_mentions | @ 标签引用 | 用户数据 + AI 建议 | 采纳时确认 |
@@ -963,15 +1098,21 @@ class TraceEventType(StrEnum):
 | opening_draft_batches | 开篇助手 | 分章生成状态与 CandidateDraft result_ref | 用户可停止 |
 | opening_originality_reports | 开篇助手 | 策略级/稿件级原创性检查，关联具体方向和候选稿 | - |
 | selection_rewrite_candidates | 选区改写 | 候选数据 | 接受才替换 |
-| cost_budgets | 成本看板 | 配置 | 需要 |
-| cost_aggregation_cache | 成本看板 | 聚合缓存（可选，详细设计决策） | - |
+| cost_budgets | AI 用量与预算 | initialization/monthly 配置；auto_queue 继续使用 AutoQueueConfig | 需要 user_action |
+| model_price_policies | AI 用量与预算 | 作品/全局精确 provider-model 手动价格，只影响未来 | 需要 user_action |
+| cost_control_mutation_receipts | AI 用量与预算 | 预算/价格/AutoQueue 配置的幂等回执与审计收口，不保存原始幂等键 | - |
+| llm_call_log_retention_watermarks | AI 用量与预算 | 按作品记录历史从何时起可保证完整；不是成本事实 | - |
 | analysis_metrics | 分析看板 | 计算缓存 | - |
 
 ### 6.2 持久化原则
 
-- 全部为**新增表**，不修改 P0/P1 已有表结构。
+- 上表是 P2 持久化对象汇总，不代表全部都是新表。P2-09 允许向 P0 `LLMCallLog/llm_call_logs` 追加向后兼容的 job/run/adoption_target/usage/cost currency/status/source/digest 字段；不得修改既有状态语义。
 - AI 建议类数据进入 AI Suggestion 通用表（通过 `suggestion_type` 区分），不单独建表。
-- **成本数据以 `LLMCallLog` 为唯一事实源**（P0 已有）。`CostDashboardService` 直接查询聚合，不另建成本事实表。`cost_aggregation_cache` 为可选物化缓存，由 P2-S3 详细设计决策是否引入。
+- **成本数据以 SQLite `llm_call_logs` 为唯一事实源**（P0 已有）。只允许 insert-if-absent，不允许 ON CONFLICT UPDATE；JSONL 不参与查询/预算。`CostDashboardQueryService` 通过独立只读 Port 查询聚合，不另建成本事实表。
+- P2-09 的 `cost_budgets` 只保存 initialization/monthly；auto_queue 预算继续写同一 AutoQueueConfig，禁止双事实源。
+- P2-09 预算、价格或 AutoQueue 预算字段与 cost-control receipt 必须在同一 SQLite UoW 提交；审计收口状态可幂等补齐。
+- P2-04 start/pause/resume/stop/cancel/confirm-continue 使用独立 lifecycle UoW 与 receipt；不得借用成本设置回执。STOPPED 且 resume_allowed=true 的 run 和 completion_pending lifecycle receipt 在收口前受 retention 保护。
+- P0-02 清理必须保护 Asia/Shanghai 当前月、非终态/暂停/可重试 Job、活跃 AutoQueueRun 和未收口设置审计；历史查询返回 retention 完整度。
 - 分析指标为计算缓存表，可由后台定时批量生成。
 - V1.1 的 work/chapter/asset 表永不被 P2 直接写入。
 
@@ -991,18 +1132,22 @@ class TraceEventType(StrEnum):
 | Outline Assist | `/api/v2/ai/outline-assist` | P2-S2 |
 | Selection Rewrite | `/api/v2/ai/selection-rewrite` | P2-S2 |
 | Cost Dashboard | `/api/v2/ai/cost-dashboard` | P2-S3 |
+| Cost Budget | `/api/v2/ai/cost-budget` | P2-S3 |
+| Cost Prices | `/api/v2/ai/cost-prices` | P2-S3 |
 | Analysis Dashboard | `/api/v2/ai/analysis-dashboard` | P2-S3 |
 
 ### 7.2 关键端点
 
 ```
 # 自动续写队列
-POST   /api/v2/ai/auto-queues/config            # 创建/更新队列配置
-POST   /api/v2/ai/auto-queues/{id}/start         # 启动队列
-POST   /api/v2/ai/auto-queues/{id}/pause         # 暂停
-POST   /api/v2/ai/auto-queues/{id}/stop          # 停止
-GET    /api/v2/ai/auto-queues/{id}/status         # 状态与进度
-GET    /api/v2/ai/auto-queues/{id}/chapters       # 已生成候选稿列表
+PUT    /api/v2/ai/auto-queues/config             # 创建/更新队列配置；预算字段同样经过 P2-09 用户门/幂等/审计
+POST   /api/v2/ai/auto-queues/start              # 启动；真实 user_action + expected_config_revision
+POST   /api/v2/ai/auto-queues/{run_id}/pause     # 暂停
+POST   /api/v2/ai/auto-queues/{run_id}/resume    # 用户恢复；重新门控 + revision 复核
+POST   /api/v2/ai/auto-queues/{run_id}/stop      # 温和停止
+POST   /api/v2/ai/auto-queues/{run_id}/cancel    # 放弃本次运行，不删候选稿/成本事实
+POST   /api/v2/ai/auto-queues/{run_id}/confirm-continue # 唯一逐章模式；真实用户确认后继续
+GET    /api/v2/ai/auto-queues/{run_id}/status    # 200 状态与进度，STOPPED 不是错误
 
 # Style DNA
 POST   /api/v2/ai/style-dna/extract              # 触发提取
@@ -1030,9 +1175,15 @@ POST   /api/v2/ai/selection-rewrite/{id}/apply     # 应用改写
 
 # 成本看板
 GET    /api/v2/ai/cost-dashboard/summary?work_id=&month=
-GET    /api/v2/ai/cost-dashboard/details?work_id=&task_id=
-GET    /api/v2/ai/cost-dashboard/budget
-PUT    /api/v2/ai/cost-dashboard/budget
+GET    /api/v2/ai/cost-dashboard/trend?work_id=&from=&to=&granularity=day
+GET    /api/v2/ai/cost-dashboard/details?work_id=&month=&job_id=&session_id=&run_id=
+GET    /api/v2/ai/cost-dashboard/task-cost?work_id=&job_id=&session_id=&run_id=
+GET    /api/v2/ai/cost-budget?work_id=
+PUT    /api/v2/ai/cost-budget
+GET    /api/v2/ai/cost-budget/check?work_id=&job_type=&job_id=&session_id=&run_id=  # 当前事实，不接受客户端投影
+POST   /api/v2/ai/cost-budget/reconcile-usage    # 仅凭确定持久化证据修复整行缺失
+GET    /api/v2/ai/cost-prices?work_id=&provider_name=&model_name=
+PUT    /api/v2/ai/cost-prices
 
 # 分析看板
 GET    /api/v2/ai/analysis-dashboard/overview?work_id=
@@ -1046,6 +1197,9 @@ GET    /api/v2/ai/analysis-dashboard/ai-usage?work_id=
 
 - 继承 P0-11 的 Request/Response/Error 通用格式（`request_id`/`trace_id`/`status`/`data`/`error`/`polling_hint`）。
 - API 层不承载业务逻辑，不直连 Provider/Repository/ModelRouter。
+- P2-09 预算/价格写必须校验真实 user_action、user_id、幂等键、请求指纹和确认字段，并在写前完成最小化审计；旧 AutoQueue 配置入口修改预算字段时同样适用。
+- `enable_cost_dashboard` 只控制 Cost Dashboard 查询；Cost Budget/Prices 始终可从 SettingsCenter 使用，既有预算始终执行。
+- 只有调用前拒绝新 attempt 时对外返回 `409 P2_BUDGET_EXCEEDED`；调用后超限以 success/带 result_ref 的 partial_success 或后台 200 状态表达，裸 `budget_exceeded` 只用于内部 stop/status reason。
 - `accept`/`apply`/`reject` 动作必须走 `caller_type=user_action`。
 
 ---
@@ -1066,6 +1220,7 @@ GET    /api/v2/ai/analysis-dashboard/ai-usage?work_id=
 | 选区改写浮动工具栏 | P2-S2 | PureTextEditor 选中文本弹出 |
 | 选区改写 Diff 弹窗 | P2-S2 | 模态弹窗 |
 | 成本看板页面 | P2-S3 | 独立路由 `/works/{id}/cost` |
+| AI 费用与预算设置 | P2-S3 | 复用 SettingsCenter `/settings?section=ai-cost`；不受看板 Flag 影响 |
 | 分析看板页面 | P2-S3 | 独立路由 `/works/{id}/analysis` |
 
 ### 8.2 编辑器改动范围（@ 引用）
@@ -1087,6 +1242,7 @@ GET    /api/v2/ai/analysis-dashboard/ai-usage?work_id=
 
 - [ ] 多章续写按章独立生成候选稿，每章独立走 HumanReviewGate。
 - [ ] 自动续写队列具备 9 重停止条件，停止后保留已生成候选稿和停止原因。
+- [ ] 自动续写生命周期 mutation 原子幂等；STOPPED 可由用户恢复或放弃，状态查询不伪装错误。
 - [ ] 自动续写队列不自动合并正式正文。apply 仍必须 user_action。
 - [ ] Style DNA 可提取并进入 Context Pack 可选层。
 - [ ] Citation Link 可在候选稿中标记来源，不存在来源时标记 unknown_source。
@@ -1096,6 +1252,8 @@ GET    /api/v2/ai/analysis-dashboard/ai-usage?work_id=
 - [ ] 大纲辅助输出不自动覆盖正式大纲，涉及正式大纲时触发 Conflict Guard。
 - [ ] 选区改写结果不自动替换正文，用户确认后才进入草稿区。
 - [ ] 成本看板可展示作品/月度/任务级成本，预算超限可触发自动队列停止。
+- [ ] 所有生产 ModelRouter 调用经 GuardedLLMExecutor；P0 Core 只依赖通用 Guard Port，Scope、服务端投影、不可变 LLMCallLog 无旁路。
+- [ ] 官方/手动价格可解析并捕获未来快照；历史 unknown 不回算；预算/价格设置原子、幂等、可审计。
 - [ ] 分析看板六大维度数据可查。
 - [ ] 所有 P2 新增 API 不承载业务逻辑，不走私 Provider/Repository/ModelRouter。
 - [ ] 所有 P2 子系统写入 AgentTrace 审计事件。
@@ -1106,14 +1264,14 @@ GET    /api/v2/ai/analysis-dashboard/ai-usage?work_id=
 | 子系统 | 正常场景 | 边界场景 | 异常场景 | 安全红线 |
 |---|---|---|---|---|
 | 多章续写 | N=3 正常生成 | N=1 降级为单章 | 某章审稿 blocking→暂停 | 不批量合并正文 |
-| 自动续写队列 | 自动 5 章完成后逐章确认 | 用户手动停止→保留候选稿 | 成本超限→停止+记录 | 不自动 apply |
+| 自动续写队列 | 统一逐章确认 | 用户手动停止/放弃→保留候选稿与事实 | 在途 attempt 后超限→保留有效结果并停止后续模型调用 | 不自动推进、不自动 apply；生命周期幂等 |
 | Style DNA | 上传→提取→进入 ContextPack | 文本<500字→低置信度 | 提取失败→跳过层 | 不修改正文 |
 | Citation Link | 生成候选稿+引用来��� | 来源不存在→unknown_source | 校验超时→跳过校验 | 不污染正文 |
 | @ 标签引用 | @→联想→选择→高亮→保存 | 同名实体→用户选择 | 实体被删→标记不活跃 | AI 建议不自动建立 |
 | Opening Agent | 导入→分析→生成→审稿 | 无参考文→通用规则 | 模仿风险 high→警告 | 不自动创建正式章节 |
-| 大纲辅助 | 润色→建议→采纳 | 与手写大纲冲突→ConflictGuard | 生成失败→错误提示 | 不自动覆盖 |
+| 大纲辅助 | 白话模式→建议→先留着→放进大纲 | 版本/阻断冲突→保存记录并 409，刷新后重新生成 | 生成失败→failed + 可重试 | 不自动覆盖；apply 四重门控 |
 | 选区改写 | 选中→扩写→diff→应用 | 选区为空→不显示入口 | 生成失败→保留原文 | 不自动替换 |
-| 成本看板 | 展示三级成本 | 数据不足→显示提示 | 单价缺失→用户配置 | 不暴露 Key |
+| AI 用量与预算 | 展示已知费用、当前剩余预算和预算状态 | 历史缺价/混币/retention→明确不完整 | 预算事实无法核算→暂停，不伪装超限 | 不暴露 Key/Prompt/正文；设置写只允许 user_action；模型调用无旁路 |
 | 分析看板 | 六大维度可查 | 大作品→异步计算 | 计算超时→stale | 不读取候选稿 |
 
 ---
@@ -1185,14 +1343,14 @@ GET    /api/v2/ai/analysis-dashboard/ai-usage?work_id=
 
 | # | 决策项 | 决策结果 |
 |---|---|---|
-| D1 | 自动队列章间交互模式 | 默认安全模式（逐章暂停确认），连续候选模式为高级开关。详见 §4.2 |
+| D1 | 自动队列章间交互模式 | 方案 A：只保留逐章暂停确认；不存在连续自动推进开关。详见 §4.2 |
 | D2 | 自动队列 StoryState 边界 | candidate/runtime state 仅供章间续写用，不静默写入正式 StoryState baseline。详见 §4.2 |
 | D3 | Opening Agent Tool 命名 | 禁止 `call_opening_model` 等表达"调用模型"的 Tool 名。Tool 名必须表达业务用例。详见 §4.6 |
 | D4 | StyleProfile 归属 | StyleProfile 是独立 P2 子域对象，被 StoryMemory/ContextPack 引用，不混入 StoryMemory 主体。详见 §4.3 |
 | D5 | Citation Link 验证机制 | "模型建议 + 系统校验"双阶段，不完全信任模型自报。详见 §4.4 |
 | D6 | @ 引用正文存储方案 | **默认方案 A（位置映射）**：正文纯文本，mentions 独立存储。P2-S2 开发前须最终确认。详见 §4.5 |
 | D7 | SelectionRewrite apply 路径 | 用户确认→草稿区→Local-First，不能直接写正式章节。详见 §4.8 |
-| D8 | 成本数据事实源 | LLMCallLog 为唯一权威源，不另建 cost_records 事实表。详见 §4.9 |
+| D8 | 成本数据与预算边界 | SQLite LLMCallLog insert-only 权威事实；所有生产调用经 GuardedLLMExecutor/LLMCallScope；未知不当 0、币种不混加、历史不回算；auto_queue 预算复用 AutoQueueConfig；预算/价格写必须 user_action + 原子幂等审计；看板 Flag 不关闭保护。详见 §4.9 |
 | D9 | AI 使用分析命名 | 不使用"AI 检测器"等暗示精确判断能力的命名，改为"AI 使用分析"。详见 §4.10 |
 | D10 | P2-S1 实施顺序 | 多章续写 → Citation Link → Style DNA → 自动续写队列。详见 §2.4 |
 | D11 | Opening Agent | 作为独立 AgentType 注册到 P1 Runtime，以独立权限行管控。详见 §4.6 |
@@ -1203,10 +1361,9 @@ GET    /api/v2/ai/analysis-dashboard/ai-usage?work_id=
 2. **Citation Link 引用粒度**：片段级（逐句）还是章节级？建议 P2 先做章节级，片段级留 P3。
 3. **Opening Agent 参考文本摘要（已由 P2-06 v2.0 裁决）**：持久化结构化摘要、范围、字数与不可逆 hash；完整原文只进入加密 `TemporarySensitiveTextStore`，分析完成立即删除。
 4. **选区改写 diff**：是否需要逐句/逐词对比？建议 P2 先做全文 diff 摘要，精细 diff 留 P3。
-5. **成本看板单价配置**：全局默认+作品可覆盖。
-6. **分析看板计算策略**：建议 ≤30 万字实时，>30 万字每日批量。
-7. **P2 是否引入正文 token streaming**：建议 P2 保持不启用。
-8. **成本看板/分析看板路由**：建议独立路由页面。
+5. **分析看板计算策略**：建议 ≤30 万字实时，>30 万字每日批量。
+6. **P2 是否引入正文 token streaming**：建议 P2 保持不启用。
+7. **分析看板路由**：建议独立路由页面；AI 用量与预算页已由 P2-09 v1.3 冻结为独立路由。
 
 ---
 
@@ -1215,7 +1372,7 @@ GET    /api/v2/ai/analysis-dashboard/ai-usage?work_id=
 | 需求编号 | 需求名称 | P2 子系统 |
 |---|---|---|
 | R-AI-DRAFT-04 | 多章续写 | 4.1 |
-| R-AI-DRAFT-05 | 受控自动连续续写队列 | 4.2 |
+| R-AI-DRAFT-05 | 受控自动逐章续写队列 | 4.2 |
 | R-AI-ENH-01 | Style DNA | 4.3 |
 | R-AI-CITE-01 | Citation Link | 4.4 |
 | R-AI-CITE-02 | @ 标签引用系统 | 4.5 |
@@ -1235,6 +1392,8 @@ GET    /api/v2/ai/analysis-dashboard/ai-usage?work_id=
 - [ ] 大纲辅助 AI 建议不自动覆盖正式大纲
 - [ ] 选区改写结果不自动替换正文
 - [ ] 参考文本完整内容不持久化
-- [ ] 成本看板不暴露 API Key
+- [ ] AI 用量与预算不暴露 API Key/Prompt/ContextPack/正文/候选稿；unknown 不冒充 0，币种不混加
+- [ ] 预算/价格写只有真实 user_action，可原子幂等审计；auto_queue 不出现第二预算事实源；调整设置不自动恢复任务
+- [ ] 看板 Flag 关闭时预算仍执行且 Settings 可调整；当前月/活跃范围不被日志清理
 - [ ] 所有 P2 子系统写入 AgentTrace
 - [ ] P0/P1 全部已有测试仍通过

@@ -136,8 +136,8 @@ const attachInterceptors = (client) => {
       if (requestId) {
         console.error('请求失败 request_id:', requestId)
       }
+      error.userMessage = message
       if (error?.response?.status === 409) {
-        error.userMessage = message
         return Promise.reject(error)
       }
       ElMessage.error(message)
@@ -329,6 +329,10 @@ export const aiApi = {
   acceptAISuggestion: (suggestionId, payload) => api.post(`/v2/ai/suggestions/${encodeURIComponent(suggestionId)}/accept`, payload),
   dismissAISuggestion: (suggestionId, payload) => api.post(`/v2/ai/suggestions/${encodeURIComponent(suggestionId)}/dismiss`, payload),
   convertAISuggestion: (suggestionId, payload) => api.post(`/v2/ai/suggestions/${encodeURIComponent(suggestionId)}/convert`, payload),
+  polishOutline: (payload) => api.post('/v2/ai/outline-assist/polish', payload),
+  expandOutline: (payload) => api.post('/v2/ai/outline-assist/expand', payload),
+  generateChapterOutline: (payload) => api.post('/v2/ai/outline-assist/chapter-outline', payload),
+  suggestWritingTask: (payload) => api.post('/v2/ai/outline-assist/writing-task', payload),
   applyOutlineAssistSuggestion: (suggestionId, payload) => api.post(
     `/v2/ai/outline-assist/suggestions/${encodeURIComponent(suggestionId)}/apply`,
     payload

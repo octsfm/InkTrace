@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from threading import RLock
 from uuid import uuid4
 
 from application.services.v1.content_tree_schema import validate_content_tree_json
@@ -15,16 +16,31 @@ from domain.repositories.workbench import (
     WorkOutlineRepository,
     WorkRepository,
 )
+from domain.value_objects.outline_snapshot import outline_content_hash
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_OUTLINE_WRITE_LOCK = RLock()
+
+
 def _assert_version(current_version: int, expected_version: int | None, force_override: bool) -> None:
     if force_override:
         return
     if expected_version is not None and int(expected_version) != int(current_version):
+        raise ValueError("asset_version_conflict")
+
+
+def _assert_content_hash(
+    current: WorkOutline | ChapterOutline,
+    expected_content_hash: str | None,
+    force_override: bool,
+) -> None:
+    if force_override or expected_content_hash is None:
+        return
+    if outline_content_hash(current.content_text, current.content_tree_json) != str(expected_content_hash):
         raise ValueError("asset_version_conflict")
 
 
@@ -73,10 +89,40 @@ class WritingAssetService:
         content_text: str,
         content_tree_json=None,
         expected_version: int | None = None,
+        expected_content_hash: str | None = None,
+        force_override: bool = False,
+    ) -> WorkOutline:
+        observed_persisted = self.work_outline_repo.find_by_work(str(work_id)) is not None
+        with _OUTLINE_WRITE_LOCK:
+            if (
+                expected_version is not None
+                and not force_override
+                and not observed_persisted
+                and self.work_outline_repo.find_by_work(str(work_id)) is not None
+            ):
+                raise ValueError("asset_version_conflict")
+            return self._save_work_outline_locked(
+                work_id,
+                content_text=content_text,
+                content_tree_json=content_tree_json,
+                expected_version=expected_version,
+                expected_content_hash=expected_content_hash,
+                force_override=force_override,
+            )
+
+    def _save_work_outline_locked(
+        self,
+        work_id: str,
+        *,
+        content_text: str,
+        content_tree_json=None,
+        expected_version: int | None = None,
+        expected_content_hash: str | None = None,
         force_override: bool = False,
     ) -> WorkOutline:
         current = self.get_work_outline(work_id)
         _assert_version(current.version, expected_version, force_override)
+        _assert_content_hash(current, expected_content_hash, force_override)
         normalized_tree = validate_content_tree_json(content_tree_json)
         now = _now()
         next_outline = WorkOutline(
@@ -116,10 +162,40 @@ class WritingAssetService:
         content_text: str,
         content_tree_json=None,
         expected_version: int | None = None,
+        expected_content_hash: str | None = None,
+        force_override: bool = False,
+    ) -> ChapterOutline:
+        observed_persisted = self.chapter_outline_repo.find_by_chapter(str(chapter_id)) is not None
+        with _OUTLINE_WRITE_LOCK:
+            if (
+                expected_version is not None
+                and not force_override
+                and not observed_persisted
+                and self.chapter_outline_repo.find_by_chapter(str(chapter_id)) is not None
+            ):
+                raise ValueError("asset_version_conflict")
+            return self._save_chapter_outline_locked(
+                chapter_id,
+                content_text=content_text,
+                content_tree_json=content_tree_json,
+                expected_version=expected_version,
+                expected_content_hash=expected_content_hash,
+                force_override=force_override,
+            )
+
+    def _save_chapter_outline_locked(
+        self,
+        chapter_id: str,
+        *,
+        content_text: str,
+        content_tree_json=None,
+        expected_version: int | None = None,
+        expected_content_hash: str | None = None,
         force_override: bool = False,
     ) -> ChapterOutline:
         current = self.get_chapter_outline(chapter_id)
         _assert_version(current.version, expected_version, force_override)
+        _assert_content_hash(current, expected_content_hash, force_override)
         normalized_tree = validate_content_tree_json(content_tree_json)
         now = _now()
         next_outline = ChapterOutline(
@@ -133,6 +209,20 @@ class WritingAssetService:
         )
         self.chapter_outline_repo.save(next_outline)
         return next_outline
+
+    def is_outline_persisted(self, *, target_kind: str, target_id: str) -> bool:
+        if target_kind == "work_outline":
+            return self.work_outline_repo.find_by_work(str(target_id)) is not None
+        if target_kind == "chapter_outline":
+            return self.chapter_outline_repo.find_by_chapter(str(target_id)) is not None
+        raise ValueError("invalid_input")
+
+    def chapter_belongs_to_work(self, *, chapter_id: str, work_id: str) -> bool:
+        chapter = self.chapter_repo.find_by_id(str(chapter_id))
+        if chapter is None:
+            return False
+        actual_work_id = getattr(getattr(chapter, "work_id", None), "value", getattr(chapter, "work_id", ""))
+        return str(actual_work_id) == str(work_id)
 
     def _require_timeline_repo(self) -> TimelineEventRepository:
         if self.timeline_event_repo is None:

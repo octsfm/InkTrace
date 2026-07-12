@@ -13,10 +13,12 @@ class LLMCallLogger:
         repository: LLMCallLogRepository,
         trace_service=None,
         pricing_resolver: Callable[[str, str, str], dict[str, Any] | None] | None = None,
+        strict_trace: bool = False,
     ) -> None:
         self._repository = repository
         self._trace_service = trace_service
         self._pricing_resolver = pricing_resolver
+        self._strict_trace = strict_trace
 
     def record(
         self,
@@ -89,7 +91,7 @@ class LLMCallLogger:
                     content_hash=content_hash,
                 )
             except ValueError as exc:
-                if str(exc) != "trace_not_found":
+                if str(exc) != "trace_not_found" or self._strict_trace:
                     raise
 
     def _resolve_price_snapshot(self, *, provider_name: str, model_name: str, model_role: str) -> dict[str, Any]:

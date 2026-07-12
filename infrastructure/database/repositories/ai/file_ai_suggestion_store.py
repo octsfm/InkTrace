@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from threading import RLock
 
 from domain.entities.ai.models import AISuggestion, AISuggestionBatch
 from domain.repositories.ai.ai_suggestion_repository import AISuggestionRepository
@@ -11,16 +12,19 @@ from infrastructure.database.session import get_database_path
 class FileAISuggestionStore(AISuggestionRepository):
     def __init__(self, file_path: Path | str | None = None) -> None:
         self._file_path = Path(file_path) if file_path else get_database_path().with_name("ai_suggestions.json")
+        self._lock = RLock()
 
     def save(self, suggestion: AISuggestion) -> AISuggestion:
-        payload = self._load_payload()
-        payload["suggestions"][suggestion.suggestion_id] = suggestion.model_dump(mode="json", exclude={"is_expired"})
-        self._save_payload(payload)
+        with self._lock:
+            payload = self._load_payload()
+            payload["suggestions"][suggestion.suggestion_id] = suggestion.model_dump(mode="json", exclude={"is_expired"})
+            self._save_payload(payload)
         return suggestion
 
     def get(self, suggestion_id: str) -> AISuggestion:
-        payload = self._load_payload()
-        raw = payload["suggestions"].get(suggestion_id)
+        with self._lock:
+            payload = self._load_payload()
+            raw = payload["suggestions"].get(suggestion_id)
         if raw is None:
             raise ValueError("ai_suggestion_not_found")
         return AISuggestion.model_validate(raw)
@@ -32,7 +36,8 @@ class FileAISuggestionStore(AISuggestionRepository):
         chapter_id: str = "",
         target_ref_id: str = "",
     ) -> list[AISuggestion]:
-        payload = self._load_payload()
+        with self._lock:
+            payload = self._load_payload()
         items = [AISuggestion.model_validate(item) for item in payload["suggestions"].values() if item.get("work_id") == work_id]
         if chapter_id:
             items = [item for item in items if item.chapter_id == chapter_id]
@@ -41,14 +46,16 @@ class FileAISuggestionStore(AISuggestionRepository):
         return sorted(items, key=lambda item: item.created_at, reverse=True)
 
     def save_batch(self, batch: AISuggestionBatch) -> AISuggestionBatch:
-        payload = self._load_payload()
-        payload["batches"][batch.batch_id] = batch.model_dump(mode="json")
-        self._save_payload(payload)
+        with self._lock:
+            payload = self._load_payload()
+            payload["batches"][batch.batch_id] = batch.model_dump(mode="json")
+            self._save_payload(payload)
         return batch
 
     def get_batch(self, batch_id: str) -> AISuggestionBatch:
-        payload = self._load_payload()
-        raw = payload["batches"].get(batch_id)
+        with self._lock:
+            payload = self._load_payload()
+            raw = payload["batches"].get(batch_id)
         if raw is None:
             raise ValueError("ai_suggestion_batch_not_found")
         return AISuggestionBatch.model_validate(raw)

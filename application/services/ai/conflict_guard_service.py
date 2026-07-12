@@ -50,6 +50,117 @@ class ConflictGuardService:
         self._trace_service = trace_service
         self._allow_override_blocking = allow_override_blocking
 
+    def record_outline_apply_check(
+        self,
+        *,
+        work_id: str,
+        chapter_id: str,
+        suggestion_id: str,
+        target_kind: str,
+        target_id: str,
+        target_revision: int,
+        blocking: bool,
+        reason_code: str = "",
+        request_id: str = "",
+        trace_id: str = "",
+    ) -> ConflictGuardRecord:
+        """Create a content-free protection record for a formal outline apply."""
+        now = self._now()
+        record = ConflictGuardRecord(
+            record_id=f"cgr_{uuid.uuid4().hex[:10]}",
+            work_id=work_id,
+            chapter_id=chapter_id,
+            candidate_draft_id="",
+            candidate_version_id="",
+            source_type="outline_suggestion_apply",
+            source_ref_id=suggestion_id,
+            target_type=target_kind,
+            target_ref_id=target_id,
+            conflict_type=ConflictType.APPLY_VERSION_CONFLICT if blocking else ConflictType.UNKNOWN_CONFLICT,
+            severity=ConflictSeverity.BLOCKING if blocking else ConflictSeverity.INFO,
+            status=ConflictRecordStatus.DETECTED,
+            title="大纲已变化，已停止写入" if blocking else "大纲写入保护检查",
+            summary="当前大纲与建议生成时的版本不一致。" if blocking else "作者已查看前后对比，等待安全写入。",
+            evidence_refs=[
+                f"suggestion_id:{suggestion_id}",
+                f"target_revision:{int(target_revision)}",
+                *( [f"error_code:{reason_code}"] if reason_code else [] ),
+            ],
+            suggested_action_refs=["refresh_and_regenerate"] if blocking else ["apply_confirmed_outline"],
+            resolution_status="unresolved",
+            warning_codes=[reason_code] if reason_code else [],
+            created_by="conflict_guard",
+            created_at=now,
+            updated_at=now,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+        return self._conflict_guard_repository.save_record(record)
+
+    def acknowledge_outline_apply(
+        self,
+        record_id: str,
+        *,
+        user_id: str,
+        user_action: bool,
+        request_id: str = "",
+        trace_id: str = "",
+    ) -> ConflictGuardRecord:
+        return self.decide_record(
+            record_id,
+            decision=ConflictDecisionType.ACKNOWLEDGED.value,
+            user_id=user_id,
+            user_action=user_action,
+            request_id=request_id,
+            trace_id=trace_id,
+            note="outline_apply_confirmed",
+        )
+
+    def resolve_outline_apply(
+        self,
+        record_id: str,
+        *,
+        user_id: str,
+        user_action: bool,
+        request_id: str = "",
+        trace_id: str = "",
+    ) -> ConflictGuardRecord:
+        return self.decide_record(
+            record_id,
+            decision=ConflictDecisionType.RESOLVED.value,
+            user_id=user_id,
+            user_action=user_action,
+            request_id=request_id,
+            trace_id=trace_id,
+            note="outline_apply_saved",
+        )
+
+    def list_unresolved_outline_blocking(
+        self,
+        *,
+        work_id: str,
+        target_kind: str,
+        target_id: str,
+    ) -> list[ConflictGuardRecord]:
+        unresolved_statuses = {
+            ConflictRecordStatus.PENDING,
+            ConflictRecordStatus.DETECTED,
+            ConflictRecordStatus.SHOWN,
+            ConflictRecordStatus.ACKNOWLEDGED,
+            ConflictRecordStatus.FAILED,
+        }
+        return [
+            record
+            for record in self._conflict_guard_repository.list_records(work_id=work_id)
+            if (
+            record.target_type == target_kind
+            and record.target_ref_id == target_id
+            and record.severity == ConflictSeverity.BLOCKING
+            and record.conflict_type != ConflictType.APPLY_VERSION_CONFLICT
+            and record.status in unresolved_statuses
+            )
+        ]
+
     def precheck_apply_conflicts(
         self,
         *,

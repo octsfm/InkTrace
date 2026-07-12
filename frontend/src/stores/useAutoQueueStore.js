@@ -15,7 +15,6 @@ const isRunSnapshot = (value) => Boolean(
   (
     'run_id' in value ||
     'status' in value ||
-    'queue_mode' in value ||
     'generated_count' in value
   )
 )
@@ -73,15 +72,15 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
       return
     }
     if (stopReason === 'budget_exceeded') {
-      noteMessage.value = '预算已超出,自动续写已暂停。'
+      noteMessage.value = '已到达你设置的用量上限，这次续写已停下。'
       return
     }
     if (stopReason === 'blocking_review_consecutive') {
-      noteMessage.value = '连续出现严重冲突,自动续写已停止。'
+      noteMessage.value = '连续发现需要你处理的矛盾，这次续写已停下。'
       return
     }
     if (stopReason === 'user_manual_stop' || status === 'stopped') {
-      noteMessage.value = '自动续写已停止,已生成的候选稿会保留。'
+      noteMessage.value = '这次续写已停下，已经写好的新稿会保留。'
       return
     }
     noteMessage.value = ''
@@ -156,7 +155,7 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
         await statusPolling.start(activeRunId)
       }
     } catch (error) {
-      errorMessage.value = String(error?.userMessage || error?.message || '自动续写状态加载失败')
+      errorMessage.value = String(error?.userMessage || error?.message || '暂时没能看到这次续写的状态')
     } finally {
       loading.value = false
     }
@@ -181,21 +180,22 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
       config.value = response?.config || null
       return config.value
     } catch (error) {
-      errorMessage.value = String(error?.userMessage || error?.message || '自动续写配置保存失败')
+      errorMessage.value = String(error?.userMessage || error?.message || '保护设置暂时没能保存')
       throw error
     } finally {
       savingConfig.value = false
     }
   }
 
-  const startQueue = async ({ startChapterId } = {}) => {
+  const startQueue = async ({ startChapterId, userInstruction = '' } = {}) => {
     if (!featureEnabled.value || !workId.value) return null
     actionLoading.value = true
     errorMessage.value = ''
     try {
       const response = unwrapData(await aiApi.startAutoQueue({
         work_id: workId.value,
-        start_chapter_id: String(startChapterId || '')
+        start_chapter_id: String(startChapterId || ''),
+        user_instruction: String(userInstruction || '').trim()
       }))
       const runId = String(response?.run_id || '')
       if (!runId) {
@@ -204,7 +204,6 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
       const provisionalRun = {
         run_id: runId,
         status: String(response?.status || 'pending'),
-        queue_mode: String(response?.queue_mode || config.value?.queue_mode || 'safe'),
         generated_count: 0
       }
       syncCurrentRun(provisionalRun)
@@ -217,7 +216,7 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
       await loadHistory(workId.value, { preferredRun: startedRun })
       return currentRun.value
     } catch (error) {
-      errorMessage.value = String(error?.userMessage || error?.message || '自动续写启动失败')
+      errorMessage.value = String(error?.userMessage || error?.message || '这次没能开始写，请稍后再试')
       throw error
     } finally {
       actionLoading.value = false
@@ -245,7 +244,7 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
       await loadHistory(workId.value, { preferredRun: currentRun.value })
       return currentRun.value
     } catch (error) {
-      errorMessage.value = String(error?.userMessage || error?.message || '自动续写操作失败')
+      errorMessage.value = String(error?.userMessage || error?.message || '这次操作没有完成，请稍后再试')
       throw error
     } finally {
       actionLoading.value = false
@@ -271,7 +270,7 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
       }
       return currentRun.value
     } catch (error) {
-      errorMessage.value = String(error?.userMessage || error?.message || '自动续写详情加载失败')
+      errorMessage.value = String(error?.userMessage || error?.message || '暂时没能看到以前写过的新稿')
       throw error
     } finally {
       loading.value = false
@@ -314,4 +313,3 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
     selectRun
   }
 })
-

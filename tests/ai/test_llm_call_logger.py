@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
+import pytest
+
 from application.services.ai.llm_call_logger import LLMCallLogger
 from domain.entities.ai.models import LLMCallLog, LLMCallStatus, LLMUsage
 from infrastructure.database.repositories.ai.file_llm_call_log_store import FileLLMCallLogStore
@@ -88,6 +90,34 @@ def test_llm_call_logger_ignores_missing_trace_when_persisting_observability_vie
 
     assert payload["request_id"] == "req-3"
     assert payload["trace_id"] == "trace-missing"
+
+
+def test_llm_call_logger_strict_trace_propagates_missing_trace(tmp_path) -> None:
+    store = FileLLMCallLogStore(tmp_path / "llm_calls.jsonl")
+
+    class _TraceService:
+        def record_llm_call(self, *args, **kwargs) -> None:
+            raise ValueError("trace_not_found")
+
+    logger = LLMCallLogger(repository=store, trace_service=_TraceService(), strict_trace=True)
+
+    with pytest.raises(ValueError, match="trace_not_found"):
+        logger.record(
+            prompt_key="outline_polish",
+            prompt_version="v1",
+            model_role="planner",
+            provider_name="fake",
+            model_name="fake-chat",
+            request_id="req-strict-trace",
+            trace_id="trace-missing",
+            status=LLMCallStatus.FAILED,
+            started_at=datetime(2026, 7, 11, tzinfo=UTC),
+            finished_at=datetime(2026, 7, 11, tzinfo=UTC),
+            error_code="provider_timeout",
+        )
+
+    payload = json.loads((tmp_path / "llm_calls.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert payload["request_id"] == "req-strict-trace"
 
 
 def test_llm_call_logger_records_cost_snapshot_and_scope_fields(tmp_path) -> None:

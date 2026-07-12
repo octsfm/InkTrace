@@ -626,6 +626,8 @@ class LLMCallTraceView(AIBaseModel):
     output_schema_key: str = ""
     token_count: int = 0
     elapsed_ms: int = 0
+    status: str = ""
+    error_code: str = ""
     content_hash: str = ""
 
 
@@ -2437,11 +2439,6 @@ class StyleDNAExtractionResult(AIBaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-class AutoQueueMode(StrEnum):
-    SAFE = "safe"
-    CONTINUOUS = "continuous"
-
-
 class AutoQueueStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
@@ -2477,7 +2474,6 @@ class StopSeverity(StrEnum):
 class AutoQueueConfig(AIBaseModel):
     config_id: str
     work_id: str
-    queue_mode: AutoQueueMode = AutoQueueMode.SAFE
     target_chapters: int = 0
     target_word_count: int = 0
     stop_at_sequence_end: bool = True
@@ -2517,7 +2513,6 @@ class AutoQueueRun(AIBaseModel):
     work_id: str
     multi_chapter_session_id: str
     status: AutoQueueStatus = AutoQueueStatus.PENDING
-    queue_mode: AutoQueueMode = AutoQueueMode.SAFE
     generated_count: int = 0
     total_word_count: int = 0
     consumed_tokens: int = 0
@@ -2716,6 +2711,10 @@ class AISuggestionType(StrEnum):
     DIRECTION_PLAN_SUGGESTION = "direction_plan_suggestion"
     CONTINUITY_SUGGESTION = "continuity_suggestion"
     RISK_WARNING = "risk_warning"
+    OUTLINE_POLISH = "outline_polish"
+    OUTLINE_EXPAND = "outline_expand"
+    CHAPTER_OUTLINE_DETAIL = "chapter_outline_detail"
+    WRITING_TASK_SUGGESTION = "writing_task_suggestion"
 
 
 class AISuggestionSeverity(StrEnum):
@@ -2756,6 +2755,8 @@ class AISuggestionActionType(StrEnum):
     ADJUST_DIRECTION_OR_PLAN = "adjust_direction_or_plan"
     MANUAL_EDIT_HINT = "manual_edit_hint"
     DISMISS_ONLY = "dismiss_only"
+    APPLY_OUTLINE = "apply_outline"
+    CREATE_WRITING_TASK = "create_writing_task"
 
 
 class AISuggestionSource(AIBaseModel):
@@ -2840,6 +2841,7 @@ class AISuggestion(AIBaseModel):
     )
     decision_log: AISuggestionDecision | None = None
     batch_id: str = ""
+    payload: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @computed_field

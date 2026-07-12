@@ -1,8 +1,13 @@
 # InkTrace V2.0 概要设计说明书
 
-版本：v2.0-architecture-draft  
-依据文档：`docs/01_requirements/InkTrace-V2.0-需求规格说明书.md`  
-输出时间：2026-05-08  
+版本：v2.1-overview-final
+
+依据文档：`docs/01_requirements/InkTrace-V2.0-需求规格说明书.md`
+
+输出时间：2026-07-12
+
+状态：冻结生效（P2 自动续写统一逐章确认）
+
 设计范围：V2.0 长篇小说 AI 写作智能体工作台概要设计
 
 ***
@@ -50,7 +55,7 @@ V2.0 只在 Workbench 域之上增加 AI 能力。V2.0 不改变 V1.1 正式正�
 |---|---|---|
 | P0 | 最小 AI 写作闭环 | AI Settings、Provider、Model Router、AI Job、初始化、P0 最小 Story Memory、Context Pack、Writing Task、单章 Candidate Draft、基础 AI Review |
 | P1 | 核心智能体工作流 | Agent Workflow、五类 Agent、四层剧情轨道、A/B/C 方向、章节计划、多轮候选稿、AI 建议区、Conflict Guard、Memory Revision、Agent Trace |
-| P2 | 增强能力 | 多章续写、自动连续队列、Style DNA、Citation Link、@ 标签、Opening Agent、大纲辅助、选区改写、成本看板、分析看板 |
+| P2 | 增强能力 | 多章续写、受控自动逐章续写队列、Style DNA、Citation Link、@ 标签、Opening Agent、大纲辅助、选区改写、成本看板、分析看板 |
 
 ***
 
@@ -1593,7 +1598,7 @@ P1 需要进入详细设计的模块：
 设计重点：
 
 - 多章续写。
-- 受控自动连续续写队列。
+- 受控自动逐章续写队列：每章候选稿就绪后进入 `WAITING_USER_DECISION`，仅真实用户 `confirm-continue` 可推进下一章。
 - Style DNA。
 - Citation Link。
 - @ 标签引用。

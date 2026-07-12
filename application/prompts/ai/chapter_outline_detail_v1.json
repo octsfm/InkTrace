@@ -1,0 +1,8 @@
+{
+  "prompt_key": "chapter_outline_detail_v1",
+  "prompt_version": "v1",
+  "model_role": "planner",
+  "output_schema_key": "chapter_outline_detail_schema",
+  "template_text": "你是小说章节细纲助手。依据输入整理场景节拍、冲突和结尾钩子，不得生成正文。输入：{input_json}\n只返回契约 JSON。",
+  "enabled": true
+}

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-from domain.entities.ai.models import AutoQueueConfig, AutoQueueMode, AutoQueueRun, AutoQueueStatus, AutoQueueStopRecord, StopCondition, StopSeverity
+from domain.entities.ai.models import AutoQueueConfig, AutoQueueRun, AutoQueueStatus, AutoQueueStopRecord, StopCondition, StopSeverity
 from presentation.api import dependencies
 from presentation.api.app import app
 from presentation.api.routers.v2.ai import auto_queues
@@ -32,13 +32,11 @@ def _build_config(
     *,
     work_id: str = "work_001",
     config_id: str = "aqc_001",
-    queue_mode: AutoQueueMode = AutoQueueMode.SAFE,
 ) -> AutoQueueConfig:
     now = _now()
     return AutoQueueConfig(
         config_id=config_id,
         work_id=work_id,
-        queue_mode=queue_mode,
         target_chapters=3,
         target_word_count=0,
         stop_at_sequence_end=True,
@@ -60,7 +58,6 @@ def _build_run(
     config_id: str = "aqc_001",
     work_id: str = "work_001",
     status: AutoQueueStatus = AutoQueueStatus.RUNNING,
-    queue_mode: AutoQueueMode = AutoQueueMode.SAFE,
     stop_record: AutoQueueStopRecord | None = None,
 ) -> AutoQueueRun:
     now = _now()
@@ -71,7 +68,6 @@ def _build_run(
         work_id=work_id,
         multi_chapter_session_id="mcs_001",
         status=status,
-        queue_mode=queue_mode,
         generated_count=1,
         total_word_count=3200,
         consumed_tokens=60000,
@@ -99,7 +95,7 @@ class _FakeAutoQueueService:
         self.runs: dict[str, AutoQueueRun] = {}
         self.status_sequences: dict[str, list[AutoQueueRun]] = {}
         self.recover_results: dict[str, AutoQueueRun | None] = {}
-        self.start_calls: list[tuple[str, str, str]] = []
+        self.start_calls: list[tuple[str, str, str, str]] = []
         self.confirm_calls: list[str] = []
         self.status_calls: list[str] = []
         self.background_step_calls: list[str] = []
@@ -117,8 +113,14 @@ class _FakeAutoQueueService:
     def get_config(self, work_id: str) -> AutoQueueConfig | None:
         return self.configs.get(work_id)
 
-    def start(self, config_id: str, work_id: str, start_chapter_id: str) -> AutoQueueRun:
-        self.start_calls.append((config_id, work_id, start_chapter_id))
+    def start(
+        self,
+        config_id: str,
+        work_id: str,
+        start_chapter_id: str,
+        user_instruction: str = "",
+    ) -> AutoQueueRun:
+        self.start_calls.append((config_id, work_id, start_chapter_id, user_instruction))
         run = _build_run(run_id=f"aqr_{len(self.runs) + 1:03d}", config_id=config_id, work_id=work_id)
         self.runs[run.run_id] = run
         return run
@@ -154,7 +156,7 @@ class _FakeAutoQueueService:
         self.runs[run_id] = run
         return run
 
-    def user_confirm_continue(self, run_id: str) -> AutoQueueRun:
+    def user_confirm_continue(self, run_id: str, **_context) -> AutoQueueRun:
         self.confirm_calls.append(run_id)
         run = self.get_status(run_id).model_copy(update={"status": AutoQueueStatus.RUNNING, "updated_at": _now()})
         self.runs[run_id] = run
@@ -265,7 +267,6 @@ def test_auto_queue_config_api_upserts_and_reads_config(monkeypatch) -> None:
         "/api/v2/ai/auto-queues/config",
         json={
             "work_id": "work_001",
-            "queue_mode": "continuous",
             "target_chapters": 5,
             "budget_limit_tokens": 500000,
         },
@@ -273,7 +274,6 @@ def test_auto_queue_config_api_upserts_and_reads_config(monkeypatch) -> None:
     get_response = client.get("/api/v2/ai/auto-queues/config/work_001")
 
     assert put_response.status_code == 200
-    assert put_response.json()["data"]["config"]["queue_mode"] == "continuous"
     assert get_response.status_code == 200
     assert get_response.json()["data"]["config"]["target_chapters"] == 5
     assert fake_service.get_config("work_001") is not None
@@ -286,7 +286,11 @@ def test_auto_queue_start_and_status_api_return_run_payload(monkeypatch) -> None
 
     start_response = client.post(
         "/api/v2/ai/auto-queues/start",
-        json={"work_id": "work_001", "start_chapter_id": "chapter_001"},
+        json={
+            "work_id": "work_001",
+            "start_chapter_id": "chapter_001",
+            "user_instruction": "让冲突更紧张",
+        },
     )
 
     assert start_response.status_code == 202
@@ -297,7 +301,25 @@ def test_auto_queue_start_and_status_api_return_run_payload(monkeypatch) -> None
     assert status_response.status_code == 200
     assert status_response.json()["data"]["run"]["run_id"] == run_id
     assert status_response.json()["data"]["run"]["job_id"] == "job_aq_001"
-    assert fake_service.start_calls == [("aqc_work_001", "work_001", "chapter_001")]
+    assert fake_service.start_calls == [("aqc_work_001", "work_001", "chapter_001", "让冲突更紧张")]
+
+
+def test_auto_queue_start_rejects_writing_intent_over_sixty_characters(monkeypatch) -> None:
+    fake_service = _install_test_dependencies(monkeypatch)
+    fake_service.configs["work_001"] = _build_config(work_id="work_001", config_id="aqc_work_001")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v2/ai/auto-queues/start",
+        json={
+            "work_id": "work_001",
+            "start_chapter_id": "chapter_001",
+            "user_instruction": "想" * 61,
+        },
+    )
+
+    assert response.status_code == 422
+    assert fake_service.start_calls == []
 
 
 def test_auto_queue_start_api_returns_422_when_target_chapters_is_zero(monkeypatch) -> None:
@@ -390,7 +412,7 @@ def test_spawn_auto_queue_runner_skips_duplicate_run_id(monkeypatch) -> None:
 
     monkeypatch.setattr(auto_queues.threading, "Thread", _FakeThread)
     auto_queues._ACTIVE_AUTO_QUEUE_RUNNERS.clear()
-    run = _build_run(run_id="aqr_001", status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS)
+    run = _build_run(run_id="aqr_001", status=AutoQueueStatus.RUNNING)
 
     auto_queues._spawn_auto_queue_runner(run)
     auto_queues._spawn_auto_queue_runner(run)
@@ -407,7 +429,7 @@ def test_spawn_auto_queue_runner_skips_duplicate_run_id(monkeypatch) -> None:
 
 def test_run_auto_queue_async_releases_runner_slot_after_exit(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
-    fake_service.runs["aqr_001"] = _build_run(run_id="aqr_001", status=AutoQueueStatus.COMPLETED, queue_mode=AutoQueueMode.CONTINUOUS)
+    fake_service.runs["aqr_001"] = _build_run(run_id="aqr_001", status=AutoQueueStatus.COMPLETED)
     fake_job_service = _FakeAIJobService()
     monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
     auto_queues._ACTIVE_AUTO_QUEUE_RUNNERS.clear()
@@ -420,7 +442,7 @@ def test_run_auto_queue_async_releases_runner_slot_after_exit(monkeypatch) -> No
 
 def test_auto_queue_resume_api_spawns_background_runner_for_non_terminal_run(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
-    fake_service.runs["aqr_001"] = _build_run(run_id="aqr_001", status=AutoQueueStatus.PAUSED, queue_mode=AutoQueueMode.CONTINUOUS)
+    fake_service.runs["aqr_001"] = _build_run(run_id="aqr_001", status=AutoQueueStatus.PAUSED)
     fake_job_service = _FakeAIJobService()
     monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
     started_threads: list[dict[str, object]] = []
@@ -463,7 +485,7 @@ def test_auto_queue_resume_api_spawns_background_runner_for_non_terminal_run(mon
 
 def test_auto_queue_confirm_continue_api_spawns_background_runner_for_non_terminal_run(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
-    fake_service.runs["aqr_001"] = _build_run(run_id="aqr_001", status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.SAFE)
+    fake_service.runs["aqr_001"] = _build_run(run_id="aqr_001", status=AutoQueueStatus.WAITING_USER_DECISION)
     fake_job_service = _FakeAIJobService()
     monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
     started_threads: list[dict[str, object]] = []
@@ -504,11 +526,11 @@ def test_auto_queue_confirm_continue_api_spawns_background_runner_for_non_termin
     ]
 
 
-def test_recover_auto_queue_runs_after_restart_spawns_background_runner_for_running_and_waiting_runs(monkeypatch) -> None:
+def test_recover_auto_queue_runs_after_restart_spawns_only_running_runs(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
-    fake_service.recover_results["work_001"] = _build_run(run_id="aqr_001", work_id="work_001", status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS)
-    fake_service.recover_results["work_002"] = _build_run(run_id="aqr_002", work_id="work_002", status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.SAFE)
-    fake_service.recover_results["work_003"] = _build_run(run_id="aqr_003", work_id="work_003", status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.CONTINUOUS)
+    fake_service.recover_results["work_001"] = _build_run(run_id="aqr_001", work_id="work_001", status=AutoQueueStatus.RUNNING)
+    fake_service.recover_results["work_002"] = _build_run(run_id="aqr_002", work_id="work_002", status=AutoQueueStatus.WAITING_USER_DECISION)
+    fake_service.recover_results["work_003"] = _build_run(run_id="aqr_003", work_id="work_003", status=AutoQueueStatus.WAITING_USER_DECISION)
     monkeypatch.setattr(dependencies, "get_work_service", lambda: _FakeWorkService(["work_001", "work_002", "work_003"]), raising=False)
     started_threads: list[dict[str, object]] = []
     auto_queues._ACTIVE_AUTO_QUEUE_RUNNERS.clear()
@@ -542,25 +564,13 @@ def test_recover_auto_queue_runs_after_restart_spawns_background_runner_for_runn
             "args": ("job_aq_001", "aqr_001"),
             "kwargs": {},
             "daemon": True,
-        },
-        {
-            "target": auto_queues._run_auto_queue_async,
-            "args": ("job_aq_001", "aqr_002"),
-            "kwargs": {},
-            "daemon": True,
-        },
-        {
-            "target": auto_queues._run_auto_queue_async,
-            "args": ("job_aq_001", "aqr_003"),
-            "kwargs": {},
-            "daemon": True,
         }
     ]
 
 
 def test_recover_auto_queue_runs_after_restart_converges_completed_run_to_completed_ai_job(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
-    completed_run = _build_run(run_id="aqr_004", work_id="work_004", status=AutoQueueStatus.COMPLETED, queue_mode=AutoQueueMode.CONTINUOUS)
+    completed_run = _build_run(run_id="aqr_004", work_id="work_004", status=AutoQueueStatus.COMPLETED)
     fake_service.recover_results["work_004"] = completed_run
     fake_service.runs["aqr_004"] = completed_run
     fake_job_service = _FakeAIJobService()
@@ -589,7 +599,6 @@ def test_recover_auto_queue_runs_after_restart_converges_completed_run_to_comple
             {
                 "run_id": "aqr_004",
                 "status": "completed",
-                "queue_mode": "continuous",
             },
             "auto_queue_run:aqr_004",
         )
@@ -602,7 +611,6 @@ def test_recover_auto_queue_runs_after_restart_preserves_failed_run_error_detail
         run_id="aqr_005",
         work_id="work_005",
         status=AutoQueueStatus.FAILED,
-        queue_mode=AutoQueueMode.CONTINUOUS,
     ).model_copy(
         update={
             "error_code": "provider_unrecoverable",
@@ -654,7 +662,6 @@ def test_recover_auto_queue_runs_after_restart_cancels_cancelled_run_without_res
         run_id="aqr_006",
         work_id="work_006",
         status=AutoQueueStatus.CANCELLED,
-        queue_mode=AutoQueueMode.CONTINUOUS,
     )
     fake_service.recover_results["work_006"] = cancelled_run
     fake_service.runs["aqr_006"] = cancelled_run
@@ -689,7 +696,6 @@ def test_recover_auto_queue_runs_after_restart_completes_terminal_runs_without_r
         run_id="aqr_007",
         work_id="work_007",
         status=AutoQueueStatus.COMPLETED,
-        queue_mode=AutoQueueMode.CONTINUOUS,
     ).model_copy(
         update={
             "job_id": "job_aq_007",
@@ -699,7 +705,6 @@ def test_recover_auto_queue_runs_after_restart_completes_terminal_runs_without_r
         run_id="aqr_008",
         work_id="work_008",
         status=AutoQueueStatus.STOPPED,
-        queue_mode=AutoQueueMode.CONTINUOUS,
         stop_record=AutoQueueStopRecord(
             stop_reason=StopCondition.USER_MANUAL_STOP,
             stop_severity=StopSeverity.USER,
@@ -717,7 +722,6 @@ def test_recover_auto_queue_runs_after_restart_completes_terminal_runs_without_r
         run_id="aqr_009",
         work_id="work_009",
         status=AutoQueueStatus.FAILED,
-        queue_mode=AutoQueueMode.CONTINUOUS,
     ).model_copy(
         update={
             "job_id": "job_aq_009",
@@ -759,7 +763,6 @@ def test_recover_auto_queue_runs_after_restart_completes_terminal_runs_without_r
             {
                 "run_id": "aqr_007",
                 "status": "completed",
-                "queue_mode": "continuous",
             },
             "auto_queue_run:aqr_007",
         ),
@@ -768,7 +771,6 @@ def test_recover_auto_queue_runs_after_restart_completes_terminal_runs_without_r
             {
                 "run_id": "aqr_008",
                 "status": "stopped",
-                "queue_mode": "continuous",
                 "stop_reason": "user_manual_stop",
             },
             "auto_queue_run:aqr_008",
@@ -789,7 +791,6 @@ def test_recover_auto_queue_runs_after_restart_skips_terminal_reconvergence_when
         run_id="aqr_010",
         work_id="work_010",
         status=AutoQueueStatus.COMPLETED,
-        queue_mode=AutoQueueMode.CONTINUOUS,
     ).model_copy(
         update={
             "job_id": "job_aq_010",
@@ -825,7 +826,6 @@ def test_recover_auto_queue_runs_after_restart_skips_terminal_reconvergence_when
             {
                 "run_id": "aqr_010",
                 "status": "completed",
-                "queue_mode": "continuous",
             },
             "auto_queue_run:aqr_010",
         )
@@ -838,7 +838,6 @@ def test_recover_auto_queue_runs_after_restart_skips_failed_and_cancelled_reconv
         run_id="aqr_011",
         work_id="work_011",
         status=AutoQueueStatus.FAILED,
-        queue_mode=AutoQueueMode.CONTINUOUS,
     ).model_copy(
         update={
             "job_id": "job_aq_011",
@@ -850,7 +849,6 @@ def test_recover_auto_queue_runs_after_restart_skips_failed_and_cancelled_reconv
         run_id="aqr_012",
         work_id="work_012",
         status=AutoQueueStatus.CANCELLED,
-        queue_mode=AutoQueueMode.CONTINUOUS,
     ).model_copy(
         update={
             "job_id": "job_aq_012",
@@ -894,7 +892,7 @@ def test_recover_auto_queue_runs_after_restart_skips_failed_and_cancelled_reconv
 
 def test_run_auto_queue_async_completes_ai_job_from_background_step(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
-    fake_service.runs["aqr_001"] = _build_run(run_id="aqr_001", status=AutoQueueStatus.COMPLETED, queue_mode=AutoQueueMode.CONTINUOUS)
+    fake_service.runs["aqr_001"] = _build_run(run_id="aqr_001", status=AutoQueueStatus.COMPLETED)
     fake_job_service = _FakeAIJobService()
     monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
 
@@ -911,19 +909,18 @@ def test_run_auto_queue_async_completes_ai_job_from_background_step(monkeypatch)
             {
                 "run_id": "aqr_001",
                 "status": "completed",
-                "queue_mode": "continuous",
             },
             "auto_queue_run:aqr_001",
         )
     ]
 
 
-def test_run_auto_queue_async_continuous_mode_loops_until_completed(monkeypatch) -> None:
+def test_run_auto_queue_async_loops_running_steps_until_completed(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
     fake_service.status_sequences["aqr_001"] = [
-        _build_run(run_id="aqr_001", status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS),
-        _build_run(run_id="aqr_001", status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS),
-        _build_run(run_id="aqr_001", status=AutoQueueStatus.COMPLETED, queue_mode=AutoQueueMode.CONTINUOUS),
+        _build_run(run_id="aqr_001", status=AutoQueueStatus.RUNNING),
+        _build_run(run_id="aqr_001", status=AutoQueueStatus.RUNNING),
+        _build_run(run_id="aqr_001", status=AutoQueueStatus.COMPLETED),
     ]
     fake_job_service = _FakeAIJobService()
     monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
@@ -939,17 +936,16 @@ def test_run_auto_queue_async_continuous_mode_loops_until_completed(monkeypatch)
             {
                 "run_id": "aqr_001",
                 "status": "completed",
-                "queue_mode": "continuous",
             },
             "auto_queue_run:aqr_001",
         )
     ]
 
 
-def test_run_auto_queue_async_safe_mode_pauses_job_on_waiting_user_decision(monkeypatch) -> None:
+def test_run_auto_queue_async_pauses_job_on_waiting_user_decision(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
     fake_service.status_sequences["aqr_001"] = [
-        _build_run(run_id="aqr_001", status=AutoQueueStatus.WAITING_USER_DECISION, queue_mode=AutoQueueMode.SAFE),
+        _build_run(run_id="aqr_001", status=AutoQueueStatus.WAITING_USER_DECISION),
     ]
     fake_job_service = _FakeAIJobService()
     monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
@@ -967,7 +963,7 @@ def test_run_auto_queue_async_safe_mode_pauses_job_on_waiting_user_decision(monk
 def test_run_auto_queue_async_cancelled_mode_cancels_job_instead_of_completing(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
     fake_service.status_sequences["aqr_001"] = [
-        _build_run(run_id="aqr_001", status=AutoQueueStatus.CANCELLED, queue_mode=AutoQueueMode.CONTINUOUS),
+        _build_run(run_id="aqr_001", status=AutoQueueStatus.CANCELLED),
     ]
     fake_job_service = _FakeAIJobService()
     monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
@@ -983,9 +979,9 @@ def test_run_auto_queue_async_cancelled_mode_cancels_job_instead_of_completing(m
 def test_run_auto_queue_async_running_then_cancelled_exits_without_extra_completion(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
     fake_service.status_sequences["aqr_001"] = [
-        _build_run(run_id="aqr_001", status=AutoQueueStatus.RUNNING, queue_mode=AutoQueueMode.CONTINUOUS),
-        _build_run(run_id="aqr_001", status=AutoQueueStatus.CANCELLED, queue_mode=AutoQueueMode.CONTINUOUS),
-        _build_run(run_id="aqr_001", status=AutoQueueStatus.COMPLETED, queue_mode=AutoQueueMode.CONTINUOUS),
+        _build_run(run_id="aqr_001", status=AutoQueueStatus.RUNNING),
+        _build_run(run_id="aqr_001", status=AutoQueueStatus.CANCELLED),
+        _build_run(run_id="aqr_001", status=AutoQueueStatus.COMPLETED),
     ]
     fake_job_service = _FakeAIJobService()
     monkeypatch.setattr(dependencies, "get_ai_job_service", lambda: fake_job_service, raising=False)
@@ -1005,7 +1001,6 @@ def test_run_auto_queue_async_stopped_mode_preserves_stop_reason_in_result_summa
         _build_run(
             run_id="aqr_001",
             status=AutoQueueStatus.STOPPED,
-            queue_mode=AutoQueueMode.CONTINUOUS,
             stop_record=AutoQueueStopRecord(
                 stop_reason=StopCondition.USER_MANUAL_STOP,
                 stop_severity=StopSeverity.USER,
@@ -1027,7 +1022,6 @@ def test_run_auto_queue_async_stopped_mode_preserves_stop_reason_in_result_summa
             {
                 "run_id": "aqr_001",
                 "status": "stopped",
-                "queue_mode": "continuous",
                 "stop_reason": "user_manual_stop",
             },
             "auto_queue_run:aqr_001",
