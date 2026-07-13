@@ -254,6 +254,7 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
   const pauseQueue = async (runId) => runControlAction(aiApi.pauseAutoQueue, runId, 'auto_queue_pause')
   const resumeQueue = async (runId) => runControlAction(aiApi.resumeAutoQueue, runId, 'auto_queue_resume')
   const stopQueue = async (runId) => runControlAction(aiApi.stopAutoQueue, runId, 'auto_queue_stop')
+  const cancelQueue = async (runId) => runControlAction(aiApi.cancelAutoQueue, runId, 'auto_queue_cancel')
   const confirmContinue = async (runId) => runControlAction(aiApi.confirmAutoQueueContinue, runId, 'auto_queue_confirm_continue')
 
   const selectRun = async (runId) => {
@@ -309,6 +310,7 @@ export const useAutoQueueStore = defineStore('workbenchAutoQueue', () => {
     pauseQueue,
     resumeQueue,
     stopQueue,
+    cancelQueue,
     confirmContinue,
     selectRun
   }

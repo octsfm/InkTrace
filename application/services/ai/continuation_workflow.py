@@ -57,6 +57,7 @@ class MinimalContinuationWorkflow:
         chapter_id: str,
         user_instruction: str | None = None,
         created_by: str | None = None,
+        run_id: str = "",
     ) -> ContinuationResult:
         created_by = created_by or "user_action"
         self._work_service.get_work(work_id)
@@ -86,6 +87,7 @@ class MinimalContinuationWorkflow:
                 {"step_type": "save_candidate_draft", "step_name": "Save Candidate Draft"},
             ],
         )
+        writing_task = writing_task.model_copy(update={"metadata": {**dict(writing_task.metadata), "job_id": job.job_id, "run_id": run_id}})
         step_ids = {step.step_type: step.step_id for step in self._job_service.get_job_steps(job.job_id)}
         self._job_service.start_job(job.job_id)
         tool_context = ToolExecutionContext(

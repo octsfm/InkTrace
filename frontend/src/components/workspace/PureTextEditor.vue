@@ -4,6 +4,16 @@
       当前章节已超过 20 万有效字符，建议尽快拆分章节以保持流畅编辑。
     </div>
 
+    <div class="pure-text-editor__surface">
+    <MentionHighlight
+      v-if="mentions.length"
+      class="pure-text-editor__mention-layer"
+      :style="mentionLayerStyle"
+      :content="modelValue"
+      :mentions="mentions"
+      :summary-by-id="mentionSummaryById"
+      @mention-hover="$emit('mention-hover', $event)"
+    />
     <textarea
       ref="textareaRef"
       class="pure-textarea"
@@ -19,6 +29,7 @@
       @select="emitSelectionState"
       @scroll="emitScrollState"
     />
+    </div>
 
     <div class="editor-footer">
             <span class="word-count">本章字数 {{ formattedWordCount }}</span>
@@ -29,6 +40,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { countEffectiveCharacters, exceedsSoftLimit } from '@/utils/textMetrics'
+import MentionHighlight from './MentionHighlight.vue'
 
 const props = defineProps({
   modelValue: {
@@ -58,12 +70,15 @@ const props = defineProps({
   theme: {
     type: String,
     default: 'light'
-  }
+  },
+  mentions: { type: Array, default: () => [] },
+  mentionSummaryById: { type: Object, default: () => ({}) }
 })
 
-const emit = defineEmits(['update:modelValue', 'cursor-change', 'scroll-change', 'selection-change'])
+const emit = defineEmits(['update:modelValue', 'cursor-change', 'scroll-change', 'selection-change', 'mention-hover'])
 
 const textareaRef = ref(null)
+const scrollTop = ref(0)
 const effectiveWordCount = computed(() => countEffectiveCharacters(props.modelValue))
 const formattedWordCount = computed(() => effectiveWordCount.value.toLocaleString('zh-CN'))
 const showSoftLimitWarning = computed(() => exceedsSoftLimit(props.modelValue))
@@ -71,6 +86,10 @@ const textareaStyle = computed(() => ({
   fontFamily: String(props.fontFamily || 'system-ui'),
   fontSize: `${Number(props.fontSize || 18)}px`,
   lineHeight: String(props.lineHeight || 1.8)
+}))
+const mentionLayerStyle = computed(() => ({
+  ...textareaStyle.value,
+  transform: `translateY(-${scrollTop.value}px)`
 }))
 
 const normalizeNonNegative = (value) => {
@@ -148,6 +167,7 @@ const emitSelectionState = () => {
 const emitScrollState = () => {
   const target = textareaRef.value
   if (!target) return
+  scrollTop.value = Number(target.scrollTop || 0)
   emit('scroll-change', {
     scrollTop: Number(target.scrollTop || 0)
   })
@@ -278,6 +298,34 @@ defineExpose({ restoreViewport, getViewport, focusEditor, insertPlainTextAtSelec
   color: var(--editor-text);
   outline: none;
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.pure-text-editor__surface {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 420px;
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+.pure-text-editor__mention-layer {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  min-height: 420px;
+  box-sizing: border-box;
+  padding: 28px;
+  font-size: 16px;
+  line-height: 1.9;
+  transition: none;
+}
+
+.pure-text-editor__surface .pure-textarea {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+  background: transparent;
 }
 
 .pure-textarea::placeholder {

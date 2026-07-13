@@ -6,6 +6,14 @@
 
 <script setup>
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
+import { onMounted } from 'vue'
+import { useFeatureCapabilityStore } from '@/stores/useFeatureCapabilityStore'
+
+const featureCapabilityStore = useFeatureCapabilityStore()
+
+onMounted(() => {
+  featureCapabilityStore.refresh()
+})
 </script>
 
 <style>

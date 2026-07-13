@@ -45,6 +45,7 @@ class MultiChapterContinuationService:
         target_chapters: int,
         user_instruction: str = "",
         caller_type: str = "user_action",
+        run_id: str = "",
     ) -> MultiChapterSession:
         if caller_type != "user_action":
             raise ValueError("P2_CALLER_FORBIDDEN")
@@ -97,7 +98,7 @@ class MultiChapterContinuationService:
             created_by=caller_type,
             created_at=now,
             updated_at=now,
-            metadata={"job_id": job.job_id, "user_instruction": user_instruction},
+            metadata={"job_id": job.job_id, "user_instruction": user_instruction, "run_id": run_id},
         )
         saved = self._multi_chapter_repository.save(session)
         self._submit_session(saved.session_id)
@@ -328,6 +329,7 @@ class MultiChapterContinuationService:
                 target_chapter_id,
                 user_instruction=str(session.metadata.get("user_instruction", "")),
                 created_by=session.created_by,
+                run_id=str(session.metadata.get("run_id", "")),
             )
             latest = self.get_session(session_id)
             if latest.status == MultiChapterStatus.CANCELLED:
@@ -381,6 +383,8 @@ class MultiChapterContinuationService:
             updated = latest.model_copy(
                 update={
                     "status": blocked_status,
+                    "blocked_source": "continuation_workflow" if result.status == "blocked" else "",
+                    "blocked_reason_code": result.error_code if result.status == "blocked" else "",
                     "per_chapter_status": per_chapter_status,
                     "error_code": result.error_code,
                     "error_message": result.error_message,

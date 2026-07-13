@@ -326,6 +326,67 @@ def _build_run(**updates) -> AutoQueueRun:
     return AutoQueueRun(**payload)
 
 
+def test_auto_queue_service_cancel_preserves_candidate_state_and_forbids_resume() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(_build_config())
+    run_repo.save(_build_run(current_candidate_story_state={"candidate_draft_id": "draft_001"}))
+    multi = _StubMultiChapterService(start_result=_build_session())
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+    )
+
+    cancelled = service.cancel("aqr_001")
+
+    assert cancelled.status == AutoQueueStatus.CANCELLED
+    assert cancelled.resume_allowed is False
+    assert cancelled.current_candidate_story_state == {"candidate_draft_id": "draft_001"}
+    assert multi.cancel_calls == ["mcs_001"]
+
+
+def test_auto_queue_service_resume_archives_current_stop_record() -> None:
+    from application.services.ai.auto_queue_service import AutoContinuationQueueService
+
+    config_repo = _InMemoryAutoQueueConfigRepository()
+    run_repo = _InMemoryAutoQueueRunRepository()
+    config_repo.save(_build_config(target_chapters=3, stop_at_sequence_end=False))
+    stopped = _build_run(
+        status=AutoQueueStatus.STOPPED,
+        stop_record={
+            "stop_record_id": "aqs_001",
+            "stop_reason": StopCondition.USER_MANUAL_STOP,
+            "stop_severity": StopSeverity.USER,
+            "stopped_at": "2026-06-24T12:10:00Z",
+        },
+        stopped_at="2026-06-24T12:10:00Z",
+        finished_at="2026-06-24T12:10:00Z",
+    )
+    run_repo.save(stopped)
+    multi = _StubMultiChapterService(start_result=_build_session())
+    multi.resume_result = _build_session(status=MultiChapterStatus.RUNNING)
+    service = AutoContinuationQueueService(
+        config_repository=config_repo,
+        run_repository=run_repo,
+        multi_chapter_service=multi,
+        stop_evaluator=_build_stop_evaluator(),
+        job_service=_StubJobService(),
+    )
+
+    resumed = service.resume("aqr_001")
+
+    assert resumed.status == AutoQueueStatus.RUNNING
+    assert resumed.stop_record is None
+    assert [item.stop_record_id for item in resumed.stop_record_history] == ["aqs_001"]
+    assert resumed.stopped_at == ""
+    assert resumed.finished_at == ""
+
+
 def test_auto_queue_service_start_creates_run_and_delegates_to_multi_chapter_start() -> None:
     from application.services.ai.auto_queue_service import AutoContinuationQueueService
 
@@ -1437,7 +1498,7 @@ def test_auto_queue_service_stop_records_user_manual_stop() -> None:
     assert stopped.stop_record is not None
     assert stopped.stop_record.stop_reason == StopCondition.USER_MANUAL_STOP
     assert stopped.stop_record.stop_severity == StopSeverity.USER
-    assert multi_chapter_service.cancel_calls == ["mcs_001"]
+    assert multi_chapter_service.pause_calls == ["mcs_001"]
 
 
 def test_auto_queue_service_recover_after_restart_resumes_running_active_run() -> None:

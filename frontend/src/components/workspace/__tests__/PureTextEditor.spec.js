@@ -30,6 +30,17 @@ describe('PureTextEditor', () => {
     expect(wrapper.find('textarea').attributes('title')).toBe('仅支持纯文本输入')
   })
 
+  it('renders persisted mentions in a separate overlay', () => {
+    const wrapper = mount(PureTextEditor, {
+      props: {
+        modelValue: '@张三登场',
+        mentions: [{ mention_id: 'm1', start_pos: 0, end_pos: 3, source: 'user_input', status: 'active' }]
+      }
+    })
+    expect(wrapper.find('.pure-text-editor__mention-layer').exists()).toBe(true)
+    expect(wrapper.find('textarea').element.value).toBe('@张三登场')
+  })
+
   it('counts effective characters only', () => {
     const wrapper = mount(PureTextEditor, {
       props: {

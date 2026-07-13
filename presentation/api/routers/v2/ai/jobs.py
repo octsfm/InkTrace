@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 
 from presentation.api import dependencies
 from presentation.api.routers.v2.ai.response_utils import error_response, success_response
-from presentation.api.routers.v2.ai.schemas import CancelAIJobRequest
+from presentation.api.routers.v2.ai.schemas import AIJobActionRequest, CancelAIJobRequest
 
 router = APIRouter(prefix="/api/v2/ai/jobs", tags=["v2-ai-jobs"])
 
@@ -51,6 +51,20 @@ def _serialize_step(step) -> dict[str, object]:
         "can_skip": step.can_skip,
         "updated_at": step.finished_at or step.started_at or "",
     }
+
+
+def _reject_non_user_action(payload: AIJobActionRequest, request: Request):
+    if payload.caller_type != "user_action" or not payload.user_action or not payload.user_id.strip():
+        return error_response(request, error_code="caller_type_forbidden", status_code=403)
+    if not payload.idempotency_key.strip():
+        return error_response(request, error_code="idempotency_key_required", status_code=400)
+    return None
+
+
+def _mutation_error(request: Request, exc: ValueError):
+    code = str(exc)
+    status = 404 if code in {"job_not_found", "job_step_not_found"} else 409
+    return error_response(request, error_code=code, status_code=status)
 
 
 @router.get("")
@@ -107,3 +121,51 @@ def cancel_ai_job(job_id: str, payload: CancelAIJobRequest, request: Request):
         return success_response(request, data=_serialize_job(job))
     except ValueError as exc:
         return error_response(request, error_code=str(exc), status_code=404)
+
+
+@router.post("/{job_id}/pause")
+def pause_ai_job(job_id: str, payload: AIJobActionRequest, request: Request):
+    denied = _reject_non_user_action(payload, request)
+    if denied is not None:
+        return denied
+    try:
+        job = dependencies.get_ai_job_service().pause_job(job_id, reason=payload.reason)
+    except ValueError as exc:
+        return _mutation_error(request, exc)
+    return success_response(request, data=_serialize_job(job))
+
+
+@router.post("/{job_id}/resume")
+def resume_ai_job(job_id: str, payload: AIJobActionRequest, request: Request):
+    denied = _reject_non_user_action(payload, request)
+    if denied is not None:
+        return denied
+    try:
+        job = dependencies.get_ai_job_service().resume_job(job_id, reason=payload.reason)
+    except ValueError as exc:
+        return _mutation_error(request, exc)
+    return success_response(request, data=_serialize_job(job))
+
+
+@router.post("/{job_id}/retry")
+def retry_ai_job(job_id: str, payload: AIJobActionRequest, request: Request):
+    denied = _reject_non_user_action(payload, request)
+    if denied is not None:
+        return denied
+    try:
+        job = dependencies.get_ai_job_service().retry_job(job_id)
+    except ValueError as exc:
+        return _mutation_error(request, exc)
+    return success_response(request, data=_serialize_job(job))
+
+
+@router.post("/{job_id}/steps/{step_id}/retry")
+def retry_ai_job_step(job_id: str, step_id: str, payload: AIJobActionRequest, request: Request):
+    denied = _reject_non_user_action(payload, request)
+    if denied is not None:
+        return denied
+    try:
+        step = dependencies.get_ai_job_service().retry_step(job_id, step_id)
+    except ValueError as exc:
+        return _mutation_error(request, exc)
+    return success_response(request, data=_serialize_step(step))

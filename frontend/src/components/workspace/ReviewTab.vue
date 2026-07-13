@@ -42,9 +42,9 @@
       </div>
 
       <ul v-if="candidateDrafts.length" class="entity-list">
-        <li v-for="item in candidateDrafts" :key="item.candidate_draft_id" class="entity-card">
+        <li v-for="(item, candidateIndex) in candidateDrafts" :key="item.candidate_draft_id" class="entity-card">
           <div class="entity-summary">
-            <strong>{{ item.candidate_draft_id }}</strong>
+            <strong>第 {{ candidateIndex + 1 }} 份新稿</strong>
             <span>{{ displayStatus(item.status || 'pending') }}</span>
             <span>{{ displayValidationStatus(item.validation_status) }}</span>
             <span>{{ item.content_preview || text.noPreview }}</span>
@@ -97,6 +97,26 @@
             <strong>{{ text.candidateDetail }}</strong>
             <pre>{{ candidateDetails[item.candidate_draft_id].content || candidateDetails[item.candidate_draft_id].content_preview || text.noPreview }}</pre>
           </div>
+
+          <section
+            v-if="citationLinkEnabled && citationsByDraft[item.candidate_draft_id]?.length"
+            class="citation-section"
+          >
+            <strong>这份新稿参考了</strong>
+            <p>这些来源只用于帮助你核对前后文，不会写进正文。</p>
+            <ul>
+              <li v-for="citation in citationsByDraft[item.candidate_draft_id]" :key="citation.citation_id">
+                <button type="button" @click="handleCitationDetail(citation)">
+                  {{ citation.source_name || '暂时找不到的来源' }}
+                </button>
+                <span>{{ displayCitationStatus(citation.verification_status) }}</span>
+                <p>{{ citation.source_excerpt || citation.context_in_draft || '暂无摘要' }}</p>
+                <div v-if="citationSourceDetails[citation.citation_id]" class="note-box">
+                  {{ citationSourceDetails[citation.citation_id].summary || citationSourceDetails[citation.citation_id].source_excerpt || '暂无更多内容' }}
+                </div>
+              </li>
+            </ul>
+          </section>
 
           <ul v-if="candidateVersions[item.candidate_draft_id]?.length" class="nested-list">
             <li
@@ -435,6 +455,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
 import { aiApi } from '@/api'
+import { isP2FeatureEnabled } from '@/config/p2FeatureFlags'
 
 const props = defineProps({
   workId: { type: String, default: '' },
@@ -534,6 +555,9 @@ const candidateVersionDetails = reactive({})
 const candidateVersionDiffs = reactive({})
 const selectedVersionByDraft = reactive({})
 const candidateReviewByDraft = reactive({})
+const citationsByDraft = reactive({})
+const citationSourceDetails = reactive({})
+const citationLinkEnabled = computed(() => isP2FeatureEnabled('enable_citation_link'))
 const aiSuggestions = ref([])
 const aiSuggestionDetails = reactive({})
 const conflicts = ref([])
@@ -827,9 +851,31 @@ const handleCandidateDetail = async (candidateDraftId) => {
     }
     const versionsPayload = unwrapData(await aiApi.listCandidateDraftVersions(candidateDraftId))
     candidateVersions[candidateDraftId] = Array.isArray(versionsPayload.items) ? versionsPayload.items : []
+    if (citationLinkEnabled.value) {
+      const citationPayload = unwrapData(await aiApi.getCitationsByCandidateDraft(candidateDraftId))
+      const batches = Array.isArray(citationPayload.batches) ? citationPayload.batches : []
+      citationsByDraft[candidateDraftId] = batches.flatMap((batch) => batch.citations || [])
+    }
   } catch (error) {
     candidateActionError.value = '\u5019\u9009\u7a3f\u8be6\u60c5\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002'
     ElMessage.error(candidateActionError.value)
+  }
+}
+
+const displayCitationStatus = (status) => ({
+  verified: '已核对',
+  unverified: '还没核对',
+  unknown_source: '暂时找不到原出处',
+  invalid: '来源可能有误'
+}[String(status || '')] || '待核对')
+
+const handleCitationDetail = async (citation) => {
+  const citationId = String(citation?.citation_id || '')
+  if (!citationId) return
+  try {
+    citationSourceDetails[citationId] = unwrapData(await aiApi.getCitationSourceDetail(citationId))
+  } catch (error) {
+    candidateActionError.value = '暂时没能打开这条参考来源。'
   }
 }
 

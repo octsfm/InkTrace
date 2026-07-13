@@ -117,11 +117,33 @@ describe('useMentionStore', () => {
         start_pos: 2,
         end_pos: 5,
         source: 'user_input',
-        ai_suggestion_id: ''
+        ai_suggestion_id: '',
+        status: 'active'
       }]
     })
     expect(saved[0].mention_id).toBe('m_001')
     expect(store.mentions[0].mention_id).toBe('m_001')
+  })
+
+  it('preserves AI suggestion ranges and marks them broken after the source text changes', async () => {
+    const { useMentionStore } = await import('../useMentionStore')
+    const store = useMentionStore()
+    replaceChapterMentions.mockResolvedValue({ data: { mentions: [] } })
+    getChapterMentions.mockResolvedValue({
+      data: { mentions: [{
+        mention_id: 'm_ai', entity_type: 'character', entity_id: 'char_1',
+        entity_name_snapshot: '张三', start_pos: 0, end_pos: 2,
+        source: 'ai_suggestion', ai_suggestion_id: 's1', status: 'active'
+      }] }
+    })
+    store.initializeContext({ workId: 'work-1', chapterId: 'chapter-1', chapterRevision: 3 })
+    await store.loadMentions('chapter-1')
+    await store.saveMentions('李四走来')
+
+    expect(replaceChapterMentions).toHaveBeenCalledWith('chapter-1', {
+      chapter_revision: 3,
+      mentions: [expect.objectContaining({ mention_id: 'm_ai', source: 'ai_suggestion', status: 'broken' })]
+    })
   })
 
   it('loads existing chapter mentions and clears popup state when chapter changes', async () => {

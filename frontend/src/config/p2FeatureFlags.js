@@ -1,3 +1,5 @@
+import { reactive } from 'vue'
+
 const readBool = (value, defaultValue = false) => {
   if (value === undefined || value === null || value === '') {
     return defaultValue
@@ -18,10 +20,22 @@ export const P2_FEATURE_FLAGS = {
   enable_analysis_dashboard: readBool(import.meta.env.VITE_P2_ENABLE_ANALYSIS_DASHBOARD, false)
 }
 
+const runtimeFeatureFlags = reactive({})
+
+export function setP2FeatureCapabilities(capabilities = []) {
+  for (const key of Object.keys(runtimeFeatureFlags)) delete runtimeFeatureFlags[key]
+  for (const item of capabilities) {
+    const key = String(item?.feature_key || '')
+    if (key) runtimeFeatureFlags[key] = Boolean(item?.effective_enabled)
+  }
+}
+
 export function isP2FeatureEnabled(flagName) {
   if (!flagName) {
     return true
   }
+  if (Object.prototype.hasOwnProperty.call(runtimeFeatureFlags, flagName)) {
+    return Boolean(runtimeFeatureFlags[flagName])
+  }
   return Boolean(P2_FEATURE_FLAGS[flagName])
 }
-

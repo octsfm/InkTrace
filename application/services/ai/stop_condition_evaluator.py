@@ -23,6 +23,16 @@ class StopConditionEvaluator:
 
         if self._budget_service is not None and bool(getattr(config, "stop_on_budget_exceeded", False)):
             budget_result = self._budget_service.check_auto_queue_budget(run.run_id)
+            if bool(getattr(budget_result, "has_indeterminate", False)) or str(
+                getattr(budget_result, "determination", "") or ""
+            ).lower() == "indeterminate":
+                return StopEvaluationResult(
+                    should_stop=False,
+                    should_pause=True,
+                    reason="budget_indeterminate",
+                    user_action_required=True,
+                    suggested_action="check_cost_settings",
+                )
             if bool(getattr(budget_result, "exceeded", False)):
                 return StopEvaluationResult(
                     should_stop=True,

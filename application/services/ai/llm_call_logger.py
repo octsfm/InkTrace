@@ -12,7 +12,7 @@ class LLMCallLogger:
         self,
         repository: LLMCallLogRepository,
         trace_service=None,
-        pricing_resolver: Callable[[str, str, str], dict[str, Any] | None] | None = None,
+        pricing_resolver: Callable[..., dict[str, Any] | None] | None = None,
         strict_trace: bool = False,
     ) -> None:
         self._repository = repository
@@ -42,12 +42,16 @@ class LLMCallLogger:
         output_schema_key: str = "",
         session_id: str = "",
         step_id: str = "",
+        job_id: str = "",
+        run_id: str = "",
         content_hash: str = "",
+        price_snapshot_override: dict[str, Any] | None = None,
     ) -> None:
-        price_snapshot = self._resolve_price_snapshot(
+        price_snapshot = dict(price_snapshot_override) if price_snapshot_override is not None else self._resolve_price_snapshot(
             provider_name=provider_name,
             model_name=model_name,
             model_role=model_role,
+            work_id=work_id,
         )
         estimated_cost = self._calculate_estimated_cost(usage=usage, price_snapshot=price_snapshot)
         usage_payload = usage
@@ -69,6 +73,8 @@ class LLMCallLogger:
             trace_id=trace_id,
             session_id=session_id,
             step_id=step_id,
+            job_id=job_id,
+            run_id=run_id,
             status=status,
             error_code=error_code,
             error_message=error_message,
@@ -94,10 +100,11 @@ class LLMCallLogger:
                 if str(exc) != "trace_not_found" or self._strict_trace:
                     raise
 
-    def _resolve_price_snapshot(self, *, provider_name: str, model_name: str, model_role: str) -> dict[str, Any]:
+    def _resolve_price_snapshot(self, *, provider_name: str, model_name: str, model_role: str, work_id: str = "") -> dict[str, Any]:
         if self._pricing_resolver is None:
             return {}
-        resolved = self._pricing_resolver(provider_name, model_name, model_role) or {}
+        try: resolved = self._pricing_resolver(provider_name, model_name, model_role, work_id) or {}
+        except TypeError: resolved = self._pricing_resolver(provider_name, model_name, model_role) or {}
         return dict(resolved)
 
     def _calculate_estimated_cost(self, *, usage: LLMUsage | None, price_snapshot: dict[str, Any]) -> float:

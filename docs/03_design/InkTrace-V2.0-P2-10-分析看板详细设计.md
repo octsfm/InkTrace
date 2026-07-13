@@ -1,7 +1,7 @@
 # InkTrace V2.0-P2-10 分析看板详细设计
 
-版本：v1.2 / P2 模块级详细设计候选冻结版
-状态：候选冻结
+版本：v1.3 / P2 模块级详细设计冻结版（小白作者体验与 AI 使用分析裁决）
+状态：冻结生效
 所属阶段：InkTrace V2.0 P2-S3
 设计范围：创作分析看板（写作统计、节奏分析、对白分析、高频词、风格一致性、AI 使用分析）
 
@@ -14,7 +14,7 @@
 - `docs/03_design/V2/InkTrace-V2.0-P0-04-StoryMemory与StoryState详细设计.md`（阶段标记 / event_nodes）
 - `docs/03_design/InkTrace-V2.0-P2-09-成本看板详细设计.md`（P2-09 已移除 adoption_rate，P2-10 为权威源）
 
-说明：分析看板拆分为两个服务：`AnalysisDashboardQueryService`（纯只读查询）和 `AnalysisMetricRefreshService`（缓存写入，由定时任务或手动触发调用）。所有分析基于已确认章节正文（`Chapter.content`）、StoryMemory 结构化数据、AgentTrace 统计和 CandidateDraft 采纳记录。使用"AI 使用分析"命名，不使用"AI 检测器"。本文档不写代码、不修改源码。
+说明：分析看板拆分为两个服务：`AnalysisDashboardQueryService`（纯只读查询）和 `AnalysisMetricRefreshService`（缓存写入，由定时任务或手动触发调用）。所有分析基于已确认章节正文（`Chapter.content`）、StoryMemory 结构化数据、AgentTrace 统计和 CandidateDraft 采纳记录。使用“AI 使用分析”命名，不使用“AI 检测器”，不得判断正文来源。页面面向零基础小说作者，先说可理解的写作现象，再按需展开计算口径。本文档不写代码、不修改源码。
 
 > **路由说明**：本模块路由位于 `/api/v2/ai/analysis-dashboard`，与 P2 其他模块保持一致的前缀约定。但本模块**不触发 LLM 调用、不调用 ModelRouter**，所有分析在本地计算完成。
 
@@ -51,7 +51,8 @@ Chapter.content（V1.1 正式章节正文）
 - **正文/业务对象只读**：不写 `chapters`、`candidate_drafts`、`story_memory` 等业务表。
 - **缓存可写**：`AnalysisMetricRefreshService` 写入 `analysis_metrics` 缓存表（派生数据，非创作数据）。
 - **不产生新 AI 调用**：所有统计分析在本地完成（正则、计数、聚合），不调用 ModelRouter、Provider 或 embedding 模型。
-- **指标结果展示性**：分析看板是**作者自我审阅工具**，所有指标仅供参考，不给建议、不自动触发操作。
+- **指标结果展示性**：分析看板是**作者自我审阅工具**，所有指标仅供参考，不自动触发操作；可给出基于指标的中性阅读提示，但不得把统计结果包装成确定性写作结论。
+- **小白作者优先**：Tab 和卡片先回答“最近章节长短是否稳定、对白多不多、哪些词反复出现、风格是否变化”等写作问题；公式、内部状态和技术名词默认隐藏。
 
 ### 1.3 设计范围
 

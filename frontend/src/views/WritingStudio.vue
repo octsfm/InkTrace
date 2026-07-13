@@ -1,5 +1,12 @@
 <template>
   <div class="writing-studio" :class="[themeClass, { 'writing-studio--focus': isFocusMode }]">
+    <MultiChapterPanel
+      :visible="multiChapterPanelVisible"
+      :work-id="workId"
+      :chapter-id="chapterDataStore.activeChapterId"
+      @close="multiChapterPanelVisible = false"
+      @open-review="handleMultiChapterOpenReview"
+    />
     <VersionConflictModal
       :model-value="conflictModalVisible"
       :description="conflictDescription"
@@ -54,6 +61,34 @@
           <p v-if="workAuthor">{{ workAuthor }}</p>
         </div>
         <div class="header-actions">
+          <button
+            v-if="costEnabled && !isFocusMode"
+            type="button"
+            class="ink-button ink-button--ghost"
+            data-test="cost-open"
+            @click="openCostDashboard"
+          >
+            AI 用量与预算
+          </button>
+          <button
+            v-if="analysisEnabled && !isFocusMode"
+            type="button"
+            class="ink-button ink-button--ghost"
+            data-test="analysis-open"
+            @click="openAnalysis"
+          >
+            创作分析
+          </button>
+          <button
+            v-if="multiChapterEnabled && !isFocusMode"
+            type="button"
+            class="ink-button ink-button--ghost"
+            :disabled="!chapterDataStore.activeChapterId"
+            data-test="multi-chapter-open"
+            @click="multiChapterPanelVisible = true"
+          >
+            准备多章新稿
+          </button>
           <StatusBar
             :status="displaySaveStatus"
             :word-count="activeWordCount"
@@ -177,10 +212,13 @@
                 :font-size="editorPreferences.fontSize"
                 :line-height="editorPreferences.lineHeight"
                 :theme="preferenceStore.appTheme"
+                :mentions="mentionStore.featureEnabled ? mentionStore.mentions : []"
+                :mention-summary-by-id="mentionStore.mentionSummaryById"
                 @update:model-value="handleDraftChange"
                 @cursor-change="handleCursorChange"
                 @selection-change="handleSelectionChange"
                 @scroll-change="handleScrollChange"
+                @mention-hover="handleMentionHover"
               />
             </div>
           </div>
@@ -269,6 +307,7 @@ import ForeshadowPanel from '@/components/workspace/ForeshadowPanel.vue'
 import FocusModeToggle from '@/components/workspace/FocusModeToggle.vue'
 import ManualSyncButton from '@/components/workspace/ManualSyncButton.vue'
 import MentionPopup from '@/components/workspace/MentionPopup.vue'
+import MultiChapterPanel from '@/components/workspace/MultiChapterPanel.vue'
 import OutlinePanel from '@/components/workspace/OutlinePanel.vue'
 import ReviewTab from '@/components/workspace/ReviewTab.vue'
 import RightWorkspacePanel from '@/components/workspace/RightWorkspacePanel.vue'
@@ -283,6 +322,7 @@ import StatusBar from '@/components/workspace/StatusBar.vue'
 import VersionConflictModal from '@/components/workspace/VersionConflictModal.vue'
 import { useMentionStore } from '@/stores/useMentionStore'
 import { useSelectionRewriteStore } from '@/stores/useSelectionRewriteStore'
+import { isP2FeatureEnabled } from '@/config/p2FeatureFlags'
 
 const route = useRoute()
 const router = useRouter()
@@ -293,6 +333,10 @@ const preferenceStore = usePreferenceStore()
 const writingAssetStore = useWritingAssetStore()
 const mentionStore = useMentionStore()
 const selectionRewriteStore = useSelectionRewriteStore()
+const multiChapterPanelVisible = ref(false)
+const multiChapterEnabled = computed(() => isP2FeatureEnabled('enable_multi_chapter'))
+const analysisEnabled = computed(() => isP2FeatureEnabled('enable_analysis_dashboard'))
+const costEnabled = computed(() => isP2FeatureEnabled('enable_cost_dashboard'))
 const chaptersLoading = ref(false)
 const pendingChapterId = ref('')
 const preferencePanelAnchorRef = ref(null)
@@ -464,6 +508,10 @@ const mentionPopupStyle = computed(() => ({
   left: `${Number(mentionStore.popupPosition?.x || 24)}px`,
   top: `${Number(mentionStore.popupPosition?.y || 24)}px`
 }))
+const handleMentionHover = async (mention) => {
+  const mentionId = String(mention?.mention_id || '')
+  if (mentionId) await mentionStore.loadMentionSummary(mentionId)
+}
 const conflictDescription = computed(() => {
   const chapterTitle = String(
     conflictPayload.value?.chapterTitle ||
@@ -1140,6 +1188,14 @@ const goBack = () => {
   router.push('/works')
 }
 
+const openAnalysis = () => {
+  router.push(`/works/${encodeURIComponent(workId.value)}/analysis`)
+}
+
+const openCostDashboard = () => {
+  router.push(`/works/${encodeURIComponent(workId.value)}/cost`)
+}
+
 const toggleFocusMode = async () => {
   const chapterId = String(chapterDataStore.activeChapterId || '')
   const preservedViewport = captureActiveEditorViewport()
@@ -1194,6 +1250,11 @@ const handleWorkspaceTabChange = (tabKey) => {
 const handleAIPanelOpenReviewTab = () => {
   activeAssetFocusArea.value = 'review'
   activeWorkspaceTab.value = 'review'
+}
+
+const handleMultiChapterOpenReview = () => {
+  multiChapterPanelVisible.value = false
+  handleAIPanelOpenReviewTab()
 }
 
 const handleAssetFocusArea = (area) => {

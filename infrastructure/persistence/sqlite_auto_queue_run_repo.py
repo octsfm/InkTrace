@@ -25,11 +25,12 @@ class SQLiteAutoQueueRunRepository(AutoQueueRunRepository):
                 INSERT INTO auto_queue_runs (
                     run_id, job_id, config_id, work_id, multi_chapter_session_id, status,
                     generated_count, total_word_count, consumed_tokens, current_stop_evaluation_json,
-                    stop_record_json, current_candidate_story_state_json, queue_state_snapshots_json,
+                    stop_record_json, stop_record_history_json, resume_allowed,
+                    current_candidate_story_state_json, queue_state_snapshots_json,
                     consecutive_blocking_count, consecutive_revision_failure_count,
                     error_code, error_message, request_id, trace_id,
                     created_at, updated_at, started_at, stopped_at, finished_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     job_id = excluded.job_id,
                     config_id = excluded.config_id,
@@ -41,6 +42,8 @@ class SQLiteAutoQueueRunRepository(AutoQueueRunRepository):
                     consumed_tokens = excluded.consumed_tokens,
                     current_stop_evaluation_json = excluded.current_stop_evaluation_json,
                     stop_record_json = excluded.stop_record_json,
+                    stop_record_history_json = excluded.stop_record_history_json,
+                    resume_allowed = excluded.resume_allowed,
                     current_candidate_story_state_json = excluded.current_candidate_story_state_json,
                     queue_state_snapshots_json = excluded.queue_state_snapshots_json,
                     consecutive_blocking_count = excluded.consecutive_blocking_count,
@@ -111,6 +114,11 @@ class SQLiteAutoQueueRunRepository(AutoQueueRunRepository):
             consumed_tokens=int(row["consumed_tokens"] or 0),
             current_stop_evaluation=json.loads(str(row["current_stop_evaluation_json"] or "{}")),
             stop_record=AutoQueueStopRecord.model_validate(stop_record_payload) if stop_record_payload else None,
+            stop_record_history=[
+                AutoQueueStopRecord.model_validate(item)
+                for item in json.loads(str(row["stop_record_history_json"] or "[]"))
+            ],
+            resume_allowed=bool(row["resume_allowed"]),
             current_candidate_story_state=json.loads(str(row["current_candidate_story_state_json"] or "{}")),
             queue_state_snapshots=json.loads(str(row["queue_state_snapshots_json"] or "[]")),
             consecutive_blocking_count=int(row["consecutive_blocking_count"] or 0),
@@ -139,6 +147,8 @@ class SQLiteAutoQueueRunRepository(AutoQueueRunRepository):
             run.consumed_tokens,
             json.dumps(run.current_stop_evaluation, ensure_ascii=False),
             json.dumps(run.stop_record.model_dump(mode="json") if run.stop_record else {}, ensure_ascii=False),
+            json.dumps([item.model_dump(mode="json") for item in run.stop_record_history], ensure_ascii=False),
+            int(bool(run.resume_allowed)),
             json.dumps(run.current_candidate_story_state, ensure_ascii=False),
             json.dumps(run.queue_state_snapshots, ensure_ascii=False),
             run.consecutive_blocking_count,

@@ -142,7 +142,12 @@ class MentionService:
                     raise ValueError("overlap_mentions")
             mention_text = content[start:end]
             entity_name = str(item.entity_name_snapshot or "").strip()
-            if entity_name and entity_name not in mention_text and f"@{entity_name}" not in mention_text:
+            if (
+                item.status != MentionStatus.BROKEN
+                and entity_name
+                and entity_name not in mention_text
+                and f"@{entity_name}" not in mention_text
+            ):
                 raise ValueError("text_mismatch")
             if not self._entity_exists(work_id, item.entity_type, item.entity_id):
                 raise ValueError("invalid_entity")

@@ -16,7 +16,8 @@ const buildMentionPayload = (item) => ({
   start_pos: Number(item?.start_pos || 0),
   end_pos: Number(item?.end_pos || 0),
   source: String(item?.source || 'user_input'),
-  ai_suggestion_id: String(item?.ai_suggestion_id || '')
+  ai_suggestion_id: String(item?.ai_suggestion_id || ''),
+  status: String(item?.status || 'active')
 })
 
 const detectMentionQuery = (content, cursorPosition) => {
@@ -223,12 +224,21 @@ export const useMentionStore = defineStore('workbenchMention', () => {
   const rebuildMentionRanges = (content, sourceMentions = mentions.value) => {
     let searchOffset = 0
     return sourceMentions.map((item) => {
+      if (String(item?.source || '') === 'ai_suggestion') {
+        const start = Number(item?.start_pos || 0)
+        const end = Number(item?.end_pos || 0)
+        const expected = String(item?.entity_name_snapshot || '')
+        const remainsValid = start >= 0 && end > start && end <= String(content || '').length
+          && String(content || '').slice(start, end).includes(expected)
+        return { ...item, source: 'ai_suggestion', status: remainsValid ? String(item?.status || 'active') : 'broken' }
+      }
       const needle = `@${String(item?.entity_name_snapshot || '')}`
       const nextIndex = String(content || '').indexOf(needle, searchOffset)
       if (nextIndex < 0) {
         return {
           ...item,
-          source: 'user_input'
+          source: 'user_input',
+          status: 'broken'
         }
       }
       searchOffset = nextIndex + needle.length
@@ -236,7 +246,8 @@ export const useMentionStore = defineStore('workbenchMention', () => {
         ...item,
         start_pos: nextIndex,
         end_pos: nextIndex + needle.length,
-        source: 'user_input'
+        source: 'user_input',
+        status: 'active'
       }
     })
   }
@@ -285,4 +296,3 @@ export const useMentionStore = defineStore('workbenchMention', () => {
     saveMentions
   }
 })
-

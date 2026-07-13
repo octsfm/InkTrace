@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import uuid
 
+from application.services.ai.feature_capability_service import is_system_feature_available_by_env
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -19,13 +21,12 @@ P2_PATH_FLAG_MAP: tuple[tuple[str, str], ...] = (
     ("/api/v2/ai/outline-assist", OUTLINE_ASSIST_FLAG_ENV),
     ("/api/v2/ai/selection-rewrite", "INKTRACE_P2_ENABLE_SELECTION_REWRITE"),
     ("/api/v2/ai/cost-dashboard", "INKTRACE_P2_ENABLE_COST_DASHBOARD"),
-    ("/api/v2/ai/cost-budget", "INKTRACE_P2_ENABLE_COST_DASHBOARD"),
     ("/api/v2/ai/analysis-dashboard", "INKTRACE_P2_ENABLE_ANALYSIS_DASHBOARD"),
 )
 
 
 def _is_enabled(env_name: str) -> bool:
-    return str(os.getenv(env_name, "0")).strip().lower() in {"1", "true", "yes", "on"}
+    return is_system_feature_available_by_env(env_name)
 
 
 def is_outline_assist_enabled() -> bool:
@@ -67,6 +68,13 @@ def _match_flag(path: str) -> str:
 
 async def p2_feature_flag_middleware(request: Request, call_next):
     env_name = _match_flag(request.url.path)
-    if env_name and not _is_enabled(env_name):
-        return outline_assist_feature_disabled_response(request)
+    if env_name:
+        if not _is_enabled(env_name):
+            return outline_assist_feature_disabled_response(request)
+        # Local-first currently has one author preference set. The API must enforce
+        # the same effective state as the settings UI, not only the deployment fuse.
+        from presentation.api import dependencies
+
+        if not dependencies.get_feature_capability_service().is_effectively_enabled_by_env(env_name):
+            return outline_assist_feature_disabled_response(request)
     return await call_next(request)

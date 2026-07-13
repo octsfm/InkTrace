@@ -247,6 +247,16 @@
       >
         停下这次续写
       </button>
+      <button
+        v-if="showCancel"
+        data-test="auto-queue-cancel"
+        type="button"
+        class="ink-button ink-button--danger auto-queue-panel__danger"
+        :disabled="actionLoading"
+        @click="$emit('cancel')"
+      >
+        放弃这次
+      </button>
     </div>
 
     <div v-if="showDisableBudgetCheck" class="auto-queue-panel__follow-up-actions">
@@ -416,6 +426,7 @@ const emit = defineEmits([
   'pause',
   'resume',
   'stop',
+  'cancel',
   'confirm-continue',
   'disable-budget-check',
   'view-candidates',
@@ -465,6 +476,7 @@ const showResume = computed(() => String(props.currentRun?.status || '') === 'pa
 const showContinueQueue = computed(() => String(props.currentRun?.status || '') === 'stopped')
 const showConfirmContinue = computed(() => String(props.currentRun?.status || '') === 'waiting_user_decision')
 const showStop = computed(() => ['running', 'paused', 'waiting_user_decision'].includes(String(props.currentRun?.status || '')))
+const showCancel = computed(() => ['paused', 'waiting_user_decision', 'stopped'].includes(String(props.currentRun?.status || '')))
 const showViewCandidates = computed(() => {
   const status = String(props.currentRun?.status || '')
   return generatedCount.value > 0 && ['waiting_user_decision', 'completed', 'stopped'].includes(status)

@@ -51,6 +51,9 @@
         >
           取消任务
         </button>
+        <button v-if="['running', 'queued'].includes(jobStatusText)" type="button" data-test="ai-pause-job" @click="handleJobAction('pause')">暂停</button>
+        <button v-if="jobStatusText === 'paused'" type="button" data-test="ai-resume-job" @click="handleJobAction('resume')">继续</button>
+        <button v-if="jobStatusText === 'failed'" type="button" data-test="ai-retry-job" @click="handleJobAction('retry')">重试</button>
       </div>
       <div class="ai-meta">
         <span v-if="initializationInfo.initialization_id">初始化ID {{ initializationInfo.initialization_id }}</span>
@@ -167,6 +170,7 @@
         @pause="handleAutoQueuePause"
         @resume="handleAutoQueueResume"
         @stop="handleAutoQueueStop"
+        @cancel="handleAutoQueueCancel"
         @confirm-continue="handleAutoQueueConfirmContinue"
         @disable-budget-check="handleAutoQueueDisableBudgetCheck"
         @view-candidates="handleAutoQueueViewCandidates"
@@ -2140,6 +2144,16 @@ const refreshAIPanel = async () => {
   await Promise.all(requests)
 }
 
+const handleAutoQueueCancel = async () => {
+  const runId = String(autoQueueStore.currentRun?.run_id || '')
+  if (!runId) return
+  const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
+    ? true
+    : window.confirm('确定放弃这次续写吗？已经生成的新稿仍会保留，但这次任务不能再恢复。')
+  if (!confirmed) return
+  await autoQueueStore.cancelQueue(runId)
+}
+
 const refreshOutlineAssist = async () => {
   if (!props.workId) return
   try {
@@ -2645,6 +2659,21 @@ const handleApplyOutlineSuggestion = async (suggestionId) => {
       duration: 2000
     })
   } catch {}
+}
+
+const handleJobAction = async (action) => {
+  if (!polling.jobId.value) return
+  const payload = {
+    caller_type: 'user_action',
+    user_action: true,
+    user_id: 'local-author',
+    idempotency_key: buildIdempotencyKey(`job_${action}`),
+    reason: `user_${action}`
+  }
+  if (action === 'pause') await aiApi.pauseAIJob(polling.jobId.value, payload)
+  if (action === 'resume') await aiApi.resumeAIJob(polling.jobId.value, payload)
+  if (action === 'retry') await aiApi.retryAIJob(polling.jobId.value, payload)
+  await polling.fetchOnce()
 }
 
 const handleGenerateOutlineSuggestion = async (modeId) => {

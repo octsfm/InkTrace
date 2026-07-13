@@ -29,6 +29,11 @@ from application.services.ai.agent_trace_service import AgentTraceService
 from application.services.ai.ai_review_service import AIReviewApplicationService
 from application.services.ai.ai_suggestion_service import AISuggestionService
 from application.services.ai.auto_queue_service import AutoContinuationQueueService
+from application.services.ai.feature_capability_service import FeatureCapabilityService
+from application.services.ai.analysis_dashboard_query_service import AnalysisDashboardQueryService
+from application.services.ai.analysis_metric_service import AnalysisMetricService
+from application.services.ai.cost_control_service import CostControlService
+from application.services.ai.budget_attempt_guard import BudgetProviderAttemptGuard
 from application.services.ai.conflict_guard_service import ConflictGuardService
 from application.services.ai.candidate_rewrite_service import CandidateRewriteService
 from application.services.ai.citation_link_service import CitationLinkService
@@ -75,6 +80,7 @@ from infrastructure.database.repositories.ai.file_ai_review_store import FileAIR
 from infrastructure.database.repositories.ai.file_ai_suggestion_store import FileAISuggestionStore
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
 from infrastructure.database.repositories.ai.file_ai_settings_store import FileAISettingsStore
+from infrastructure.database.repositories.ai.file_feature_preference_store import FileFeaturePreferenceStore
 from infrastructure.database.repositories.ai.file_agent_runtime_store import FileAgentRuntimeStore
 from infrastructure.database.repositories.ai.file_agent_trace_store import FileAgentTraceStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
@@ -98,6 +104,8 @@ from infrastructure.persistence.chroma_vector_store import ChromaVectorStore
 from infrastructure.persistence.sqlite_multi_chapter_session_repo import SQLiteMultiChapterSessionRepository
 from infrastructure.persistence.sqlite_vector_index_repo import SQLiteVectorIndexRepository
 from infrastructure.persistence.sqlite_opening_repo import SQLiteOpeningRepository
+from infrastructure.persistence.sqlite_cost_control_repo import SQLiteCostControlRepository
+from infrastructure.persistence.sqlite_analysis_metric_repo import SQLiteAnalysisMetricRepository
 from infrastructure.security.temporary_sensitive_text_store import EncryptedTemporarySensitiveTextStore
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
@@ -108,6 +116,34 @@ from infrastructure.database.repositories import ChapterRepo, WorkRepo
 @lru_cache(maxsize=1)
 def get_ai_settings_repository() -> FileAISettingsStore:
     return FileAISettingsStore()
+
+
+@lru_cache(maxsize=1)
+def get_feature_preference_repository() -> FileFeaturePreferenceStore:
+    return FileFeaturePreferenceStore()
+
+
+@lru_cache(maxsize=1)
+def get_feature_capability_service() -> FeatureCapabilityService:
+    return FeatureCapabilityService(get_feature_preference_repository())
+
+
+@lru_cache(maxsize=1)
+def get_analysis_dashboard_query_service() -> AnalysisMetricService:
+    chapter_repository=ChapterRepo()
+    query=AnalysisDashboardQueryService(
+        chapter_repository=chapter_repository,
+        candidate_draft_repository=get_candidate_draft_repository(),
+        style_profile_repository=get_style_profile_repository(),
+        writing_asset_service=build_writing_asset_service(),
+        plot_arc_repository=get_plot_arc_repository(),
+    )
+    return AnalysisMetricService(query,SQLiteAnalysisMetricRepository(),chapter_repository)
+
+
+@lru_cache(maxsize=1)
+def get_cost_control_service() -> CostControlService:
+    return CostControlService(SQLiteCostControlRepository())
 
 
 @lru_cache(maxsize=1)
@@ -273,6 +309,8 @@ def get_model_router() -> ModelRouter:
         settings_repository=get_ai_settings_repository(),
         provider_registry=get_provider_registry(),
         settings_cipher=get_settings_cipher(),
+        attempt_guard=BudgetProviderAttemptGuard(get_cost_control_service()),
+        llm_call_logger=LLMCallLogger(get_llm_call_log_repository()),
     )
 
 
@@ -454,6 +492,7 @@ def get_outline_planner_service() -> OutlinePlannerService:
             get_llm_call_log_repository(),
             trace_service=get_agent_trace_service(),
             strict_trace=True,
+            pricing_resolver=lambda provider,model,role,work: get_cost_control_service().price_snapshot(work,provider,model),
         ),
     )
 
@@ -564,6 +603,7 @@ def get_quick_trial_service() -> QuickTrialApplicationService:
         provider_registry=get_provider_registry(),
         llm_call_log_repository=get_llm_call_log_repository(),
         trace_service=get_agent_trace_service(),
+        pricing_resolver=lambda provider,model,role,work: get_cost_control_service().price_snapshot(work,provider,model),
     )
 
 
@@ -579,6 +619,7 @@ def get_core_tool_facade() -> CoreToolFacade:
             model_router=get_model_router(),
             llm_call_log_repository=get_llm_call_log_repository(),
             trace_service=get_agent_trace_service(),
+            pricing_resolver=lambda provider,model,role,work: get_cost_control_service().price_snapshot(work,provider,model),
         ),
         job_service=get_ai_job_service(),
         trace_service=get_agent_trace_service(),

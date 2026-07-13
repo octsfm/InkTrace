@@ -1,4 +1,5 @@
 import inspect
+import json
 
 import pytest
 
@@ -27,6 +28,13 @@ def isolate_app_runtime(tmp_path, monkeypatch):
 
     app.dependency_overrides.clear()
     _clear_dependency_caches()
+    # API tests exercise feature behavior directly; explicitly enable author
+    # preferences so production defaults can remain safely off.
+    from application.services.ai.feature_capability_service import FEATURE_DEFINITIONS
+    db_path.with_name("feature_preferences.json").write_text(
+        json.dumps({"preferences": {item.feature_key: True for item in FEATURE_DEFINITIONS}, "receipts": {}}),
+        encoding="utf-8",
+    )
 
     yield
 

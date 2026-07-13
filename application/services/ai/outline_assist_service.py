@@ -122,11 +122,15 @@ class OutlinePlannerService:
                 raise ValueError(error_code) from exc
             request = LLMRequest(
                 model_role="planner",
+                work_id=work_id,
+                session_id=session_id,
                 prompt_key=prompt_key,
                 prompt_version="v1",
                 output_schema_key=schema_key,
                 request_id=request_id,
                 trace_id=trace_id,
+                max_tokens=2048,
+                external_logging=True,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": json.dumps(prompt_input, ensure_ascii=False)},
@@ -190,6 +194,10 @@ class OutlinePlannerService:
                 error_code=error_code,
                 content_hash=_sha256(getattr(response, "content", "")),
             )
+            if hasattr(self._model_router, "after_logged_attempt"):
+                response = self._model_router.after_logged_attempt(request, response, selection)
+            if error_code and not bool(getattr(response, "further_provider_calls_allowed", True)):
+                raise ValueError(response.budget_status or "P2_BUDGET_CHECK_FAILED")
             if error_code:
                 last_error = error_code
                 continue

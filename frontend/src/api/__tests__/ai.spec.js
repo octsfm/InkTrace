@@ -46,6 +46,10 @@ describe('P0 AI API client', () => {
     await api.aiApi.getAIJob('job-1')
     await api.aiApi.listAIJobs({ work_id: 'work-1', status: 'running' })
     await api.aiApi.cancelAIJob('job-1', { reason: 'user_cancelled' })
+    await api.aiApi.pauseAIJob('job-1', { idempotency_key: 'pause-1' })
+    await api.aiApi.resumeAIJob('job-1', { idempotency_key: 'resume-1' })
+    await api.aiApi.retryAIJob('job-1', { idempotency_key: 'retry-1' })
+    await api.aiApi.retryAIJobStep('job-1', 'step-1', { idempotency_key: 'retry-step-1' })
     await api.aiApi.startVectorIndexReindex({
       work_id: 'work-1',
       index_scope: 'full_work',

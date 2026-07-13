@@ -55,11 +55,13 @@ class StyleDNAExtractionService:
         for _attempt in range(3):
             request = LLMRequest(
                 model_role=template.model_role,
+                work_id=work_id,
                 prompt_key=template.prompt_key,
                 prompt_version=template.prompt_version,
                 output_schema_key=template.output_schema_key,
                 request_id=f"req_{uuid.uuid4().hex[:12]}",
                 trace_id=f"trace_{uuid.uuid4().hex[:12]}",
+                max_tokens=2048,
                 messages=[{"role": "user", "content": rendered_prompt}],
             )
             response = self._model_router.generate(request)

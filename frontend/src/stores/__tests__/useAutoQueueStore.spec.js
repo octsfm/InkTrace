@@ -9,6 +9,7 @@ const getAutoQueueHistory = vi.fn()
 const pauseAutoQueue = vi.fn()
 const resumeAutoQueue = vi.fn()
 const stopAutoQueue = vi.fn()
+const cancelAutoQueue = vi.fn()
 const confirmAutoQueueContinue = vi.fn()
 
 vi.mock('@/api', () => ({
@@ -21,6 +22,7 @@ vi.mock('@/api', () => ({
     pauseAutoQueue,
     resumeAutoQueue,
     stopAutoQueue,
+    cancelAutoQueue,
     confirmAutoQueueContinue
   }
 }))

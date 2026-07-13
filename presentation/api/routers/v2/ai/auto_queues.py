@@ -68,6 +68,7 @@ def _serialize_stop_record(stop_record) -> dict[str, object] | None:
     if stop_record is None:
         return None
     return {
+        "stop_record_id": stop_record.stop_record_id,
         "stop_reason": getattr(stop_record.stop_reason, "value", stop_record.stop_reason),
         "stop_severity": getattr(stop_record.stop_severity, "value", stop_record.stop_severity),
         "stop_context": dict(stop_record.stop_context or {}),
@@ -90,6 +91,8 @@ def _serialize_run(run) -> dict[str, object]:
         "consumed_tokens": run.consumed_tokens,
         "current_stop_evaluation": dict(run.current_stop_evaluation or {}),
         "stop_record": _serialize_stop_record(run.stop_record),
+        "stop_record_history": [_serialize_stop_record(item) for item in run.stop_record_history],
+        "resume_allowed": bool(run.resume_allowed),
         "current_candidate_story_state": dict(run.current_candidate_story_state or {}),
         "queue_state_snapshots": list(run.queue_state_snapshots or []),
         "consecutive_blocking_count": run.consecutive_blocking_count,
@@ -353,6 +356,25 @@ def stop_auto_queue(run_id: str, payload: SessionActionRequest, request: Request
         run = service.stop(run_id)
     except ValueError as exc:
         return error_response(request, error_code=str(exc), status_code=404)
+    return success_response(request, data={"run": _serialize_run(run)})
+
+
+@router.post("/{run_id}/cancel")
+def cancel_auto_queue(run_id: str, payload: SessionActionRequest, request: Request):
+    denied = _ensure_gate_request(
+        request,
+        caller_type=payload.caller_type,
+        user_action=payload.user_action,
+        idempotency_key=payload.idempotency_key,
+    )
+    if denied is not None:
+        return denied
+    service = dependencies.get_auto_queue_service()
+    try:
+        run = service.cancel(run_id)
+    except ValueError as exc:
+        error_code = str(exc)
+        return error_response(request, error_code=error_code, status_code=409 if error_code.endswith("not_allowed") else 404)
     return success_response(request, data={"run": _serialize_run(run)})
 
 

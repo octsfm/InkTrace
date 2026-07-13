@@ -25,7 +25,8 @@ class SQLiteAutoQueueConfigRepository(AutoQueueConfigRepository):
                     stop_on_budget_exceeded, stop_on_foreshadow_premature,
                     max_consecutive_revision_failures, budget_limit_tokens,
                     enabled, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ,revision
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(config_id) DO UPDATE SET
                     work_id = excluded.work_id,
                     target_chapters = excluded.target_chapters,
@@ -40,6 +41,7 @@ class SQLiteAutoQueueConfigRepository(AutoQueueConfigRepository):
                     enabled = excluded.enabled,
                     created_at = excluded.created_at,
                     updated_at = excluded.updated_at
+                    ,revision = excluded.revision
                 """,
                 self._params(config),
             )
@@ -80,6 +82,7 @@ class SQLiteAutoQueueConfigRepository(AutoQueueConfigRepository):
                     enabled=bool(row["enabled"]),
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
+                    revision=int(row["revision"] or 1),
                 )
                 for row in rows
             ]
@@ -102,4 +105,5 @@ class SQLiteAutoQueueConfigRepository(AutoQueueConfigRepository):
             int(config.enabled),
             config.created_at,
             config.updated_at,
+            config.revision,
         )

@@ -43,6 +43,12 @@ class CancelAIJobRequest(V2AIBaseModel):
     reason: str = "user_cancelled"
 
 
+class AIJobActionRequest(V2AIOperationRequest):
+    user_action: bool = False
+    user_id: str = ""
+    reason: str = "user_requested"
+
+
 class StartInitializationRequest(V2AIBaseModel):
     work_id: str
     created_by: str = "user_action"

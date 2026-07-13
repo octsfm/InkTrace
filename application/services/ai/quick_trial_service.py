@@ -26,11 +26,12 @@ class QuickTrialApplicationService:
         provider_registry: ProviderRegistry,
         llm_call_log_repository: LLMCallLogRepository,
         trace_service=None,
+        pricing_resolver=None,
     ) -> None:
         self._settings_repository = settings_repository
         self._model_router = model_router
         self._provider_registry = provider_registry
-        self._call_logger = LLMCallLogger(llm_call_log_repository, trace_service=trace_service)
+        self._call_logger = LLMCallLogger(llm_call_log_repository, trace_service=trace_service,pricing_resolver=pricing_resolver)
         self._output_validation_service = OutputValidationService()
 
     def run_quick_trial(self, request: QuickTrialRequest) -> QuickTrialResult:
@@ -47,12 +48,16 @@ class QuickTrialApplicationService:
             provider_name, model_name, model_role = self._resolve_target(request)
             llm_request = LLMRequest(
                 model_role=model_role or "quick_trial_writer",
+                work_id=request.work_id,
+                job_id=request.job_id,
                 prompt_key="quick_trial",
                 prompt_version="p0",
                 output_schema_key=request.output_schema_key,
                 request_id=request_id,
                 trace_id=trace_id,
                 messages=self._build_messages(request),
+                max_tokens=max(int(request.max_output_chars or 2000)*2,256),
+                external_logging=True,
             )
             response = self._generate(
                 provider_name=provider_name,
@@ -81,7 +86,12 @@ class QuickTrialApplicationService:
                 error_code="" if validation.success else "quick_trial_output_invalid",
                 error_message="" if validation.success else validation.message,
                 output_schema_key=request.output_schema_key,
+                work_id=request.work_id,
+                job_id=request.job_id,
             )
+            if request.work_id:
+                from domain.entities.ai.models import ModelSelection
+                response = self._model_router.after_logged_attempt(llm_request,response,ModelSelection(provider_name=provider_name,model_name=model_name))
             output_text = str(validation.parsed_output) if validation.success else ""
             return QuickTrialResult(
                 trial_id=trial_id,
@@ -114,6 +124,8 @@ class QuickTrialApplicationService:
                 error_code=error_code,
                 error_message=str(exc),
                 output_schema_key=request.output_schema_key,
+                work_id=request.work_id,
+                job_id=request.job_id,
             )
             raise ValueError(error_code) from exc
 
@@ -143,14 +155,13 @@ class QuickTrialApplicationService:
         return messages
 
     def _generate(self, *, provider_name: str, model_name: str, llm_request: LLMRequest):
-        settings = self._settings_repository.load()
-        provider = self._provider_registry.get(provider_name)
-        provider_config = settings.provider_configs.get(provider_name)
-        if provider_config is None:
-            raise ProviderConfigurationError("provider_config_missing")
-        if not provider_config.enabled:
-            raise ProviderConfigurationError("provider_disabled")
-        return provider.generate(request=llm_request, provider_config=provider_config, model_name=model_name)
+        from domain.entities.ai.models import ModelSelection
+        if llm_request.work_id:
+            return self._model_router.generate_with_selection(llm_request,ModelSelection(provider_name=provider_name,model_name=model_name))
+        settings=self._settings_repository.load(); provider=self._provider_registry.get(provider_name); provider_config=settings.provider_configs.get(provider_name)
+        if provider_config is None: raise ProviderConfigurationError("provider_config_missing")
+        if not provider_config.enabled: raise ProviderConfigurationError("provider_disabled")
+        return provider.generate(request=llm_request,provider_config=provider_config,model_name=model_name)
 
     def _validate_output(self, *, raw_output: str, output_schema_key: str, max_output_chars: int):
         validation = self._output_validation_service.validate(output_schema_key, raw_output)

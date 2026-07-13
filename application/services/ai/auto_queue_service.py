@@ -99,13 +99,12 @@ class AutoContinuationQueueService:
                 }
             ],
         )
-        session = self._multi_chapter_service.start(
-            work_id=work_id,
-            start_chapter_id=start_chapter_id,
-            target_chapters=int(config.target_chapters),
-            user_instruction=str(user_instruction or "").strip(),
-            caller_type="user_action",
-        )
+        start_payload={"work_id":work_id,"start_chapter_id":start_chapter_id,"target_chapters":int(config.target_chapters),"user_instruction":str(user_instruction or "").strip(),"caller_type":"user_action"}
+        try:
+            session=self._multi_chapter_service.start(**start_payload,run_id=run_id)
+        except TypeError as exc:
+            if "run_id" not in str(exc): raise
+            session=self._multi_chapter_service.start(**start_payload)
         now = self._now()
         run = AutoQueueRun(
             run_id=run_id,
@@ -143,15 +142,34 @@ class AutoContinuationQueueService:
 
     def resume(self, run_id: str) -> AutoQueueRun:
         run = self._load_run(run_id)
+        if not bool(run.resume_allowed) or run.status in {AutoQueueStatus.CANCELLED, AutoQueueStatus.COMPLETED, AutoQueueStatus.FAILED}:
+            raise ValueError("auto_queue_resume_not_allowed")
         config = self._load_config(run.config_id)
+        history = list(run.stop_record_history or [])
+        if run.stop_record is not None and not any(
+            item.stop_record_id == run.stop_record.stop_record_id for item in history
+        ):
+            history.append(run.stop_record)
+        run = run.model_copy(
+            update={
+                "stop_record": None,
+                "stop_record_history": history,
+                "current_stop_evaluation": {},
+                "stopped_at": "",
+                "finished_at": "",
+                "updated_at": self._now(),
+            }
+        )
+        run = self._run_repository.update(run)
         session = self._multi_chapter_service.resume(run.multi_chapter_session_id)
         return self._sync_from_session(run, session, config=config)
 
     def stop(self, run_id: str, *, reason: StopCondition = StopCondition.USER_MANUAL_STOP) -> AutoQueueRun:
         run = self._load_run(run_id)
-        self._multi_chapter_service.cancel(run.multi_chapter_session_id)
+        self._multi_chapter_service.pause(run.multi_chapter_session_id)
         now = self._now()
         stop_record = AutoQueueStopRecord(
+            stop_record_id=f"aqs_{uuid.uuid4().hex[:12]}",
             stop_reason=reason,
             stop_severity=StopSeverity.USER if reason == StopCondition.USER_MANUAL_STOP else StopSeverity.ABNORMAL,
             stop_context={
@@ -172,6 +190,23 @@ class AutoContinuationQueueService:
             }
         )
         return self._run_repository.update(updated)
+
+    def cancel(self, run_id: str) -> AutoQueueRun:
+        run = self._load_run(run_id)
+        if run.status in {AutoQueueStatus.COMPLETED, AutoQueueStatus.FAILED, AutoQueueStatus.CANCELLED}:
+            raise ValueError("auto_queue_cancel_not_allowed")
+        self._multi_chapter_service.cancel(run.multi_chapter_session_id)
+        now = self._now()
+        return self._run_repository.update(
+            run.model_copy(
+                update={
+                    "status": AutoQueueStatus.CANCELLED,
+                    "resume_allowed": False,
+                    "updated_at": now,
+                    "finished_at": now,
+                }
+            )
+        )
 
     def get_status(self, run_id: str) -> AutoQueueRun:
         run = self._load_run(run_id)
@@ -292,6 +327,20 @@ class AutoContinuationQueueService:
         if status in self.TERMINAL_STATUSES:
             return synced_run
         evaluation = self._evaluate_stop_conditions(synced_run, config)
+        if bool(getattr(evaluation, "should_pause", False)):
+            try:
+                self._multi_chapter_service.pause(synced_run.multi_chapter_session_id)
+            except (ValueError, RuntimeError):
+                pass
+            return self._run_repository.update(
+                synced_run.model_copy(
+                    update={
+                        "status": AutoQueueStatus.PAUSED,
+                        "current_stop_evaluation": self._serialize_stop_evaluation(evaluation),
+                        "updated_at": self._now(),
+                    }
+                )
+            )
         if bool(evaluation.should_stop):
             if evaluation.severity == StopSeverity.NORMAL:
                 return self._mark_completed(synced_run, evaluation)
@@ -311,6 +360,7 @@ class AutoContinuationQueueService:
     def _mark_completed(self, run: AutoQueueRun, evaluation) -> AutoQueueRun:
         now = self._now()
         stop_record = AutoQueueStopRecord(
+            stop_record_id=f"aqs_{uuid.uuid4().hex[:12]}",
             stop_reason=evaluation.condition,
             stop_severity=evaluation.severity,
             stop_context={
@@ -335,6 +385,7 @@ class AutoContinuationQueueService:
     def _mark_stopped(self, run: AutoQueueRun, evaluation, *, session=None) -> AutoQueueRun:
         now = self._now()
         stop_record = run.stop_record or AutoQueueStopRecord(
+            stop_record_id=f"aqs_{uuid.uuid4().hex[:12]}",
             stop_reason=evaluation.condition or StopCondition.BLOCKING_REVIEW_CONSECUTIVE,
             stop_severity=evaluation.severity or StopSeverity.ABNORMAL,
             stop_context={
@@ -517,6 +568,7 @@ class AutoContinuationQueueService:
     def _serialize_stop_evaluation(evaluation) -> dict[str, object]:
         return {
             "should_stop": bool(getattr(evaluation, "should_stop", False)),
+            "should_pause": bool(getattr(evaluation, "should_pause", False)),
             "condition": getattr(getattr(evaluation, "condition", None), "value", getattr(evaluation, "condition", None)),
             "severity": getattr(getattr(evaluation, "severity", None), "value", getattr(evaluation, "severity", None)),
             "reason": str(getattr(evaluation, "reason", "") or ""),

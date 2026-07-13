@@ -83,3 +83,28 @@ def decide_conflict(record_id: str, payload: ConflictDecisionRequest, request: R
         error_code = str(exc)
         return error_response(request, error_code=error_code, status_code=_conflict_error_status(error_code))
     return success_response(request, data=_serialize_conflict(item))
+
+
+@router.post("/api/v2/ai/conflicts/{record_id}/items/{item_id}/resolve")
+def resolve_conflict_item(record_id: str, item_id: str, payload: ConflictDecisionRequest, request: Request):
+    """Compatibility contract: one persisted ConflictGuardRecord is one resolvable item."""
+    denied = _reject_invalid_decision_request(request, payload)
+    if denied is not None:
+        return denied
+    if item_id != record_id:
+        return error_response(request, error_code="conflict_item_not_found", status_code=404)
+    service = dependencies.get_conflict_guard_service()
+    try:
+        item = service.decide_record(
+            record_id,
+            decision="resolved",
+            user_id=payload.user_id,
+            user_action=payload.user_action,
+            request_id=getattr(request.state, "request_id", ""),
+            trace_id=request.headers.get("X-Trace-Id", "").strip(),
+            note=payload.decision_note,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        return error_response(request, error_code=code, status_code=_conflict_error_status(code))
+    return success_response(request, data=_serialize_conflict(item))

@@ -64,3 +64,16 @@ def test_conflicts_api_lists_detail_and_decide_with_gate_rules() -> None:
     )
     assert decided.status_code == 200
     assert decided.json()["data"]["status"] == "resolved"
+
+    item_alias = client.post(
+        f"/api/v2/ai/conflicts/{record_id}/items/{record_id}/resolve",
+        json={
+            "caller_type": "user_action",
+            "user_action": True,
+            "user_id": "ui-user",
+            "decision": "resolved",
+            "idempotency_key": "conflict-item-resolve-1",
+        },
+    )
+    assert item_alias.status_code == 200
+    assert item_alias.json()["data"]["record_id"] == record_id

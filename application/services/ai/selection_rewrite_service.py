@@ -251,11 +251,13 @@ class SelectionRewriteService:
             response = self._model_router.generate(
                 LLMRequest(
                     model_role=mode_contract["model_role"],
+                    work_id=candidate.work_id,
                     prompt_key=mode_contract["prompt_key"],
                     prompt_version="v1",
                     output_schema_key="selection_rewrite_schema",
                     request_id=candidate.request_id or f"req_{uuid4().hex[:12]}",
                     trace_id=candidate.trace_id or f"trace_{uuid4().hex[:12]}",
+                    max_tokens=max(len(candidate.source_text) * 2, 256),
                     messages=self._build_messages(
                         candidate,
                         prompt_context_before=prompt_context_before,

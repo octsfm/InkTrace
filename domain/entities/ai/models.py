@@ -1409,6 +1409,12 @@ class LLMCallStatus(StrEnum):
 
 class LLMRequest(AIBaseModel):
     model_role: str
+    work_id: str = ""
+    job_id: str = ""
+    session_id: str = ""
+    run_id: str = ""
+    operation_type: str = ""
+    external_logging: bool = False
     prompt_key: str = ""
     prompt_version: str = ""
     messages: list[dict[str, str]] = Field(default_factory=list)
@@ -1429,6 +1435,8 @@ class LLMResponse(AIBaseModel):
     finish_reason: str = ""
     error_code: str = ""
     error_message: str = ""
+    further_provider_calls_allowed: bool = True
+    budget_status: str = ""
 
 
 class PromptTemplate(AIBaseModel):
@@ -1458,6 +1466,8 @@ class LLMCallLog(AIBaseModel):
     trace_id: str
     session_id: str = ""
     step_id: str = ""
+    job_id: str = ""
+    run_id: str = ""
     status: LLMCallStatus
     error_code: str = ""
     error_message: str = ""
@@ -2483,12 +2493,14 @@ class AutoQueueConfig(AIBaseModel):
     max_consecutive_revision_failures: int = 3
     stop_on_foreshadow_premature: bool = True
     budget_limit_tokens: int = 0
+    revision: int = 1
     enabled: bool = True
     created_at: str = ""
     updated_at: str = ""
 
 
 class AutoQueueStopRecord(AIBaseModel):
+    stop_record_id: str = ""
     stop_reason: StopCondition
     stop_severity: StopSeverity
     stop_context: dict[str, Any] = Field(default_factory=dict)
@@ -2499,6 +2511,7 @@ class AutoQueueStopRecord(AIBaseModel):
 
 class StopEvaluationResult(AIBaseModel):
     should_stop: bool = False
+    should_pause: bool = False
     condition: StopCondition | None = None
     severity: StopSeverity | None = None
     reason: str = ""
@@ -2518,6 +2531,8 @@ class AutoQueueRun(AIBaseModel):
     consumed_tokens: int = 0
     current_stop_evaluation: dict[str, Any] = Field(default_factory=dict)
     stop_record: AutoQueueStopRecord | None = None
+    stop_record_history: list[AutoQueueStopRecord] = Field(default_factory=list)
+    resume_allowed: bool = True
     current_candidate_story_state: dict[str, Any] = Field(default_factory=dict)
     queue_state_snapshots: list[dict[str, Any]] = Field(default_factory=list)
     consecutive_blocking_count: int = 0
@@ -2608,6 +2623,8 @@ class MultiChapterProgress(AIBaseModel):
 
 class QuickTrialRequest(AIBaseModel):
     trial_id: str = ""
+    work_id: str = ""
+    job_id: str = ""
     model_role: str = ""
     provider_name: str = ""
     model_name: str = ""

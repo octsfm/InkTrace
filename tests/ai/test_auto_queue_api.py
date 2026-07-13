@@ -156,6 +156,13 @@ class _FakeAutoQueueService:
         self.runs[run_id] = run
         return run
 
+    def cancel(self, run_id: str) -> AutoQueueRun:
+        run = self.get_status(run_id).model_copy(
+            update={"status": AutoQueueStatus.CANCELLED, "resume_allowed": False, "updated_at": _now()}
+        )
+        self.runs[run_id] = run
+        return run
+
     def user_confirm_continue(self, run_id: str, **_context) -> AutoQueueRun:
         self.confirm_calls.append(run_id)
         run = self.get_status(run_id).model_copy(update={"status": AutoQueueStatus.RUNNING, "updated_at": _now()})

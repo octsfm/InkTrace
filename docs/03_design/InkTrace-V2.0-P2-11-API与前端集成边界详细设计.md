@@ -1,6 +1,6 @@
 # InkTrace V2.0-P2-11 API 与前端集成边界详细设计
 
-版本：v2.5 / P2 模块级详细设计冻结版（“接着写”入口契约已同步）
+版本：v2.6 / P2 模块级详细设计冻结版（作者功能开关契约已同步）
 状态：冻结生效
 所属阶段：InkTrace V2.0 P2 集成
 设计范围：P2 全部 API 路由注册、前端路由与组件集成边界、Feature Flag 体系、分期落地策略
@@ -33,7 +33,7 @@ P2 模块分三个阶段落地，避免一次性全接入导致前端入口空�
 
 ### 1.2 Feature Flag 体系
 
-每个 P2 模块对应一个 Feature Flag，控制前端入口、路由守卫和 API 可用性：
+每个 P2 模块采用两层控制：系统可用性负责发行、灰度和紧急熔断；作者偏好负责设置页中的日常启停。前端入口、路由守卫和 API 可用性统一读取后端计算的最终有效状态：
 
 ```javascript
 // frontend/src/config/p2FeatureFlags.js (或 .env / 后端配置)
@@ -58,10 +58,14 @@ const P2_FEATURE_FLAGS = {
 
 **使用规则**：
 
+- 最终有效状态固定为 `effective_enabled = system_available && user_enabled`。作者不能把系统未开放、未验收或紧急关闭的功能自行开启。
+- 后端新增 `/api/v2/ai/feature-capabilities`：GET 返回系统可用性、作者偏好、最终有效状态、发布级别和安全中文原因；PUT 仅允许真实 `caller_type=user_action`、`user_action=true` 修改可配置功能的作者偏好，并要求非空幂等键。
+- 作者偏好为本地应用级配置；关闭功能不删除历史业务数据。`required` 功能不可关闭，`unavailable` 功能不可开启，`experimental` 必须在设置页明确标注。
+- 前端启动后以能力 API 为权威来源；`VITE_P2_ENABLE_*` 只作为开发构建兜底，不得覆盖后端系统禁用。后端 `INKTRACE_P2_ENABLE_*` 保留为系统熔断。
 - `false` 的模块：前端不显示对应功能入口。后端统一注册该模块路由，但返回 `503 P2_FEATURE_DISABLED`。**P2-09 例外**：`enable_cost_dashboard` 只关闭 `/cost-dashboard/*` 和作品内看板入口；预算门控始终执行，`/cost-budget` 与 `/cost-prices` 始终保留在 SettingsCenter，避免用户无法调整已生效保护。
 - 模块复用 P1 通用端点时，后端必须先按实体 `source/metadata` 判断归属：`enable_outline_assist=false` 时，P2-07 来源的 `/suggestions/{id}/accept|dismiss|convert` 与 `/writing-tasks/{id}/confirm` 同样返回 503；P1 来源实体继续正常工作，禁止粗暴关闭全部通用端点。
 - `true` 的模块：前端正常显示入口，后端 API 正常响应。
-- Flag 来源：开发阶段用配置文件/环境变量；生产环境可从后端 API `/api/v2/ai/feature-flags` 动态获取。
+- Flag 来源：开发阶段可用配置文件/环境变量；生产环境必须通过 `/api/v2/ai/feature-capabilities` 统一读取，不再要求作者运行脚本。
 - 成本看板和分析看板即使 `enable_* = true`，也不强制要求 Provider 已配置（见 §2.1 路由守卫）。
 
 ---

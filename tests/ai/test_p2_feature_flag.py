@@ -78,3 +78,19 @@ def test_p2_feature_flag_allows_unrelated_api_when_module_disabled(monkeypatch, 
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
 
+
+def test_p2_feature_flag_honors_author_preference_not_only_environment(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
+    monkeypatch.setenv("INKTRACE_P2_ENABLE_MULTI_CHAPTER", "1")
+    _reset_p2_flag_dependencies()
+    dependencies.get_feature_preference_repository.cache_clear()
+    dependencies.get_feature_capability_service.cache_clear()
+    service = dependencies.get_feature_capability_service()
+    service.update_preference(feature_key="enable_multi_chapter", enabled=False, idempotency_key="disable-multi")
+
+    response = TestClient(app).post(
+        "/api/v2/ai/multi-chapter/start",
+        json={"work_id": "work-1", "start_chapter_id": "chapter-1", "target_chapters": 3},
+    )
+    assert response.status_code == 503
+    assert response.json()["error"]["error_code"] == "P2_FEATURE_DISABLED"

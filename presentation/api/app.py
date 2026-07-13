@@ -61,6 +61,9 @@ from presentation.api.routers.v2.ai import review as ai_review_v2
 from presentation.api.routers.v2.ai import selection_rewrite as ai_selection_rewrite_v2
 from presentation.api.routers.v2.ai import suggestions as ai_suggestions_v2
 from presentation.api.routers.v2.ai import settings as ai_settings_v2
+from presentation.api.routers.v2.ai import feature_capabilities as ai_feature_capabilities_v2
+from presentation.api.routers.v2.ai import analysis_dashboard as ai_analysis_dashboard_v2
+from presentation.api.routers.v2.ai import cost_control as ai_cost_control_v2
 from presentation.api.routers.v1.schemas import V1APIError, build_error_response
 from presentation.api.routers.v2.ai.response_utils import error_response
 
@@ -206,6 +209,9 @@ def create_app() -> FastAPI:
     app.include_router(characters_v1.router)
     app.include_router(mentions_v2.router)
     app.include_router(ai_settings_v2.router)
+    app.include_router(ai_feature_capabilities_v2.router)
+    app.include_router(ai_analysis_dashboard_v2.router)
+    app.include_router(ai_cost_control_v2.router)
     app.include_router(ai_jobs_v2.router)
     app.include_router(ai_initialization_v2.router)
     app.include_router(ai_context_pack_v2.router)

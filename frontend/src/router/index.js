@@ -27,6 +27,18 @@ const routes = [
     name: 'WritingStudio',
     component: () => import('@/views/works/WritingStudio.vue'),
     meta: { title: 'Writing' }
+  },
+  {
+    path: '/works/:id/analysis',
+    name: 'AnalysisDashboard',
+    component: () => import('@/views/AnalysisDashboard.vue'),
+    meta: { title: '创作分析', p2FeatureFlag: 'enable_analysis_dashboard' }
+  },
+  {
+    path: '/works/:id/cost',
+    name: 'CostDashboard',
+    component: () => import('@/views/CostDashboard.vue'),
+    meta: { title: 'AI 用量与预算', p2FeatureFlag: 'enable_cost_dashboard' }
   }
 ]
 

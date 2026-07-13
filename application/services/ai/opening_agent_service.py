@@ -356,9 +356,9 @@ class ModelRouterOpeningDirectionGenerator:
     def generate(self, *, brief, reference_summaries):
         reference_note = "；".join(item.analysis_summary for item in reference_summaries) or "无参考作品，请基于通用原创开篇规则"
         request = LLMRequest(
-            model_role="planning", prompt_key="opening_directions", prompt_version="v2.0",
+            model_role="planning", work_id=brief.work_id, prompt_key="opening_directions", prompt_version="v2.0",
             output_schema_key="opening_directions_v2", request_id=f"req_{uuid.uuid4().hex[:12]}",
-            trace_id=f"trace_{uuid.uuid4().hex[:12]}", messages=[
+            trace_id=f"trace_{uuid.uuid4().hex[:12]}", max_tokens=2048, messages=[
                 {"role": "system", "content": "你是小说开篇策划助手。只输出 JSON 数组，必须恰好三个方向；每项包含 name、summary、chapter_goals(3项)、advantages、risks。不得模仿参考原文。"},
                 {"role": "user", "content": f"故事：{brief.story_premise}\n主角目标：{brief.protagonist_desire}\n第三章期待：{brief.third_chapter_expectation}\n参考摘要：{reference_note}"},
             ],
@@ -380,9 +380,9 @@ class ModelRouterOpeningDraftGenerator:
     def generate(self, *, brief, direction, chapter_no, previous_drafts):
         previous_summary = "\n".join(text[-500:] for text in previous_drafts)
         request = LLMRequest(
-            model_role="writer", prompt_key="opening_draft", prompt_version="v2.0",
+            model_role="writer", work_id=brief.work_id, prompt_key="opening_draft", prompt_version="v2.0",
             output_schema_key="plain_text", request_id=f"req_{uuid.uuid4().hex[:12]}",
-            trace_id=f"trace_{uuid.uuid4().hex[:12]}", messages=[
+            trace_id=f"trace_{uuid.uuid4().hex[:12]}", max_tokens=4096, messages=[
                 {"role": "system", "content": "你是原创小说作者助手。根据用户故事和已确认方向生成候选章节，不复刻任何现有作品，不解释，只输出正文。"},
                 {"role": "user", "content": f"故事：{brief.story_premise}\n主角目标：{brief.protagonist_desire}\n开篇方向：{direction.summary}\n本章：第{chapter_no}章\n本章目标：{direction.chapter_goals[chapter_no - 1] if len(direction.chapter_goals) >= chapter_no else ''}\n前章末尾：{previous_summary}"},
             ],
@@ -399,18 +399,19 @@ class ModelRouterOpeningOriginalityChecker:
 
     def check_strategy(self, *, brief, direction, reference_summaries):
         return self._check(
+            work_id=brief.work_id,
             stage="strategy",
             content=f"故事：{brief.story_premise}\n方向：{direction.summary}\n前三章：{' / '.join(direction.chapter_goals)}\n参考结构摘要：{' / '.join(item.analysis_summary for item in reference_summaries)}",
         )
 
     def check_draft(self, *, brief, direction, chapter_no, content, reference_summaries):
-        return self._check(stage="draft", content=f"方向：{direction.summary}\n第{chapter_no}章候选稿：{content}\n参考结构摘要：{' / '.join(item.analysis_summary for item in reference_summaries)}")
+        return self._check(work_id=brief.work_id, stage="draft", content=f"方向：{direction.summary}\n第{chapter_no}章候选稿：{content}\n参考结构摘要：{' / '.join(item.analysis_summary for item in reference_summaries)}")
 
-    def _check(self, *, stage: str, content: str):
+    def _check(self, *, work_id: str = "", stage: str, content: str):
         request = LLMRequest(
-            model_role="reviewer", prompt_key="opening_originality", prompt_version="v2.0",
+            model_role="reviewer", work_id=work_id, prompt_key="opening_originality", prompt_version="v2.0",
             output_schema_key="opening_originality_v2", request_id=f"req_{uuid.uuid4().hex[:12]}",
-            trace_id=f"trace_{uuid.uuid4().hex[:12]}", messages=[
+            trace_id=f"trace_{uuid.uuid4().hex[:12]}", max_tokens=1024, messages=[
                 {"role": "system", "content": "检查原创性风险，只输出 JSON 对象：risk_level(low/medium/high)、evidence_summary、revision_suggestions。没有参考原文时不得凭空判定高风险。"},
                 {"role": "user", "content": f"检查阶段：{stage}\n{content}"},
             ],

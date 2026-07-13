@@ -18,10 +18,11 @@ class ModelRouterWriter(WriterPort):
         llm_call_log_repository,
         prompt_registry: PromptRegistry | None = None,
         trace_service=None,
+        pricing_resolver=None,
     ) -> None:
         self._model_router = model_router
         self._prompt_registry = prompt_registry or PromptRegistry()
-        self._call_logger = LLMCallLogger(llm_call_log_repository, trace_service=trace_service)
+        self._call_logger = LLMCallLogger(llm_call_log_repository, trace_service=trace_service,pricing_resolver=pricing_resolver)
 
     def generate_candidate_text(self, *, context_pack: ContextPackSnapshot, writing_task: WritingTask) -> dict[str, object]:
         request_id = str(writing_task.request_id or f"req_{uuid.uuid4().hex[:12]}")
@@ -32,11 +33,17 @@ class ModelRouterWriter(WriterPort):
         selection = self._model_router.resolve_model(writing_task.model_role)
         llm_request = LLMRequest(
             model_role=writing_task.model_role,
+            work_id=writing_task.work_id,
+            job_id=str(writing_task.metadata.get("job_id", "")),
+            session_id=writing_task.agent_session_id,
+            run_id=str(writing_task.metadata.get("run_id", "")),
+            external_logging=True,
             prompt_key=prompt_key,
             prompt_version=prompt_version,
             output_schema_key="candidate_with_citations",
             request_id=request_id,
             trace_id=trace_id,
+            max_tokens=max(int(writing_task.target_word_count_max or writing_task.target_word_count or 2000) * 2, 256),
             messages=self._build_messages(context_pack=context_pack, writing_task=writing_task),
         )
 
@@ -61,6 +68,9 @@ class ModelRouterWriter(WriterPort):
                 error_message=str(exc),
                 context_pack_snapshot_id=context_pack.context_pack_id,
                 output_schema_key="candidate_with_citations",
+                job_id=str(writing_task.metadata.get("job_id", "")),
+                session_id=writing_task.agent_session_id,
+                run_id=str(writing_task.metadata.get("run_id", "")),
             )
             raise
 
@@ -80,7 +90,11 @@ class ModelRouterWriter(WriterPort):
             usage=response.token_usage,
             context_pack_snapshot_id=context_pack.context_pack_id,
             output_schema_key="candidate_with_citations",
+            job_id=str(writing_task.metadata.get("job_id", "")),
+            session_id=writing_task.agent_session_id,
+            run_id=str(writing_task.metadata.get("run_id", "")),
         )
+        response = self._model_router.after_logged_attempt(llm_request, response, selection)
         content, citations = self._parse_writer_payload(response.content)
         return {
             "content": content,
@@ -88,6 +102,8 @@ class ModelRouterWriter(WriterPort):
             "provider_name": response.provider_name,
             "model_name": response.model_name,
             "model_role": writing_task.model_role,
+            "further_provider_calls_allowed": response.further_provider_calls_allowed,
+            "budget_status": response.budget_status,
         }
 
     def _build_messages(self, *, context_pack: ContextPackSnapshot, writing_task: WritingTask) -> list[dict[str, str]]:

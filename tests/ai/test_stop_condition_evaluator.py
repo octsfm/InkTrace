@@ -24,8 +24,9 @@ class _StubPlotArcRepository:
 
 
 class _StubBudgetService:
-    def __init__(self, exceeded: bool = False) -> None:
+    def __init__(self, exceeded: bool = False, indeterminate: bool = False) -> None:
         self._exceeded = exceeded
+        self._indeterminate = indeterminate
 
     def check_auto_queue_budget(self, run_id: str):
         _ = run_id
@@ -34,10 +35,25 @@ class _StubBudgetService:
             (),
             {
                 "exceeded": self._exceeded,
+                "has_indeterminate": self._indeterminate,
                 "estimated_total_tokens": 520000,
                 "suggested_action": "adjust_budget",
             },
         )()
+
+
+def test_stop_condition_evaluator_pauses_when_budget_is_indeterminate() -> None:
+    evaluator = StopConditionEvaluator(
+        plot_arc_repository=_StubPlotArcRepository(),
+        budget_service=_StubBudgetService(indeterminate=True),
+    )
+
+    result = evaluator.evaluate(_build_run(), _build_config(), _build_review())
+
+    assert result.should_stop is False
+    assert result.should_pause is True
+    assert result.reason == "budget_indeterminate"
+    assert result.user_action_required is True
 
 
 def _build_config(**updates) -> AutoQueueConfig:

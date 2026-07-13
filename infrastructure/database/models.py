@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS llm_call_logs (
     trace_id TEXT NOT NULL DEFAULT '',
     session_id TEXT NOT NULL DEFAULT '',
     step_id TEXT NOT NULL DEFAULT '',
+    job_id TEXT NOT NULL DEFAULT '',
+    run_id TEXT NOT NULL DEFAULT '',
     prompt_key TEXT NOT NULL DEFAULT '',
     prompt_version TEXT NOT NULL DEFAULT '',
     model_role TEXT NOT NULL DEFAULT '',
@@ -36,6 +38,11 @@ CREATE TABLE IF NOT EXISTS llm_call_logs (
     output_schema_key TEXT NOT NULL DEFAULT '',
     started_at TEXT NOT NULL DEFAULT '',
     finished_at TEXT NOT NULL DEFAULT ''
+    ,canonical_digest TEXT NOT NULL DEFAULT ''
+    ,usage_status TEXT NOT NULL DEFAULT 'unknown'
+    ,cost_status TEXT NOT NULL DEFAULT 'unknown'
+    ,cost_currency TEXT NOT NULL DEFAULT ''
+    ,estimated_cost_text TEXT
 )
 """
 
@@ -223,6 +230,8 @@ CREATE TABLE IF NOT EXISTS auto_queue_runs (
     consumed_tokens INTEGER DEFAULT 0,
     current_stop_evaluation_json TEXT DEFAULT '{}',
     stop_record_json TEXT DEFAULT '{}',
+    stop_record_history_json TEXT DEFAULT '[]',
+    resume_allowed INTEGER NOT NULL DEFAULT 1,
     current_candidate_story_state_json TEXT DEFAULT '{}',
     queue_state_snapshots_json TEXT DEFAULT '[]',
     consecutive_blocking_count INTEGER DEFAULT 0,
@@ -287,6 +296,79 @@ CREATE TABLE IF NOT EXISTS vector_index_status (
 )
 """
 
+COST_BUDGETS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS cost_budgets (
+    budget_id TEXT PRIMARY KEY,
+    work_id TEXT NOT NULL DEFAULT '',
+    budget_type TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    inherit_global INTEGER NOT NULL DEFAULT 0,
+    limit_value TEXT NOT NULL,
+    currency TEXT NOT NULL DEFAULT '',
+    alert_threshold TEXT NOT NULL DEFAULT '0.800000',
+    revision INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL,
+    UNIQUE(work_id, budget_type)
+)
+"""
+
+MODEL_PRICE_POLICIES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS model_price_policies (
+    policy_id TEXT PRIMARY KEY,
+    work_id TEXT NOT NULL DEFAULT '',
+    provider_name TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    inherit_global INTEGER NOT NULL DEFAULT 0,
+    input_price_per_1m TEXT NOT NULL,
+    output_price_per_1m TEXT NOT NULL,
+    currency TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL,
+    UNIQUE(work_id, provider_name, model_name)
+)
+"""
+
+COST_CONTROL_RECEIPTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS cost_control_receipts (
+    receipt_id TEXT PRIMARY KEY,
+    key_hash TEXT NOT NULL UNIQUE,
+    request_hash TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    audit_status TEXT NOT NULL DEFAULT 'completion_pending',
+    post_event_ref TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+"""
+
+COST_CONTROL_AUDITS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS cost_control_audits (
+    event_ref TEXT PRIMARY KEY,
+    event_key TEXT NOT NULL UNIQUE,
+    event_stage TEXT NOT NULL,
+    user_id_hash TEXT NOT NULL,
+    resource_hash TEXT NOT NULL,
+    old_value_hash TEXT NOT NULL DEFAULT '',
+    new_value_hash TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+)
+"""
+
+ANALYSIS_METRICS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS analysis_metrics (
+    work_id TEXT NOT NULL,
+    metric_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    source_fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ready',
+    error_code TEXT NOT NULL DEFAULT '',
+    stale INTEGER NOT NULL DEFAULT 0,
+    computed_at TEXT NOT NULL,
+    PRIMARY KEY(work_id, metric_type)
+)
+"""
+
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
     rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
@@ -311,6 +393,11 @@ def migrate_ai_schema(conn: sqlite3.Connection) -> None:
     conn.execute(CHAPTER_CHUNKS_TABLE_SQL)
     conn.execute(CHUNK_EMBEDDINGS_TABLE_SQL)
     conn.execute(VECTOR_INDEX_STATUS_TABLE_SQL)
+    conn.execute(COST_BUDGETS_TABLE_SQL)
+    conn.execute(MODEL_PRICE_POLICIES_TABLE_SQL)
+    conn.execute(COST_CONTROL_RECEIPTS_TABLE_SQL)
+    conn.execute(COST_CONTROL_AUDITS_TABLE_SQL)
+    conn.execute(ANALYSIS_METRICS_TABLE_SQL)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_multi_chapter_work_id ON multi_chapter_sessions(work_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_multi_chapter_status ON multi_chapter_sessions(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_citations_candidate_version ON citation_links(candidate_version_id)")
@@ -330,13 +417,24 @@ def migrate_ai_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_chunk_id ON chunk_embeddings(chunk_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_work_id ON chunk_embeddings(work_id)")
     _add_column_if_missing(conn, "auto_queue_runs", "job_id", "TEXT DEFAULT ''")
+    _add_column_if_missing(conn, "auto_queue_runs", "stop_record_history_json", "TEXT DEFAULT '[]'")
+    _add_column_if_missing(conn, "auto_queue_runs", "resume_allowed", "INTEGER NOT NULL DEFAULT 1")
+    _add_column_if_missing(conn, "auto_queue_configs", "revision", "INTEGER NOT NULL DEFAULT 1")
+    _add_column_if_missing(conn, "analysis_metrics", "stale", "INTEGER NOT NULL DEFAULT 0")
 
     _add_column_if_missing(conn, "llm_call_logs", "work_id", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "llm_call_logs", "trace_id", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "llm_call_logs", "session_id", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "llm_call_logs", "step_id", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "llm_call_logs", "job_id", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "llm_call_logs", "run_id", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "llm_call_logs", "estimated_cost", "REAL NOT NULL DEFAULT 0.0")
     _add_column_if_missing(conn, "llm_call_logs", "price_snapshot_json", "TEXT NOT NULL DEFAULT '{}'")
+    _add_column_if_missing(conn, "llm_call_logs", "canonical_digest", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "llm_call_logs", "usage_status", "TEXT NOT NULL DEFAULT 'unknown'")
+    _add_column_if_missing(conn, "llm_call_logs", "cost_status", "TEXT NOT NULL DEFAULT 'unknown'")
+    _add_column_if_missing(conn, "llm_call_logs", "cost_currency", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "llm_call_logs", "estimated_cost_text", "TEXT")
     _add_column_if_missing(conn, "candidate_drafts", "applied_at", "TEXT DEFAULT NULL")
     _add_column_if_missing(conn, "candidate_drafts", "revision_count", "INTEGER NOT NULL DEFAULT 0")
     _add_column_if_missing(conn, "citation_links", "work_id", "TEXT NOT NULL DEFAULT ''")
