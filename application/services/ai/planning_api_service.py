@@ -20,6 +20,7 @@ from domain.entities.ai.models import (
     ForeshadowArrangementItem,
     PlanConfirmation,
     WorkflowType,
+    WorkflowStageName,
     WritingTask,
     WritingTaskStatus,
 )
@@ -60,6 +61,7 @@ class PlanningAPIService:
         orchestrator,
         direction_plan_repository: DirectionPlanRepository,
         chapter_plan_repository: ChapterPlanRepository,
+        planning_generator=None,
         writing_asset_service=None,
         trace_service=None,
     ) -> None:
@@ -70,6 +72,7 @@ class PlanningAPIService:
         self._orchestrator = orchestrator
         self._direction_plan_repository = direction_plan_repository
         self._chapter_plan_repository = chapter_plan_repository
+        self._planning_generator = planning_generator
         self._writing_asset_service = writing_asset_service
         self._trace_service = trace_service
 
@@ -124,6 +127,8 @@ class PlanningAPIService:
         request_id: str,
         user_action: bool,
     ) -> dict[str, object]:
+        if not user_action:
+            raise ValueError("action_not_allowed")
         proposal = self.get_direction_proposal(proposal_id)
         if proposal.status not in {DirectionPlanStatus.WAITING_FOR_SELECTION, DirectionPlanStatus.EDITED, DirectionPlanStatus.SELECTED}:
             raise ValueError("direction_proposal_not_ready")
@@ -134,12 +139,9 @@ class PlanningAPIService:
             user_instruction="direction_selection_api",
             caller_type="user_action",
         )
-        run = self._orchestrator.advance_workflow(
-            run.session_id,
-            decision="continue",
-            result_ref=f"memory_context:{proposal.source_context_pack_id or 'cp_api'}",
-            safe_message="memory ready",
-        )
+        run = self._orchestrator.prepare_memory_context(run.session_id)
+        if run.current_stage == WorkflowStageName.FAILED:
+            raise ValueError(run.error_code or "memory_context_prepare_failed")
         run = self._orchestrator.advance_workflow(
             run.session_id,
             decision="continue",
@@ -159,10 +161,24 @@ class PlanningAPIService:
                 "user_id": user_id,
             },
         )
+        if run.current_stage == WorkflowStageName.FAILED:
+            raise ValueError(run.error_code or "chapter_plan_generation_failed")
+        generated_plan = next(
+            (
+                item
+                for item in self._chapter_plan_repository.list_by_work(proposal.work_id, chapter_id=proposal.chapter_id)
+                if item.agent_session_id == run.session_id
+                and item.direction_proposal_id == proposal.direction_proposal_id
+                and item.status == DirectionPlanStatus.WAITING_FOR_CONFIRMATION
+                and item.stale_status == "fresh"
+            ),
+            None,
+        )
         return {
             "selection": self._direction_plan_repository.get_direction_selection(f"ds_{run.session_id}_{proposal.direction_proposal_id}"),
             "proposal": self.get_direction_proposal(proposal_id),
             "workflow_stage": run.current_stage,
+            "chapter_plan": generated_plan,
         }
 
     def generate_chapter_plan(
@@ -178,6 +194,18 @@ class PlanningAPIService:
         proposal = self.get_direction_proposal(direction_proposal_id)
         if proposal.status not in {DirectionPlanStatus.SELECTED, DirectionPlanStatus.EDITED}:
             raise ValueError("direction_proposal_not_ready")
+        existing_plan = next(
+            (
+                item
+                for item in self._chapter_plan_repository.list_by_work(work_id, chapter_id=chapter_id)
+                if item.direction_proposal_id == direction_proposal_id
+                and item.status == DirectionPlanStatus.WAITING_FOR_CONFIRMATION
+                and item.stale_status == "fresh"
+            ),
+            None,
+        )
+        if existing_plan is not None:
+            return existing_plan
         payload = self._build_plan_payload(
             work_id=work_id,
             chapter_id=chapter_id,
@@ -218,36 +246,10 @@ class PlanningAPIService:
         request_id: str,
         user_action: bool,
     ) -> dict[str, object]:
+        if not user_action:
+            raise ValueError("action_not_allowed")
         plan = self.get_chapter_plan(plan_id)
-        run = self._orchestrator.start_workflow(
-            work_id=plan.work_id,
-            chapter_id=plan.chapter_id,
-            workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
-            user_instruction="chapter_plan_confirm_api",
-            caller_type="user_action",
-        )
-        run = self._orchestrator.advance_workflow(
-            run.session_id,
-            decision="continue",
-            result_ref=f"memory_context:{plan.source_context_pack_id or 'cp_api'}",
-            safe_message="memory ready",
-        )
-        run = self._orchestrator.advance_workflow(
-            run.session_id,
-            decision="continue",
-            result_ref=f"direction:{plan.direction_proposal_id}",
-            safe_message="direction ready",
-        )
-        run = self._orchestrator.submit_user_decision(
-            run.session_id,
-            user_decision="confirm_direction",
-            safe_message="direction confirmed",
-            request_id=request_id,
-            metadata={
-                "selected_direction_id": plan.direction_proposal_id,
-                "selected_option_id": plan.selected_option_id,
-            },
-        )
+        run = self._require_plan_confirmation_workflow(plan)
         run = self._orchestrator.submit_user_decision(
             run.session_id,
             user_decision="confirm_chapter_plan",
@@ -277,36 +279,10 @@ class PlanningAPIService:
         request_id: str,
         user_action: bool,
     ) -> dict[str, object]:
+        if not user_action:
+            raise ValueError("action_not_allowed")
         plan = self.get_chapter_plan(plan_id)
-        run = self._orchestrator.start_workflow(
-            work_id=plan.work_id,
-            chapter_id=plan.chapter_id,
-            workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
-            user_instruction="chapter_plan_reject_api",
-            caller_type="user_action",
-        )
-        run = self._orchestrator.advance_workflow(
-            run.session_id,
-            decision="continue",
-            result_ref=f"memory_context:{plan.source_context_pack_id or 'cp_api'}",
-            safe_message="memory ready",
-        )
-        run = self._orchestrator.advance_workflow(
-            run.session_id,
-            decision="continue",
-            result_ref=f"direction:{plan.direction_proposal_id}",
-            safe_message="direction ready",
-        )
-        run = self._orchestrator.submit_user_decision(
-            run.session_id,
-            user_decision="confirm_direction",
-            safe_message="direction confirmed",
-            request_id=request_id,
-            metadata={
-                "selected_direction_id": plan.direction_proposal_id,
-                "selected_option_id": plan.selected_option_id,
-            },
-        )
+        run = self._require_plan_confirmation_workflow(plan)
         run = self._orchestrator.submit_user_decision(
             run.session_id,
             user_decision="reject",
@@ -323,6 +299,16 @@ class PlanningAPIService:
             "plan": self.get_chapter_plan(plan_id),
             "workflow_stage": run.current_stage,
         }
+
+    def _require_plan_confirmation_workflow(self, plan: ChapterPlan):  # noqa: ANN202
+        if not str(plan.agent_session_id or "").strip():
+            raise ValueError("chapter_plan_workflow_not_found")
+        run = self._orchestrator.get_workflow_run(plan.agent_session_id)
+        if run.current_stage != WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING:
+            raise ValueError("chapter_plan_workflow_not_waiting")
+        if not any(item.ref_type == "chapter_plan" and item.ref_id == plan.chapter_plan_id for item in run.result_refs):
+            raise ValueError("chapter_plan_workflow_mismatch")
+        return run
 
     def list_writing_tasks(self, work_id: str, *, chapter_id: str = "") -> list[WritingTask]:
         return self._direction_plan_repository.list_writing_tasks(work_id, chapter_id=chapter_id)
@@ -551,61 +537,27 @@ class PlanningAPIService:
         readiness = context["readiness"]
         snapshot = context["snapshot"]
         degraded_warnings = list(readiness.get("warnings", []) or [])
-        title_hint = str(getattr(chapter, "title", "") or "当前章节")
-        seed_text = str(user_instruction or "继续推进当前主线")
+        if self._planning_generator is None:
+            raise ValueError("planner_not_configured")
+        generated = self._planning_generator.generate_direction_options(
+            work_id=work_id,
+            chapter_id=chapter_id,
+            chapter_title=str(getattr(chapter, "title", "") or ""),
+            user_instruction=str(user_instruction or ""),
+            context_pack=snapshot,
+        )
         options = []
-        for index, label in enumerate(("A", "B", "C"), start=1):
-            option_id = f"do_{chapter_id}_{index}"
-            options.append(
+        for index, generated_option in enumerate(list(generated.get("options", []) or []), start=1):
+            option = dict(generated_option)
+            option.update(
                 {
-                    "option_id": option_id,
-                    "label": label,
-                    "title": f"方向 {label}",
-                    "plot_summary": f"{title_hint}后续方向 {label}：围绕{seed_text}推进，并拉近与灯塔谜团的距离。",
-                    "narrative_premise": f"以{seed_text}为核心，推进顾迟对灯塔与父亲线索的追查。",
-                    "narrative_benefits": [f"强化方向 {label} 的悬念推进", f"保留灯塔主线的可持续张力"],
-                    "main_conflicts": [
-                        {
-                            "conflict_name": "灯塔谜团",
-                            "conflict_description": "顾迟必须在风险升级前确认钟声来源。",
-                            "conflict_type": "main",
-                            "intensity": "medium",
-                        }
-                    ],
-                    "foreshadow_usage": [
-                        {
-                            "foreshadow_id": f"fs_{index}",
-                            "foreshadow_description": "旧航海图边角盐渍",
-                            "usage_plan": "作为父亲线索的持续提示",
-                            "is_new": False,
-                        }
-                    ],
-                    "risk_points": [
-                        {
-                            "risk_description": "信息揭示过快会削弱后续悬念",
-                            "risk_severity": "medium",
-                            "mitigation": "将真相拆分到多章逐步释放",
-                        }
-                    ],
-                    "estimated_chapters": 3 + (index - 1),
-                    "chapter_preview": [f"第{index}步推进灯塔调查", f"第{index + 1}步扩展父亲遗留线索"],
+                    "option_id": f"do_{chapter_id}_{index}",
                     "base_arc_refs": [],
                     "base_memory_refs": ["memory_latest"],
-                    "score": {
-                        "total_score": 86 - index,
-                        "consistency_score": 88 - index,
-                        "conflict_density_score": 84,
-                        "satisfaction_rhythm_score": 82,
-                        "foreshadow_progress_score": 87,
-                        "risk_controllability_score": 83,
-                        "score_rationale": "满足当前主线推进与悬念节奏。",
-                    },
-                    "confidence": 0.8,
-                    "tone_direction": "悬疑压迫",
-                    "key_characters_involved": ["顾迟"],
                     "created_at": getattr(snapshot, "created_at", ""),
                 }
             )
+            options.append(option)
         return {
             "work_id": work_id,
             "chapter_id": chapter_id,
@@ -617,7 +569,12 @@ class PlanningAPIService:
             "status": DirectionPlanStatus.WAITING_FOR_SELECTION,
             "version": 1,
             "options": options,
-            "generation_metadata": {"prompt_key": "direction_generation", "readiness_status": readiness.get("status", "unknown")},
+            "generation_metadata": {
+                "prompt_key": "direction_generation_p1",
+                "readiness_status": readiness.get("status", "unknown"),
+                "provider_name": str(generated.get("provider_name", "") or ""),
+                "model_name": str(generated.get("model_name", "") or ""),
+            },
             "created_by": "planner_agent",
             "warning_codes": degraded_warnings,
             "created_at": getattr(snapshot, "created_at", ""),
@@ -645,44 +602,29 @@ class PlanningAPIService:
                 user_instruction="",
             )
         )
+        if not proposal.options:
+            raise ValueError("direction_options_missing")
         selected_option = next((item for item in proposal.options if item.option_id == proposal.selected_option_id), proposal.options[0])
+        if self._planning_generator is None:
+            raise ValueError("planner_not_configured")
+        generated = self._planning_generator.generate_chapter_plan(
+            work_id=work_id,
+            chapter_id=chapter_id,
+            selected_option=selected_option.model_dump(mode="json"),
+            context_pack=snapshot,
+        )
         plan_items = []
-        for index in range(1, 4):
-            plan_items.append(
+        for index, generated_item in enumerate(list(generated.get("plan_items", []) or []), start=1):
+            plan_item = dict(generated_item)
+            plan_item.update(
                 {
                     "item_id": f"cpi_{chapter_id}_{index}",
-                    "plan_order": index,
-                    "chapter_goal": f"第{index}章目标：{selected_option.plot_summary}",
-                    "key_events": [
-                        {
-                            "beat_order": 1,
-                            "beat_name": f"推进节点 {index}",
-                            "beat_description": f"围绕{selected_option.plot_summary}推进关键行动。",
-                            "beat_type": "development",
-                            "emotional_tone": "紧张",
-                            "involved_characters": ["顾迟"],
-                        }
-                    ],
-                    "conflict_progression": f"本章继续推进{selected_option.narrative_premise}",
-                    "foreshadow_arrangement": [
-                        {
-                            "foreshadow_id": f"fs_{index}",
-                            "foreshadow_description": "旧航海图边角盐渍",
-                            "arrangement": "advance",
-                            "arrangement_detail": "继续强化父亲留下的线索。",
-                        }
-                    ],
-                    "forbidden_items": ["不要提前揭示父亲真相"],
-                    "required_beats": [f"关键节拍 {index}"],
-                    "estimated_word_count": 2200,
-                    "estimated_word_count_max": 3200,
-                    "tone_hint": "悬疑压迫",
-                    "pov_hint": "顾迟",
                     "arc_alignment": [],
-                    "source_sequence_event_refs": [f"seq_event_{index}"],
+                    "source_sequence_event_refs": [],
                     "created_at": getattr(snapshot, "created_at", ""),
                 }
             )
+            plan_items.append(plan_item)
         return {
             "work_id": work_id,
             "chapter_id": chapter_id,
@@ -696,11 +638,16 @@ class PlanningAPIService:
             "status": DirectionPlanStatus.WAITING_FOR_CONFIRMATION,
             "version": 1,
             "plan_items": plan_items,
-            "plan_summary": f"围绕“{selected_option.plot_summary}”推进未来三章。",
-            "constraints": ["保持悬念递进", "不得越过已知世界观边界"],
+            "plan_summary": str(generated.get("plan_summary", "") or ""),
+            "constraints": list(generated.get("constraints", []) or []),
             "total_estimated_chapters": len(plan_items),
-            "total_estimated_words": 7800,
-            "generation_metadata": {"prompt_key": "chapter_plan_generation", "readiness_status": readiness.get("status", "unknown")},
+            "total_estimated_words": sum(int(item.get("estimated_word_count", 0) or 0) for item in plan_items),
+            "generation_metadata": {
+                "prompt_key": "chapter_plan_generation_p1",
+                "readiness_status": readiness.get("status", "unknown"),
+                "provider_name": str(generated.get("provider_name", "") or ""),
+                "model_name": str(generated.get("model_name", "") or ""),
+            },
             "created_by": "planner_agent",
             "warning_codes": list(readiness.get("warnings", []) or []),
             "created_at": getattr(snapshot, "created_at", ""),

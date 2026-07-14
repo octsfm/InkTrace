@@ -108,13 +108,54 @@ describe('OutlinePanel', () => {
 
     expect(mockGetContextPackReadiness).toHaveBeenCalledWith('work-1', 'chapter-1')
     expect(wrapper.text()).toContain('剧情轨道')
-    expect(wrapper.text()).toContain('`content_text` 是唯一真源，树结构仅作为派生缓存保存。')
+    expect(wrapper.text()).toContain('这里记录整部小说的大方向，可随时修改；保存后供章节规划和写作辅助参考。')
+    expect(wrapper.text()).not.toContain('content_text')
+    expect(wrapper.text()).not.toContain('派生缓存')
     expect(wrapper.text()).toContain('当前阶段：追查旧地图')
     expect(wrapper.text()).toContain('终局目标：揭开海雾秘密')
     expect(wrapper.text()).toContain('灯塔迷局')
     expect(wrapper.text()).toContain('确认灯塔背后的势力')
     expect(wrapper.text()).toContain('完成第一轮追索')
     expect(wrapper.text()).toContain('发现旧地图')
+  })
+
+  it('keeps the formal outline editor before collapsed AI references and truncates abnormal summaries', async () => {
+    const abnormalSummary = `错误分析${'重复内容'.repeat(100)}`
+    mockGetWorkOutline.mockResolvedValue({
+      id: 'outline-1',
+      work_id: 'work-1',
+      content_text: '这是用户导入并保存的正式作品大纲',
+      content_tree_json: [],
+      version: 1
+    })
+    mockGetContextPackReadiness.mockResolvedValue({
+      data: {
+        status: 'degraded',
+        plot_arc_statuses: { master_arc: { status: 'degraded' } },
+        plot_arc_summary: {
+          master_arc: {
+            arc_title: '系统整理结果',
+            current_stage: abnormalSummary,
+            ultimate_goal: abnormalSummary
+          },
+          volume_arc: { stage_goal: abnormalSummary },
+          sequence_arc: { sequence_goal: abnormalSummary, key_events: [abnormalSummary] }
+        }
+      }
+    })
+
+    const wrapper = mount(OutlinePanel, {
+      props: { workId: 'work-1', activeChapterId: 'chapter-1' }
+    })
+    await flushPromises()
+
+    const editor = wrapper.get('.outline-editor-shell').element
+    const aiReference = wrapper.get('[data-testid="plot-arc-reference"]').element
+    expect(editor.compareDocumentPosition(aiReference) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(wrapper.get('[data-testid="work-outline-text"]').element.value).toBe('这是用户导入并保存的正式作品大纲')
+    expect(wrapper.get('[data-testid="plot-arc-reference"]').attributes('open')).toBeUndefined()
+    expect(wrapper.text()).toContain('不会修改作品大纲或章节大纲')
+    expect(wrapper.text()).not.toContain(abnormalSummary)
   })
 
   it('imports outline content into work draft with replace mode and does not call save api', async () => {
@@ -146,7 +187,7 @@ describe('OutlinePanel', () => {
         expected_version: 3
       }
     })
-    expect(localCache.get('asset_draft:work_outline:work')).toMatchObject({
+    expect(localCache.get('asset_draft:work_outline:work-1')).toMatchObject({
       payload: {
         content_text: '导入作品大纲'
       }
@@ -214,7 +255,7 @@ describe('OutlinePanel', () => {
       expected_version: 1
     })
     expect(useWritingAssetStore().assetDrafts['work_outline:work']).toBeUndefined()
-    expect(localCache.get('asset_draft:work_outline:work')).toBeNull()
+    expect(localCache.get('asset_draft:work_outline:work-1')).toBeNull()
   })
 
   it('keeps imported local draft and opens conflict modal after 409', async () => {
@@ -255,7 +296,7 @@ describe('OutlinePanel', () => {
         content_text: '冲突导入大纲'
       }
     })
-    expect(localCache.get('asset_draft:work_outline:work')).toMatchObject({
+    expect(localCache.get('asset_draft:work_outline:work-1')).toMatchObject({
       payload: {
         content_text: '冲突导入大纲'
       }

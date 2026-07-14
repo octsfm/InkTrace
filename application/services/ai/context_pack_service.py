@@ -31,6 +31,7 @@ from domain.repositories.ai.style_profile_repository import StyleProfileReposito
 from domain.repositories.ai.story_memory_repository import StoryMemoryRepository
 from domain.repositories.ai.story_state_repository import StoryStateRepository
 from domain.repositories.ai.vector_index_repository import VectorIndexRepositoryPort
+from domain.services.ai.character_names import normalize_character_names
 
 
 class ContextPackService:
@@ -227,7 +228,8 @@ class ContextPackService:
 
         # story_state
         if story_state:
-            state_text = f"当前故事位置: {story_state.current_position_summary}\n活跃角色: {', '.join(story_state.active_characters)}\n活跃地点: {', '.join(story_state.active_locations)}\n未解决线索: {', '.join(story_state.unresolved_threads)}"
+            state_characters = normalize_character_names(story_state.active_characters)
+            state_text = f"当前故事位置: {story_state.current_position_summary}\n活跃角色: {', '.join(state_characters)}\n活跃地点: {', '.join(story_state.active_locations)}\n未解决线索: {', '.join(story_state.unresolved_threads)}"
             items.append(ContextItem(
                 item_id=f"{pack_id}_state",
                 source_type="story_state",
@@ -271,7 +273,8 @@ class ContextPackService:
 
         # story_memory
         if story_memory:
-            memory_text = f"全书进度摘要: {story_memory.global_summary}\n角色: {', '.join(story_memory.characters)}\n地点: {', '.join(story_memory.locations)}\n剧情线索: {', '.join(story_memory.plot_threads)}"
+            memory_characters = normalize_character_names(story_memory.characters)
+            memory_text = f"全书进度摘要: {story_memory.global_summary}\n角色: {', '.join(memory_characters)}\n地点: {', '.join(story_memory.locations)}\n剧情线索: {', '.join(story_memory.plot_threads)}"
             items.append(ContextItem(
                 item_id=f"{pack_id}_memory",
                 source_type="story_memory",
@@ -298,7 +301,10 @@ class ContextPackService:
                 ))
 
         # characters / locations / plot threads from story_memory and story_state
-        combined_chars = list(dict.fromkeys((story_memory.characters if story_memory else []) + (story_state.active_characters if story_state else [])))
+        combined_chars = normalize_character_names(
+            (story_memory.characters if story_memory else [])
+            + (story_state.active_characters if story_state else [])
+        )
         for char in combined_chars[:5]:
             items.append(ContextItem(
                 item_id=f"{pack_id}_char_{char}",
@@ -641,7 +647,7 @@ class ContextPackService:
             climax_description="等待方向选择与阶段目标确认后补充卷高潮。",
             resolution_condition="等待方向确认后定义本卷收束条件。",
             stage_open_loops=list(story_state.unresolved_threads[:5]),
-            key_characters=list(story_state.active_characters[:5]),
+            key_characters=normalize_character_names(story_state.active_characters)[:5],
             chapter_range={"from_chapter": 1, "to_chapter_estimate": 0},
             source_refs=[master_arc.master_arc_id],
             warning_codes=warning_codes,
@@ -728,15 +734,24 @@ class ContextPackService:
                 unresolved_in_chapter=list(story_state.unresolved_threads[:3]),
             )
 
-        character_states = [
-            CharacterMoment(
-                character_name=character,
-                current_status=str(story_state.current_position_summary or "处于当前剧情推进中").strip(),
-                location=str(story_state.active_locations[0] if story_state.active_locations else ""),
-                last_action=str(story_state.unresolved_threads[0] if story_state.unresolved_threads else ""),
+        state_by_name = {
+            str(item.get("character_name") or "").strip(): dict(item)
+            for item in list(getattr(story_state, "current_character_states", []) or [])
+            if str(item.get("character_name") or "").strip()
+        }
+        character_states = []
+        for character in normalize_character_names(story_state.active_characters)[:5]:
+            state = state_by_name.get(character, {})
+            recent_actions = list(state.get("recent_actions", []) or [])
+            character_states.append(
+                CharacterMoment(
+                    character_name=character,
+                    current_status=str(state.get("current_status") or ""),
+                    emotional_state=str(state.get("emotional_state") or ""),
+                    location=str(state.get("current_location") or state.get("location") or ""),
+                    last_action=str(recent_actions[-1] if recent_actions else state.get("last_action") or ""),
+                )
             )
-            for character in story_state.active_characters[:5]
-        ]
         scene_details = self._select_scene_details(story_memory=story_memory, chapter_id=chapter_id)
 
         warning_codes: list[str] = []
@@ -860,7 +875,7 @@ class ContextPackService:
                 "stage_goal": volume_arc.stage_goal,
                 "core_conflict": volume_arc.core_conflict,
                 "stage_open_loops": list(volume_arc.stage_open_loops),
-                "key_characters": list(volume_arc.key_characters),
+                "key_characters": normalize_character_names(volume_arc.key_characters),
                 "foreshadow_planted": list(volume_arc.foreshadow_planted),
                 "foreshadow_resolved": list(volume_arc.foreshadow_resolved),
             },

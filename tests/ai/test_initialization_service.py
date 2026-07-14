@@ -11,6 +11,7 @@ from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobS
 from infrastructure.database.repositories.ai.file_initialization_store import FileInitializationStore
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
+from tests.ai.initialization_test_support import build_initialization_analysis_dependencies
 
 
 class _StubVectorIndexService:
@@ -61,6 +62,7 @@ def _build_service(
         story_memory_repository=FileStoryMemoryStore(),
         story_state_repository=FileStoryStateStore(),
         vector_index_service=vector_index_service,
+        **build_initialization_analysis_dependencies(),
     )
     return initialization_service, work_service, chapter_service
 
@@ -82,7 +84,11 @@ def test_start_initialization_creates_job_and_snapshots_for_confirmed_chapters()
     assert initialization.completion_status == "succeeded"
     assert initialization.analyzed_chapter_count == 1
     assert latest_memory.global_summary
+    assert latest_memory.stage_summaries
+    assert latest_memory.volume_summaries
+    assert latest_memory.current_story_summary["summary"] == latest_memory.global_summary
     assert latest_state.current_position_summary
+    assert latest_state.current_story_phase == latest_memory.current_story_summary["current_story_phase"]
     assert job.status.value == "completed"
 
 
@@ -138,6 +144,29 @@ def test_finalize_initialization_fails_when_no_effective_confirmed_chapters() ->
     assert initialization.error_code == "work_empty"
     assert service.get_latest_story_memory(work.id) is None
     assert service.get_latest_story_state(work.id) is None
+
+
+def test_initialization_records_model_failure_instead_of_raising() -> None:
+    service, work_service, chapter_service = _build_service()
+    work = work_service.create_work("模型失败作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(chapter.id.value, title="第一章", content="沈砚回到旧城。", expected_version=1)
+
+    class _FailingOutlineAnalysis:
+        def analyze(self, **_kwargs):  # noqa: ANN003
+            raise RuntimeError("provider_auth_failed:secret-must-not-be-persisted")
+
+    service._outline_analysis_service = _FailingOutlineAnalysis()
+    pending = service.start_initialization(work.id, created_by="user_action", auto_run=False)
+
+    result = service.run_initialization(pending.initialization_id)
+    job = service.get_job(result.job_id)
+
+    assert result.status == "failed"
+    assert result.completion_status == "failed"
+    assert result.error_code == "initialization_analysis_failed"
+    assert "secret-must-not-be-persisted" not in result.error_message
+    assert job.status.value == "failed"
 
 
 def test_cancelled_job_ignores_late_finalize_and_does_not_write_snapshots() -> None:

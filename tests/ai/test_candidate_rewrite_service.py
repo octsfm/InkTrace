@@ -7,6 +7,7 @@ from application.services.ai.candidate_rewrite_service import CandidateRewriteSe
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
 from infrastructure.ai.providers.fake_reviewer import FakeReviewer
+from infrastructure.ai.providers.fake_rewriter import FakeRewriter
 from domain.entities.ai.models import (
     AIReviewResult,
     AIReviewRiskLevel,
@@ -35,6 +36,7 @@ def _build_services(tmp_path: Path):
     rewrite_service = CandidateRewriteService(
         candidate_draft_repository=candidate_store,
         ai_review_repository=review_store,
+        rewriter=FakeRewriter(),
     )
     return work_service, chapter_service, candidate_store, review_store, rewrite_service
 

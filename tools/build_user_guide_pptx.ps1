@@ -14,15 +14,19 @@ function Color([string]$hex) {
 }
 
 $C=@{
-  Ink=Color '#17212B'; Muted=Color '#65727E'; Soft=Color '#F4F7F9'
-  Rule=Color '#C6D0D8'; Accent=Color '#63C7E8'; Blue=Color '#2F7CF6'
-  Green=Color '#2E9D72'; Gold=Color '#B97917'; Red=Color '#C24B4B'; White=Color '#FFFFFF'
+  Navy=Color '#0D1B2A'; Navy2=Color '#14263B'; Ink=Color '#172033'
+  Muted=Color '#667085'; Ivory=Color '#F7F3EA'; Paper=Color '#FFFCF7'
+  Rule=Color '#D8D2C7'; Blue=Color '#356CFF'; Mint=Color '#35BFA0'
+  Gold=Color '#F2B84B'; Coral=Color '#E76973'; Sky=Color '#DCE7FF'
+  MintSoft=Color '#DDF4ED'; GoldSoft=Color '#FCEFD2'; CoralSoft=Color '#F9DFE2'
+  White=Color '#FFFFFF'
 }
 
-function Add-Text($slide,[string]$value,[double]$left,[double]$top,[double]$width,[double]$height,[double]$size=18,[bool]$bold=$false,[int]$color=$C.Ink,[int]$align=1) {
+function Add-Text($slide,[string]$value,[double]$left,[double]$top,[double]$width,[double]$height,[double]$size=18,[bool]$bold=$false,[int]$color=$C.Ink,[int]$align=1,[int]$anchor=3) {
   $shape=$slide.Shapes.AddTextbox(1,$left,$top,$width,$height)
-  $shape.TextFrame.MarginLeft=4; $shape.TextFrame.MarginRight=4; $shape.TextFrame.MarginTop=2; $shape.TextFrame.MarginBottom=2
-  $shape.TextFrame.VerticalAnchor=3
+  $shape.TextFrame.MarginLeft=2; $shape.TextFrame.MarginRight=2; $shape.TextFrame.MarginTop=1; $shape.TextFrame.MarginBottom=1
+  $shape.TextFrame.VerticalAnchor=$anchor
+  $shape.TextFrame.WordWrap=-1
   $range=$shape.TextFrame.TextRange
   $range.Text=$value
   $range.Font.Name='Microsoft YaHei'; $range.Font.Size=$size; $range.Font.Bold=if($bold){-1}else{0}; $range.Font.Color.RGB=$color
@@ -30,44 +34,79 @@ function Add-Text($slide,[string]$value,[double]$left,[double]$top,[double]$widt
   return $shape
 }
 
-function Add-Rect($slide,[double]$left,[double]$top,[double]$width,[double]$height,[int]$fill=$C.Soft,[int]$line=$C.Rule,[double]$lineWidth=1) {
-  $shape=$slide.Shapes.AddShape(1,$left,$top,$width,$height)
+function Add-Rect($slide,[double]$left,[double]$top,[double]$width,[double]$height,[int]$fill=$C.Paper,[int]$line=$C.Rule,[double]$lineWidth=1,[int]$type=1,[double]$transparency=0) {
+  $shape=$slide.Shapes.AddShape($type,$left,$top,$width,$height)
   $shape.Fill.ForeColor.RGB=$fill; $shape.Fill.Solid()
-  $shape.Line.ForeColor.RGB=$line; $shape.Line.Weight=$lineWidth
+  $shape.Fill.Transparency=$transparency
+  if($lineWidth -le 0){$shape.Line.Visible=0}else{$shape.Line.Visible=-1;$shape.Line.ForeColor.RGB=$line;$shape.Line.Weight=$lineWidth}
   return $shape
 }
 
-function Add-Title($slide,[string]$value) {
-  Add-Text $slide 'INKTRACE · 小白写手指南' 38 20 520 20 10 $true $C.Muted | Out-Null
-  Add-Text $slide $value 38 48 885 55 29 $true $C.Ink | Out-Null
-  Add-Rect $slide 38 112 884 1.5 $C.Rule $C.Rule 0 | Out-Null
+function Add-Line($slide,[double]$x1,[double]$y1,[double]$x2,[double]$y2,[int]$color=$C.Rule,[double]$weight=1) {
+  $shape=$slide.Shapes.AddLine($x1,$y1,$x2,$y2)
+  $shape.Line.ForeColor.RGB=$color; $shape.Line.Weight=$weight
+  return $shape
 }
 
-function Add-Footer($slide,[int]$number) {
-  Add-Text $slide $number.ToString('00') 875 506 45 17 9 $true $C.Muted 3 | Out-Null
+function Get-Section([int]$number) {
+  if($number -le 4){return @{No='01'; Label='先认识它'; Accent=$C.Blue; Soft=$C.Sky}}
+  if($number -le 12){return @{No='02'; Label='第一次准备'; Accent=$C.Mint; Soft=$C.MintSoft}}
+  if($number -le 20){return @{No='03'; Label='完成一章'; Accent=$C.Gold; Soft=$C.GoldSoft}}
+  if($number -le 30){return @{No='04'; Label='助手与安全'; Accent=$C.Coral; Soft=$C.CoralSoft}}
+  return @{No='05'; Label='日常写作'; Accent=$C.Blue; Soft=$C.Sky}
 }
 
-function Add-Note($slide,[string]$value,[int]$color=$C.Blue) {
-  Add-Rect $slide 38 430 884 56 $C.Soft $color 1.4 | Out-Null
-  Add-Text $slide $value 55 439 850 36 15 $true $C.Ink 2 | Out-Null
+function Add-Chrome($slide,[string]$title,[int]$number,[hashtable]$section,[bool]$dark=$false) {
+  $base=if($dark){$C.White}else{$C.Ink}
+  $muted=if($dark){Color '#AAB7C7'}else{$C.Muted}
+  Add-Text $slide ('INKTRACE  /  '+$section.No+'  '+$section.Label) 48 24 540 20 10 $true $muted | Out-Null
+  Add-Text $slide $title 48 58 840 62 28 $true $base 1 1 | Out-Null
+  Add-Rect $slide 48 128 56 4 $section.Accent $section.Accent 0 | Out-Null
+  Add-Text $slide $number.ToString('00') 870 24 42 20 10 $true $muted 3 | Out-Null
 }
 
-function Add-Bullets($slide,[string[]]$items) {
-  $top=132
-  $gap=48
-  $size=16
-  if($items.Count -ge 6){$gap=45;$size=15}
-  for($i=0;$i -lt $items.Count;$i++){
-    Add-Text $slide '●' 53 ($top+$i*$gap) 22 32 11 $true $(if($i -eq 0){$C.Blue}else{$C.Accent}) 2 | Out-Null
-    Add-Text $slide $items[$i] 78 ($top+$i*$gap) 820 36 $size $false $C.Ink | Out-Null
+function Add-Footer($slide,[int]$number,[hashtable]$section,[bool]$dark=$false) {
+  $color=if($dark){Color '#AAB7C7'}else{$C.Muted}
+  Add-Text $slide ('INKTRACE V2.0  ·  '+$section.Label) 48 510 350 15 9 $false $color | Out-Null
+  Add-Line $slide 818 518 866 518 $section.Accent 2 | Out-Null
+  Add-Text $slide $number.ToString('00') 875 507 37 18 9 $true $color 3 | Out-Null
+}
+
+function Add-Note($slide,[string]$value,[hashtable]$section,[bool]$dark=$false) {
+  $fill=if($dark){$C.Navy2}else{$section.Soft}
+  $text=if($dark){$C.White}else{$C.Ink}
+  Add-Rect $slide 48 438 864 52 $fill $fill 0 5 | Out-Null
+  Add-Rect $slide 48 438 7 52 $section.Accent $section.Accent 0 5 | Out-Null
+  Add-Text $slide ('记住  '+$value) 70 446 824 34 14 $true $text 1 | Out-Null
+}
+
+function Add-Bullets($slide,[string[]]$items,[hashtable]$section) {
+  $count=$items.Count
+  $cols=if($count -ge 5){2}else{1}
+  $rows=[Math]::Ceiling($count/$cols)
+  for($i=0;$i -lt $count;$i++){
+    $col=if($cols -eq 2){[Math]::Floor($i/$rows)}else{0}
+    $row=if($cols -eq 2){$i%$rows}else{$i}
+    $left=48+$col*438
+    $top=155+$row*82
+    $w=if($cols -eq 2){400}else{810}
+    Add-Text $slide ($i+1).ToString('00') $left $top 42 31 17 $true $section.Accent | Out-Null
+    Add-Line $slide ($left+52) ($top+15) ($left+76) ($top+15) $section.Accent 2 | Out-Null
+    Add-Text $slide $items[$i] ($left+88) ($top-2) ($w-88) 48 14.5 $false $C.Ink 1 1 | Out-Null
   }
 }
 
-function Add-Panel($slide,[string]$heading,[string[]]$items,[double]$left,[double]$top,[double]$width,[double]$height,[int]$accent) {
-  Add-Rect $slide $left $top $width $height $C.Soft $C.Rule 0.8 | Out-Null
-  Add-Rect $slide $left $top 5 $height $accent $accent 0 | Out-Null
-  Add-Text $slide $heading ($left+18) ($top+10) ($width-30) 28 17 $true $C.Ink | Out-Null
-  Add-Text $slide ($items -join "`n") ($left+18) ($top+70) ($width-30) ($height-82) 14 $false $C.Muted | Out-Null
+function Add-Column($slide,[string]$heading,[string[]]$items,[double]$left,[double]$width,[int]$number,[int]$accent) {
+  Add-Text $slide $number.ToString('00') $left 156 56 44 25 $true $accent | Out-Null
+  Add-Text $slide $heading ($left+66) 157 ($width-66) 38 18 $true $C.Ink 1 1 | Out-Null
+  Add-Line $slide $left 211 ($left+$width) 211 $accent 2.2 | Out-Null
+  $top=if($items.Count -ge 5){220}else{232}
+  $gap=if($items.Count -ge 5){40}elseif($items.Count -eq 4){44}else{51}
+  $height=if($items.Count -ge 5){31}else{38}
+  for($i=0;$i -lt $items.Count;$i++){
+    Add-Rect $slide $left ($top+$i*$gap+9) 7 7 $accent $accent 0 9 | Out-Null
+    Add-Text $slide $items[$i] ($left+20) ($top+$i*$gap) ($width-20) $height 14.5 $false $C.Ink 1 1 | Out-Null
+  }
 }
 
 $slides=@(
@@ -115,37 +154,71 @@ $presentation.PageSetup.SlideWidth=960; $presentation.PageSetup.SlideHeight=540
 try {
   for($i=0;$i -lt $slides.Count;$i++){
     $item=$slides[$i]
+    $number=$i+1
+    $section=Get-Section $number
     $slide=$presentation.Slides.Add($presentation.Slides.Count+1,12)
     $slide.FollowMasterBackground=0
-    $slide.Background.Fill.ForeColor.RGB=$C.White; $slide.Background.Fill.Solid()
+    $slide.Background.Fill.ForeColor.RGB=$C.Ivory; $slide.Background.Fill.Solid()
     switch($item.Kind){
       'cover' {
-        Add-Text $slide 'INKTRACE V2.0' 38 30 280 20 11 $true $C.Muted | Out-Null
-        Add-Text $slide $item.Title 38 118 650 140 46 $true $C.Ink | Out-Null
-        Add-Text $slide $item.Subtitle 38 285 760 35 20 $false $C.Muted | Out-Null
-        Add-Rect $slide 38 392 884 78 $C.Soft $C.Accent 1.5 | Out-Null
-        Add-Text $slide $item.Note 60 408 840 47 17 $true $C.Ink 2 | Out-Null
+        $slide.Background.Fill.ForeColor.RGB=$C.Navy; $slide.Background.Fill.Solid()
+        Add-Rect $slide 742 -70 298 298 $C.Blue $C.Blue 0 9 0.15 | Out-Null
+        Add-Rect $slide 790 32 180 180 $C.Mint $C.Mint 0 9 0.08 | Out-Null
+        Add-Rect $slide 816 70 112 112 $C.Navy $C.Navy 0 9 | Out-Null
+        Add-Line $slide 710 88 890 88 $C.Gold 3 | Out-Null
+        Add-Text $slide 'INKTRACE  V2.0' 54 44 300 24 11 $true $C.Mint | Out-Null
+        Add-Text $slide '给第一次写小说的你' 54 91 420 25 12 $true $(Color '#AAB7C7') | Out-Null
+        Add-Text $slide $item.Title 54 136 640 150 48 $true $C.White 1 1 | Out-Null
+        Add-Text $slide $item.Subtitle 56 304 700 36 19 $false $(Color '#CBD5E1') | Out-Null
+        Add-Line $slide 56 374 174 374 $C.Mint 4 | Out-Null
+        Add-Text $slide $item.Note 56 394 760 58 15 $false $C.White 1 1 | Out-Null
+        Add-Text $slide '01 / 36' 856 494 56 18 9 $true $(Color '#AAB7C7') 3 | Out-Null
       }
-      'bullets' { Add-Title $slide $item.Title; Add-Bullets $slide $item.Items; Add-Note $slide $item.Note }
-      'columns' { Add-Title $slide $item.Title; Add-Panel $slide $item.LeftTitle $item.Left 38 143 425 245 $C.Blue; Add-Panel $slide $item.RightTitle $item.Right 482 143 440 245 $C.Green; Add-Note $slide $item.Note }
+      'bullets' {
+        Add-Rect $slide 0 0 18 540 $section.Accent $section.Accent 0 | Out-Null
+        Add-Chrome $slide $item.Title $number $section
+        Add-Bullets $slide $item.Items $section
+        Add-Note $slide $item.Note $section
+        Add-Footer $slide $number $section
+      }
+      'columns' {
+        Add-Rect $slide 0 0 18 540 $section.Accent $section.Accent 0 | Out-Null
+        Add-Chrome $slide $item.Title $number $section
+        Add-Column $slide $item.LeftTitle $item.Left 48 400 1 $section.Accent
+        Add-Line $slide 472 156 472 397 $C.Rule 1.2 | Out-Null
+        Add-Column $slide $item.RightTitle $item.Right 500 412 2 $(if($section.Accent -eq $C.Coral){$C.Gold}else{$C.Mint})
+        Add-Note $slide $item.Note $section
+        Add-Footer $slide $number $section
+      }
       'steps' {
-        Add-Title $slide $item.Title
-        $count=$item.Items.Count; $gap=10; $width=(884-$gap*($count-1))/$count
+        $slide.Background.Fill.ForeColor.RGB=$C.Navy; $slide.Background.Fill.Solid()
+        Add-Chrome $slide $item.Title $number $section $true
+        $count=$item.Items.Count; $gap=22; $width=(836-$gap*($count-1))/$count
+        Add-Line $slide 90 252 870 252 $(Color '#526477') 2 | Out-Null
         for($j=0;$j -lt $count;$j++){
-          $left=38+$j*($width+$gap); $fill=if($j -eq $count-1){Color '#DCEAFF'}else{$C.Soft}
-          Add-Rect $slide $left 175 $width 170 $fill $C.Rule 0.8 | Out-Null
-          Add-Text $slide ($j+1).ToString('00') ($left+12) 190 46 34 21 $true $(if($j -eq $count-1){$C.Blue}else{$C.Muted}) | Out-Null
-          Add-Text $slide $item.Items[$j] ($left+12) 240 ($width-24) 76 15 $true $C.Ink 2 | Out-Null
+          $left=62+$j*($width+$gap)
+          $circleLeft=$left+($width-48)/2
+          $fill=if($j -eq $count-1){$section.Accent}else{$C.Navy2}
+          Add-Rect $slide $circleLeft 228 48 48 $fill $fill 0 9 | Out-Null
+          Add-Text $slide ($j+1).ToString('00') $circleLeft 234 48 34 15 $true $C.White 2 | Out-Null
+          $textTop=if($j%2 -eq 0){162}else{298}
+          Add-Line $slide ($circleLeft+24) $(if($j%2 -eq 0){214}else{276}) ($circleLeft+24) $(if($j%2 -eq 0){228}else{298}) $section.Accent 2 | Out-Null
+          Add-Text $slide $item.Items[$j] $left $textTop $width 54 14.5 $true $C.White 2 1 | Out-Null
         }
-        Add-Note $slide $item.Note
+        Add-Note $slide $item.Note $section $true
+        Add-Footer $slide $number $section $true
       }
       'closing' {
-        Add-Text $slide $item.Title 135 90 690 285 34 $true $C.Ink 2 | Out-Null
-        Add-Rect $slide 180 405 600 2 $C.Accent $C.Accent 0 | Out-Null
-        Add-Text $slide $item.Note 38 430 884 45 20 $true $C.Blue 2 | Out-Null
+        $slide.Background.Fill.ForeColor.RGB=$C.Navy; $slide.Background.Fill.Solid()
+        Add-Rect $slide -65 355 255 255 $C.Blue $C.Blue 0 9 0.18 | Out-Null
+        Add-Rect $slide 805 -40 185 185 $C.Mint $C.Mint 0 9 0.12 | Out-Null
+        Add-Text $slide 'INKTRACE  /  写作的决定权始终在你手里' 54 43 600 24 11 $true $C.Mint | Out-Null
+        Add-Text $slide $item.Title 110 105 740 250 34 $true $C.White 2 1 | Out-Null
+        Add-Line $slide 350 382 610 382 $C.Gold 4 | Out-Null
+        Add-Text $slide $item.Note 150 410 660 44 20 $true $C.Mint 2 | Out-Null
+        Add-Text $slide '36 / 36' 854 494 58 18 9 $true $(Color '#AAB7C7') 3 | Out-Null
       }
     }
-    Add-Footer $slide ($i+1)
   }
   New-Item -ItemType Directory -Path $QaDirectory -Force | Out-Null
   $resolvedOutput=[System.IO.Path]::GetFullPath($OutputPath)

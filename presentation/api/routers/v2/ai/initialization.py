@@ -58,9 +58,23 @@ def get_initialization(initialization_id: str, request: Request):
 @router.get("/api/v2/ai/works/{work_id}/initialization/latest")
 def get_latest_initialization(work_id: str, request: Request):
     service = dependencies.get_initialization_service()
-    initialization = service.get_latest_initialization(work_id)
+    try:
+        initialization = service.get_latest_initialization(work_id)
+    except ValueError as exc:
+        return error_response(request, error_code=str(exc), status_code=404)
     if initialization is None:
-        return error_response(request, error_code="initialization_not_found", status_code=404)
+        return success_response(
+            request,
+            data={
+                "work_id": work_id,
+                "status": "not_started",
+                "analyzed_chapter_count": 0,
+                "total_confirmed_chapter_count": 0,
+                "empty_chapter_count": 0,
+                "failed_chapter_count": 0,
+                "stale": False,
+            },
+        )
     return success_response(request, data=_serialize_initialization(initialization))
 
 
@@ -81,9 +95,24 @@ def get_latest_story_memory(work_id: str, request: Request):
             "source_chapter_versions": snapshot.source_chapter_versions,
             "global_summary": snapshot.global_summary,
             "chapter_summaries": snapshot.chapter_summaries,
+            "stage_summaries": snapshot.stage_summaries,
+            "volume_summaries": snapshot.volume_summaries,
             "characters": snapshot.characters,
             "locations": snapshot.locations,
             "plot_threads": snapshot.plot_threads,
+            "source": snapshot.source,
+            "source_analysis_version": snapshot.source_analysis_version,
+            "outline_analysis_id": snapshot.outline_analysis_id,
+            "story_blueprint_id": snapshot.story_blueprint_id,
+            "chapter_analysis_ids": snapshot.chapter_analysis_ids,
+            "current_story_summary": snapshot.current_story_summary,
+            "character_states": snapshot.character_states,
+            "setting_facts": snapshot.setting_facts,
+            "foreshadow_candidates": snapshot.foreshadow_candidates,
+            "unresolved_questions": snapshot.unresolved_questions,
+            "timeline_facts": snapshot.timeline_facts,
+            "warnings": snapshot.warnings,
+            "confidence": snapshot.confidence,
             "stale_status": snapshot.stale_status,
             "stale_reason": snapshot.stale_reason,
             "created_at": snapshot.created_at,
@@ -112,6 +141,22 @@ def get_latest_story_state(work_id: str, request: Request):
             "unresolved_threads": story_state.unresolved_threads,
             "continuity_notes": story_state.continuity_notes,
             "source_snapshot_id": story_state.source_snapshot_id,
+            "baseline_type": story_state.baseline_type,
+            "source": story_state.source,
+            "source_chapter_analysis_ids": story_state.source_chapter_analysis_ids,
+            "current_chapter_id": story_state.current_chapter_id,
+            "current_chapter_order": story_state.current_chapter_order,
+            "current_story_phase": story_state.current_story_phase,
+            "current_time_position": story_state.current_time_position,
+            "current_character_states": story_state.current_character_states,
+            "active_conflicts": story_state.active_conflicts,
+            "active_foreshadows": story_state.active_foreshadows,
+            "resolved_foreshadows": story_state.resolved_foreshadows,
+            "important_setting_facts": story_state.important_setting_facts,
+            "current_location_scope": story_state.current_location_scope,
+            "recent_key_events": story_state.recent_key_events,
+            "unresolved_questions": story_state.unresolved_questions,
+            "analysis_confidence": story_state.analysis_confidence,
             "stale_status": story_state.stale_status,
             "stale_reason": story_state.stale_reason,
             "created_at": story_state.created_at,

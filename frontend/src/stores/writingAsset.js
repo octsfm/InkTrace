@@ -16,7 +16,12 @@ const buildAssetKey = (assetType, assetId = OUTLINE_WORK_ID) => {
   return `${type}:${id || OUTLINE_WORK_ID}`
 }
 
-const buildAssetDraftCacheKey = (assetType, assetId = OUTLINE_WORK_ID) => {
+const buildAssetDraftCacheKey = (assetType, assetId = OUTLINE_WORK_ID, workId = '') => {
+  const type = normalizeAssetType(assetType)
+  if (type === 'work_outline') {
+    const scopedWorkId = String(workId || '').trim()
+    return scopedWorkId ? `asset_draft:work_outline:${scopedWorkId}` : ''
+  }
   const key = buildAssetKey(assetType, assetId)
   return key ? `asset_draft:${key}` : ''
 }
@@ -143,7 +148,7 @@ export const useWritingAssetStore = defineStore('workbenchWritingAsset', {
     writeAssetDraft(assetType, assetId = OUTLINE_WORK_ID, draft = {}) {
       const key = buildAssetKey(assetType, assetId)
       if (!key) return null
-      const cacheKey = buildAssetDraftCacheKey(assetType, assetId)
+      const cacheKey = buildAssetDraftCacheKey(assetType, assetId, this.workId)
       const payload = {
         asset_type: normalizeAssetType(assetType),
         asset_id: String(assetId || OUTLINE_WORK_ID),
@@ -164,7 +169,7 @@ export const useWritingAssetStore = defineStore('workbenchWritingAsset', {
 
     readAssetDraft(assetType, assetId = OUTLINE_WORK_ID) {
       const key = buildAssetKey(assetType, assetId)
-      const cacheKey = buildAssetDraftCacheKey(assetType, assetId)
+      const cacheKey = buildAssetDraftCacheKey(assetType, assetId, this.workId)
       if (!key || !cacheKey) return null
       const cached = localCache.get(cacheKey, null)
       if (!cached) return null
@@ -182,7 +187,8 @@ export const useWritingAssetStore = defineStore('workbenchWritingAsset', {
       if (this.assetConflictPayload?.asset_type) {
         const conflictKey = buildAssetDraftCacheKey(
           this.assetConflictPayload.asset_type,
-          this.assetConflictPayload.asset_id
+          this.assetConflictPayload.asset_id,
+          this.workId
         )
         if (conflictKey && !protectedKeys.includes(conflictKey)) {
           protectedKeys.push(conflictKey)
@@ -197,7 +203,7 @@ export const useWritingAssetStore = defineStore('workbenchWritingAsset', {
       const nextDrafts = { ...this.assetDrafts }
       delete nextDrafts[key]
       this.assetDrafts = nextDrafts
-      localCache.remove(buildAssetDraftCacheKey(assetType, assetId))
+      localCache.remove(buildAssetDraftCacheKey(assetType, assetId, this.workId))
       this.markClean(key)
       this.setAssetStatus(assetType, assetId, 'idle')
     },

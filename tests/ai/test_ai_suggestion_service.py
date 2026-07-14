@@ -33,6 +33,7 @@ from infrastructure.database.repositories.ai.file_ai_review_store import FileAIR
 from infrastructure.database.repositories.ai.file_ai_suggestion_store import FileAISuggestionStore
 from infrastructure.database.repositories.ai.file_agent_trace_store import FileAgentTraceStore
 from infrastructure.database.repositories.ai.file_candidate_draft_store import FileCandidateDraftStore
+from infrastructure.ai.providers.fake_rewriter import FakeRewriter
 
 
 def _build_services(tmp_path: Path):
@@ -48,6 +49,7 @@ def _build_services(tmp_path: Path):
     rewrite_service = CandidateRewriteService(
         candidate_draft_repository=candidate_store,
         ai_review_repository=review_store,
+        rewriter=FakeRewriter(),
     )
     suggestion_service = AISuggestionService(
         ai_suggestion_repository=suggestion_store,

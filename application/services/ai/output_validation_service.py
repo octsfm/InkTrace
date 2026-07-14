@@ -13,6 +13,15 @@ from domain.validators.outline_suggestion_schemas import (
     OutlinePolishOutputModel,
     WritingTaskSuggestionOutputModel,
 )
+from domain.validators.initialization_analysis_schemas import (
+    ManuscriptChapterAnalysisOutputModel,
+    OutlineAnalysisOutputModel,
+    StoryMemoryGlobalOutputModel,
+    StoryMemoryStructureOutputModel,
+)
+from domain.validators.ai_review_schema import AIReviewOutputModel
+from domain.validators.candidate_rewrite_schema import CandidateRewriteOutputModel
+from domain.validators.planning_generation_schemas import ChapterPlanGenerationOutput, DirectionGenerationOutput
 
 
 class _ProviderConnectionResultModel(BaseModel):
@@ -49,6 +58,14 @@ class OutputValidationService:
             "outline_expand_schema": OutlineExpandOutputModel,
             "chapter_outline_detail_schema": ChapterOutlineDetailOutputModel,
             "writing_task_suggestion_schema": WritingTaskSuggestionOutputModel,
+            "outline_analysis_result_p0": OutlineAnalysisOutputModel,
+            "manuscript_chapter_analysis_p0": ManuscriptChapterAnalysisOutputModel,
+            "story_memory_structure_p1": StoryMemoryStructureOutputModel,
+            "story_memory_global_p1": StoryMemoryGlobalOutputModel,
+            "ai_review_result_p0": AIReviewOutputModel,
+            "candidate_rewrite_result_p1": CandidateRewriteOutputModel,
+            "direction_generation_p1": DirectionGenerationOutput,
+            "chapter_plan_generation_p1": ChapterPlanGenerationOutput,
         }
 
     def validate(self, output_schema_key: str, raw_output: Any) -> OutputValidationResult:

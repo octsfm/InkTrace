@@ -435,19 +435,67 @@ const resetSettingsForm = (payload) => {
   Object.assign(settingsForm.model_role_mappings, nextMappings)
 }
 
+const resolveModelRoleMappings = () => {
+  const resolved = Object.fromEntries(REQUIRED_SETTINGS_ROLES.map((role) => {
+    const current = settingsForm.model_role_mappings[role] || {}
+    const providerName = String(current.provider_name || '').trim()
+    let modelName = String(current.model_name || '').trim()
+    if (providerName && !modelName) {
+      const provider = providerConfigs.value.find((item) => item.provider_name === providerName)
+      modelName = String(provider?.default_model || '').trim()
+    }
+    return [role, { provider_name: providerName, model_name: modelName }]
+  }))
+  const readyProviders = providerConfigs.value.filter((provider) => (
+    provider.enabled
+    && (provider.key_configured || String(provider.api_key || '').trim())
+    && String(provider.default_model || '').trim()
+  ))
+  const useProviderDefault = (role, preferredProvider) => {
+    const current = resolved[role]
+    if (current.provider_name || current.model_name) return
+    const provider = readyProviders.find((item) => item.provider_name === preferredProvider) || readyProviders[0]
+    if (!provider) return
+    resolved[role] = {
+      provider_name: provider.provider_name,
+      model_name: String(provider.default_model || '').trim()
+    }
+  }
+  useProviderDefault('analysis', 'kimi')
+  useProviderDefault('writer', 'deepseek')
+  const inheritWhenEmpty = (role, sourceRole) => {
+    const current = resolved[role]
+    const source = resolved[sourceRole]
+    if (!current.provider_name && !current.model_name && source.provider_name && source.model_name) {
+      resolved[role] = { ...source }
+    }
+  }
+  inheritWhenEmpty('planning', 'analysis')
+  inheritWhenEmpty('reviewer', 'analysis')
+  inheritWhenEmpty('rewriter', 'writer')
+  return resolved
+}
+
 const aiSettingsBlockMessage = computed(() => {
   const enabledProviders = providerConfigs.value.filter((provider) => provider.enabled)
   if (!enabledProviders.some((provider) => provider.key_configured || String(provider.api_key || '').trim())) {
     return '请至少配置一个已启用模型服务的密钥。'
   }
+  const resolvedMappings = resolveModelRoleMappings()
   for (const role of ['analysis', 'writer']) {
-    const mapping = settingsForm.model_role_mappings[role]
+    const mapping = resolvedMappings[role]
     if (!mapping || !String(mapping.provider_name || '').trim() || !String(mapping.model_name || '').trim()) {
       return `请完成“${displayRoleLabel(role)}”并选择可用模型服务。`
     }
     const provider = providerConfigs.value.find((item) => item.provider_name === mapping.provider_name)
     if (!provider || !provider.enabled || !(provider.key_configured || String(provider.api_key || '').trim())) {
       return `“${displayRoleLabel(role)}”选择的模型服务不可用，请检查启用状态和密钥。`
+    }
+  }
+  for (const role of REQUIRED_SETTINGS_ROLES) {
+    const mapping = resolvedMappings[role]
+    if (!mapping?.provider_name || !mapping?.model_name) {
+      return `请完成“${displayRoleLabel(role)}”，或清空后让它自动继承。`
     }
   }
   return ''
@@ -480,19 +528,17 @@ const buildSettingsPayload = () => ({
     timeout: Number(provider.timeout || 30),
     base_url: String(provider.base_url || '').trim() || undefined
   })),
-  model_role_mappings: Object.fromEntries(REQUIRED_SETTINGS_ROLES.map((role) => {
-    const item = settingsForm.model_role_mappings[role] || {}
-    return [role, {
-      provider_name: String(item.provider_name || '').trim(),
-      model_name: String(item.model_name || '').trim()
-    }]
-  }))
+  model_role_mappings: resolveModelRoleMappings()
 })
 
 const saveAISettings = async () => {
   aiSaveMessage.value = ''
   aiErrorMessage.value = ''
   try {
+    if (aiSettingsBlockMessage.value) {
+      aiErrorMessage.value = aiSettingsBlockMessage.value
+      return
+    }
     const payload = buildSettingsPayload()
     const response = unwrapData(await aiApi.updateAISettings(payload))
     resetSettingsForm(response)
@@ -507,21 +553,22 @@ const testProviderConnection = async (providerName) => {
   aiErrorMessage.value = ''
   const provider = providerConfigs.value.find((item) => item.provider_name === providerName)
   if (!provider) return
+  if (String(provider.api_key || '').trim() || !provider.key_configured) {
+    provider.last_test_status = 'not_tested'
+    provider.last_test_error_message = '请先保存 AI 配置，再测试连接。'
+    return
+  }
   try {
     const payload = {
       caller_type: 'user_action',
       user_action: true,
       idempotency_key: buildIdempotencyKey('provider_test'),
-      provider_name: provider.provider_name,
-      api_key: String(provider.api_key || '').trim() || undefined,
-      timeout: Number(provider.timeout || 30),
-      base_url: String(provider.base_url || '').trim() || undefined,
-      default_model: String(provider.default_model || '').trim() || undefined
+      model_name: String(provider.default_model || '').trim()
     }
     const result = unwrapData(await aiApi.testProvider(provider.provider_name, payload))
-    provider.last_test_status = result.status || 'unknown'
+    provider.last_test_status = result.test_status || result.status || 'unknown'
     provider.last_test_error_message = result.error_message || ''
-    if (result.status === 'ok' || result.status === 'passed') {
+    if (provider.last_test_status === 'ok' || provider.last_test_status === 'passed') {
       aiSaveMessage.value = `${displayProviderName(provider.provider_name)} 测试成功。`
     }
   } catch (error) {

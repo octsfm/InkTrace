@@ -1048,6 +1048,13 @@ class OutlineAnalysisResult(AIBaseModel):
     tone: str = ""
     issues: list[str] = Field(default_factory=list)
     outline_empty: bool = True
+    story_phase_map: list[str] = Field(default_factory=list)
+    main_conflict: str = ""
+    important_characters: list[str] = Field(default_factory=list)
+    setting_facts: list[str] = Field(default_factory=list)
+    foreshadow_map: list[str] = Field(default_factory=list)
+    expected_story_direction: str = ""
+    analysis_confidence: float = 0.0
 
 
 class ChapterSceneDetail(AIBaseModel):
@@ -1075,10 +1082,30 @@ class ChapterAnalysisResult(AIBaseModel):
     plot_points: list[str] = Field(default_factory=list)
     unresolved_threads: list[str] = Field(default_factory=list)
     scene_details: list[ChapterSceneDetail] = Field(default_factory=list)
+    chapter_position: str = ""
+    plot_progress: str = ""
+    character_state_delta: list[dict[str, Any]] = Field(default_factory=list)
+    setting_fact_delta: list[dict[str, Any]] = Field(default_factory=list)
+    foreshadow_candidate_delta: list[dict[str, Any]] = Field(default_factory=list)
+    deviations_from_outline: list[str] = Field(default_factory=list)
+    timeline_info: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    analysis_confidence: float = 0.0
     error_code: str = ""
     error_message: str = ""
     is_empty: bool = False
     analyzed_at: str = ""
+
+
+class HierarchicalStorySummary(AIBaseModel):
+    stage_summaries: list[dict[str, Any]] = Field(default_factory=list)
+    volume_summaries: list[dict[str, Any]] = Field(default_factory=list)
+    global_summary: str
+    current_story_phase: str = ""
+    main_plot_threads: list[str] = Field(default_factory=list)
+    unresolved_questions: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    analysis_confidence: float = 0.0
 
 
 class StoryMemorySnapshot(AIBaseModel):
@@ -1090,13 +1117,29 @@ class StoryMemorySnapshot(AIBaseModel):
     source_chapter_versions: dict[str, int] = Field(default_factory=dict)
     global_summary: str = ""
     chapter_summaries: list[dict[str, str]] = Field(default_factory=list)
+    stage_summaries: list[dict[str, Any]] = Field(default_factory=list)
+    volume_summaries: list[dict[str, Any]] = Field(default_factory=list)
     characters: list[str] = Field(default_factory=list)
     locations: list[str] = Field(default_factory=list)
     plot_threads: list[str] = Field(default_factory=list)
     scene_details: list[ChapterSceneDetail] = Field(default_factory=list)
+    source: str = "initialization_analysis"
+    source_analysis_version: str = ""
+    outline_analysis_id: str = ""
+    story_blueprint_id: str = ""
+    chapter_analysis_ids: list[str] = Field(default_factory=list)
+    current_story_summary: dict[str, Any] = Field(default_factory=dict)
+    character_states: list[dict[str, Any]] = Field(default_factory=list)
+    setting_facts: list[dict[str, Any]] = Field(default_factory=list)
+    foreshadow_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    unresolved_questions: list[str] = Field(default_factory=list)
+    timeline_facts: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
     stale_status: str = "fresh"
     stale_reason: str = ""
     created_at: str = ""
+    updated_at: str = ""
 
 
 class StoryStateSnapshot(AIBaseModel):
@@ -1112,9 +1155,26 @@ class StoryStateSnapshot(AIBaseModel):
     unresolved_threads: list[str] = Field(default_factory=list)
     continuity_notes: list[str] = Field(default_factory=list)
     source_snapshot_id: str = ""
+    baseline_type: str = "analysis_baseline"
+    source: str = "confirmed_chapter_analysis"
+    source_chapter_analysis_ids: list[str] = Field(default_factory=list)
+    current_chapter_id: str = ""
+    current_chapter_order: int = 0
+    current_story_phase: str = ""
+    current_time_position: str = ""
+    current_character_states: list[dict[str, Any]] = Field(default_factory=list)
+    active_conflicts: list[str] = Field(default_factory=list)
+    active_foreshadows: list[dict[str, Any]] = Field(default_factory=list)
+    resolved_foreshadows: list[dict[str, Any]] = Field(default_factory=list)
+    important_setting_facts: list[dict[str, Any]] = Field(default_factory=list)
+    current_location_scope: list[str] = Field(default_factory=list)
+    recent_key_events: list[str] = Field(default_factory=list)
+    unresolved_questions: list[str] = Field(default_factory=list)
+    analysis_confidence: float = 0.0
     stale_status: str = "fresh"
     stale_reason: str = ""
     created_at: str = ""
+    updated_at: str = ""
 
 
 class MemoryTargetType(StrEnum):
@@ -1389,6 +1449,7 @@ class InitializationRecord(AIBaseModel):
     source_chapter_versions: dict[str, int] = Field(default_factory=dict)
     outline_analysis: OutlineAnalysisResult | None = None
     chapter_results: list[ChapterAnalysisResult] = Field(default_factory=list)
+    hierarchical_story_summary: HierarchicalStorySummary | None = None
     created_at: str = ""
     updated_at: str = ""
     finalized_at: str = ""

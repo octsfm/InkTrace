@@ -58,7 +58,22 @@ describe('CharacterPanel', () => {
             key_characters: ['顾迟', '苏棠']
           },
           immediate_window: {
-            character_current_states: ['顾迟: 警觉', '苏棠: 受伤']
+            character_current_states: [
+              {
+                character_name: '顾迟',
+                current_status: '在灯塔内部探索',
+                emotional_state: '警觉',
+                location: '灯塔',
+                last_action: '翻看旧航海图'
+              },
+              {
+                character_name: '苏棠',
+                current_status: '等待救援',
+                emotional_state: '紧张',
+                location: '码头',
+                last_action: '发出信号'
+              }
+            ]
           }
         }
       }
@@ -103,7 +118,11 @@ describe('CharacterPanel', () => {
     expect(wrapper.text()).toContain('关键人物：顾迟 / 苏棠')
     expect(wrapper.text()).toContain('顾迟')
     expect(wrapper.text()).toContain('苏棠')
-    expect(wrapper.text()).toContain('顾迟：警觉')
+    expect(wrapper.text()).toContain('顾迟：在灯塔内部探索')
+    expect(wrapper.text()).toContain('情绪：警觉')
+    expect(wrapper.text()).toContain('位置：灯塔')
+    expect(wrapper.text()).toContain('最近：翻看旧航海图')
+    expect(wrapper.text()).not.toContain('[object Object]')
   })
 
   it('creates a character and converts aliases input into array payload', async () => {

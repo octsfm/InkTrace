@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.ai.initialization_test_support import build_initialization_analysis_dependencies
+
 import time
 from pathlib import Path
 
@@ -54,6 +56,7 @@ def _build_initialized_context(tmp_path: Path):
         initialization_repository=init_store,
         story_memory_repository=memory_store,
         story_state_repository=state_store,
+        **build_initialization_analysis_dependencies(),
     )
     context_pack_service = ContextPackService(
         chapter_service=chapter_service,

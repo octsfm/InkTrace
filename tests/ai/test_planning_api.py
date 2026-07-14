@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from application.services.v1.chapter_service import ChapterService
@@ -46,6 +47,10 @@ def test_planning_api_generates_direction_and_plan_then_confirms_to_writing_task
     option_id = proposal_payload["options"][0]["option_id"]
     assert proposal_payload["status"] == "waiting_for_selection"
     assert len(proposal_payload["options"]) >= 3
+    serialized_proposal = str(proposal_payload)
+    assert "顾迟" not in serialized_proposal
+    assert "父亲线索" not in serialized_proposal
+    assert proposal_payload["generation_metadata"]["provider_name"] == "fake"
 
     listed_proposals = client.get("/api/v2/ai/directions", params={"work_id": work_id, "chapter_id": chapter_id})
     assert listed_proposals.status_code == 200
@@ -65,10 +70,11 @@ def test_planning_api_generates_direction_and_plan_then_confirms_to_writing_task
             "idempotency_key": "idem-direction-select-1",
         },
     )
-    assert selection_response.status_code == 200
+    assert selection_response.status_code == 200, selection_response.json()
     selection_payload = selection_response.json()["data"]
     assert selection_payload["selection"]["selection_type"] == "direct_select"
     assert selection_payload["proposal"]["status"] == "selected"
+    assert selection_payload["chapter_plan"], selection_payload
 
     plan_response = client.post(
         "/api/v2/ai/chapter-plans",
@@ -85,6 +91,10 @@ def test_planning_api_generates_direction_and_plan_then_confirms_to_writing_task
     plan_id = plan_payload["chapter_plan_id"]
     assert plan_payload["status"] == "waiting_for_confirmation"
     assert len(plan_payload["plan_items"]) >= 3
+    serialized_plan = str(plan_payload)
+    assert "顾迟" not in serialized_plan
+    assert "父亲线索" not in serialized_plan
+    assert plan_payload["generation_metadata"]["provider_name"] == "fake"
 
     listed_plans = client.get("/api/v2/ai/chapter-plans", params={"work_id": work_id, "chapter_id": chapter_id})
     assert listed_plans.status_code == 200
@@ -103,7 +113,7 @@ def test_planning_api_generates_direction_and_plan_then_confirms_to_writing_task
             "idempotency_key": "idem-plan-confirm-1",
         },
     )
-    assert confirm_response.status_code == 200
+    assert confirm_response.status_code == 200, confirm_response.json()
     confirm_payload = confirm_response.json()["data"]
     writing_task_id = confirm_payload["writing_task"]["writing_task_id"]
     assert confirm_payload["confirmation"]["confirmation_type"] == "direct_confirm"
@@ -307,3 +317,82 @@ def test_planning_api_rejects_chapter_plan_and_returns_confirmation_payload() ->
     payload = rejected.json()["data"]
     assert payload["confirmation"]["confirmation_type"] == "reject"
     assert payload["plan"]["chapter_plan_id"] == plan_id
+
+
+def test_planning_application_service_cannot_forge_direction_user_action() -> None:
+    work_id, chapter_id = _seed_initialized_work()
+    client = TestClient(app)
+    proposal_response = client.post(
+        "/api/v2/ai/directions",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "继续推进当前主线。",
+            "idempotency_key": "idem-no-user-action-direction",
+        },
+    )
+    assert proposal_response.status_code == 200
+    proposal = proposal_response.json()["data"]
+    service = dependencies.get_planning_api_service()
+
+    with pytest.raises(ValueError, match="action_not_allowed"):
+        service.select_direction(
+            proposal_id=proposal["direction_proposal_id"],
+            selected_option_id=proposal["options"][0]["option_id"],
+            user_id="ui-user",
+            edited_fields=[],
+            edited_values={},
+            request_id="req-no-user-action-direction-select",
+            user_action=False,
+        )
+
+
+def test_planning_application_service_cannot_forge_plan_user_action() -> None:
+    work_id, chapter_id = _seed_initialized_work()
+    client = TestClient(app)
+    proposal_response = client.post(
+        "/api/v2/ai/directions",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "user_instruction": "继续推进当前主线。",
+            "idempotency_key": "idem-no-user-action-plan",
+        },
+    )
+    assert proposal_response.status_code == 200
+    proposal = proposal_response.json()["data"]
+    selected_response = client.post(
+        f"/api/v2/ai/directions/{proposal['direction_proposal_id']}/select",
+        json={
+            "caller_type": "user_action",
+            "selected_option_id": proposal["options"][0]["option_id"],
+            "user_id": "ui-user",
+            "user_action": True,
+            "idempotency_key": "idem-no-user-action-plan-select",
+        },
+    )
+    assert selected_response.status_code == 200
+    plan_response = client.post(
+        "/api/v2/ai/chapter-plans",
+        json={
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "direction_proposal_id": proposal["direction_proposal_id"],
+            "caller_type": "user_action",
+            "idempotency_key": "idem-no-user-action-plan-generate",
+        },
+    )
+    assert plan_response.status_code == 200
+    plan = plan_response.json()["data"]
+    service = dependencies.get_planning_api_service()
+
+    with pytest.raises(ValueError, match="action_not_allowed"):
+        service.confirm_chapter_plan(
+            plan_id=plan["chapter_plan_id"],
+            user_id="ui-user",
+            edited_items=[],
+            edited_fields={},
+            user_edit_notes="",
+            request_id="req-no-user-action-plan-confirm",
+            user_action=False,
+        )

@@ -701,6 +701,88 @@ class AgentRuntimeService:
         self._trace_step_event(session, saved, event_type="step_started", summary=saved.action)
         return saved
 
+    def run_tool_step(
+        self,
+        session_id: str,
+        *,
+        step_id: str,
+        tool_name: str,
+        payload: dict[str, object],
+        side_effect_level: str,
+        resource_scope_refs: list[str] | None = None,
+    ) -> AgentObservation:
+        """Run one Agent tool step through the complete PPAO cycle."""
+        session = self.get_session(session_id)
+        step = self.get_step(step_id)
+        if session.current_step_id != step_id or step.status == AgentStepStatus.PENDING:
+            started = self.run_next_step(session_id)
+            if started.step_id != step_id:
+                raise ValueError("step_execution_order_invalid")
+            step = started
+        if step.status != AgentStepStatus.RUNNING or step.step_phase != PPAOPhase.PERCEPTION:
+            raise ValueError("step_not_ready_for_perception")
+
+        self.record_observation(
+            step_id,
+            AgentObservation(
+                observation_id=f"obs_perception_{uuid.uuid4().hex[:12]}",
+                session_id=session_id,
+                step_id=step_id,
+                observation_type=AgentObservationType.SYSTEM_EVENT,
+                source_type="system",
+                status="success",
+                safe_message="context_refs_ready",
+                summary="context_refs_ready",
+                decision="continue",
+                decision_reason="perception_completed",
+                request_id=step.request_id,
+                trace_id=step.trace_id,
+            ),
+        )
+        planning_step = self.get_step(step_id)
+        self._step_repository.save_step(
+            planning_step.model_copy(
+                update={
+                    "step_plan": StepPlan(
+                        next_action_type="call_tool",
+                        target_tool_name=tool_name,
+                        expected_observation_type="tool_result",
+                        retryable=planning_step.retryable,
+                        requires_user_decision=False,
+                        side_effect_level=side_effect_level,
+                    )
+                }
+            )
+        )
+        self.record_observation(
+            step_id,
+            AgentObservation(
+                observation_id=f"obs_planning_{uuid.uuid4().hex[:12]}",
+                session_id=session_id,
+                step_id=step_id,
+                observation_type=AgentObservationType.SYSTEM_EVENT,
+                source_type="system",
+                status="success",
+                safe_message="tool_plan_ready",
+                summary="tool_plan_ready",
+                decision="continue",
+                decision_reason="planning_completed",
+                request_id=step.request_id,
+                trace_id=step.trace_id,
+                metadata={"tool_name": tool_name, "side_effect_level": side_effect_level},
+            ),
+        )
+        return self.execute_tool_action(
+            session_id,
+            step_id=step_id,
+            agent_type=step.agent_type,
+            tool_name=tool_name,
+            payload=payload,
+            side_effect_level=side_effect_level,
+            resource_scope_refs=resource_scope_refs,
+            success_decision="complete_step",
+        )
+
     def execute_tool_action(
         self,
         session_id: str,
@@ -773,6 +855,10 @@ class AgentRuntimeService:
             metadata={
                 "tool_name": tool_name,
                 "result_ref": str(result.payload.get("result_ref", "")) if isinstance(result.payload, dict) else "",
+                "result_status": str(result.payload.get("result_status", "")) if isinstance(result.payload, dict) else "",
+                "blocked_reason": str(result.payload.get("blocked_reason", "")) if isinstance(result.payload, dict) else "",
+                "rewrite_recommended": bool(result.payload.get("rewrite_recommended", False)) if isinstance(result.payload, dict) else False,
+                "candidate_version_id": str(result.payload.get("candidate_version_id", "")) if isinstance(result.payload, dict) else "",
                 "resource_scope_refs": list(tool_context.resource_scope_refs),
             },
         )
@@ -1222,6 +1308,17 @@ class AgentRuntimeService:
                         "observation_id": saved_observation.observation_id,
                         "prior_observation_refs": prior_refs,
                         "warning_codes": merged_step_warnings,
+                        "tool_calls": self._finalize_tool_calls(
+                            step.tool_calls,
+                            source_tool_call_id=saved_observation.source_tool_call_id,
+                            status=saved_observation.status,
+                            result_ref=str(saved_observation.metadata.get("result_ref", "")),
+                            error_code=saved_observation.error_code,
+                        ),
+                        "output_refs": self._merge_output_refs(
+                            step.output_refs,
+                            str(saved_observation.metadata.get("result_ref", "")),
+                        ),
                         "waiting_at": "",
                         "finished_at": now,
                         "error_code": saved_observation.error_code,
@@ -1255,6 +1352,17 @@ class AgentRuntimeService:
                         "observation_id": saved_observation.observation_id,
                         "prior_observation_refs": prior_refs,
                         "warning_codes": merged_step_warnings,
+                        "tool_calls": self._finalize_tool_calls(
+                            step.tool_calls,
+                            source_tool_call_id=saved_observation.source_tool_call_id,
+                            status=saved_observation.status,
+                            result_ref=str(saved_observation.metadata.get("result_ref", "")),
+                            error_code=saved_observation.error_code,
+                        ),
+                        "output_refs": self._merge_output_refs(
+                            step.output_refs,
+                            str(saved_observation.metadata.get("result_ref", "")),
+                        ),
                         "waiting_at": "",
                         "finished_at": now,
                         "error_code": "",

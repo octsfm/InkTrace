@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.ai.initialization_test_support import build_initialization_analysis_dependencies
+
 from pathlib import Path
 
 from application.services.ai.context_pack_service import ContextPackService
@@ -60,6 +62,7 @@ def _build_context(tmp_path: Path):
     job_store = FileAIJobStore(tmp_path / "jobs.json")
     candidate_store = FileCandidateDraftStore(tmp_path / "candidate_drafts.json")
     chapter_plan_store = FileChapterPlanStore(tmp_path / "chapter_plans.json")
+    direction_plan_store = FileDirectionPlanStore(tmp_path / "direction_plans.json")
     init_store = FileInitializationStore(tmp_path / "initializations.json")
     memory_store = FileStoryMemoryStore(tmp_path / "memory.json")
     state_store = FileStoryStateStore(tmp_path / "state.json")
@@ -75,6 +78,7 @@ def _build_context(tmp_path: Path):
         story_memory_repository=memory_store,
         story_state_repository=state_store,
         plot_arc_repository=plot_arc_store,
+        **build_initialization_analysis_dependencies(),
     )
     context_pack_service = ContextPackService(
         chapter_service=chapter_service,
@@ -97,9 +101,151 @@ def _build_context(tmp_path: Path):
         context_pack_service=context_pack_service,
         candidate_draft_repository=candidate_store,
         chapter_plan_repository=chapter_plan_store,
+        direction_plan_repository=direction_plan_store,
+        story_memory_repository=memory_store,
+        story_state_repository=state_store,
         writer=_StubWriter(),
     )
     return work_service, chapter_service, job_store, candidate_store, tool_facade, work, chapter
+
+
+def test_writer_agent_tool_generates_and_persists_candidate_without_formal_chapter_write(tmp_path: Path) -> None:
+    _, chapter_service, _, candidate_store, tool_facade, work, chapter = _build_context(tmp_path)
+    context_result = tool_facade.call(
+        "build_context_pack",
+        context=ToolExecutionContext(
+            caller_type="workflow",
+            work_id=work.id,
+            chapter_id=chapter.id.value,
+            request_id="req_writer_context",
+            trace_id="trace_writer_context",
+            side_effect_level="plan_write",
+        ),
+        payload={
+            "work_id": work.id,
+            "chapter_id": chapter.id.value,
+            "user_instruction": "继续写下去",
+            "continuation_mode": "continue_chapter",
+            "model_role": "writer",
+        },
+    )
+    context_pack = context_result.payload["context_pack"]
+    task = WritingTask(
+        writing_task_id="wt_agent_writer_1",
+        work_id=work.id,
+        chapter_id=chapter.id.value,
+        target_chapter_id=chapter.id.value,
+        status=WritingTaskStatus.READY,
+        writing_goal="让顾迟继续调查灯塔",
+        user_instruction="继续写下去",
+        created_by="user_action",
+    )
+    tool_facade._direction_plan_repository.save_writing_task(task)  # noqa: SLF001
+    original_content = next(item for item in chapter_service.list_chapters(work.id) if item.id.value == chapter.id.value).content
+    writer_context = ToolExecutionContext(
+        caller_type="agent",
+        work_id=work.id,
+        chapter_id=chapter.id.value,
+        request_id="req_agent_writer",
+        trace_id="trace_agent_writer",
+        agent_session_id="agent_session_writer_real",
+        agent_step_id="agent_step_writer_real",
+        agent_type="writer",
+        session_status="running",
+        step_status="waiting_observation",
+        resource_scope_refs=[f"work:{work.id}", f"chapter:{chapter.id.value}"],
+        side_effect_level="safe_write_candidate",
+    )
+
+    result = tool_facade.call(
+        "run_writer_step",
+        context=writer_context,
+        payload={
+            "work_id": work.id,
+            "chapter_id": chapter.id.value,
+            "context_pack_id": context_pack.context_pack_id,
+            "writing_task_id": task.writing_task_id,
+            "source_job_id": "job_agent_writer_real",
+        },
+    )
+
+    assert result.ok is True
+    assert result.payload["result_ref"].startswith("candidate_draft:cd_")
+    candidate_id = result.payload["result_ref"].split(":", 1)[1]
+    draft = candidate_store.get(candidate_id)
+    assert draft.content == _StubWriter().output
+    assert draft.agent_session_id == "agent_session_writer_real"
+    assert draft.source_context_pack_id == context_pack.context_pack_id
+    current_chapter = next(item for item in chapter_service.list_chapters(work.id) if item.id.value == chapter.id.value)
+    assert current_chapter.content == original_content
+
+
+def test_memory_read_tools_return_persisted_refs_instead_of_fabricated_ids(tmp_path: Path) -> None:
+    _, _, _, _, tool_facade, work, chapter = _build_context(tmp_path)
+    context = ToolExecutionContext(
+        caller_type="agent",
+        work_id=work.id,
+        chapter_id=chapter.id.value,
+        request_id="req_memory_read",
+        trace_id="trace_memory_read",
+        agent_session_id="session_memory_read",
+        agent_step_id="step_memory_read",
+        agent_type="memory",
+        session_status="running",
+        step_status="running",
+        resource_scope_refs=[f"work:{work.id}", f"chapter:{chapter.id.value}"],
+        side_effect_level="read_only",
+    )
+
+    memory = tool_facade.call(
+        "get_story_memory_snapshot",
+        context=context,
+        payload={"work_id": work.id},
+    )
+    state = tool_facade.call(
+        "get_story_state_baseline",
+        context=context,
+        payload={"work_id": work.id},
+    )
+    memory_again = tool_facade.call(
+        "get_story_memory_snapshot",
+        context=context,
+        payload={"work_id": work.id},
+    )
+
+    assert memory.ok is True
+    assert memory.payload["result_ref"].startswith("memory_context:memory_")
+    assert memory.payload["story_memory_ref"].startswith("story_memory:memory_")
+    assert memory.payload["result_ref"] == memory_again.payload["result_ref"]
+    assert state.ok is True
+    assert state.payload["result_ref"].startswith("story_state:state_")
+    assert "story_memory" not in memory.payload
+    assert "story_state" not in state.payload
+
+
+def test_memory_read_tools_fail_when_persisted_state_is_missing(tmp_path: Path) -> None:
+    _, _, _, _, tool_facade, _, _ = _build_context(tmp_path)
+    context = ToolExecutionContext(
+        caller_type="agent",
+        work_id="missing-work",
+        request_id="req_memory_missing",
+        trace_id="trace_memory_missing",
+        agent_session_id="session_memory_missing",
+        agent_step_id="step_memory_missing",
+        agent_type="memory",
+        session_status="running",
+        step_status="running",
+        resource_scope_refs=["work:missing-work"],
+        side_effect_level="read_only",
+    )
+
+    memory = tool_facade.call("get_story_memory_snapshot", context=context, payload={"work_id": "missing-work"})
+    state = tool_facade.call("get_story_state_baseline", context=context, payload={"work_id": "missing-work"})
+
+    assert memory.ok is False
+    assert memory.error_code == "story_memory_not_found"
+    assert state.ok is False
+    assert state.error_code == "story_state_not_found"
 
 
 def test_tool_facade_blocks_agent_user_action_and_formal_write(tmp_path: Path) -> None:

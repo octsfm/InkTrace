@@ -1,0 +1,24 @@
+{
+  "preferences": {
+    "enable_style_dna": true,
+    "enable_mentions": true,
+    "enable_opening_agent": true,
+    "enable_outline_assist": true,
+    "enable_selection_rewrite": true,
+    "enable_multi_chapter": true,
+    "enable_citation_link": true,
+    "enable_cost_dashboard": true,
+    "enable_analysis_dashboard": true
+  },
+  "receipts": {
+    "99dd30460ac4abd098ff0a7863d07a570d2d127bd25afc578d22cffdb0f5438a": "enable_style_dna:1",
+    "ce315ad29554a0e787edfcf8a8061818f756b47de43d7418db7c358ea4d777af": "enable_mentions:1",
+    "f5b9725f1399cadcb98c1a5124a4f9667112f23618d8f9a6e6b5ea3f2635c2fe": "enable_opening_agent:1",
+    "7e08e9b22c5da13d85e445a5e8f83471cbf2551f155b32530e3ceb19f9b57379": "enable_outline_assist:1",
+    "ad01ff2ec038f64388114d28fabf849514fcc02bdd8f0bc8eb9f1120853e6b84": "enable_selection_rewrite:1",
+    "1ef0ffd0f9c48c56c71a45555cb60bb6c71f05dd6c4d822887ff80ed37cb00cc": "enable_multi_chapter:1",
+    "55a3407d35ba59003885aa0155819f4e4688660cfd55e263c35bf89fc272e80f": "enable_citation_link:1",
+    "4f9aa4834f1ed3830fd329318aa6536ea28654a5988977023286244f2d341225": "enable_cost_dashboard:1",
+    "179bd8c15ab451c7e94c8fadbd9f9d8b5f6d970c3fae51f172b8bfe21ffcc82c": "enable_analysis_dashboard:1"
+  }
+}

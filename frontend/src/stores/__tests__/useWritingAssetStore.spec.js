@@ -112,6 +112,7 @@ describe('useWritingAssetStore', () => {
 
   it('writes in-memory asset drafts and marks dirty state', () => {
     const store = useWritingAssetStore()
+    store.setWorkContext('work-1')
 
     const draft = store.writeAssetDraft('work_outline', 'work', {
       content_text: '本地草稿',
@@ -133,7 +134,7 @@ describe('useWritingAssetStore', () => {
     })
     expect(store.dirtyAssetKeys).toEqual(['work_outline:work'])
     expect(store.getAssetSaveStatus('work_outline', 'work')).toBe('dirty')
-    expect(localCache.get('asset_draft:work_outline:work')).toMatchObject({
+    expect(localCache.get('asset_draft:work_outline:work-1')).toMatchObject({
       payload: {
         content_text: '本地草稿'
       }
@@ -163,6 +164,37 @@ describe('useWritingAssetStore', () => {
     expect(store.dirtyAssetKeys).toEqual(['chapter_outline:chapter-1'])
   })
 
+  it('keeps work outline drafts isolated by work id', () => {
+    const store = useWritingAssetStore()
+
+    store.setWorkContext('work-1')
+    store.writeAssetDraft('work_outline', 'work', {
+      content_text: '作品一的大纲',
+      expected_version: 1
+    })
+
+    store.setWorkContext('work-2')
+    store.writeAssetDraft('work_outline', 'work', {
+      content_text: '作品二的大纲',
+      expected_version: 1
+    })
+
+    expect(localCache.get('asset_draft:work_outline:work-1')).toMatchObject({
+      payload: { content_text: '作品一的大纲' }
+    })
+    expect(localCache.get('asset_draft:work_outline:work-2')).toMatchObject({
+      payload: { content_text: '作品二的大纲' }
+    })
+    expect(localCache.get('asset_draft:work_outline:work')).toBeNull()
+
+    store.setWorkContext('work-1')
+    const restored = store.readAssetDraft('work_outline', 'work')
+
+    expect(restored).toMatchObject({
+      payload: { content_text: '作品一的大纲' }
+    })
+  })
+
   it('clears draft only after successful explicit save', async () => {
     mockSaveWorkOutline.mockResolvedValue({
       id: 'outline-1',
@@ -185,7 +217,7 @@ describe('useWritingAssetStore', () => {
     })
     expect(saved.version).toBe(2)
     expect(store.assetDrafts).toEqual({})
-    expect(localCache.get('asset_draft:work_outline:work')).toBeNull()
+    expect(localCache.get('asset_draft:work_outline:work-1')).toBeNull()
     expect(store.dirtyAssetKeys).toEqual([])
     expect(store.getAssetSaveStatus('work_outline', 'work')).toBe('synced')
   })
@@ -215,7 +247,7 @@ describe('useWritingAssetStore', () => {
         content_text: '冲突草稿'
       }
     })
-    expect(localCache.get('asset_draft:work_outline:work')).toMatchObject({
+    expect(localCache.get('asset_draft:work_outline:work-1')).toMatchObject({
       payload: {
         content_text: '冲突草稿'
       }

@@ -623,6 +623,368 @@ class AgentOrchestrator:
         next_stage = self._resolve_next_stage(run, current_stage, normalized_decision)
         return self._enter_stage(run, next_stage)
 
+    def prepare_memory_context(self, session_id: str) -> AgentWorkflowRun:
+        """Execute the required Memory Agent read steps through AgentRuntime."""
+        run = self._load_run(session_id)
+        if run.current_stage != WorkflowStageName.MEMORY_CONTEXT_PREPARE:
+            raise ValueError("memory_context_stage_not_active")
+        session = self._runtime_service.get_session(session_id)
+        memory_step_id = session.current_step_id
+        if not memory_step_id:
+            raise ValueError("memory_step_not_found")
+
+        memory_observation = self._runtime_service.run_tool_step(
+            session_id,
+            step_id=memory_step_id,
+            tool_name="get_story_memory_snapshot",
+            payload={"work_id": session.work_id},
+            side_effect_level="read_only",
+        )
+        memory_step = self._runtime_service.get_step(memory_step_id)
+        if memory_step.status != AgentStepStatus.SUCCEEDED:
+            return self._fail_memory_context_stage(
+                run,
+                error_code=memory_observation.error_code or "story_memory_read_failed",
+                warning_codes=list(memory_observation.warning_codes),
+            )
+        memory_ref = str(memory_observation.metadata.get("result_ref", "")).strip()
+        parsed_memory_ref = _parse_result_ref(memory_ref)
+        if parsed_memory_ref is None or parsed_memory_ref.ref_type != "memory_context":
+            return self._fail_memory_context_stage(run, error_code="memory_context_ref_missing")
+        run = self._append_result_ref(run, memory_ref, source_step_id=memory_step_id)
+
+        state_step = self._runtime_service.create_step(
+            session_id,
+            agent_type="memory",
+            step_type="call_tool",
+            action="read_story_state",
+        )
+        state_observation = self._runtime_service.run_tool_step(
+            session_id,
+            step_id=state_step.step_id,
+            tool_name="get_story_state_baseline",
+            payload={"work_id": session.work_id},
+            side_effect_level="read_only",
+        )
+        saved_state_step = self._runtime_service.get_step(state_step.step_id)
+        if saved_state_step.status != AgentStepStatus.SUCCEEDED:
+            return self._fail_memory_context_stage(
+                run,
+                error_code=state_observation.error_code or "story_state_read_failed",
+                warning_codes=list(memory_observation.warning_codes) + list(state_observation.warning_codes),
+            )
+        state_ref = str(state_observation.metadata.get("result_ref", "")).strip()
+        parsed_state_ref = _parse_result_ref(state_ref)
+        if parsed_state_ref is None or parsed_state_ref.ref_type != "story_state":
+            return self._fail_memory_context_stage(run, error_code="story_state_ref_missing")
+        run = self._append_result_ref(run, state_ref, source_step_id=state_step.step_id)
+        run.warning_codes = self._merge_warning_codes(
+            run.warning_codes,
+            list(memory_observation.warning_codes) + list(state_observation.warning_codes),
+        )
+        run.stage_history.append(
+            StageRecord(
+                stage_name=WorkflowStageName.MEMORY_CONTEXT_PREPARE,
+                status="succeeded",
+                decision=WorkflowDecision.CONTINUE.value,
+                decision_reason="memory_context_prepared",
+                result_refs=list(run.result_refs),
+                warning_codes=list(run.warning_codes),
+                entered_at=run.checkpoints[-1].created_at if run.checkpoints else run.created_at,
+                exited_at=_now(),
+                metadata={"reason_code": "memory_context_prepare_success"},
+            )
+        )
+        return self._enter_stage(run, WorkflowStageName.PLANNING_PREPARE)
+
+    def _fail_memory_context_stage(
+        self,
+        run: AgentWorkflowRun,
+        *,
+        error_code: str,
+        warning_codes: list[str] | None = None,
+    ) -> AgentWorkflowRun:
+        run.error_code = error_code
+        run.warning_codes = self._merge_warning_codes(run.warning_codes, warning_codes or [])
+        run.stage_history.append(
+            StageRecord(
+                stage_name=WorkflowStageName.MEMORY_CONTEXT_PREPARE,
+                status="failed",
+                decision=WorkflowDecision.FAIL_WORKFLOW.value,
+                decision_reason=error_code,
+                result_refs=list(run.result_refs),
+                warning_codes=list(run.warning_codes),
+                entered_at=run.checkpoints[-1].created_at if run.checkpoints else run.created_at,
+                exited_at=_now(),
+                metadata={"reason_code": error_code, "error_code": error_code},
+            )
+        )
+        return self._enter_stage(run, WorkflowStageName.FAILED)
+
+    def prepare_writing_context(self, session_id: str, *, writing_task_id: str) -> AgentWorkflowRun:
+        """Build the controlled ContextPack before Writer Agent execution."""
+        run = self._load_run(session_id)
+        if run.current_stage != WorkflowStageName.WRITING_PREPARE:
+            raise ValueError("writing_prepare_stage_not_active")
+        normalized_task_id = str(writing_task_id or "").strip()
+        if not normalized_task_id:
+            raise ValueError("writing_task_required")
+        session = self._runtime_service.get_session(session_id)
+        step_id = session.current_step_id
+        if not step_id:
+            raise ValueError("writing_prepare_step_not_found")
+        observation = self._runtime_service.run_tool_step(
+            session_id,
+            step_id=step_id,
+            tool_name="build_context_pack",
+            payload={
+                "work_id": session.work_id,
+                "chapter_id": session.chapter_id or "",
+                "user_instruction": session.user_instruction,
+                "continuation_mode": "continue_chapter",
+                "model_role": "writer",
+            },
+            side_effect_level="plan_write",
+        )
+        saved_step = self._runtime_service.get_step(step_id)
+        if saved_step.status != AgentStepStatus.SUCCEEDED:
+            return self._fail_workflow_stage(
+                run,
+                stage_name=WorkflowStageName.WRITING_PREPARE,
+                error_code=observation.error_code or "context_pack_build_failed",
+                warning_codes=list(observation.warning_codes),
+            )
+        result_status = str(observation.metadata.get("result_status", "")).strip()
+        if result_status == "blocked":
+            return self._fail_workflow_stage(
+                run,
+                stage_name=WorkflowStageName.WRITING_PREPARE,
+                error_code=str(observation.metadata.get("blocked_reason", "")).strip() or "context_pack_blocked",
+                warning_codes=list(observation.warning_codes),
+            )
+        if result_status == "degraded" and not run.policy.allow_degraded:
+            return self._fail_workflow_stage(
+                run,
+                stage_name=WorkflowStageName.WRITING_PREPARE,
+                error_code="degraded_policy_forbidden",
+                warning_codes=list(observation.warning_codes) + ["context_pack_degraded"],
+            )
+        context_pack_ref = str(observation.metadata.get("result_ref", "")).strip()
+        parsed_context_ref = _parse_result_ref(context_pack_ref)
+        if parsed_context_ref is None or parsed_context_ref.ref_type != "context_pack":
+            return self._fail_workflow_stage(
+                run,
+                stage_name=WorkflowStageName.WRITING_PREPARE,
+                error_code="context_pack_result_ref_missing",
+            )
+        run = self._append_result_ref(run, context_pack_ref, source_step_id=step_id)
+        run = self._append_result_ref(run, f"writing_task:{normalized_task_id}", source_step_id=step_id)
+        stage_warnings = list(observation.warning_codes)
+        if result_status == "degraded" and "context_pack_degraded" not in stage_warnings:
+            stage_warnings.append("context_pack_degraded")
+        run.warning_codes = self._merge_warning_codes(run.warning_codes, stage_warnings)
+        run.stage_history.append(
+            StageRecord(
+                stage_name=WorkflowStageName.WRITING_PREPARE,
+                status="succeeded",
+                decision=WorkflowDecision.CONTINUE.value,
+                decision_reason="writing_context_prepared",
+                result_refs=list(run.result_refs),
+                warning_codes=list(stage_warnings),
+                entered_at=run.checkpoints[-1].created_at if run.checkpoints else run.created_at,
+                exited_at=_now(),
+                metadata={"reason_code": "writing_prepare_success", "context_status": result_status or "unknown"},
+            )
+        )
+        return self._enter_stage(run, WorkflowStageName.DRAFTING)
+
+    def _fail_workflow_stage(
+        self,
+        run: AgentWorkflowRun,
+        *,
+        stage_name: WorkflowStageName,
+        error_code: str,
+        warning_codes: list[str] | None = None,
+    ) -> AgentWorkflowRun:
+        run.error_code = error_code
+        run.warning_codes = self._merge_warning_codes(run.warning_codes, warning_codes or [])
+        run.stage_history.append(
+            StageRecord(
+                stage_name=stage_name,
+                status="failed",
+                decision=WorkflowDecision.FAIL_WORKFLOW.value,
+                decision_reason=error_code,
+                result_refs=list(run.result_refs),
+                warning_codes=list(run.warning_codes),
+                entered_at=run.checkpoints[-1].created_at if run.checkpoints else run.created_at,
+                exited_at=_now(),
+                metadata={"reason_code": error_code, "error_code": error_code},
+            )
+        )
+        return self._enter_stage(run, WorkflowStageName.FAILED)
+
+    def draft_candidate(
+        self,
+        session_id: str,
+        *,
+        context_pack_id: str,
+        writing_task_id: str,
+    ) -> AgentWorkflowRun:
+        """Run Writer Agent and persist only a CandidateDraft through ToolFacade."""
+        run = self._load_run(session_id)
+        if run.current_stage != WorkflowStageName.DRAFTING:
+            raise ValueError("drafting_stage_not_active")
+        normalized_context_pack_id = str(context_pack_id or "").strip()
+        normalized_task_id = str(writing_task_id or "").strip()
+        if not normalized_context_pack_id:
+            raise ValueError("context_pack_required")
+        if not normalized_task_id:
+            raise ValueError("writing_task_required")
+        session = self._runtime_service.get_session(session_id)
+        step_id = session.current_step_id
+        if not step_id:
+            raise ValueError("drafting_step_not_found")
+        observation = self._runtime_service.run_tool_step(
+            session_id,
+            step_id=step_id,
+            tool_name="run_writer_step",
+            payload={
+                "work_id": session.work_id,
+                "chapter_id": session.chapter_id or "",
+                "context_pack_id": normalized_context_pack_id,
+                "writing_task_id": normalized_task_id,
+                "source_job_id": session.job_id,
+            },
+            side_effect_level="safe_write_candidate",
+        )
+        saved_step = self._runtime_service.get_step(step_id)
+        if saved_step.status != AgentStepStatus.SUCCEEDED:
+            return self._fail_workflow_stage(
+                run,
+                stage_name=WorkflowStageName.DRAFTING,
+                error_code=observation.error_code or "writer_generation_failed",
+                warning_codes=list(observation.warning_codes),
+            )
+        candidate_ref = str(observation.metadata.get("result_ref", "")).strip()
+        parsed_candidate_ref = _parse_result_ref(candidate_ref)
+        if parsed_candidate_ref is None or parsed_candidate_ref.ref_type != "candidate_draft":
+            return self._fail_workflow_stage(
+                run,
+                stage_name=WorkflowStageName.DRAFTING,
+                error_code="candidate_draft_result_ref_missing",
+            )
+        run = self._append_result_ref(run, candidate_ref, source_step_id=step_id)
+        run.metadata["current_candidate_draft_id"] = parsed_candidate_ref.ref_id
+        candidate_version_id = str(observation.metadata.get("candidate_version_id", "")).strip()
+        if candidate_version_id:
+            run.metadata["current_candidate_version_id"] = candidate_version_id
+        run.warning_codes = self._merge_warning_codes(run.warning_codes, list(observation.warning_codes))
+        run.stage_history.append(
+            StageRecord(
+                stage_name=WorkflowStageName.DRAFTING,
+                status="succeeded",
+                decision=WorkflowDecision.CONTINUE.value,
+                decision_reason="candidate_draft_generated",
+                result_refs=list(run.result_refs),
+                warning_codes=list(observation.warning_codes),
+                entered_at=run.checkpoints[-1].created_at if run.checkpoints else run.created_at,
+                exited_at=_now(),
+                metadata={"reason_code": "drafting_success", "formal_write_forbidden": True},
+            )
+        )
+        next_stage = WorkflowStageName.CANDIDATE_READY if run.policy.allow_skip_reviewer else WorkflowStageName.REVIEWING
+        return self._enter_stage(run, next_stage)
+
+    def review_candidate(self, session_id: str, *, candidate_draft_id: str) -> AgentWorkflowRun:
+        """Run Reviewer Agent against a CandidateDraft safe reference."""
+        run = self._load_run(session_id)
+        if run.current_stage != WorkflowStageName.REVIEWING:
+            raise ValueError("reviewing_stage_not_active")
+        normalized_candidate_id = str(candidate_draft_id or "").strip()
+        if not normalized_candidate_id:
+            raise ValueError("candidate_draft_required")
+        session = self._runtime_service.get_session(session_id)
+        step_id = session.current_step_id
+        if not step_id:
+            raise ValueError("reviewing_step_not_found")
+        run = self._append_result_ref(run, f"candidate_draft:{normalized_candidate_id}", source_step_id=step_id)
+        run.metadata["current_candidate_draft_id"] = normalized_candidate_id
+        observation = self._runtime_service.run_tool_step(
+            session_id,
+            step_id=step_id,
+            tool_name="create_review_report",
+            payload={
+                "work_id": session.work_id,
+                "chapter_id": session.chapter_id or "",
+                "candidate_draft_id": normalized_candidate_id,
+                "user_instruction": session.user_instruction,
+                "allow_degraded": run.policy.allow_degraded,
+                "idempotency_key": step_id,
+            },
+            side_effect_level="safe_write_review",
+        )
+        saved_step = self._runtime_service.get_step(step_id)
+        if saved_step.status != AgentStepStatus.SUCCEEDED:
+            warning_codes = self._merge_warning_codes(list(observation.warning_codes), ["review_failed"])
+            run.warning_codes = self._merge_warning_codes(run.warning_codes, warning_codes)
+            run.stage_history.append(
+                StageRecord(
+                    stage_name=WorkflowStageName.REVIEWING,
+                    status="failed",
+                    decision=WorkflowDecision.CONTINUE.value,
+                    decision_reason=observation.error_code or "review_generation_failed",
+                    result_refs=list(run.result_refs),
+                    warning_codes=warning_codes,
+                    entered_at=run.checkpoints[-1].created_at if run.checkpoints else run.created_at,
+                    exited_at=_now(),
+                    metadata={"reason_code": "review_failed_candidate_preserved"},
+                )
+            )
+            next_stage = (
+                WorkflowStageName.COMPLETED
+                if run.workflow_type == WorkflowType.REVIEW_WORKFLOW
+                else WorkflowStageName.CANDIDATE_READY
+            )
+            return self._enter_stage(run, next_stage)
+        review_ref = str(observation.metadata.get("result_ref", "")).strip()
+        parsed_review_ref = _parse_result_ref(review_ref)
+        if parsed_review_ref is None or parsed_review_ref.ref_type != "review_report":
+            run.warning_codes = self._merge_warning_codes(run.warning_codes, ["review_result_ref_missing"])
+            next_stage = (
+                WorkflowStageName.COMPLETED
+                if run.workflow_type == WorkflowType.REVIEW_WORKFLOW
+                else WorkflowStageName.CANDIDATE_READY
+            )
+            return self._enter_stage(run, next_stage)
+        run = self._append_result_ref(run, review_ref, source_step_id=step_id)
+        run.warning_codes = self._merge_warning_codes(run.warning_codes, list(observation.warning_codes))
+        rewrite_recommended = bool(observation.metadata.get("rewrite_recommended", False))
+        run.stage_history.append(
+            StageRecord(
+                stage_name=WorkflowStageName.REVIEWING,
+                status="succeeded",
+                decision=(WorkflowDecision.ENTER_REWRITER.value if rewrite_recommended else WorkflowDecision.CONTINUE.value),
+                decision_reason="review_completed",
+                result_refs=list(run.result_refs),
+                warning_codes=list(observation.warning_codes),
+                entered_at=run.checkpoints[-1].created_at if run.checkpoints else run.created_at,
+                exited_at=_now(),
+                metadata={"reason_code": "reviewing_success", "rewrite_recommended": rewrite_recommended},
+            )
+        )
+        if (
+            rewrite_recommended
+            and not run.policy.allow_skip_rewriter
+            and run.revision_round < run.policy.max_revision_rounds
+        ):
+            return self._enter_stage(run, WorkflowStageName.REWRITING)
+        next_stage = (
+            WorkflowStageName.COMPLETED
+            if run.workflow_type == WorkflowType.REVIEW_WORKFLOW
+            else WorkflowStageName.CANDIDATE_READY
+        )
+        return self._enter_stage(run, next_stage)
+
     def submit_user_decision(
         self,
         session_id: str,
@@ -689,6 +1051,8 @@ class AgentOrchestrator:
             self._persist_plan_confirmation_and_writing_task(run, user_decision=user_decision, metadata=metadata)
         if run.current_stage == WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING and user_decision == "confirm_chapter_plan":
             self._persist_sequence_arc_for_confirmed_plan(run)
+        if run.current_stage == WorkflowStageName.DIRECTION_SELECTION_WAITING and user_decision == "confirm_direction":
+            return self._generate_chapter_plan_after_direction(run)
         next_stage = self._resolve_waiting_stage(run, user_decision)
         return self._enter_stage(run, next_stage)
 
@@ -809,6 +1173,9 @@ class AgentOrchestrator:
         if not isinstance(payload, dict):
             raise ValueError("workflow_run_not_found")
         return AgentWorkflowRun.model_validate(payload)
+
+    def get_workflow_run(self, session_id: str) -> AgentWorkflowRun:
+        return self._load_run(session_id).model_copy(deep=True)
 
     def _persist_run(self, run: AgentWorkflowRun) -> AgentWorkflowRun:
         self._runtime_service.update_session_metadata(
@@ -960,11 +1327,15 @@ class AgentOrchestrator:
         current_stage = next(item for item in stage if item.stage_name == stage_name)
         step_type = "wait_user_decision" if current_stage.allow_waiting_user else "workflow_stage"
         agent_type = current_stage.responsible_agent_type or "workflow"
+        action = stage_name.value
+        if stage_name == WorkflowStageName.PLANNING_PREPARE and run.metadata.get("selected_direction_id"):
+            step_type = "call_tool"
+            action = "generate_chapter_plan"
         step = self._runtime_service.create_step(
             run.session_id,
             agent_type=agent_type,
             step_type=step_type,
-            action=stage_name.value,
+            action=action,
         )
         self._runtime_service.run_next_step(run.session_id)
         if stage_name == WorkflowStageName.CANDIDATE_READY:
@@ -991,6 +1362,78 @@ class AgentOrchestrator:
         session = self._runtime_service.get_session(run.session_id)
         run.status = session.status
         return self._persist_with_checkpoint(run, session=session)
+
+    def _generate_chapter_plan_after_direction(self, run: AgentWorkflowRun) -> AgentWorkflowRun:
+        run = self._enter_stage(run, WorkflowStageName.PLANNING_PREPARE)
+        session = self._runtime_service.get_session(run.session_id)
+        step_id = session.current_step_id
+        if not step_id:
+            raise ValueError("planner_step_not_found")
+        selected_direction_id = str(run.metadata.get("selected_direction_id", "")).strip()
+        if not selected_direction_id:
+            raise ValueError("selected_direction_required")
+
+        observation = self._runtime_service.run_tool_step(
+            run.session_id,
+            step_id=step_id,
+            tool_name="create_chapter_plan",
+            payload={
+                "work_id": session.work_id,
+                "chapter_id": session.chapter_id or "",
+                "direction_proposal_id": selected_direction_id,
+                "agent_session_id": run.session_id,
+                "request_id": session.request_id,
+                "trace_id": session.trace_id,
+            },
+            side_effect_level="plan_write",
+        )
+        step = self._runtime_service.get_step(step_id)
+        while step.status == AgentStepStatus.PENDING:
+            observation = self._runtime_service.run_tool_step(
+                run.session_id,
+                step_id=step_id,
+                tool_name="create_chapter_plan",
+                payload={
+                    "work_id": session.work_id,
+                    "chapter_id": session.chapter_id or "",
+                    "direction_proposal_id": selected_direction_id,
+                    "agent_session_id": run.session_id,
+                    "request_id": step.request_id,
+                    "trace_id": session.trace_id,
+                },
+                side_effect_level="plan_write",
+            )
+            step = self._runtime_service.get_step(step_id)
+        if step.status != AgentStepStatus.SUCCEEDED:
+            run.error_code = observation.error_code or "chapter_plan_generation_failed"
+            return self._enter_stage(run, WorkflowStageName.FAILED)
+
+        result_ref = str(observation.metadata.get("result_ref", "")).strip()
+        parsed = _parse_result_ref(result_ref)
+        if parsed is None or parsed.ref_type != "chapter_plan":
+            run.error_code = "chapter_plan_result_ref_missing"
+            return self._enter_stage(run, WorkflowStageName.FAILED)
+        run = self._append_result_ref(run, result_ref, source_step_id=step_id)
+        run.warning_codes = self._merge_warning_codes(run.warning_codes, list(observation.warning_codes))
+        run.stage_history.append(
+            StageRecord(
+                stage_name=WorkflowStageName.PLANNING_PREPARE,
+                status="succeeded",
+                decision=WorkflowDecision.CONTINUE.value,
+                decision_reason="chapter_plan_generated",
+                result_refs=list(run.result_refs),
+                warning_codes=list(observation.warning_codes),
+                entered_at=run.checkpoints[-1].created_at if run.checkpoints else "",
+                exited_at=_now(),
+                metadata={"reason_code": "planning_prepare_success", "action": "generate_chapter_plan"},
+            )
+        )
+        next_stage = (
+            WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING
+            if run.policy.require_chapter_plan_confirmation
+            else (WorkflowStageName.COMPLETED if run.workflow_type == WorkflowType.PLANNING_WORKFLOW else WorkflowStageName.WRITING_PREPARE)
+        )
+        return self._enter_stage(run, next_stage)
 
     def _persist_with_checkpoint(self, run: AgentWorkflowRun, *, session) -> AgentWorkflowRun:
         checkpoint = WorkflowCheckpoint(

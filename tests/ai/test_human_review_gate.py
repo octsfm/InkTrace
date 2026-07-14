@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.ai.initialization_test_support import build_initialization_analysis_dependencies
+
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -52,6 +54,7 @@ def _build_services(tmp_path: Path):
         initialization_repository=init_store,
         story_memory_repository=memory_store,
         story_state_repository=state_store,
+        **build_initialization_analysis_dependencies(),
     )
     review_service = CandidateReviewService(
         candidate_draft_repository=candidate_store,

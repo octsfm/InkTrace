@@ -4,7 +4,9 @@ from fastapi.testclient import TestClient
 
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
+from application.services.v1.service_factory import build_writing_asset_service
 from infrastructure.database.repositories import ChapterRepo, WorkRepo
+from presentation.api import dependencies
 from presentation.api.app import app
 
 
@@ -52,4 +54,68 @@ def test_initialization_api_returns_job_id_and_latest_snapshots() -> None:
     assert state_response.status_code == 200
     state_payload = state_response.json()
     assert state_payload["data"]["work_id"] == work_id
+    assert state_payload["data"]["current_character_states"] == [
+        {
+            "character_name": "顾迟",
+            "current_location": "海边灯塔",
+            "current_status": "出现在本章",
+            "recent_actions": [],
+            "relationships": [],
+            "confidence": 0.9,
+        }
+    ]
     assert "full_text" not in state_payload["data"]
+
+
+def test_latest_initialization_returns_not_started_for_work_without_history() -> None:
+    work_id = _seed_work_with_chapter()
+    client = TestClient(app)
+
+    response = client.get(f"/api/v2/ai/works/{work_id}/initialization/latest")
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload == {
+        "work_id": work_id,
+        "status": "not_started",
+        "analyzed_chapter_count": 0,
+        "total_confirmed_chapter_count": 0,
+        "empty_chapter_count": 0,
+        "failed_chapter_count": 0,
+        "stale": False,
+    }
+    assert "chapter_contents" not in payload
+    assert "full_text" not in payload
+
+
+def test_latest_initialization_returns_work_not_found_for_unknown_work() -> None:
+    client = TestClient(app)
+
+    response = client.get("/api/v2/ai/works/missing-work/initialization/latest")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["error_code"] == "work_not_found"
+
+
+def test_initialization_uses_imported_formal_outline_content_text_without_overwriting_it() -> None:
+    work_id = _seed_work_with_chapter()
+    assets = build_writing_asset_service()
+    imported_outline = "第一卷：孔凡圣与宋成从东南亚逃亡，随后进入修仙世界。"
+    saved = assets.save_work_outline(
+        work_id,
+        content_text=imported_outline,
+        content_tree_json=[],
+        expected_version=1,
+    )
+    client = TestClient(app)
+
+    response = client.post("/api/v2/ai/initializations", json={"work_id": work_id})
+
+    assert response.status_code == 200
+    result = dependencies.get_initialization_service().get_latest_initialization(work_id).outline_analysis
+    assert result is not None
+    assert result.outline_empty is False
+    assert result.important_characters == ["孔凡圣", "宋成"]
+    persisted = assets.get_work_outline(work_id)
+    assert persisted.content_text == imported_outline
+    assert persisted.version == saved.version

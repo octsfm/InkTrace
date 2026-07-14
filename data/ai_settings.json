@@ -1,0 +1,62 @@
+{
+  "provider_configs": {
+    "deepseek": {
+      "provider_name": "deepseek",
+      "enabled": true,
+      "encrypted_api_key": "KdABxY396DXhVL6tME0KqNESQJt5SFG4mlYBRbAv5wAEAZFTp5_HIkr43YwM7zaHXvQ7IWXdhd6ug_7xJc0JRJoGarGpM1k2cRAk_vkDXHjIGEg=",
+      "default_model": "deepseek-v4-pro",
+      "timeout": 120,
+      "base_url": "https://api.deepseek.com",
+      "last_test_status": "not_tested",
+      "last_test_at": "",
+      "last_test_error_code": "",
+      "last_test_error_message": ""
+    },
+    "fake": {
+      "provider_name": "fake",
+      "enabled": false,
+      "encrypted_api_key": "",
+      "default_model": "",
+      "timeout": 30,
+      "base_url": null,
+      "last_test_status": "not_tested",
+      "last_test_at": "",
+      "last_test_error_code": "",
+      "last_test_error_message": ""
+    },
+    "kimi": {
+      "provider_name": "kimi",
+      "enabled": true,
+      "encrypted_api_key": "M6dJUifkO19JpQR86D0aO7V96Ac0DSftd6EvEoQ_hVOh7i7AaxLAyg5_UswSUG4sNVHDhU6UrCGltbi0vL8wi_bSksCn-M3elQpC_Md0wjeqfY08WoiwOfunwkWAObwrbwBh",
+      "default_model": "kimi-k2.6",
+      "timeout": 120,
+      "base_url": "https://api.moonshot.cn/v1",
+      "last_test_status": "ok",
+      "last_test_at": "2026-07-14T01:12:11.124941+00:00",
+      "last_test_error_code": "",
+      "last_test_error_message": ""
+    }
+  },
+  "model_role_mappings": {
+    "analysis": {
+      "provider_name": "kimi",
+      "model_name": "kimi-k2.6"
+    },
+    "planning": {
+      "provider_name": "kimi",
+      "model_name": "kimi-k2.6"
+    },
+    "writer": {
+      "provider_name": "deepseek",
+      "model_name": "deepseek-writer"
+    },
+    "reviewer": {
+      "provider_name": "kimi",
+      "model_name": "kimi-review"
+    },
+    "rewriter": {
+      "provider_name": "deepseek",
+      "model_name": "deepseek-rewriter"
+    }
+  }
+}

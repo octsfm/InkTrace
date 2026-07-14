@@ -84,7 +84,7 @@ describe('SettingsCenter', () => {
         model_role_mappings: payload.model_role_mappings
       })
     }))
-    testProvider.mockResolvedValue({ data: { status: 'ok', error_message: '' } })
+    testProvider.mockResolvedValue({ data: { test_status: 'ok', message: 'provider connection ok' } })
   })
 
   it('加载后展示模型服务与脱敏状态', async () => {
@@ -106,6 +106,19 @@ describe('SettingsCenter', () => {
   it('未完成 analysis 或 writer 配置时展示阻断提示', async () => {
     getAISettings.mockResolvedValueOnce({
       data: buildSettingsPayload({
+        provider_configs: [
+          {
+            provider_name: 'deepseek',
+            enabled: true,
+            default_model: '',
+            api_key_masked: 'sk-***1234',
+            key_configured: true,
+            timeout: 30,
+            base_url: 'https://api.deepseek.com',
+            last_test_status: 'not_tested',
+            last_test_error_message: ''
+          }
+        ],
         model_role_mappings: {
           analysis: { provider_name: '', model_name: '' },
           planning: { provider_name: 'deepseek', model_name: 'deepseek-chat' },
@@ -207,11 +220,50 @@ describe('SettingsCenter', () => {
     expect(wrapper.text()).toContain('AI 配置已保存。')
   })
 
-  it('测试连接使用脱敏输入并反馈成功状态', async () => {
+  it('首次配置只填写两个模型服务即可生成完整任务模型分工', async () => {
+    getAISettings.mockResolvedValueOnce({
+      data: buildSettingsPayload({
+        provider_configs: [
+          {
+            provider_name: 'deepseek', enabled: false, default_model: '', api_key_masked: '',
+            key_configured: false, timeout: 30, base_url: 'https://api.deepseek.com',
+            last_test_status: 'not_tested', last_test_error_message: ''
+          },
+          {
+            provider_name: 'kimi', enabled: false, default_model: '', api_key_masked: '',
+            key_configured: false, timeout: 30, base_url: 'https://api.moonshot.cn/v1',
+            last_test_status: 'not_tested', last_test_error_message: ''
+          }
+        ],
+        model_role_mappings: {}
+      })
+    })
     const { wrapper } = await mountPage()
+    const cards = wrapper.findAll('.provider-card')
+    const deepseekCard = cards.find((card) => card.text().includes('deepseek'))
+    const kimiCard = cards.find((card) => card.text().includes('kimi'))
 
-    const keyInputs = wrapper.findAll('input[type="password"]')
-    await keyInputs[0].setValue('sk-test-connection')
+    await deepseekCard.find('input[type="checkbox"]').setValue(true)
+    await deepseekCard.findAll('input[type="text"]')[0].setValue('deepseek-v4-pro')
+    await deepseekCard.find('input[type="password"]').setValue('deepseek-api-key-1234567890')
+    await kimiCard.find('input[type="checkbox"]').setValue(true)
+    await kimiCard.findAll('input[type="text"]')[0].setValue('kimi-k2.6')
+    await kimiCard.find('input[type="password"]').setValue('kimi-api-key-1234567890')
+
+    const saveButton = wrapper.findAll('button').find((node) => node.text().includes('保存 AI 配置'))
+    await saveButton.trigger('click')
+    await flushPromises()
+
+    const mappings = updateAISettings.mock.calls[0][0].model_role_mappings
+    expect(mappings.analysis).toEqual({ provider_name: 'kimi', model_name: 'kimi-k2.6' })
+    expect(mappings.planning).toEqual(mappings.analysis)
+    expect(mappings.reviewer).toEqual(mappings.analysis)
+    expect(mappings.writer).toEqual({ provider_name: 'deepseek', model_name: 'deepseek-v4-pro' })
+    expect(mappings.rewriter).toEqual(mappings.writer)
+  })
+
+  it('测试连接只发送已保存配置所需字段并反馈成功状态', async () => {
+    const { wrapper } = await mountPage()
 
     const testButton = wrapper.findAll('button').find((node) => node.text().includes('测试连接'))
     expect(testButton).toBeTruthy()
@@ -221,15 +273,27 @@ describe('SettingsCenter', () => {
     expect(testProvider).toHaveBeenCalledTimes(1)
     const [providerName, payload] = testProvider.mock.calls[0]
     expect(providerName).toBe('deepseek')
-    expect(payload).toMatchObject({
+    expect(payload).toEqual({
       caller_type: 'user_action',
       user_action: true,
-      provider_name: 'deepseek',
-      api_key: 'sk-test-connection'
+      idempotency_key: expect.stringMatching(/^provider_test_/),
+      model_name: 'deepseek-chat'
     })
-    expect(payload.idempotency_key).toMatch(/^provider_test_/)
     expect(wrapper.text()).toContain('测试状态：连接成功')
     expect(wrapper.text()).toContain('deepseek 测试成功。')
+  })
+
+  it('存在未保存密钥时先提示保存，不发送连接测试请求', async () => {
+    const { wrapper } = await mountPage()
+    const keyInputs = wrapper.findAll('input[type="password"]')
+    await keyInputs[0].setValue('sk-test-connection')
+
+    const testButton = wrapper.findAll('button').find((node) => node.text().includes('测试连接'))
+    await testButton.trigger('click')
+    await flushPromises()
+
+    expect(testProvider).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('请先保存 AI 配置，再测试连接。')
   })
 
   it('保存通用设置会同步全局主题到偏好仓库', async () => {

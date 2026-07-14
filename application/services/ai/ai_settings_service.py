@@ -23,6 +23,31 @@ class AISettingsValidationError(RuntimeError):
 
 class AISettingsService:
     _CRITICAL_ROLES = ("analysis", "writer")
+    _OPTIONAL_ROLE_INHERITANCE = {
+        "planning": "analysis",
+        "reviewer": "analysis",
+        "rewriter": "writer",
+    }
+    _RUNTIME_ROLE_INHERITANCE = {
+        "outline_analyzer": "analysis",
+        "manuscript_analyzer": "analysis",
+        "memory_extractor": "analysis",
+        "style_extractor": "analysis",
+        "planner": "planning",
+        "writing_task_builder": "planning",
+        "opening_strategy_planner": "planning",
+        "quick_trial_writer": "writer",
+        "opening_writer": "writer",
+        "opening_risk_checker": "reviewer",
+        "polisher": "rewriter",
+        "dialogue_writer": "rewriter",
+        "scene_generator": "rewriter",
+    }
+    _LEGACY_PLACEHOLDER_MODELS = {
+        "writer": "deepseek-writer",
+        "reviewer": "kimi-review",
+        "rewriter": "deepseek-rewriter",
+    }
 
     def __init__(
         self,
@@ -39,6 +64,10 @@ class AISettingsService:
         merged_provider_configs = self._merge_provider_configs(settings.provider_configs)
         merged_mappings = build_default_model_role_mappings()
         merged_mappings.update(settings.model_role_mappings)
+        self._normalize_model_role_mappings(
+            provider_configs=merged_provider_configs,
+            mappings=merged_mappings,
+        )
         return {
             "provider_configs": [self._serialize_provider_config(config) for _, config in sorted(merged_provider_configs.items())],
             "model_role_mappings": {
@@ -79,6 +108,11 @@ class AISettingsService:
                 provider_name=str(payload["provider_name"]),
                 model_name=str(payload["model_name"]),
             )
+
+        self._normalize_model_role_mappings(
+            provider_configs=updated_provider_configs,
+            mappings=merged_model_role_mappings,
+        )
 
         self._validate_settings(provider_configs=updated_provider_configs, model_role_mappings=merged_model_role_mappings)
 
@@ -195,12 +229,129 @@ class AISettingsService:
             if provider_config is None or not provider_config.enabled or not provider_config.encrypted_api_key:
                 raise AISettingsValidationError("critical_role_mapping_invalid")
 
+    def _inherit_optional_role_mappings(self, mappings: dict[str, ModelSelection]) -> None:
+        for role, source_role in self._OPTIONAL_ROLE_INHERITANCE.items():
+            selection = mappings.get(role)
+            if selection is not None:
+                provider_name = str(selection.provider_name or "").strip()
+                model_name = str(selection.model_name or "").strip()
+                if provider_name or model_name:
+                    continue
+            source = mappings.get(source_role)
+            if source is None:
+                continue
+            source_provider = str(source.provider_name or "").strip()
+            source_model = str(source.model_name or "").strip()
+            if source_provider and source_model:
+                mappings[role] = ModelSelection(
+                    provider_name=source_provider,
+                    model_name=source_model,
+                )
+
+    def _normalize_model_role_mappings(
+        self,
+        *,
+        provider_configs: dict[str, AIProviderConfig],
+        mappings: dict[str, ModelSelection],
+    ) -> None:
+        self._replace_legacy_placeholder_models(
+            provider_configs=provider_configs,
+            mappings=mappings,
+        )
+        self._complete_models_from_provider_defaults(
+            provider_configs=provider_configs,
+            mappings=mappings,
+        )
+        self._inherit_optional_role_mappings(mappings)
+        self._expand_runtime_role_mappings(mappings)
+
+    def _expand_runtime_role_mappings(self, mappings: dict[str, ModelSelection]) -> None:
+        default_mappings = build_default_model_role_mappings()
+        for role, source_role in self._RUNTIME_ROLE_INHERITANCE.items():
+            source = mappings.get(source_role)
+            if source is None:
+                continue
+            source_provider = str(source.provider_name or "").strip()
+            source_model = str(source.model_name or "").strip()
+            if not source_provider or not source_model:
+                continue
+            current = mappings.get(role)
+            default = default_mappings.get(role)
+            current_is_legacy_default = bool(
+                current is not None
+                and default is not None
+                and current.provider_name == default.provider_name
+                and current.model_name == default.model_name
+            )
+            if current is not None and not current_is_legacy_default:
+                current_provider = str(current.provider_name or "").strip()
+                current_model = str(current.model_name or "").strip()
+                if current_provider and current_model:
+                    continue
+            mappings[role] = ModelSelection(
+                provider_name=source_provider,
+                model_name=source_model,
+            )
+
+    def _replace_legacy_placeholder_models(
+        self,
+        *,
+        provider_configs: dict[str, AIProviderConfig],
+        mappings: dict[str, ModelSelection],
+    ) -> None:
+        legacy_models = {
+            role: selection.model_name
+            for role, selection in build_default_model_role_mappings().items()
+        }
+        legacy_models.update(self._LEGACY_PLACEHOLDER_MODELS)
+        for role, selection in tuple(mappings.items()):
+            if selection.model_name != legacy_models.get(role):
+                continue
+            config = provider_configs.get(str(selection.provider_name or "").strip())
+            if config is None or not self._provider_is_ready_for_default(config):
+                continue
+            mappings[role] = ModelSelection(
+                provider_name=selection.provider_name,
+                model_name=str(config.default_model or "").strip(),
+            )
+
+    def _complete_models_from_provider_defaults(
+        self,
+        *,
+        provider_configs: dict[str, AIProviderConfig],
+        mappings: dict[str, ModelSelection],
+    ) -> None:
+        for role, selection in tuple(mappings.items()):
+            provider_name = str(selection.provider_name or "").strip()
+            model_name = str(selection.model_name or "").strip()
+            if not provider_name or model_name:
+                continue
+            config = provider_configs.get(provider_name)
+            if config is None or not self._provider_is_ready_for_default(config):
+                continue
+            mappings[role] = ModelSelection(
+                provider_name=provider_name,
+                model_name=str(config.default_model or "").strip(),
+            )
+
+    def _provider_is_ready_for_default(self, config: AIProviderConfig) -> bool:
+        return bool(
+            config.enabled
+            and config.encrypted_api_key
+            and str(config.default_model or "").strip()
+        )
+
     def _merge_provider_configs(
         self,
         existing: dict[str, AIProviderConfig],
     ) -> dict[str, AIProviderConfig]:
-        merged = dict(existing)
-        for provider_name in self._model_router._provider_registry.list_provider_names():
+        registered_names = set(self._model_router._provider_registry.list_provider_names())
+        merged = {
+            provider_name: config
+            for provider_name, config in existing.items()
+            if provider_name in registered_names
+        }
+        for provider_name in registered_names:
             if provider_name in merged:
                 continue
             merged[provider_name] = AIProviderConfig(provider_name=provider_name, enabled=False)

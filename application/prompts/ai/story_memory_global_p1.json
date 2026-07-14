@@ -1,0 +1,8 @@
+{
+  "prompt_key": "story_memory_global_p1",
+  "prompt_version": "p1",
+  "model_role": "memory_extractor",
+  "output_schema_key": "story_memory_global_p1",
+  "template_text": "你是 InkTrace Memory Agent 的全书记忆压缩步骤。输入是上一层大模型生成的阶段摘要、卷摘要，以及最近章节摘要。请再次分析并形成不超过 500 tokens 的全书当前进度摘要，保留长期主线、当前阶段、仍在推进的剧情线和未解决问题；不得续写，不得引入输入中没有的事实。只返回 JSON 对象：global_summary、current_story_phase、main_plot_threads、unresolved_questions、warnings、analysis_confidence。输入如下：\n{input_json}",
+  "enabled": true
+}

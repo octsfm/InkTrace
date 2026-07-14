@@ -65,6 +65,44 @@ def _build_runtime(tmp_path) -> AgentRuntimeService:
     )
 
 
+def test_agent_runtime_run_tool_step_executes_complete_ppao_through_tool_facade(tmp_path) -> None:
+    runtime = _build_runtime(tmp_path)
+    session = runtime.create_session(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        agent_workflow_type=AgentWorkflowType.CONTINUATION,
+        user_instruction="generate chapter plan from selected direction",
+        request_id="req_ppao_tool",
+        trace_id="trace_ppao_tool",
+        caller_type="user_action",
+    )
+    runtime.start_session(session.session_id)
+    step = runtime.create_step(
+        session.session_id,
+        agent_type="planner",
+        step_type="call_tool",
+        action="generate_chapter_plan",
+    )
+
+    observation = runtime.run_tool_step(
+        session.session_id,
+        step_id=step.step_id,
+        tool_name="create_chapter_plan",
+        payload={"work_id": "work-1", "chapter_id": "chapter-1", "direction_proposal_id": "dir-1"},
+        side_effect_level="plan_write",
+    )
+
+    completed = runtime.get_step(step.step_id)
+    assert completed.status == AgentStepStatus.SUCCEEDED
+    assert completed.step_phase == PPAOPhase.OBSERVATION
+    assert completed.step_plan is not None
+    assert completed.step_plan.target_tool_name == "create_chapter_plan"
+    assert [(item.tool_name, item.status) for item in completed.tool_calls] == [("create_chapter_plan", "success")]
+    assert observation.metadata["result_ref"].startswith("chapter_plan:")
+    assert completed.output_refs == [observation.metadata["result_ref"]]
+    assert runtime.get_session(session.session_id).caller_type == "user_action"
+
+
 def test_agent_step_accepts_legacy_step_order_alias() -> None:
     step = AgentStep.model_validate(
         {

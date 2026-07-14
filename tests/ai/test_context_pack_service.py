@@ -20,6 +20,7 @@ from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlot
 from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
 from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 from infrastructure.persistence.sqlite_style_profile_repo import SQLiteStyleProfileRepository
+from tests.ai.initialization_test_support import build_initialization_analysis_dependencies
 
 
 class _StubVectorIndexRepository:
@@ -68,6 +69,7 @@ def _build_services(
         story_memory_repository=FileStoryMemoryStore(),
         story_state_repository=FileStoryStateStore(),
         plot_arc_repository=plot_arc_store,
+        **build_initialization_analysis_dependencies(),
     )
     cp_service = ContextPackService(
         chapter_service=chapter_service,
@@ -251,6 +253,61 @@ def test_context_pack_readiness_returns_plot_arc_projection_summary() -> None:
     assert "plot_arc_summary" in readiness
     assert readiness["plot_arc_summary"]["master_arc"]["arc_title"] != ""
     assert "recent_chapters_summary" in readiness["plot_arc_summary"]["immediate_window"]
+
+
+def test_context_pack_uses_model_character_state_for_track_summary() -> None:
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
+    work = work_service.create_work("人物轨道清洗作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(
+        chapter.id.value,
+        title="第一章",
+        content="孔凡圣推门进来。宋成这时候也沉默了。宋成沉思片刻，宋成说先等等。",
+        expected_version=1,
+    )
+
+    init_service.start_initialization(work.id, created_by="user_action")
+    readiness = cp_service.evaluate_readiness(work.id, chapter_id=chapter.id.value)
+
+    summary = readiness["plot_arc_summary"]
+    assert summary["volume_arc"]["key_characters"] == ["孔凡圣", "宋成"]
+    assert [
+        item["character_name"] for item in summary["immediate_window"]["character_current_states"]
+    ] == ["孔凡圣", "宋成"]
+    assert {
+        item["current_status"] for item in summary["immediate_window"]["character_current_states"]
+    } == {"出现在本章"}
+    assert {
+        item["location"] for item in summary["immediate_window"]["character_current_states"]
+    } == {"当前场景"}
+
+
+def test_context_pack_uses_model_analysis_without_non_character_tokens() -> None:
+    cp_service, init_service, work_service, chapter_service, _plot_arc_store = _build_services()
+    work = work_service.create_work("人物污染清理作品", "作者")
+    chapter = chapter_service.list_chapters(work.id)[0]
+    chapter_service.update_chapter(
+        chapter.id.value,
+        title="第一章",
+        content=(
+            "孔凡圣收起家法宝和宗法器，包裹起来后看向宋成。"
+            "毕竟周围的房间里还有许多金丹，宋成说先离开。"
+        ),
+        expected_version=1,
+    )
+
+    init_service.start_initialization(work.id, created_by="user_action")
+    readiness = cp_service.evaluate_readiness(work.id, chapter_id=chapter.id.value)
+
+    summary = readiness["plot_arc_summary"]
+    assert summary["volume_arc"]["key_characters"] == ["孔凡圣", "宋成"]
+    assert summary["immediate_window"]["active_plot_threads"] == []
+    assert summary["immediate_window"]["recent_chapters_summary"] == ["第一章已完成结构化章节分析。"]
+    serialized = str(summary)
+    assert "家法宝" not in serialized
+    assert "宗法器" not in serialized
+    assert "包裹起" not in serialized
+    assert "已完成最小分析" not in serialized
 
 
 def test_context_pack_degraded_when_vector_recall_unavailable() -> None:

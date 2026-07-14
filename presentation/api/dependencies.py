@@ -51,6 +51,7 @@ from application.services.ai.opening_agent_service import (
 from application.services.ai.outline_application_service import OutlineApplicationService
 from application.services.ai.outline_assist_service import OutlineAssistService, OutlinePlannerService
 from application.services.ai.planning_api_service import PlanningAPIService
+from application.services.ai.planning_generation_service import PlanningGenerationService
 from application.services.ai.plot_arc_service import PlotArcQueryService
 from application.services.ai.ai_settings_service import AISettingsService
 from application.services.ai.candidate_review_service import CandidateReviewService
@@ -58,6 +59,7 @@ from application.services.ai.continuation_workflow import MinimalContinuationWor
 from application.services.ai.context_pack_service import ContextPackService
 from application.services.ai.context_vector_recall_service import ContextVectorRecallService
 from application.services.ai.initialization_service import InitializationApplicationService
+from application.services.ai.initialization_analysis_service import ManuscriptAnalysisService, OutlineAnalysisService
 from application.services.ai.model_router import ModelRouter
 from application.services.ai.llm_call_logger import LLMCallLogger
 from application.services.ai.output_validation_service import OutputValidationService
@@ -72,10 +74,11 @@ from application.services.ai.vector_index_service import VectorIndexService
 from application.services.ai.vector_reindex_service import VectorReindexApplicationService
 from infrastructure.ai.providers.fake_provider import FakeLLMProvider
 from infrastructure.ai.providers.openai_compatible_provider import OpenAICompatibleProvider
-from infrastructure.ai.providers.fake_reviewer import FakeReviewer
-from infrastructure.ai.providers.fake_writer import FakeWriter
 from infrastructure.ai.providers.local_embedding_provider import LocalEmbeddingProvider
 from infrastructure.ai.providers.model_router_writer import ModelRouterWriter
+from infrastructure.ai.providers.model_router_reviewer import ModelRouterReviewer
+from infrastructure.ai.providers.model_router_rewriter import ModelRouterRewriter
+from infrastructure.ai.providers.model_router_planning_generator import ModelRouterPlanningGenerator
 from infrastructure.database.repositories.ai.file_ai_review_store import FileAIReviewStore
 from infrastructure.database.repositories.ai.file_ai_suggestion_store import FileAISuggestionStore
 from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobStore
@@ -110,7 +113,13 @@ from infrastructure.security.temporary_sensitive_text_store import EncryptedTemp
 from application.services.v1.chapter_service import ChapterService
 from application.services.v1.work_service import WorkService
 from application.services.v1.service_factory import build_writing_asset_service
-from infrastructure.database.repositories import ChapterRepo, WorkRepo
+from infrastructure.database.repositories import (
+    ChapterRepo,
+    CharacterRepo,
+    ForeshadowRepo,
+    TimelineEventRepo,
+    WorkRepo,
+)
 
 
 @lru_cache(maxsize=1)
@@ -273,7 +282,8 @@ def get_settings_cipher() -> SettingsCipher:
 @lru_cache(maxsize=1)
 def get_provider_registry() -> ProviderRegistry:
     registry = ProviderRegistry()
-    registry.register(FakeLLMProvider())
+    if os.getenv("INKTRACE_ENABLE_FAKE_PROVIDER", "").strip() == "1":
+        registry.register(FakeLLMProvider())
     registry.register(
         OpenAICompatibleProvider(
             provider_name="kimi",
@@ -385,6 +395,16 @@ def get_agent_orchestrator() -> AgentOrchestrator:
 @lru_cache(maxsize=8)
 def _build_initialization_service_for_runtime(db_path: str, chroma_dir: str) -> InitializationApplicationService:
     store = get_ai_job_store()
+    outline_analysis_service = OutlineAnalysisService(
+        model_router=get_model_router(),
+        prompt_registry=get_prompt_registry(),
+        output_validator=get_output_validation_service(),
+    )
+    manuscript_analysis_service = ManuscriptAnalysisService(
+        model_router=get_model_router(),
+        prompt_registry=get_prompt_registry(),
+        output_validator=get_output_validation_service(),
+    )
     return InitializationApplicationService(
         work_service=get_work_service(),
         chapter_service=get_chapter_service(),
@@ -396,6 +416,9 @@ def _build_initialization_service_for_runtime(db_path: str, chroma_dir: str) -> 
         story_state_repository=get_story_state_repository(),
         plot_arc_repository=get_plot_arc_repository(),
         vector_index_service=_build_vector_index_service_for_runtime(db_path, chroma_dir),
+        writing_asset_service=build_writing_asset_service(),
+        outline_analysis_service=outline_analysis_service,
+        manuscript_analysis_service=manuscript_analysis_service,
     )
 
 
@@ -608,6 +631,21 @@ def get_quick_trial_service() -> QuickTrialApplicationService:
 
 
 @lru_cache(maxsize=1)
+def get_planning_generation_service() -> PlanningGenerationService:
+    return PlanningGenerationService(
+        work_service=get_work_service(),
+        chapter_service=get_chapter_service(),
+        context_pack_service=get_context_pack_service(),
+        direction_plan_repository=get_direction_plan_repository(),
+        planning_generator=ModelRouterPlanningGenerator(
+            model_router=get_model_router(),
+            prompt_registry=get_prompt_registry(),
+            output_validator=get_output_validation_service(),
+        ),
+    )
+
+
+@lru_cache(maxsize=1)
 def get_core_tool_facade() -> CoreToolFacade:
     return CoreToolFacade(
         context_pack_service=get_context_pack_service(),
@@ -615,6 +653,11 @@ def get_core_tool_facade() -> CoreToolFacade:
         ai_suggestion_repository=get_ai_suggestion_repository(),
         chapter_plan_repository=get_chapter_plan_repository(),
         direction_plan_repository=get_direction_plan_repository(),
+        story_memory_repository=get_story_memory_repository(),
+        story_state_repository=get_story_state_repository(),
+        ai_review_service=get_ai_review_service(),
+        candidate_rewrite_service=get_candidate_rewrite_service(),
+        planning_generation_service=get_planning_generation_service(),
         writer=ModelRouterWriter(
             model_router=get_model_router(),
             llm_call_log_repository=get_llm_call_log_repository(),
@@ -661,7 +704,11 @@ def get_ai_review_service() -> AIReviewApplicationService:
         chapter_service=get_chapter_service(),
         candidate_draft_repository=get_candidate_draft_repository(),
         ai_review_repository=get_ai_review_repository(),
-        reviewer=FakeReviewer(),
+        reviewer=ModelRouterReviewer(
+            model_router=get_model_router(),
+            prompt_registry=get_prompt_registry(),
+            output_validator=get_output_validation_service(),
+        ),
         initialization_repository=get_initialization_repository(),
         story_memory_repository=get_story_memory_repository(),
         story_state_repository=get_story_state_repository(),
@@ -673,6 +720,11 @@ def get_candidate_rewrite_service() -> CandidateRewriteService:
     return CandidateRewriteService(
         candidate_draft_repository=get_candidate_draft_repository(),
         ai_review_repository=get_ai_review_repository(),
+        rewriter=ModelRouterRewriter(
+            model_router=get_model_router(),
+            prompt_registry=get_prompt_registry(),
+            output_validator=get_output_validation_service(),
+        ),
         conflict_guard_service=get_conflict_guard_service(),
     )
 
@@ -727,6 +779,11 @@ def get_planning_api_service() -> PlanningAPIService:
         orchestrator=get_agent_orchestrator(),
         direction_plan_repository=get_direction_plan_repository(),
         chapter_plan_repository=get_chapter_plan_repository(),
+        planning_generator=ModelRouterPlanningGenerator(
+            model_router=get_model_router(),
+            prompt_registry=get_prompt_registry(),
+            output_validator=get_output_validation_service(),
+        ),
         writing_asset_service=build_writing_asset_service(),
         trace_service=get_agent_trace_service(),
     )

@@ -66,7 +66,7 @@ class AIReviewApplicationService:
             return existing
 
         created_by = created_by or "user_action"
-        if created_by != "user_action":
+        if created_by not in {"user_action", "reviewer_agent"}:
             raise ValueError("caller_type_not_allowed")
 
         warnings = self._collect_review_warnings(draft)
@@ -140,8 +140,8 @@ class AIReviewApplicationService:
                 style_notes=[],
                 logic_notes=[],
                 reviewer_model_role="reviewer",
-                provider_name="fake",
-                model_name="fake-reviewer",
+                provider_name="",
+                model_name="",
                 created_at=self._now(),
                 metadata={
                     "review_mode": request.review_mode,
@@ -178,7 +178,7 @@ class AIReviewApplicationService:
             "chapter_id": draft.chapter_id,
             "chapter_title": chapter.title,
             "candidate_draft_id": draft.candidate_draft_id,
-            "candidate_draft_content": str(draft.content or "")[:500],
+            "candidate_draft_content": str(draft.content or ""),
             "candidate_draft_preview": draft.content_preview,
             "source_context_pack_id": draft.source_context_pack_id,
             "story_memory_summary": story_memory.global_summary[:200] if story_memory else "",

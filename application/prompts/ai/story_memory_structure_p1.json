@@ -1,0 +1,8 @@
+{
+  "prompt_key": "story_memory_structure_p1",
+  "prompt_version": "p1",
+  "model_role": "memory_extractor",
+  "output_schema_key": "story_memory_structure_p1",
+  "template_text": "你是 InkTrace Memory Agent 的分层记忆分析步骤。输入只包含作者正式大纲的分析结果和逐章大模型分析摘要。请基于证据识别故事的阶段边界与卷/大段落边界，生成阶段摘要和卷摘要；不得续写，不得补造未在输入出现的人物、事件、设定或伏笔，不得按固定章节数量机械分组。每个成功章节必须同时被某个阶段摘要和某个卷摘要的 chapter_ids 引用。每个阶段摘要不超过 1000 tokens，每个卷摘要不超过 800 tokens。只返回 JSON 对象：stage_summaries、volume_summaries、warnings、analysis_confidence。stage_summaries 和 volume_summaries 的每项只包含 title、chapter_ids、summary、main_conflict、plot_progress、open_loops。输入如下：\n{input_json}",
+  "enabled": true
+}

@@ -80,5 +80,152 @@
     "stale_status": "fresh",
     "stale_reason": "",
     "created_at": "2026-07-07T13:08:47.647429+00:00"
+  },
+  "state_91f942f3cb47": {
+    "story_state_id": "state_91f942f3cb47",
+    "work_id": "4fd9e2a9-4519-4134-8204-f3a327eddd85",
+    "source_initialization_id": "init_865065f323a2",
+    "source_job_id": "job_f8b726f93599",
+    "latest_chapter_id": "1041e012-b832-4542-9698-4db7b82c0e00",
+    "latest_chapter_version": 1,
+    "current_position_summary": "大阵，起！已完成最小分析；角色:山的路, 孔凡圣, 毕竟当；地点:苍茫山, 他们前往苍茫山；存在待跟进线索；原文长度:2172字",
+    "active_characters": [
+      "孔凡圣",
+      "宋成这",
+      "时候也",
+      "宋成沉",
+      "宋成",
+      "家法宝",
+      "宗法器",
+      "包裹起",
+      "于遥远",
+      "山的路",
+      "毕竟当",
+      "山一战",
+      "于孔凡"
+    ],
+    "active_locations": [
+      "宋成一口",
+      "昆仑山",
+      "孔凡圣的脑海",
+      "没想到宋成一口",
+      "圣有着之前深入东海",
+      "他的脑海",
+      "一出山",
+      "苍茫山",
+      "了传说中的苍茫山",
+      "这苍茫山",
+      "他们前往苍茫山",
+      "毕竟当初昆仑山",
+      "前往苍茫山",
+      "在苍茫山"
+    ],
+    "unresolved_threads": [
+      "pending_follow_up"
+    ],
+    "continuity_notes": [
+      "baseline_source=confirmed_chapter_analysis",
+      "source_snapshot_id=memory_b313e8e9c805"
+    ],
+    "source_snapshot_id": "memory_b313e8e9c805",
+    "stale_status": "fresh",
+    "stale_reason": "",
+    "created_at": "2026-07-14T01:16:35.172202+00:00"
+  },
+  "state_dfe03bccc737": {
+    "story_state_id": "state_dfe03bccc737",
+    "work_id": "830b1075-fb90-4593-951d-65fbd5db7043",
+    "source_initialization_id": "init_65b55770dd8e",
+    "source_job_id": "job_068dd49c6b12",
+    "latest_chapter_id": "db88e79d-123c-4dee-b697-853049be290d",
+    "latest_chapter_version": 1,
+    "current_position_summary": "大阵，起！已完成最小分析；角色:山的路, 孔凡圣, 毕竟当；地点:苍茫山, 他们前往苍茫山；存在待跟进线索；原文长度:2172字",
+    "active_characters": [
+      "孔凡圣",
+      "宋成",
+      "家法宝",
+      "宗法器",
+      "包裹起",
+      "于遥远",
+      "山的路",
+      "毕竟当",
+      "山一战",
+      "于孔凡"
+    ],
+    "active_locations": [
+      "宋成一口",
+      "昆仑山",
+      "孔凡圣的脑海",
+      "没想到宋成一口",
+      "圣有着之前深入东海",
+      "他的脑海",
+      "一出山",
+      "苍茫山",
+      "了传说中的苍茫山",
+      "这苍茫山",
+      "他们前往苍茫山",
+      "毕竟当初昆仑山",
+      "前往苍茫山",
+      "在苍茫山"
+    ],
+    "unresolved_threads": [
+      "pending_follow_up"
+    ],
+    "continuity_notes": [
+      "baseline_source=confirmed_chapter_analysis",
+      "source_snapshot_id=memory_02d4ea7cb3ee"
+    ],
+    "source_snapshot_id": "memory_02d4ea7cb3ee",
+    "stale_status": "fresh",
+    "stale_reason": "",
+    "created_at": "2026-07-14T02:27:48.464715+00:00"
+  },
+  "state_16bac7103053": {
+    "story_state_id": "state_16bac7103053",
+    "work_id": "830b1075-fb90-4593-951d-65fbd5db7043",
+    "source_initialization_id": "init_910b0946d961",
+    "source_job_id": "job_8fecb612cf92",
+    "latest_chapter_id": "db88e79d-123c-4dee-b697-853049be290d",
+    "latest_chapter_version": 1,
+    "current_position_summary": "大阵，起！已完成最小分析；角色:山的路, 孔凡圣, 毕竟当；地点:苍茫山, 他们前往苍茫山；存在待跟进线索；原文长度:2172字",
+    "active_characters": [
+      "孔凡圣",
+      "宋成",
+      "家法宝",
+      "宗法器",
+      "包裹起",
+      "于遥远",
+      "山的路",
+      "毕竟当",
+      "山一战",
+      "于孔凡"
+    ],
+    "active_locations": [
+      "宋成一口",
+      "昆仑山",
+      "孔凡圣的脑海",
+      "没想到宋成一口",
+      "圣有着之前深入东海",
+      "他的脑海",
+      "一出山",
+      "苍茫山",
+      "了传说中的苍茫山",
+      "这苍茫山",
+      "他们前往苍茫山",
+      "毕竟当初昆仑山",
+      "前往苍茫山",
+      "在苍茫山"
+    ],
+    "unresolved_threads": [
+      "pending_follow_up"
+    ],
+    "continuity_notes": [
+      "baseline_source=confirmed_chapter_analysis",
+      "source_snapshot_id=memory_2eb311f9fae5"
+    ],
+    "source_snapshot_id": "memory_2eb311f9fae5",
+    "stale_status": "fresh",
+    "stale_reason": "",
+    "created_at": "2026-07-14T02:43:32.883368+00:00"
   }
 }

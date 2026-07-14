@@ -35,35 +35,9 @@
       </div>
     </header>
 
-    <section v-if="plotArcVisible" class="plot-arc-section">
-      <header class="plot-arc-header">
-        <h4>剧情轨道</h4>
-        <span class="plot-arc-status">{{ plotArcStatusLabel }}</span>
-      </header>
-      <div class="plot-arc-grid">
-        <article class="plot-arc-card">
-              <h5>主线轨道</h5>
-          <p v-if="masterArcSummary.arc_title">{{ masterArcSummary.arc_title }}</p>
-          <p v-if="masterArcSummary.current_stage">当前阶段：{{ masterArcSummary.current_stage }}</p>
-          <p v-if="masterArcSummary.ultimate_goal">终局目标：{{ masterArcSummary.ultimate_goal }}</p>
-        </article>
-        <article class="plot-arc-card">
-              <h5>卷轨道</h5>
-          <p v-if="volumeArcSummary.stage_goal">{{ volumeArcSummary.stage_goal }}</p>
-        </article>
-        <article class="plot-arc-card">
-              <h5>章节序列轨道</h5>
-          <p v-if="sequenceArcSummary.sequence_goal">{{ sequenceArcSummary.sequence_goal }}</p>
-          <ul v-if="sequenceKeyEvents.length" class="plot-arc-list">
-            <li v-for="event in sequenceKeyEvents" :key="event">{{ event }}</li>
-          </ul>
-        </article>
-      </div>
-    </section>
-
     <div class="outline-editor-shell">
       <template v-if="currentMode === 'work'">
-        <p class="outline-description">`content_text` 是唯一真源，树结构仅作为派生缓存保存。</p>
+        <p class="outline-description">这里记录整部小说的大方向，可随时修改；保存后供章节规划和写作辅助参考。</p>
         <textarea
           class="outline-textarea"
           :value="draftText"
@@ -100,6 +74,39 @@
         {{ currentMode === 'work' ? '保存作品大纲' : '保存章节大纲' }}
       </button>
     </footer>
+
+    <details
+      v-if="plotArcVisible"
+      class="plot-arc-section"
+      data-testid="plot-arc-reference"
+    >
+      <summary class="plot-arc-header">
+        <strong>AI 剧情参考（剧情轨道）</strong>
+        <span class="plot-arc-status">{{ plotArcStatusLabel }}</span>
+      </summary>
+      <p class="plot-arc-disclaimer" data-testid="plot-arc-disclaimer">
+        这是系统根据小说内容整理的辅助参考，不是正式大纲，不会修改作品大纲或章节大纲。
+      </p>
+      <div class="plot-arc-grid">
+        <article class="plot-arc-card">
+          <h5>主线参考</h5>
+          <p v-if="masterArcSummary.arc_title">{{ displayArcSummary(masterArcSummary.arc_title, 80) }}</p>
+          <p v-if="masterArcSummary.current_stage">当前阶段：{{ displayArcSummary(masterArcSummary.current_stage) }}</p>
+          <p v-if="masterArcSummary.ultimate_goal">终局目标：{{ displayArcSummary(masterArcSummary.ultimate_goal) }}</p>
+        </article>
+        <article class="plot-arc-card">
+          <h5>本卷参考</h5>
+          <p v-if="volumeArcSummary.stage_goal">{{ displayArcSummary(volumeArcSummary.stage_goal) }}</p>
+        </article>
+        <article class="plot-arc-card">
+          <h5>近期章节参考</h5>
+          <p v-if="sequenceArcSummary.sequence_goal">{{ displayArcSummary(sequenceArcSummary.sequence_goal) }}</p>
+          <ul v-if="sequenceKeyEvents.length" class="plot-arc-list">
+            <li v-for="event in sequenceKeyEvents" :key="event">{{ displayArcSummary(event, 120) }}</li>
+          </ul>
+        </article>
+      </div>
+    </details>
 
     <section v-if="modeSwitchGuardVisible" class="mode-switch-guard">
       <p>当前编辑区存在未保存内容，切换前请选择处理方式。</p>
@@ -201,6 +208,11 @@ const sequenceKeyEvents = computed(() => {
   const items = sequenceArcSummary.value?.key_events
   return Array.isArray(items) ? items.filter(Boolean) : []
 })
+const displayArcSummary = (value, maxLength = 160) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  const limit = Math.max(1, Number(maxLength) || 160)
+  return text.length > limit ? `${text.slice(0, limit)}…` : text
+}
 const modeSwitchGuardVisible = computed(() => Boolean(pendingModeSwitch.value))
 const conflictAssetType = computed(() => String(assetStore.assetConflictPayload?.asset_type || ''))
 const conflictVisible = computed(() => (
@@ -482,12 +494,25 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  cursor: pointer;
+  list-style: none;
 }
 
-.plot-arc-header h4,
+.plot-arc-header::-webkit-details-marker {
+  display: none;
+}
+
+.plot-arc-header strong,
 .plot-arc-card h5 {
   margin: 0;
   color: var(--outline-title);
+}
+
+.plot-arc-disclaimer {
+  margin: 0;
+  color: var(--outline-muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .plot-arc-status {

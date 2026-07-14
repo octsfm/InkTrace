@@ -58,6 +58,17 @@ def _install_test_dependencies(monkeypatch):
     return fake_service
 
 
+def test_mentions_api_default_dependency_can_list_empty_chapter(monkeypatch) -> None:
+    monkeypatch.setenv("INKTRACE_P2_ENABLE_MENTIONS", "1")
+    dependencies.get_mention_service.cache_clear()
+    client = TestClient(app)
+
+    response = client.get("/api/v2/chapters/chapter_without_mentions/mentions")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {"mentions": []}
+
+
 def test_mentions_api_supports_suggest_replace_query_and_summary(monkeypatch) -> None:
     fake_service = _install_test_dependencies(monkeypatch)
     client = TestClient(app)

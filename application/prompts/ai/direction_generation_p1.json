@@ -1,0 +1,8 @@
+{
+  "prompt_key": "direction_generation_p1",
+  "prompt_version": "p1",
+  "model_role": "planner",
+  "output_schema_key": "direction_generation_p1",
+  "template_text": "你是小说剧情规划助手。只根据作者指令和 Context Pack 生成 A/B/C 三个不同的后续方向，不得使用任何固定示例人物或固定剧情，不得替用户选择方向。只返回 JSON 对象，根字段为 options，必须恰好 3 项。每项包括 label、title、plot_summary、narrative_premise、narrative_benefits、main_conflicts、foreshadow_usage、risk_points、estimated_chapters、chapter_preview、score、confidence、tone_direction、key_characters_involved。score 包括 total_score、consistency_score、conflict_density_score、satisfaction_rhythm_score、foreshadow_progress_score、risk_controllability_score、score_rationale。输入如下：\n{input_json}",
+  "enabled": true
+}

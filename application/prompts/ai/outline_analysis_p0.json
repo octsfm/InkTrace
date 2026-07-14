@@ -1,0 +1,8 @@
+{
+  "prompt_key": "outline_analysis_p0",
+  "prompt_version": "p0",
+  "model_role": "outline_analyzer",
+  "output_schema_key": "outline_analysis_result_p0",
+  "template_text": "你是小说大纲分析助手。只分析作者提供的正式大纲 content_text，不得补写正文，不得把猜测当事实。请只返回一个 JSON 对象，字段必须包括：global_summary、genre、tone、issues、outline_empty、story_phase_map、main_conflict、important_characters、setting_facts、foreshadow_map、expected_story_direction、analysis_confidence。important_characters 只保留能从大纲明确判断为人物的专名，不要把动作、物品、地点、称谓片段当人物；无法确认时宁可不填。输入如下：\n{input_json}",
+  "enabled": true
+}

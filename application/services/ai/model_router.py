@@ -11,6 +11,22 @@ from domain.services.ai.provider import ModelRoleConfigError, ProviderConfigurat
 
 
 class ModelRouter:
+    _RUNTIME_ROLE_FALLBACKS = {
+        "outline_analyzer": "analysis",
+        "manuscript_analyzer": "analysis",
+        "memory_extractor": "analysis",
+        "style_extractor": "analysis",
+        "planner": "planning",
+        "writing_task_builder": "planning",
+        "opening_strategy_planner": "planning",
+        "quick_trial_writer": "writer",
+        "opening_writer": "writer",
+        "opening_risk_checker": "reviewer",
+        "polisher": "rewriter",
+        "dialogue_writer": "rewriter",
+        "scene_generator": "rewriter",
+    }
+
     def __init__(
         self,
         settings_repository: AISettingsRepository,
@@ -28,6 +44,9 @@ class ModelRouter:
     def resolve_model(self, model_role: str) -> ModelSelection:
         settings = self._settings_repository.load()
         selection = settings.model_role_mappings.get(model_role)
+        if selection is None:
+            fallback_role = self._RUNTIME_ROLE_FALLBACKS.get(model_role, "")
+            selection = settings.model_role_mappings.get(fallback_role)
         if selection is None:
             raise ModelRoleConfigError(model_role)
         provider_config = settings.provider_configs.get(selection.provider_name)

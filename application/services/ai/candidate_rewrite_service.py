@@ -18,6 +18,7 @@ from domain.entities.ai.models import (
 )
 from domain.repositories.ai.ai_review_repository import AIReviewRepository
 from domain.repositories.ai.candidate_draft_repository import CandidateDraftRepository
+from domain.services.ai.rewriter import RewriterPort
 
 
 class CandidateRewriteService:
@@ -26,10 +27,12 @@ class CandidateRewriteService:
         *,
         candidate_draft_repository: CandidateDraftRepository,
         ai_review_repository: AIReviewRepository,
+        rewriter: RewriterPort,
         conflict_guard_service=None,
     ) -> None:
         self._candidate_draft_repository = candidate_draft_repository
         self._ai_review_repository = ai_review_repository
+        self._rewriter = rewriter
         self._conflict_guard_service = conflict_guard_service
 
     def request_rewrite(
@@ -43,8 +46,12 @@ class CandidateRewriteService:
         user_id: str = "",
         user_action: bool = False,
         idempotency_key: str = "",
+        caller_type: str = "",
+        agent_session_id: str = "",
     ) -> dict[str, object]:
-        self._require_user_action(user_action)
+        is_rewriter_agent = caller_type == "rewriter_agent" and bool(str(agent_session_id or "").strip())
+        if not is_rewriter_agent:
+            self._require_user_action(user_action)
         if not str(idempotency_key or "").strip():
             raise ValueError("idempotency_key_missing")
         draft = self._candidate_draft_repository.get(candidate_draft_id)
@@ -64,15 +71,15 @@ class CandidateRewriteService:
                 source_version_id=source_version_id,
                 work_id=draft.work_id,
                 chapter_id=draft.chapter_id,
-                agent_session_id=f"rewrite_{candidate_draft_id}_{round_no}",
+                agent_session_id=(str(agent_session_id) if is_rewriter_agent else f"rewrite_{candidate_draft_id}_{round_no}"),
                 trigger_type=RewriteTriggerType(str(trigger_type)),
                 review_report_id=str(review_report_id or ""),
                 status=RewriteRequestStatus.RUNNING,
-                created_by="user_action",
+                created_by=("rewriter_agent" if is_rewriter_agent else "user_action"),
                 created_at=now,
                 updated_at=now,
                 metadata={
-                    "requested_by": user_id,
+                    "requested_by": ("rewriter_agent" if is_rewriter_agent else user_id),
                     "idempotency_key_hash": self._hash_idempotency_key(idempotency_key),
                 },
             )
@@ -105,7 +112,25 @@ class CandidateRewriteService:
                 updated_at=now,
             )
         )
-        target_content = self._build_rewritten_content(source_version.content, instruction_summary)
+        try:
+            rewrite_output = self._rewriter.rewrite(
+                work_id=draft.work_id,
+                chapter_id=draft.chapter_id,
+                source_content=source_version.content,
+                instruction_summary=instruction_summary,
+                source_context_pack_id=draft.source_context_pack_id,
+            )
+            target_content = str(rewrite_output.get("rewritten_text", "") or "").strip()
+            if not target_content:
+                raise ValueError("rewrite_output_invalid")
+        except Exception:
+            self._candidate_draft_repository.save_rewrite_request(
+                rewrite_request.model_copy(update={"status": RewriteRequestStatus.FAILED, "updated_at": self._now()})
+            )
+            self._candidate_draft_repository.save_revision_round(
+                revision_round.model_copy(update={"status": RevisionRoundStatus.FAILED, "updated_at": self._now()})
+            )
+            raise
         target_version = self._candidate_draft_repository.save_version(
             CandidateDraftVersion(
                 candidate_version_id=target_version_id,
@@ -133,7 +158,18 @@ class CandidateRewriteService:
             )
         )
         self._candidate_draft_repository.save_rewrite_request(
-            rewrite_request.model_copy(update={"status": RewriteRequestStatus.COMPLETED, "updated_at": now})
+            rewrite_request.model_copy(
+                update={
+                    "status": RewriteRequestStatus.COMPLETED,
+                    "updated_at": now,
+                    "metadata": {
+                        **dict(rewrite_request.metadata),
+                        "provider_name": str(rewrite_output.get("provider_name", "") or ""),
+                        "model_name": str(rewrite_output.get("model_name", "") or ""),
+                        "revision_summary": str(rewrite_output.get("revision_summary", "") or ""),
+                    },
+                }
+            )
         )
         completed_round = self._candidate_draft_repository.save_revision_round(
             revision_round.model_copy(
@@ -254,11 +290,6 @@ class CandidateRewriteService:
         if str(user_instruction or "").strip():
             parts.append(str(user_instruction).strip())
         return "；".join(part for part in parts if part) or f"基于 {source_version.candidate_version_id} 继续修订"
-
-    @staticmethod
-    def _build_rewritten_content(source_content: str, instruction_summary: str) -> str:
-        base = str(source_content or "").strip()
-        return f"{base}\n\n[修订说明] {instruction_summary}\n父亲留下的地图线索被更早揭示。".strip()
 
     @staticmethod
     def _build_diff_summary(before: str, after: str) -> str:

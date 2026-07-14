@@ -17,7 +17,7 @@
       </header>
       <p v-if="volumeCharacters.length" class="plot-arc-text">关键人物：{{ volumeCharacters.join(' / ') }}</p>
       <ul v-if="characterStates.length" class="plot-arc-list">
-        <li v-for="state in characterStates" :key="state">{{ displayCharacterState(state) }}</li>
+        <li v-for="(state, index) in characterStates" :key="characterStateKey(state, index)">{{ displayCharacterState(state) }}</li>
       </ul>
     </section>
 
@@ -223,7 +223,25 @@ const characterStates = computed(() => {
   return Array.isArray(items) ? items.filter(Boolean) : []
 })
 const plotArcVisible = computed(() => Boolean(volumeCharacters.value.length || characterStates.value.length))
-const displayCharacterState = (value) => String(value || '').replace(/:\s*/, '：')
+const displayCharacterState = (value) => {
+  if (!value || typeof value !== 'object') {
+    return String(value || '').replace(/:\s*/, '：')
+  }
+  const name = String(value.character_name || '').trim()
+  const status = String(value.current_status || '').trim()
+  const summary = name ? `${name}：${status || '暂无状态'}` : status
+  const details = [
+    value.emotional_state ? `情绪：${String(value.emotional_state).trim()}` : '',
+    value.location ? `位置：${String(value.location).trim()}` : '',
+    value.last_action ? `最近：${String(value.last_action).trim()}` : ''
+  ].filter(Boolean)
+  return [summary, ...details].filter(Boolean).join(' · ')
+}
+const characterStateKey = (value, index) => (
+  value && typeof value === 'object'
+    ? `${String(value.character_name || 'character')}:${index}`
+    : `${String(value || 'character')}:${index}`
+)
 const localConflictContent = computed(() => {
   const payload = assetStore.assetConflictPayload?.payload || {}
   return [

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from infrastructure.database.session import get_database_path
@@ -21,6 +23,38 @@ def _critical_role_mappings() -> dict[str, dict[str, str]]:
         "analysis": {"provider_name": "fake", "model_name": "fake-chat"},
         "writer": {"provider_name": "fake", "model_name": "fake-writer"},
     }
+
+
+def test_production_provider_registry_does_not_register_fake_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("INKTRACE_ENABLE_FAKE_PROVIDER", raising=False)
+    dependencies.get_provider_registry.cache_clear()
+
+    assert "fake" not in dependencies.get_provider_registry().list_provider_names()
+
+
+def test_production_settings_hide_stale_fake_provider(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "runtime" / "inktrace.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path.with_name("ai_settings.json").write_text(
+        json.dumps(
+            {
+                "provider_configs": {
+                    "fake": {"provider_name": "fake", "enabled": False},
+                },
+                "model_role_mappings": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(db_path))
+    monkeypatch.delenv("INKTRACE_ENABLE_FAKE_PROVIDER", raising=False)
+    _reset_ai_settings_dependencies()
+
+    response = TestClient(app).get("/api/v2/ai/settings")
+
+    assert response.status_code == 200
+    providers = response.json()["data"]["provider_configs"]
+    assert {item["provider_name"] for item in providers} == {"deepseek", "kimi"}
 
 
 def test_ai_settings_api_updates_and_hides_api_key(monkeypatch, tmp_path) -> None:
@@ -105,6 +139,102 @@ def test_ai_settings_api_tests_provider_connection(monkeypatch, tmp_path) -> Non
     assert payload["status"] == "ok"
     assert payload["data"]["provider_name"] == "fake"
     assert payload["data"]["test_status"] == "ok"
+
+
+def test_ai_settings_api_inherits_optional_role_mappings(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
+    monkeypatch.setenv("INKTRACE_AI_SETTINGS_SECRET", "test-secret")
+    _reset_ai_settings_dependencies()
+    client = TestClient(app)
+
+    response = client.put(
+        "/api/v2/ai/settings",
+        json={
+            "provider_configs": [
+                {
+                    "provider_name": "fake",
+                    "enabled": True,
+                    "api_key": "fake-api-key-1234567890",
+                    "default_model": "fake-chat",
+                }
+            ],
+            "model_role_mappings": {
+                "analysis": {"provider_name": "fake", "model_name": "fake-chat"},
+                "planning": {"provider_name": "", "model_name": ""},
+                "writer": {"provider_name": "fake", "model_name": "fake-writer"},
+                "reviewer": {"provider_name": "", "model_name": ""},
+                "rewriter": {"provider_name": "", "model_name": ""},
+            },
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "settings-inherit-optional-roles-1",
+        },
+    )
+
+    assert response.status_code == 200
+    mappings = response.json()["data"]["model_role_mappings"]
+    assert mappings["planning"] == mappings["analysis"]
+    assert mappings["reviewer"] == mappings["analysis"]
+    assert mappings["rewriter"] == mappings["writer"]
+    assert mappings["outline_analyzer"] == mappings["analysis"]
+    assert mappings["manuscript_analyzer"] == mappings["analysis"]
+    assert mappings["memory_extractor"] == mappings["analysis"]
+    assert mappings["planner"] == mappings["planning"]
+    assert mappings["writing_task_builder"] == mappings["planning"]
+    assert mappings["quick_trial_writer"] == mappings["writer"]
+    assert mappings["polisher"] == mappings["rewriter"]
+    assert mappings["dialogue_writer"] == mappings["rewriter"]
+    assert mappings["scene_generator"] == mappings["rewriter"]
+
+
+def test_ai_settings_api_completes_selected_author_roles_from_provider_defaults(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INKTRACE_DB_PATH", str(tmp_path / "runtime" / "inktrace.db"))
+    monkeypatch.setenv("INKTRACE_AI_SETTINGS_SECRET", "test-secret")
+    _reset_ai_settings_dependencies()
+    client = TestClient(app)
+
+    response = client.put(
+        "/api/v2/ai/settings",
+        json={
+            "provider_configs": [
+                {
+                    "provider_name": "kimi",
+                    "enabled": True,
+                    "api_key": "kimi-api-key-1234567890",
+                    "default_model": "kimi-k2.6",
+                },
+                {
+                    "provider_name": "deepseek",
+                    "enabled": True,
+                    "api_key": "deepseek-api-key-1234567890",
+                    "default_model": "deepseek-v4-pro",
+                },
+            ],
+            "model_role_mappings": {
+                "analysis": {"provider_name": "kimi", "model_name": ""},
+                "planning": {"provider_name": "", "model_name": ""},
+                "writer": {"provider_name": "deepseek", "model_name": ""},
+                "reviewer": {"provider_name": "", "model_name": ""},
+                "rewriter": {"provider_name": "", "model_name": ""},
+            },
+            "caller_type": "user_action",
+            "user_action": True,
+            "idempotency_key": "settings-resolve-author-roles-1",
+        },
+    )
+
+    assert response.status_code == 200
+    mappings = response.json()["data"]["model_role_mappings"]
+    assert mappings["analysis"] == {"provider_name": "kimi", "model_name": "kimi-k2.6"}
+    assert mappings["writer"] == {"provider_name": "deepseek", "model_name": "deepseek-v4-pro"}
+    assert mappings["planning"] == mappings["analysis"]
+    assert mappings["reviewer"] == mappings["analysis"]
+    assert mappings["rewriter"] == mappings["writer"]
+    assert mappings["outline_analyzer"] == {"provider_name": "kimi", "model_name": "kimi-k2.6"}
+    assert mappings["manuscript_analyzer"] == mappings["outline_analyzer"]
+    assert mappings["memory_extractor"] == mappings["outline_analyzer"]
+    assert mappings["planner"] == {"provider_name": "kimi", "model_name": "kimi-k2.6"}
+    assert mappings["quick_trial_writer"] == {"provider_name": "deepseek", "model_name": "deepseek-v4-pro"}
 
 
 def test_ai_settings_api_redacts_provider_test_error_message(monkeypatch, tmp_path) -> None:

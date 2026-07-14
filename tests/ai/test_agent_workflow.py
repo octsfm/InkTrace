@@ -4,7 +4,7 @@ import pytest
 
 from application.services.ai.agent_runtime_service import AgentRuntimeService
 from application.services.ai.ai_job_service import AIJobService
-from application.services.ai.tool_facade import CoreToolFacade
+from application.services.ai.tool_facade import CoreToolFacade, ToolDefinition
 from domain.entities.ai.models import (
     ArcQualityLevel,
     ArcRef,
@@ -14,15 +14,24 @@ from domain.entities.ai.models import (
     AgentSessionStatus,
     AgentStepStatus,
     AgentWorkflowType,
+    AIReviewResult,
+    AIReviewRiskLevel,
+    AIReviewStatus,
     ChapterBeat,
     ChapterPlan,
     ChapterPlanItem,
+    CandidateDraftVersion,
+    CandidateDraftVersionStatus,
+    ContextPackSnapshot,
+    ContextPackStatus,
     DirectionPlanStatus,
     DirectionProposal,
     DirectionOption,
     DirectionScore,
     MasterArc,
     PlanConfirmation,
+    StoryMemorySnapshot,
+    StoryStateSnapshot,
     VolumeArc,
     WorkflowDecision,
     WorkflowStageName,
@@ -35,39 +44,118 @@ from infrastructure.database.repositories.ai.file_ai_job_store import FileAIJobS
 from infrastructure.database.repositories.ai.file_chapter_plan_store import FileChapterPlanStore
 from infrastructure.database.repositories.ai.file_direction_plan_store import FileDirectionPlanStore
 from infrastructure.database.repositories.ai.file_plot_arc_store import FilePlotArcStore
+from infrastructure.database.repositories.ai.file_story_memory_store import FileStoryMemoryStore
+from infrastructure.database.repositories.ai.file_story_state_store import FileStoryStateStore
 
 
 class _StubContextPackService:
+    def __init__(self, snapshot=None) -> None:
+        self.snapshot = snapshot
+
     def create_context_pack(self, request):
         raise NotImplementedError
 
+    def get_latest(self, work_id: str, chapter_id: str = ""):
+        if self.snapshot is None:
+            return None
+        if self.snapshot.work_id != work_id or (chapter_id and self.snapshot.chapter_id != chapter_id):
+            return None
+        return self.snapshot
+
 
 class _StubCandidateDraftRepository:
+    def __init__(self) -> None:
+        self.drafts = {}
+        self.versions = {}
+
     def save(self, draft):
+        self.drafts[draft.candidate_draft_id] = draft
         return draft
 
+    def save_version(self, version):
+        self.versions[version.candidate_version_id] = version
+        return version
+
     def get(self, candidate_draft_id: str):
-        raise KeyError(candidate_draft_id)
+        if candidate_draft_id not in self.drafts:
+            raise KeyError(candidate_draft_id)
+        return self.drafts[candidate_draft_id]
 
 
 class _StubWriter:
     def generate_candidate_text(self, *, context_pack, writing_task):
         return {
-            "content": "stub",
+            "content": "暮色压低了灯塔的轮廓，顾迟握紧旧钥匙，沿着潮湿台阶继续向上。",
             "provider_name": "stub",
             "model_name": "stub",
             "model_role": "writer",
         }
 
 
-def _build_runtime(tmp_path) -> AgentRuntimeService:
+class _StubAIReviewService:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def review_candidate_draft(self, candidate_draft_id: str, **kwargs):
+        self.calls.append((candidate_draft_id, kwargs))
+        return AIReviewResult(
+            review_id="review_real_1",
+            work_id="work-1",
+            chapter_id="chapter-1",
+            candidate_draft_id=candidate_draft_id,
+            status=AIReviewStatus.COMPLETED,
+            summary="候选稿逻辑连贯，可以交给作者审阅。",
+            risk_level=AIReviewRiskLevel.LOW,
+            created_at="2026-07-14T00:00:00+00:00",
+        )
+
+
+class _StubCandidateRewriteService:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def request_rewrite(self, **kwargs):
+        self.calls.append(kwargs)
+        version = CandidateDraftVersion(
+            candidate_version_id="version_real_2",
+            candidate_draft_id=kwargs["candidate_draft_id"],
+            work_id="work-1",
+            chapter_id="chapter-1",
+            agent_session_id=kwargs["agent_session_id"],
+            source_version_id=kwargs["source_version_id"],
+            parent_version_id=kwargs["source_version_id"],
+            version_no=2,
+            status=CandidateDraftVersionStatus.GENERATED,
+            content="修订后的候选稿仍然只保存在候选版本中。",
+            created_by="rewriter_agent",
+        )
+        return {"target_version": version}
+
+
+def _build_runtime(
+    tmp_path,
+    *,
+    story_memory_repository=None,
+    story_state_repository=None,
+    context_pack_service=None,
+    candidate_draft_repository=None,
+    direction_plan_repository=None,
+    writer=None,
+    ai_review_service=None,
+    candidate_rewrite_service=None,
+) -> AgentRuntimeService:
     agent_store = FileAgentRuntimeStore(tmp_path / "agent_runtime.json")
     job_store = FileAIJobStore(tmp_path / "ai_jobs.json")
     job_service = AIJobService(job_repository=job_store, step_repository=job_store, attempt_repository=job_store)
     tool_facade = CoreToolFacade(
-        context_pack_service=_StubContextPackService(),
-        candidate_draft_repository=_StubCandidateDraftRepository(),
-        writer=_StubWriter(),
+        context_pack_service=context_pack_service or _StubContextPackService(),
+        candidate_draft_repository=candidate_draft_repository or _StubCandidateDraftRepository(),
+        direction_plan_repository=direction_plan_repository,
+        ai_review_service=ai_review_service,
+        candidate_rewrite_service=candidate_rewrite_service,
+        story_memory_repository=story_memory_repository,
+        story_state_repository=story_state_repository,
+        writer=writer or _StubWriter(),
         job_service=job_service,
     )
     return AgentRuntimeService(
@@ -77,6 +165,304 @@ def _build_runtime(tmp_path) -> AgentRuntimeService:
         ai_job_service=job_service,
         tool_facade=tool_facade,
     )
+
+
+def test_agent_orchestrator_memory_stage_reads_persisted_memory_and_state_through_runtime(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    memory_store = FileStoryMemoryStore(tmp_path / "story_memory.json")
+    state_store = FileStoryStateStore(tmp_path / "story_state.json")
+    memory_store.save_snapshot(
+        StoryMemorySnapshot(
+            snapshot_id="memory_real_1",
+            work_id="work-1",
+            source_initialization_id="init-1",
+            source_job_id="job-init-1",
+            created_at="2026-07-14T00:00:00+00:00",
+        )
+    )
+    state_store.save_analysis_baseline(
+        StoryStateSnapshot(
+            story_state_id="state_real_1",
+            work_id="work-1",
+            source_initialization_id="init-1",
+            source_job_id="job-init-1",
+            source_snapshot_id="memory_real_1",
+            created_at="2026-07-14T00:00:00+00:00",
+        )
+    )
+    runtime = _build_runtime(
+        tmp_path,
+        story_memory_repository=memory_store,
+        story_state_repository=state_store,
+    )
+    orchestrator = AgentOrchestrator(runtime_service=runtime)
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
+        user_instruction="继续写下一章",
+        caller_type="user_action",
+    )
+
+    run = orchestrator.prepare_memory_context(run.session_id)
+
+    refs = {f"{item.ref_type}:{item.ref_id}" for item in run.result_refs}
+    assert "memory_context:memory_real_1" in refs
+    assert "story_state:state_real_1" in refs
+    assert run.current_stage == WorkflowStageName.PLANNING_PREPARE
+    steps = runtime._step_repository.list_steps(run.session_id)
+    memory_steps = [item for item in steps if item.agent_type == "memory"]
+    assert [item.action for item in memory_steps] == ["memory_context_prepare", "read_story_state"]
+    assert all(item.status == AgentStepStatus.SUCCEEDED for item in memory_steps)
+
+
+def test_agent_orchestrator_memory_stage_fails_without_persisted_memory(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    runtime = _build_runtime(
+        tmp_path,
+        story_memory_repository=FileStoryMemoryStore(tmp_path / "empty_memory.json"),
+        story_state_repository=FileStoryStateStore(tmp_path / "empty_state.json"),
+    )
+    orchestrator = AgentOrchestrator(runtime_service=runtime)
+    run = orchestrator.start_workflow(
+        work_id="work-missing",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
+        user_instruction="继续写下一章",
+        caller_type="user_action",
+    )
+
+    run = orchestrator.prepare_memory_context(run.session_id)
+
+    assert run.current_stage == WorkflowStageName.FAILED
+    assert run.error_code == "story_memory_not_found"
+    assert not any(item.ref_type == "memory_context" for item in run.result_refs)
+
+
+def test_agent_orchestrator_writing_prepare_builds_context_pack_through_runtime(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    runtime = _build_runtime(tmp_path)
+    runtime._tool_facade.register_tool(
+        ToolDefinition(
+            tool_name="build_context_pack",
+            allowed_callers={"agent"},
+            side_effect_level="plan_write",
+            source_service="context_pack_service",
+        ),
+        lambda payload: {
+            "result_ref": "context_pack:cp_real_1",
+            "result_status": "ready",
+            "blocked_reason": "",
+            "warnings": [],
+        },
+    )
+    orchestrator = AgentOrchestrator(runtime_service=runtime)
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
+        user_instruction="继续写下一章",
+        caller_type="user_action",
+        policy_overrides={
+            "require_direction_confirmation": False,
+            "require_chapter_plan_confirmation": False,
+        },
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="memory_context:memory_real_1",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="chapter_plan:plan_real_1",
+    )
+    assert run.current_stage == WorkflowStageName.WRITING_PREPARE
+
+    run = orchestrator.prepare_writing_context(run.session_id, writing_task_id="task_real_1")
+
+    refs = {f"{item.ref_type}:{item.ref_id}" for item in run.result_refs}
+    assert "context_pack:cp_real_1" in refs
+    assert "writing_task:task_real_1" in refs
+    assert run.current_stage == WorkflowStageName.DRAFTING
+
+
+def test_agent_orchestrator_writing_prepare_stops_when_context_pack_is_blocked(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    runtime = _build_runtime(tmp_path)
+    runtime._tool_facade.register_tool(
+        ToolDefinition(
+            tool_name="build_context_pack",
+            allowed_callers={"agent"},
+            side_effect_level="plan_write",
+            source_service="context_pack_service",
+        ),
+        lambda payload: {
+            "result_ref": "context_pack:cp_blocked_1",
+            "result_status": "blocked",
+            "blocked_reason": "story_memory_missing",
+            "warnings": [],
+        },
+    )
+    orchestrator = AgentOrchestrator(runtime_service=runtime)
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
+        user_instruction="继续写下一章",
+        caller_type="user_action",
+        policy_overrides={
+            "require_direction_confirmation": False,
+            "require_chapter_plan_confirmation": False,
+        },
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="memory_context:memory_real_1",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="chapter_plan:plan_real_1",
+    )
+
+    run = orchestrator.prepare_writing_context(run.session_id, writing_task_id="task_real_1")
+
+    assert run.current_stage == WorkflowStageName.FAILED
+    assert run.error_code == "story_memory_missing"
+
+
+def test_agent_orchestrator_drafting_runs_writer_and_persists_candidate_through_runtime(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    context_pack = ContextPackSnapshot(
+        context_pack_id="cp_writer_real_1",
+        work_id="work-1",
+        chapter_id="chapter-1",
+        status=ContextPackStatus.READY,
+        created_at="2026-07-14T00:00:00+00:00",
+    )
+    candidate_repository = _StubCandidateDraftRepository()
+    direction_repository = FileDirectionPlanStore(tmp_path / "direction_for_writer.json")
+    task = WritingTask(
+        writing_task_id="task_writer_real_1",
+        work_id="work-1",
+        chapter_id="chapter-1",
+        target_chapter_id="chapter-1",
+        status=WritingTaskStatus.READY,
+        writing_goal="继续调查灯塔",
+        created_by="user_action",
+    )
+    direction_repository.save_writing_task(task)
+    runtime = _build_runtime(
+        tmp_path,
+        context_pack_service=_StubContextPackService(context_pack),
+        candidate_draft_repository=candidate_repository,
+        direction_plan_repository=direction_repository,
+    )
+    orchestrator = AgentOrchestrator(runtime_service=runtime)
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
+        user_instruction="继续写下一章",
+        caller_type="user_action",
+        policy_overrides={
+            "require_direction_confirmation": False,
+            "require_chapter_plan_confirmation": False,
+        },
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="memory_context:memory_real_1",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="chapter_plan:plan_real_1",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref=f"context_pack:{context_pack.context_pack_id}",
+    )
+    assert run.current_stage == WorkflowStageName.DRAFTING
+
+    run = orchestrator.draft_candidate(
+        run.session_id,
+        context_pack_id=context_pack.context_pack_id,
+        writing_task_id=task.writing_task_id,
+    )
+
+    candidate_refs = [item for item in run.result_refs if item.ref_type == "candidate_draft"]
+    assert len(candidate_refs) == 1
+    candidate = candidate_repository.get(candidate_refs[0].ref_id)
+    assert candidate.content == _StubWriter().generate_candidate_text(context_pack=None, writing_task=None)["content"]
+    assert candidate.created_by == "writer_agent"
+    assert run.current_stage == WorkflowStageName.REVIEWING
+
+
+def test_agent_orchestrator_reviewing_uses_real_review_service_and_keeps_candidate_isolated(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    review_service = _StubAIReviewService()
+    runtime = _build_runtime(tmp_path, ai_review_service=review_service)
+    orchestrator = AgentOrchestrator(runtime_service=runtime)
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.REVIEW_WORKFLOW,
+        user_instruction="检查候选稿",
+        caller_type="user_action",
+    )
+    assert run.current_stage == WorkflowStageName.REVIEWING
+
+    run = orchestrator.review_candidate(run.session_id, candidate_draft_id="candidate_real_1")
+
+    assert run.current_stage == WorkflowStageName.COMPLETED
+    assert any(item.ref_type == "review_report" and item.ref_id == "review_real_1" for item in run.result_refs)
+    assert review_service.calls[0][0] == "candidate_real_1"
+    assert review_service.calls[0][1]["created_by"] == "reviewer_agent"
+
+
+def test_agent_orchestrator_rewriting_uses_rewriter_service_and_creates_new_candidate_version(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    rewrite_service = _StubCandidateRewriteService()
+    runtime = _build_runtime(tmp_path, candidate_rewrite_service=rewrite_service)
+    orchestrator = AgentOrchestrator(runtime_service=runtime)
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.REVISION_WORKFLOW,
+        user_instruction="根据审稿意见修订",
+        caller_type="user_action",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="writing_context:context_real_1",
+    )
+    assert run.current_stage == WorkflowStageName.REWRITING
+
+    run = orchestrator.rewrite_candidate(
+        run.session_id,
+        candidate_draft_id="candidate_real_1",
+        source_version_id="version_real_1",
+        review_report_id="review_real_1",
+    )
+
+    assert run.current_stage == WorkflowStageName.REVIEWING
+    assert any(item.ref_type == "candidate_version" and item.ref_id == "version_real_2" for item in run.result_refs)
+    assert rewrite_service.calls[0]["caller_type"] == "rewriter_agent"
+    assert rewrite_service.calls[0]["user_action"] is False
 
 
 def _fail_current_step(runtime: AgentRuntimeService, session_id: str, *, safe_message: str = "step failed") -> str:
@@ -4492,6 +4878,51 @@ def test_agent_orchestrator_planning_prepare_requires_direction_or_chapter_plan_
             decision=WorkflowDecision.CONTINUE,
             safe_message="planning missing",
         )
+
+
+def test_agent_orchestrator_generates_chapter_plan_via_runtime_after_direction_selection(tmp_path) -> None:
+    from application.services.ai.agent_workflow import AgentOrchestrator
+
+    runtime = _build_runtime(tmp_path)
+    orchestrator = AgentOrchestrator(runtime_service=runtime)
+    run = orchestrator.start_workflow(
+        work_id="work-1",
+        chapter_id="chapter-1",
+        workflow_type=WorkflowType.CONTINUATION_WORKFLOW,
+        user_instruction="continue writing",
+        caller_type="user_action",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="memory_context:mem_1",
+        safe_message="memory ready",
+    )
+    run = orchestrator.advance_workflow(
+        run.session_id,
+        decision=WorkflowDecision.CONTINUE,
+        result_ref="direction:dir_1",
+        safe_message="direction ready",
+    )
+
+    run = orchestrator.submit_user_decision(
+        run.session_id,
+        user_decision="confirm_direction",
+        safe_message="direction confirmed",
+        request_id="req_generate_plan",
+        metadata={"selected_direction_id": "dir_1"},
+    )
+
+    assert run.current_stage == WorkflowStageName.CHAPTER_PLAN_CONFIRM_WAITING
+    assert any(item.ref_type == "chapter_plan" for item in run.result_refs)
+    planner_steps = [
+        item
+        for item in runtime._step_repository.list_steps(run.session_id)  # noqa: SLF001
+        if item.agent_type == "planner" and item.action == "generate_chapter_plan"
+    ]
+    assert len(planner_steps) == 1
+    assert planner_steps[0].status == AgentStepStatus.SUCCEEDED
+    assert [item.tool_name for item in planner_steps[0].tool_calls] == ["create_chapter_plan"]
 
 
 def test_agent_orchestrator_retry_step_records_reason_code_metadata(tmp_path) -> None:

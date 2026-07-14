@@ -143,6 +143,8 @@ def test_reviewer_failure_returns_review_failed_and_still_persists_result(tmp_pa
     result = service.review_candidate_draft(candidate_id, created_by="user_action", user_instruction="")
 
     assert result.status == AIReviewStatus.FAILED.value
+    assert result.provider_name == ""
+    assert result.model_name == ""
     saved = service.get_ai_review(result.review_id)
     assert saved.status == AIReviewStatus.FAILED
 

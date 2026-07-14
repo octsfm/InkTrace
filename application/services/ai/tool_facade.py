@@ -132,16 +132,26 @@ class CoreToolFacade:
         ai_suggestion_repository=None,
         chapter_plan_repository=None,
         direction_plan_repository=None,
+        story_memory_repository=None,
+        story_state_repository=None,
+        ai_review_service=None,
+        candidate_rewrite_service=None,
         writer,
         job_service=None,
+        planning_generation_service=None,
         agent_profile_registry=None,
         trace_service=None,
     ) -> None:
         self._context_pack_service = context_pack_service
         self._candidate_draft_repository = candidate_draft_repository
+        self._planning_generation_service = planning_generation_service
         self._ai_suggestion_repository = ai_suggestion_repository
         self._chapter_plan_repository = chapter_plan_repository
         self._direction_plan_repository = direction_plan_repository
+        self._story_memory_repository = story_memory_repository
+        self._story_state_repository = story_state_repository
+        self._ai_review_service = ai_review_service
+        self._candidate_rewrite_service = candidate_rewrite_service
         self._writer_service = WriterService(writer)
         self._job_service = job_service
         self._trace_service = trace_service
@@ -238,7 +248,7 @@ class CoreToolFacade:
                 return envelope
 
         try:
-            result = self._handlers[tool_name](payload)
+            result = self._execute_handler(tool_name, payload=payload, context=context)
         except Exception as exc:  # noqa: BLE001
             error_code = str(exc) or "tool_execution_failed"
             envelope = self._error_envelope(
@@ -263,6 +273,29 @@ class CoreToolFacade:
         )
         self._record_audit(tool_name, context, envelope)
         return envelope
+
+    def _execute_handler(
+        self,
+        tool_name: str,
+        *,
+        payload: dict[str, Any],
+        context: ToolExecutionContext,
+    ) -> dict[str, Any]:
+        if tool_name == "create_direction_proposal":
+            return self._create_direction_proposal(payload, context=context)
+        if tool_name == "create_chapter_plan":
+            return self._create_chapter_plan(payload, context=context)
+        if tool_name == "get_story_memory_snapshot":
+            return self._get_story_memory_snapshot(payload, context=context)
+        if tool_name == "get_story_state_baseline":
+            return self._get_story_state_baseline(payload, context=context)
+        if tool_name == "run_writer_step":
+            return self._run_writer_step(payload, context=context)
+        if tool_name == "create_review_report":
+            return self._create_review_report(payload, context=context)
+        if tool_name == "create_candidate_version":
+            return self._create_candidate_version(payload, context=context)
+        return self._handlers[tool_name](payload)
 
     def _validate_agent_tool_permission(
         self,
@@ -346,6 +379,9 @@ class CoreToolFacade:
         )
         return {
             "context_pack": snapshot,
+            "result_ref": f"context_pack:{snapshot.context_pack_id}",
+            "result_status": snapshot.status.value,
+            "blocked_reason": snapshot.blocked_reason,
             "warnings": list(snapshot.warnings),
         }
 
@@ -355,6 +391,75 @@ class CoreToolFacade:
             writing_task=payload["writing_task"],
         )
         return {"writer_output": writer_output}
+
+    def _run_writer_step(
+        self,
+        payload: dict[str, Any],
+        *,
+        context: ToolExecutionContext | None = None,
+    ) -> dict[str, Any]:
+        if "context_pack" in payload and "writing_task" in payload:
+            return self._generate_candidate_text(payload)
+        if context is None or context.caller_type != "agent":
+            raise ValueError("writer_input_invalid")
+        work_id = self._resolve_scoped_work_id(payload, context=context)
+        chapter_id = str(payload.get("chapter_id", "") or context.chapter_id).strip()
+        if not chapter_id or (context.chapter_id and chapter_id != context.chapter_id):
+            raise ValueError("tool_resource_scope_mismatch")
+        context_pack = self._context_pack_service.get_latest(work_id, chapter_id)
+        expected_context_pack_id = str(payload.get("context_pack_id", "")).strip()
+        if context_pack is None or (expected_context_pack_id and context_pack.context_pack_id != expected_context_pack_id):
+            raise ValueError("context_pack_not_found")
+        if context_pack.status.value == "blocked":
+            raise ValueError(context_pack.blocked_reason or "context_pack_blocked")
+        if self._direction_plan_repository is None:
+            raise ValueError("direction_plan_repository_not_available")
+        writing_task_id = str(payload.get("writing_task_id", "")).strip()
+        if not writing_task_id:
+            raise ValueError("writing_task_required")
+        writing_task = self._direction_plan_repository.get_writing_task(writing_task_id)
+        if writing_task.work_id != work_id or writing_task.chapter_id != chapter_id:
+            raise ValueError("tool_resource_scope_mismatch")
+        if writing_task.status not in {WritingTaskStatus.READY, WritingTaskStatus.PENDING}:
+            raise ValueError("writing_task_not_ready")
+
+        writer_output = self._writer_service.generate_candidate_text(
+            context_pack=context_pack,
+            writing_task=writing_task,
+        )
+        validated = self._validate_writer_output({"content": str(writer_output.get("content", ""))})
+        candidate_draft_id = str(payload.get("candidate_draft_id", "")).strip() or f"cd_{uuid.uuid4().hex[:12]}"
+        saved = self._save_candidate_draft(
+            {
+                "candidate_draft_id": candidate_draft_id,
+                "candidate_version_id": f"{candidate_draft_id}_v1",
+                "work_id": work_id,
+                "chapter_id": chapter_id,
+                "agent_session_id": context.agent_session_id,
+                "writing_task_id": writing_task.writing_task_id,
+                "direction_plan_snapshot_id": str(writing_task.metadata.get("direction_plan_snapshot_id", "")),
+                "source_context_pack_id": context_pack.context_pack_id,
+                "source_job_id": str(payload.get("source_job_id", "") or context.agent_session_id),
+                "content": validated["validated_content"],
+                "writer_model_role": str(writer_output.get("model_role", "writer")),
+                "provider_name": str(writer_output.get("provider_name", "")),
+                "model_name": str(writer_output.get("model_name", "")),
+                "created_by": "writer_agent",
+                "request_id": context.request_id,
+                "trace_id": context.trace_id,
+                "metadata": {
+                    "context_pack_status": context_pack.status.value,
+                    "context_warning_refs": list(context_pack.warnings),
+                    "formal_write_forbidden": True,
+                },
+            }
+        )["candidate_draft"]
+        return {
+            "result_ref": f"candidate_draft:{saved.candidate_draft_id}",
+            "candidate_draft_id": saved.candidate_draft_id,
+            "candidate_version_id": saved.selected_version_id,
+            "warnings": list(context_pack.warnings),
+        }
 
     def _validate_writer_output(self, payload: dict[str, Any]) -> dict[str, Any]:
         raw_output = str(payload.get("content", ""))
@@ -431,19 +536,83 @@ class CoreToolFacade:
         draft = self._candidate_draft_repository.get(str(payload["candidate_draft_id"]))
         return {"candidate_draft": draft}
 
-    def _get_story_memory_snapshot(self, payload: dict[str, Any]) -> dict[str, Any]:
-        snapshot_id = str(payload.get("snapshot_id", "")) or f"memory_{uuid.uuid4().hex[:8]}"
-        return {"result_ref": f"memory_context:{snapshot_id}"}
+    def _get_story_memory_snapshot(
+        self,
+        payload: dict[str, Any],
+        *,
+        context: ToolExecutionContext | None = None,
+    ) -> dict[str, Any]:
+        work_id = self._resolve_scoped_work_id(payload, context=context)
+        if self._story_memory_repository is None:
+            raise ValueError("story_memory_repository_not_available")
+        snapshot = self._story_memory_repository.get_latest_snapshot_by_work(work_id)
+        if snapshot is None:
+            raise ValueError("story_memory_not_found")
+        warnings = ["story_memory_stale"] if str(snapshot.stale_status) == "stale" else []
+        return {
+            "result_ref": f"memory_context:{snapshot.snapshot_id}",
+            "story_memory_ref": f"story_memory:{snapshot.snapshot_id}",
+            "snapshot_id": snapshot.snapshot_id,
+            "stale_status": str(snapshot.stale_status),
+            "warnings": warnings,
+        }
 
-    def _get_story_state_baseline(self, payload: dict[str, Any]) -> dict[str, Any]:
-        state_id = str(payload.get("state_id", "")) or f"state_{uuid.uuid4().hex[:8]}"
-        return {"result_ref": f"story_state:{state_id}"}
+    def _get_story_state_baseline(
+        self,
+        payload: dict[str, Any],
+        *,
+        context: ToolExecutionContext | None = None,
+    ) -> dict[str, Any]:
+        work_id = self._resolve_scoped_work_id(payload, context=context)
+        if self._story_state_repository is None:
+            raise ValueError("story_state_repository_not_available")
+        story_state = self._story_state_repository.get_latest_analysis_baseline_by_work(work_id)
+        if story_state is None:
+            raise ValueError("story_state_not_found")
+        warnings = ["story_state_stale"] if str(story_state.stale_status) == "stale" else []
+        return {
+            "result_ref": f"story_state:{story_state.story_state_id}",
+            "story_state_id": story_state.story_state_id,
+            "stale_status": str(story_state.stale_status),
+            "warnings": warnings,
+        }
+
+    def _resolve_scoped_work_id(
+        self,
+        payload: dict[str, Any],
+        *,
+        context: ToolExecutionContext | None,
+    ) -> str:
+        payload_work_id = str(payload.get("work_id", "")).strip()
+        context_work_id = str(context.work_id if context is not None else "").strip()
+        if payload_work_id and context_work_id and payload_work_id != context_work_id:
+            raise ValueError("tool_resource_scope_mismatch")
+        work_id = context_work_id or payload_work_id
+        if not work_id:
+            raise ValueError("work_id_required")
+        return work_id
 
     def _create_memory_update_suggestion(self, payload: dict[str, Any]) -> dict[str, Any]:
         suggestion_id = str(payload.get("suggestion_id", "")) or f"memsug_{uuid.uuid4().hex[:8]}"
         return {"result_ref": f"memory_update_suggestion:{suggestion_id}"}
 
-    def _create_direction_proposal(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _create_direction_proposal(
+        self,
+        payload: dict[str, Any],
+        *,
+        context: ToolExecutionContext | None = None,
+    ) -> dict[str, Any]:
+        if self._planning_generation_service is not None and not list(payload.get("options", []) or []):
+            if context is None:
+                raise ValueError("tool_context_invalid")
+            payload = self._planning_generation_service.build_direction_proposal_payload(
+                work_id=str(payload.get("work_id", "") or context.work_id),
+                chapter_id=str(payload.get("chapter_id", "") or context.chapter_id),
+                user_instruction=str(payload.get("user_instruction", "")),
+                request_id=context.request_id,
+                trace_id=context.trace_id,
+                agent_session_id=context.agent_session_id,
+            )
         proposal_id = str(payload.get("direction_proposal_id", "") or payload.get("proposal_id", "")) or f"dir_{uuid.uuid4().hex[:8]}"
         if self._direction_plan_repository is not None:
             self._supersede_existing_direction_proposals(
@@ -465,7 +634,23 @@ class CoreToolFacade:
             self._direction_plan_repository.save_direction_proposal(proposal)
         return {"result_ref": f"direction:{proposal_id}"}
 
-    def _create_chapter_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _create_chapter_plan(
+        self,
+        payload: dict[str, Any],
+        *,
+        context: ToolExecutionContext | None = None,
+    ) -> dict[str, Any]:
+        if self._planning_generation_service is not None and not list(payload.get("plan_items", []) or []):
+            if context is None:
+                raise ValueError("tool_context_invalid")
+            payload = self._planning_generation_service.build_chapter_plan_payload(
+                work_id=str(payload.get("work_id", "") or context.work_id),
+                chapter_id=str(payload.get("chapter_id", "") or context.chapter_id),
+                direction_proposal_id=str(payload.get("direction_proposal_id", "")),
+                request_id=context.request_id,
+                trace_id=context.trace_id,
+                agent_session_id=context.agent_session_id,
+            )
         plan_id = str(payload.get("chapter_plan_id", "") or payload.get("plan_id", "")) or f"plan_{uuid.uuid4().hex[:8]}"
         if self._chapter_plan_repository is not None:
             self._supersede_existing_chapter_plans(
@@ -627,7 +812,31 @@ class CoreToolFacade:
             )
             self._direction_plan_repository.save_writing_task(updated)
 
-    def _create_review_report(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _create_review_report(
+        self,
+        payload: dict[str, Any],
+        *,
+        context: ToolExecutionContext | None = None,
+    ) -> dict[str, Any]:
+        candidate_draft_id = str(payload.get("candidate_draft_id", "")).strip()
+        if self._ai_review_service is not None and candidate_draft_id:
+            if context is None or context.caller_type != "agent" or context.agent_type != "reviewer":
+                raise ValueError("tool_context_invalid")
+            review = self._ai_review_service.review_candidate_draft(
+                candidate_draft_id,
+                created_by="reviewer_agent",
+                user_instruction=str(payload.get("user_instruction", "")),
+                allow_degraded=bool(payload.get("allow_degraded", True)),
+                idempotency_key=str(payload.get("idempotency_key", "") or context.agent_step_id),
+            )
+            if review.status.value in {"failed", "blocked"}:
+                raise ValueError("review_generation_failed")
+            return {
+                "result_ref": f"review_report:{review.review_id}",
+                "result_status": review.status.value,
+                "rewrite_recommended": bool(review.issues) or review.risk_level.value == "high",
+                "warnings": list(review.warnings),
+            }
         review_id = str(payload.get("review_id", "")) or f"review_{uuid.uuid4().hex[:8]}"
         return {"result_ref": f"review_report:{review_id}"}
 
@@ -706,7 +915,34 @@ class CoreToolFacade:
             return AISuggestionActionType.ADJUST_DIRECTION_OR_PLAN
         return AISuggestionActionType.CONVERT_TO_REWRITE_INSTRUCTION
 
-    def _create_candidate_version(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _create_candidate_version(
+        self,
+        payload: dict[str, Any],
+        *,
+        context: ToolExecutionContext | None = None,
+    ) -> dict[str, Any]:
+        candidate_draft_id = str(payload.get("candidate_draft_id", "")).strip()
+        source_version_id = str(payload.get("source_version_id", "")).strip()
+        if self._candidate_rewrite_service is not None and candidate_draft_id and source_version_id:
+            if context is None or context.caller_type != "agent" or context.agent_type != "rewriter":
+                raise ValueError("tool_context_invalid")
+            result = self._candidate_rewrite_service.request_rewrite(
+                candidate_draft_id=candidate_draft_id,
+                source_version_id=source_version_id,
+                trigger_type=str(payload.get("trigger_type", "review_based")),
+                review_report_id=str(payload.get("review_report_id", "")),
+                user_instruction=str(payload.get("user_instruction", "")),
+                user_action=False,
+                idempotency_key=str(payload.get("idempotency_key", "") or context.agent_step_id),
+                caller_type="rewriter_agent",
+                agent_session_id=context.agent_session_id,
+            )
+            target_version = result["target_version"]
+            return {
+                "result_ref": f"candidate_version:{target_version.candidate_version_id}",
+                "candidate_version_id": target_version.candidate_version_id,
+                "result_status": target_version.status.value,
+            }
         version_id = str(payload.get("candidate_version_id", "")) or f"ver_{uuid.uuid4().hex[:8]}"
         if self._candidate_draft_repository is not None and str(payload.get("candidate_draft_id", "")).strip():
             version = CandidateDraftVersion(
